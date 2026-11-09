@@ -232,6 +232,11 @@ Differences from the Steam engine that shape the plan:
   equality retained, raw fixed positions and ordered appends. Item glow includes
   every qualifying material byte in the signed-count prefix and uses ordered
   accumulation. Complete native producer admission and clock scheduling remain open.
+- [x] Bounded sector-source collection: quantized distance and supplied-plane
+  admission, kind-specific static positions/radii, live item height/hide gates,
+  controlled-position sector rectangle and static-before-item order. Generated
+  item lights are collected once and update with live replacement/unloading;
+  rendering a model is independent from emitting its light. CPU/GPU checks pass.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

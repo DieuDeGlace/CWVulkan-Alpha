@@ -2351,16 +2351,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         const float S = alpha::sunlight(scene.timeOfDayMs);
                         material.a = (type == 11 && subtype == 19) || type == 18 ? 1 / std::max(S, 0.05f) : l / 255.f;
                     }
-                    // Rendering §10.1: those two also light their surroundings (radius 16).
-                    glm::vec3 glow(0);
-                    if (type == 11 && subtype == 19)
-                        glow = {0.1f, 0.3f, 0.3f};
-                    else if (type == 18 && subtype == 0)
-                        glow = {0.6f, 0.6f, 0.2f};
-                    else if (type == 18 && subtype == 1)
-                        glow = {0, 0.6f, 0.2f};
-                    if (glm::dot(glow, glow) > 0)
-                        scene.lights.push_back(pointLightAt(w.blocks(), view.toRender(w.blocks()), 16, glow));
                     if (type == 12 || type == 13) {
                         const float pulse = 0.5f * std::cos(glm::radians(0.4f * (float)std::fmod(clockMs, 900.0))) + 0.5f;
                         material *= pulse * pulse + 1;
@@ -2582,7 +2572,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
             cameraFront = front;
         }
-        view.finishLighting(scene);
+        std::optional<terrain_lights::FixedPosition> lightController;
+        if (player) {
+            const auto &position = player->body().position;
+            lightController = terrain_lights::FixedPosition{position[0], position[1], position[2]};
+        }
+        view.finishLighting(scene, worldItems, lightController);
         FrameConstants frame = makeFrame(view.camera(renderer.size()), scene, shadowSettings, moonSettings);
         // Screens §5.1: the corner map while playing, 3 x 3 zones round the player's at the
         // starting map zoom (s 0.8).

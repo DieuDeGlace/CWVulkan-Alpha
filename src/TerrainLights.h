@@ -43,6 +43,22 @@ float priority(const FixedPosition &position, const FixedPosition &reference);
 void order(std::vector<Candidate> &candidates);
 ShaderLights shaderPrefix(const Selection &selection);
 
+// The held source gate takes supplied planes/reference/shift. Construction of
+// those values by the original renderer remains a separate parity dependency.
+class ViewAdmission {
+  public:
+    ViewAdmission(FixedPosition reference, FixedPosition shift, std::array<glm::vec4, 6> planes, float reach);
+    bool accepts(const FixedPosition &position, float cullingRadius) const;
+    float reach() const { return distance; }
+
+  private:
+    FixedPosition reference, shift;
+    std::array<glm::vec4, 6> planes;
+    float distance;
+    int64_t squaredLimit = 0;
+    bool valid = false;
+};
+
 struct FadingSource {
     FixedPosition position{};
     glm::vec3 colour{0};

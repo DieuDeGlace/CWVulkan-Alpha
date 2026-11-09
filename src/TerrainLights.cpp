@@ -10,6 +10,15 @@ uint64_t key(int32_t x, int32_t y) { return uint64_t(uint32_t(x)) << 32 | uint32
 bool inWorld(glm::ivec2 chunk) {
     return uint32_t(chunk.x) < 0x80000u && uint32_t(chunk.y) < 0x80000u;
 }
+int64_t squaredDistance(const FixedPosition &position, const FixedPosition &reference) {
+    int64_t sum = 0;
+    for (size_t axis = 0; axis < 3; ++axis) {
+        const int64_t delta = subtract(position[axis], reference[axis]);
+        const int64_t squared = std::bit_cast<int64_t>(uint64_t(delta) * uint64_t(delta));
+        sum = add(sum, squared / 65536);
+    }
+    return sum;
+}
 } // namespace
 
 std::optional<FixedPosition> fromBlocks(glm::dvec3 position) {
@@ -31,13 +40,33 @@ glm::vec3 renderPosition(const FixedPosition &position, const FixedPosition &shi
 }
 
 float priority(const FixedPosition &position, const FixedPosition &reference) {
-    int64_t sum = 0;
-    for (size_t axis = 0; axis < 3; ++axis) {
-        const int64_t delta = subtract(position[axis], reference[axis]);
-        const int64_t squared = std::bit_cast<int64_t>(uint64_t(delta) * uint64_t(delta));
-        sum = add(sum, squared / 65536);
+    return float(squaredDistance(position, reference)) * (1.f / 65536.f);
+}
+
+ViewAdmission::ViewAdmission(FixedPosition referencePosition, FixedPosition renderShift,
+                             std::array<glm::vec4, 6> viewPlanes, float reach)
+    : reference(referencePosition), shift(renderShift), planes(viewPlanes), distance(reach) {
+    const float squared = reach * reach;
+    const float fixedLimit = squared * 65536.f;
+    // Invalid conversion is outside the ordinary native contract. Fail closed
+    // at this engine interface without an overflowing floating-to-integer cast.
+    valid = double(fixedLimit) >= 0 && double(fixedLimit) < 0x1p63;
+    if (valid)
+        squaredLimit = int64_t(fixedLimit);
+}
+
+bool ViewAdmission::accepts(const FixedPosition &position, float cullingRadius) const {
+    if (!valid || squaredDistance(position, reference) > squaredLimit)
+        return false;
+    const glm::vec3 at = renderPosition(position, shift);
+    for (const auto &plane : planes) {
+        const float xy = plane.x * at.x + plane.y * at.y;
+        const float xyz = xy + plane.z * at.z;
+        const float offset = xyz + plane.w;
+        if (offset + cullingRadius < 0.f)
+            return false;
     }
-    return float(sum) * (1.f / 65536.f);
+    return true;
 }
 
 void order(std::vector<Candidate> &candidates) {

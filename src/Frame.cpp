@@ -19,6 +19,15 @@ glm::mat4 Camera::projection(float nearPlane, float farPlane, float lens) const 
     return p;
 }
 
+std::array<glm::vec4, 6> Camera::viewPlanes() const {
+    const glm::mat4 rows = glm::transpose(projection(NEAR_PLANE, FAR_PLANE, lensDegrees) * view());
+    std::array<glm::vec4, 6> planes{rows[3] + rows[0], rows[3] - rows[0], rows[3] + rows[1],
+                                    rows[3] - rows[1], rows[2], rows[3] - rows[2]};
+    for (auto &plane : planes)
+        plane /= glm::length(glm::vec3(plane));
+    return planes;
+}
+
 FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowSettings &shadowSettings,
                          const MoonSettings &moonSettings) {
     const float L = alpha::paletteDaylight(scene.timeOfDayMs);
@@ -27,7 +36,7 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     const glm::mat4 view = camera.view();
 
     FrameConstants c{};
-    constexpr float NEAR_PLANE = 0.1f, FAR_PLANE = 4000.f;
+    constexpr float NEAR_PLANE = Camera::NEAR_PLANE, FAR_PLANE = Camera::FAR_PLANE;
     c.viewProjection = camera.projection(NEAR_PLANE, FAR_PLANE, camera.lensDegrees) * view;
     // §8.4: the sky camera keeps the view's rotation, sits at the origin, and has its own lens.
     glm::mat4 rotation = view;

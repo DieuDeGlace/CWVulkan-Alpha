@@ -13,6 +13,7 @@
 #include "Frame.h"
 #include "Motion.h"
 #include "Renderer.h"
+#include "SectorLights.h"
 #include "worldgen/Clouds.h"
 #include "worldgen/Terrain.h"
 #include "worldgen/WorldMap.h"
@@ -28,6 +29,7 @@
 #include <vector>
 
 class Content;
+class WorldItems;
 
 struct WorldViewOptions {
     uint32_t seed = 123;          // Alpha's default world seed (random spec §1.3)
@@ -67,7 +69,8 @@ class WorldView {
     void fillScene(Scene &scene) const;
     // After dynamic sources have joined the scene, sort the common candidates
     // and rebuild each terrain chunk's resident light records.
-    void finishLighting(Scene &scene) const;
+    void finishLighting(Scene &scene, const WorldItems &items,
+                        std::optional<terrain_lights::FixedPosition> controlled = std::nullopt) const;
     // The camera's place in world blocks, and a world position in render-origin terms.
     glm::dvec3 worldPosition() const { return glm::dvec3(origin.x + (double)eye.x, origin.y + (double)eye.y, eye.z); }
     glm::vec3 toRender(glm::dvec3 at) const {
@@ -170,18 +173,10 @@ class WorldView {
     float yaw = 0, pitch = 20;
 
     std::map<Key, std::vector<PlantInstance>> plants;
-    // Rendering §10.1: a zone's light sources, in world blocks.
-    struct LightSource {
-        glm::dvec3 position;
-        float radius;
-        glm::vec3 colour;
-        bool daylightDims; // statics fade with the sunlight, items do not
-    };
-    std::map<Key, std::vector<LightSource>> lightSources;
+    terrain_lights::SectorSources sectorSources;
     mutable terrain_lights::Selector lightSelector;
     mutable std::vector<terrain_lights::Candidate> lightCandidates;
     mutable std::vector<terrain_lights::Chunk> lightChunks;
-    static std::vector<LightSource> lightsOf(const worldgen::Zone &zone);
     std::map<Key, ChunkEntry> chunks; // by chunk corner
     std::map<int32_t, std::pair<MeshId, float>> plantModels;
     std::map<int32_t, std::pair<MeshId, glm::vec3>> staticModels;

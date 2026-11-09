@@ -243,3 +243,14 @@ mixed bytes 128/132/255, signed descriptor counts, prefix selection and zero
 results for no qualifying entries. These checks bound source arithmetic and
 storage; native main-loop time sampling and complete producer admission remain
 separate from the engine's GLFW duration adapter.
+
+SectorLightTests checks integer distance-limit equality, per-component fixed
+quantization, radius-independent distance admission, all six supplied planes,
+ordered cancellation and shifting before float narrowing. Source fixtures cover
+the different static test positions/radii, zero daytime RGB, item height/hide
+gates and truncating sector endpoints. A real generated WorldItems list supplies
+one light per item, and replacement/hiding/unloading remove stale contributions
+while preserving sector and list order. Procedural GPU frames also exercise the
+actual collector, then hide an item and unload the sector. Their expected light
+contributions clear independently of the green global fallback. Camera/reference
+production and complete native source coverage remain acceptance dependencies.

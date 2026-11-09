@@ -197,3 +197,13 @@ grey contribution above 131, with ordered sums and reciprocal multiplication.
 Malformed descriptor counts remain bounded by owned decoded storage. Native
 clock/mode scheduling, complete producer eligibility/culling and attachment
 freshness are still open; the GLFW integer-duration adapter is engine behavior.
+
+The held light-source lifecycle contract also supplies the conditional source
+admission helper and sector collection rules. Admission compares quantized fixed
+squared distance before testing supplied planes in the specified arithmetic
+order; culling radius does not enlarge the distance limit. Sector collection
+uses the controlled main position, visits existing keys in X/Y order and processes
+statics before current live item state. Generated items are no longer collected
+both from a stale zone cache and the live list, and model drawing does not decide
+whether their lights exist. The original plane/reference production and cached
+chunk source publication remain separate dependencies from this bounded path.

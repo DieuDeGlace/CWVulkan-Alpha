@@ -242,7 +242,7 @@ void WorldView::requestChunk(int32_t x0, int32_t y0) {
 
 void WorldView::addZone(std::shared_ptr<Zone> zone) {
     const int32_t zx = zone->zx, zy = zone->zy;
-    lightSources[{zx, zy}] = lightsOf(*zone);
+    sectorSources.update(*zone);
     map.add(std::move(zone));
     if (onZoneReady)
         onZoneReady(zx, zy);
@@ -300,7 +300,7 @@ void WorldView::dropZone(Key key) {
     map.remove(key.first, key.second);
     plants.erase(key);
     refreshPlantsNear(key);
-    lightSources.erase(key);
+    sectorSources.remove(key.first, key.second);
     // (Its map tile stays for the map; tiles go when they are 16 zones away, in update.)
     const int32_t x0 = key.first * Zone::SIZE, y0 = key.second * Zone::SIZE;
     for (auto it = chunks.lower_bound({x0, INT32_MIN}); it != chunks.end() && it->first.first < x0 + Zone::SIZE;) {
@@ -756,37 +756,6 @@ void WorldView::setLook(float y, float p) {
     pitch = std::clamp(p, -89.f, 89.f);
 }
 
-// Rendering §10.1: street lights, torches and campfires, and glowing items on the ground.
-std::vector<WorldView::LightSource> WorldView::lightsOf(const Zone &zone) {
-    std::vector<LightSource> out;
-    for (const StaticObject &o : zone.statics) {
-        glm::vec3 colour;
-        if (o.kind == 50)
-            colour = {1.2f, 1.0f, 0.8f};
-        else if (o.kind == 51 || o.kind == 65)
-            colour = {1.2f, 0.8f, 0.4f};
-        else
-            continue;
-        out.push_back({glm::dvec3(o.x, o.y, o.z) / 65536.0 + glm::dvec3(0, 0, o.scale[2]), 20, colour, true});
-    }
-    auto itemColour = [](int type, int subtype) {
-        if (type == 11 && subtype == 19)
-            return glm::vec3(0.1f, 0.3f, 0.3f);
-        if (type == 18 && subtype == 0)
-            return glm::vec3(0.6f, 0.6f, 0.2f);
-        if (type == 18 && subtype == 1)
-            return glm::vec3(0, 0.6f, 0.2f);
-        return glm::vec3(0);
-    };
-    for (const GroundItem &i : zone.items)
-        if (const glm::vec3 c = itemColour(i.category, i.subtype); glm::dot(c, c) > 0)
-            out.push_back({glm::dvec3(i.x, i.y, i.z), 16, c, false});
-    for (const ItemDrop &d : zone.drops)
-        if (const glm::vec3 c = itemColour(d.item.type, d.item.subtype); glm::dot(c, c) > 0)
-            out.push_back({glm::dvec3(d.x, d.y, d.z) / 65536.0, 16, c, false});
-    return out;
-}
-
 void WorldView::fillScene(Scene &scene) const {
     const int32_t x = origin.x + (int32_t)std::floor(eye.x), y = origin.y + (int32_t)std::floor(eye.y);
     const Climate cl = terrain.climate(x, y, map.zoneAt(x, y));
@@ -794,22 +763,11 @@ void WorldView::fillScene(Scene &scene) const {
     scene.focus = glm::vec3(eye.x, eye.y, std::max(eye.z - 40.f, 0.f));
     scene.underwater = map.read(x, y, (int32_t)std::floor(eye.z)).type() == WATER;
 
-    // §10.1, §10.2: the lights within reach of the view (the fog distance and 22.4 blocks more),
-    // collected before dynamic sources join. Alpha also drops lights outside the view planes; here every light in reach
-    // counts, so lights just behind the camera still reach what it sees.
-    const float S = alpha::sunlight(scene.timeOfDayMs);
-    const double reach = scene.fogDistance + 22.4;
     scene.lights.clear();
-    for (const auto &[key, list] : lightSources)
-        for (const LightSource &l : list) {
-            const glm::vec3 at = toRender(l.position);
-            if (glm::distance(at, eye) - l.radius > reach)
-                continue;
-            scene.lights.push_back(pointLightAt(l.position, at, l.radius, l.daylightDims ? l.colour * (1 - S) : l.colour));
-        }
 }
 
-void WorldView::finishLighting(Scene &scene) const {
+void WorldView::finishLighting(Scene &scene, const WorldItems &items,
+                                std::optional<terrain_lights::FixedPosition> controlled) const {
     const auto reference = terrain_lights::fromBlocks(worldPosition());
     if (!reference) {
         renderer.setTerrainLights({});
@@ -822,9 +780,15 @@ void WorldView::finishLighting(Scene &scene) const {
         const auto position = source.fixedPosition ? source.fixedPosition :
             terrain_lights::fromBlocks(glm::dvec3(source.position) + glm::dvec3(origin.x, origin.y, 0));
         if (position)
-            lightCandidates.push_back({*position, source.colour, source.radius,
-                                       terrain_lights::priority(*position, *reference)});
+            lightCandidates.push_back({*position, source.colour, source.radius, 0});
     }
+    const terrain_lights::ViewAdmission view(*reference, shift, camera(renderer.size()).viewPlanes(),
+                                            scene.fogDistance + 22.4f);
+    // A flying viewer has no controlled creature; use its camera as an explicit
+    // engine fallback. Playing uses the controlled body's main fixed position.
+    sectorSources.append(lightCandidates, items, view, controlled.value_or(*reference), alpha::sunlight(scene.timeOfDayMs));
+    for (auto &candidate : lightCandidates)
+        candidate.priority = terrain_lights::priority(candidate.position, *reference);
     terrain_lights::order(lightCandidates);
     scene.lights.clear();
     for (const auto &candidate : lightCandidates)

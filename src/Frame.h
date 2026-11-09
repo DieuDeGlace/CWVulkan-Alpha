@@ -6,10 +6,12 @@
 #include "Shadows.h"
 #include "TerrainLights.h"
 #include <glm/glm.hpp>
+#include <array>
 #include <vector>
 #include <optional>
 
 struct Camera {
+    static constexpr float NEAR_PLANE = .1f, FAR_PLANE = 4000.f;
     glm::vec3 eye{0};
     float yawDegrees = 0;   // 0 looks along +y; positive turns towards +x
     float pitchDegrees = 0; // positive looks down
@@ -19,6 +21,8 @@ struct Camera {
     glm::vec3 forward() const;
     glm::mat4 view() const;
     glm::mat4 projection(float nearPlane, float farPlane, float lens) const;
+    // Engine camera adapter. Original plane production is not yet certified.
+    std::array<glm::vec4, 6> viewPlanes() const;
 };
 
 // Rendering §10: a point light (street lights, torches, campfires, glowing items), in

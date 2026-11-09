@@ -1,5 +1,7 @@
 // Engine GPU routing diagnostic. No owner assets, native code or native pixel oracle.
 #include "Renderer.h"
+#include "SectorLights.h"
+#include "WorldItems.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <stb_image.h>
@@ -151,11 +153,49 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     timed.advance(401);
     if (!black(captureTimed("timed-expired")))
         throw std::runtime_error("Expired sources retained GPU contributions");
+    terrain_lights::SectorSources sectorSources;
+    worldgen::Zone sector;
+    worldgen::StaticObject lamp;
+    lamp.kind = 50;
+    lamp.x = lamp.y = 8 * 65536;
+    lamp.scale[2] = 4;
+    sector.statics.push_back(lamp);
+    sectorSources.update(sector);
+    WorldItems liveItems;
+    WorldItem candle;
+    candle.item[0] = 18;
+    candle.item[1] = 1;
+    candle.position[0] = 40 * 65536;
+    candle.position[1] = 8 * 65536;
+    candle.position[2] = 65536;
+    liveItems.replace(0, 0, {candle});
+    const terrain_lights::ViewAdmission sourceView(*terrain_lights::fromBlocks(glm::dvec3(camera.eye)), {},
+                                                  camera.viewPlanes(), 200);
+    const auto captureSector = [&](const char *name) {
+        std::vector<terrain_lights::Candidate> candidates;
+        sectorSources.append(candidates, liveItems, sourceView, {24 * 65536, 8 * 65536, 0}, 0);
+        return capture(name, selector.rebuild(candidates, chunks, {}));
+    };
+    const auto gathered = captureSector("sector-sources");
+    if (gathered[0][0] < 150 || gathered[0][1] < 100 || gathered[0][2] < 80 ||
+        gathered[0][0] <= gathered[0][1] || gathered[0][1] <= gathered[0][2] ||
+        gathered[1][0] > 4 || gathered[1][1] < 50 || gathered[1][2] < 10 || gathered[1][1] < 2 * gathered[1][2])
+        throw std::runtime_error("Gathered static/item sources did not reach their terrain rows");
+    candle.hideMs = 1;
+    liveItems.replace(0, 0, {candle});
+    const auto hidden = captureSector("sector-hidden");
+    if (hidden[0][0] < 150 || hidden[1][0] > 4 || hidden[1][1] > 4 || hidden[1][2] > 4)
+        throw std::runtime_error("Live hidden item retained its GPU contribution");
+    candle.hideMs = 0;
+    liveItems.replace(0, 0, {candle});
+    sectorSources.remove(0, 0);
+    if (!black(captureSector("sector-unloaded")))
+        throw std::runtime_error("Unloaded sector retained GPU static/item contributions");
     const auto fallback = capture("global-fallback", {});
     for (const auto &p : fallback)
         if (p[1] < 40 || p[0] > 4 || p[2] > 4)
             throw std::runtime_error("Removed terrain rows did not restore model fallback");
-    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading and fallback\n";
+    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, sector lifecycle and fallback\n";
 }
 
 } // namespace
