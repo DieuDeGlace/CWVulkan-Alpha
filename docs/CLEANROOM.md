@@ -1,0 +1,187 @@
+# AlphaVulkan clean-room process
+
+AlphaVulkan is an independent engine that loads content from the owner's Cube
+World Alpha installation. Native code research and implementation use separate
+agent contexts.
+
+1. A source-side researcher reads the standalone author policy before inspecting
+   scoped original Alpha evidence. Infinite-Cubes/alpha may supply leads, which
+   must be confirmed against the original Alpha image. The researcher writes
+   independently worded behavioral prose: inputs, outputs, timing, decision and
+   random-draw order, constants, field widths and evidence limits. No source,
+   transcribed pseudocode, invented reconstruction names or copied structure.
+2. After the researcher reports FINAL / STABLE / HELD, the implementer reads the
+   complete contract and writes engine code using project-owned sources only.
+   The implementer does not open native code or reconstruction sources.
+3. Verification compares runtime behavior and owner data with the contract.
+   Synthetic tests establish bounded engine behavior; native captures establish
+   only the behavior they actually record. Neither proves complete parity.
+
+Source-side role rules are in [CLEANROOM_AUTHOR.md](CLEANROOM_AUTHOR.md). Do not
+send this combined process/history document to a source-side author.
+
+## Continuation provenance
+
+The 2026-11-07 continuation copied project sources from
+Documents/Claude-workfiles/AlphaVulkan into this chat's workspace without copying
+its builds, saves, recordings or distribution. Claude's original files remain
+untouched. Inherited implementations and specifications require a final
+provenance audit; their presence is not certification of clean-room authorship.
+
+Keep assets, data stores, captures, exports and saves local and outside releases.
+Before a final release, audit source/specification handoffs, uncertain inherited
+contributions, package contents and broader gameplay, rendering, save and network
+comparisons against the original Alpha client and server.
+
+## Water and lighting continuation
+
+Independent source-only contexts supplied the held
+`alpha-light-propagation-lifecycle.md`, `alpha-ranged-action-scheduling.md` and
+`alpha-water-material-contract.md` contracts. The implementer read the complete
+final prose and project-owned implementation only. One earlier combat-author
+context stopped after encountering unvetted audit metadata, wrote no contract,
+and was replaced by a fresh author restricted to original native evidence.
+
+Lighting boundary changes use the finalized lifecycle contract. The shared water
+surface reuses the Steam engine's original GPL shader and snapshot design; it
+does not use an original-game or third-party reconstruction shader. Swimmable
+shallow terrain and bank reeds implement explicit user extensions, described in
+[water-extension.md](water-extension.md). Synthetic tests and local owner-data
+captures remain distinct from broader native acceptance and provenance audits.
+
+Fresh source-only authors also supplied held zone-spawn lifecycle and rock-color
+precision contracts. Both were read completely before use. AVSP version 2 records
+the explicit native generation-prefix boundary; older count differences remain
+unclassified where their capture lifecycle was not recorded. The precision
+contract establishes binary32 channel arithmetic and truncating byte conversion,
+with ambient controls and the imported mathematical helper still unresolved.
+The later held `alpha-floating-point-environment.md` was read completely and
+supersedes the earlier rock contract's stale import-ordinal identification:
+the client imports `_libm_sse2_cos_precise` by name. It establishes the executable's
+53-bit x87 startup precision request, while leaving the terrain worker's full
+ambient controls unresolved. Do not reuse the superseded ordinal claim.
+The two later cosine contracts were each held and read completely. The numeric
+contract supplies complete bounded binary64 phase data and rounding relations
+for the identified original runtime under its stated controls. NoiseMath is an
+independent scalar implementation of those mathematical facts, without native
+register layouts or code. Exact static anchors pass; benchmark/library comparisons
+are performance diagnostics, not native runtime observations. The retained
+blue-byte discrepancy remains open; this change did not remove it in its zone.
+The implementer later ran a private black-box observation through the scalar ABI
+already specified by the held contract, using an isolated, hash-verified copy of
+the owner's original runtime. All 81,966 tested results matched the engine bits
+under explicitly selected controls. No native code was read for this probe and no
+probe, implementation or result was sent to the isolated source authors. This
+sampled runtime evidence does not establish the running terrain worker's controls.
+
+The owner-content setup tool and source-module SDK are independently designed
+engine features. They consume existing engine loaders/APIs and public operating
+system interfaces, without a new native-code implementation handoff.
+
+## Creature-update continuation
+
+The source-only authors subsequently supplied held common-update, ranged-audio,
+periodic-buff hit and periodic-hit application/fixed-stat contracts. Each complete
+final artifact was read before implementation. The common phase and ranged-audio
+changes have bounded synthetic checks; actual periodic-hit integration and broader
+native fight acceptance remain open. The periodic contracts distinguish motion
+velocity from the stored response vector and retain unknown semantic labels.
+They do not certify fatal death/loot/threat paths or original-server equivalence.
+The later held hit-contact/threat/fatal-lifecycle contract was also read in full.
+Its bounded source resolution and threat-contribution rules are implemented;
+complete propagation, protected-target admission, death/world effects and nested
+loot integration remain open. The contract's explicit missing dependencies remain
+acceptance limits, and do not establish original-server equivalence.
+
+Further isolated authors supplied held buff record/replication, server admission,
+client buff-action, primary-input, common hit-input and common-processing-state
+contracts. Each complete artifact was read before its corresponding implementation.
+These establish bounded record layouts, source identities, timing, state writes,
+resource arithmetic and draw order. They do not certify full producer coverage,
+generic hit/death integration, imported math status equivalence or native combat
+acceptance. Separate terrain-color and opaque-output contracts preserve unknown
+effective output state; no guessed gamma transform follows from those unknowns.
+The separate selector-17 production contract was held and fully read before adding
+its explicit selector and generated buff-event route. It identifies unspecified
+native producer padding; deterministic engine initialization is recorded as such.
+
+Later isolated source authors supplied held projectile call/ownership, water
+contact, critical/haste numerics, hit record production, presentation draws,
+vector adjustment, scalar reduction, primitive application, response consumption
+and client buff-transmission contracts. Each was read completely before use.
+The client frame/world-call ordering contract was also held and fully read; it
+does not establish every input route, pause state or world-transition condition.
+Record codecs preserve received opaque bytes while fresh producer storage is
+deterministically initialized. Primitive application and response checks establish
+bounded target mutations and motion consumption. Complete world relationship,
+fatal/loot processing, periodic production integration and native frame timing
+remain separate open work; these handoffs do not certify full combat parity.
+The later world-creature health-admission and generic source/self auxiliary
+contracts were also held and read completely. The former now supplies the bounded
+maximum-query/admission boundary. Bounded source/self item selection, arithmetic,
+counter writes and direct health mutation now use the auxiliary contract, with
+local delivery policy separate from the serialized payload. The independently
+held client hit-transmission and server hit-routing contracts were fully read
+before routing changes. Their native self-echo behavior is retained; local direct
+producer delivery is distinct from receiving a record over the network. Complete
+incoming category consumers and broader network acceptance remain open.
+The later incoming-hit mutation contract was held and read in full before adding
+the distinct controlled-creature receive phase. Numeric categories retain their
+caller-specific behavior; the world applier is not reused as the network consumer.
+Its bounded tests do not close every category, whole-frame publication order,
+fatal world behavior or original-client/server gameplay acceptance.
+
+The later receiver-publication-locks and network-creature-state-defaults contracts
+were held and read completely before adjusting the receive worker. New remote
+actors start from specified fixed semantic properties; existing actors keep prior
+received state. Insertion/baseline copy and final assignment use separate frame
+lock intervals, with decoding and receiver-private presence tracking between them.
+The native constructor leaves some codec storage and padding unspecified. Fresh
+engine storage is deliberately zeroed, while received opaque values survive later
+partial deltas; no native equality claim applies to those fresh unspecified bytes.
+Loopback regressions cover partial first updates, retained state and frame exclusion.
+Native interpolation, complete transition semantics and wider timing remain open.
+
+The original-only client-startup-window-boundary contract was subsequently held
+and fully read. It distinguishes loader dependencies, window creation and the later
+show request without identifying a redistributable installer from an absent window.
+Its source author received no implementation or runtime observations. The owner's
+reported native menu and the separately observed isolated game window establish
+a startup checkpoint, not completed interactive or visual acceptance.
+
+The complete held terrain-shader-color-numerics contract was then read before
+updating CPU clock/palette widths and stored constants, vertex light accumulation
+and ordinary fragment fog/oscillation grouping. The implementation uses the
+engine's existing mesh and orthonormal camera interfaces; original matrix
+construction, spatial producers, light selection and device precision remain
+bounded dependencies. A successful engine capture is separate from native pixel
+acceptance, and the bright-ground observation remains unresolved. No gamma or
+display correction follows from the incomplete output-transfer evidence. Existing
+moon/shadow/water extensions remain distinct from the native shader account.
+
+Later spatial-scalar, cache-publication, chunk-point-light, sort-order/ABI and
+renderer-origin contracts were held and fully read before implementation. The
+scalar implementation preserves wrapped windows, repeated sample passes and
+ordered binary32 accumulation while reusing one engine read lock. Fixed-point
+light priorities and inclusive per-chunk membership use a separately structured
+engine selector, not original record layouts. Per-draw storage rows route each
+chunk's fixed ten-vector prefix to the existing shader arithmetic.
+
+A private black-box recorder called the original sort through its held ABI in a
+separate process with a verified isolated executable image. It inspected no
+native instructions, patched nothing and did not run the game's entrypoint.
+All 50,000 recorded finite-key examples matched the actual engine candidate sort,
+including semantic payload movement. Neither the recorder nor its results were
+sent to source authors. General large mixed ties and exceptional keys remain
+bounded. Procedural red/blue GPU quads separately verify engine routing, buffer
+growth, clearing and the fixed ten-slot prefix; they are not native pixel evidence.
+Original source gathering/lifetime, renderer anchor following, worker controls
+and native visual acceptance remain open.
+
+The later recipe-grant entry-boundary contract was held and read completely before
+correcting loaded-character recipe observation. Saved recipe lists are restored
+without regenerating the loaded level's randomized grants; the observed-level
+tracker synchronizes after load. Later mismatches publish the new observed level
+before one grant invocation, without a catch-up loop. The unsaved diagnostic
+character's initial grant is separate from real character creation. Full recipe
+content tables, update scheduling and wider entry failure paths remain bounded.
