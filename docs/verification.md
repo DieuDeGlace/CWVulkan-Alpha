@@ -167,6 +167,26 @@ loopback and save/reload checks exited successfully. Reviewed captures retained
 the world, character, HUD, nine map tiles and 170 edited blocks; the injured
 character saved exactly binary32 50. The known bright-ground observation persists.
 
+FatalContextTests covers signed cached-origin defaults, explicit core groups,
+unrelated-delta retention, reverse ownership and forward-link exclusion from
+core refresh. It checks descriptor origin across movement, separate engine quest
+origin, zero-owner child construction and child reset without parent reset.
+Zero-link cases distinguish skipped category maintenance, unconditional key-zero
+health stores (including self), resident-seven retention before later expiration,
+pet-category creation despite a mapped/recovered zero ID, signed player keys and
+allocation wrap. The later designated-actor copy preserves low signed level bits
+and raw experience even when category maintenance was skipped. Immediate fatal
+sound placement retains raw-integer-to-binary32 narrowing, the clock resets
+without changing the action byte, and later ordinary/pet corpse adapters avoid
+replaying the sound. These are bounded engine regressions, not full native pet,
+fatal/loot, world-context or gameplay acceptance.
+All 35 CTests passed for this checkpoint. Fresh isolated health, loopback and
+save/reload runs exited successfully, and all four captures were reviewed.
+The injured character retained exactly binary32 50 health; reload preserved
+the character, seed 123 despite conflicting arguments, nine map tiles, preview
+data and 170 block edits. The loopback server shut down cleanly. The known
+bright-ground rendering observation remains open.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

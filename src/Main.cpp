@@ -1311,13 +1311,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     };
     const auto advanceWorldClock = [&](int32_t elapsed, bool accelerated) {
         lightClockMs += uint32_t(elapsed);
+        const bool named = client.connected() || (session && !session->name().empty());
+        npcs.setNamedWorld(named || options.pet); // --pet retains its explicit diagnostic world adapter
         // Explicit unsaved capture/viewer time remains a diagnostic override.
         if (!session && !client.connected() && options.hourOverride)
             return;
         WorldClock clock{uint32_t(scene.day), uint32_t(scene.timeOfDayMs)};
         // Admitted online worlds use a nonempty selection string. Native
         // reset/transition scheduling remains separate from this engine adapter.
-        const bool named = client.connected() || (session && !session->name().empty());
         clock.advanceWorld(elapsed, accelerated, named);
         scene.day = std::bit_cast<int32_t>(clock.day);
         scene.timeOfDayMs = clock.timeOfDayMs;
@@ -1326,19 +1327,24 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (session && named && simulation::clockWriteDue(lightClockMs, elapsed))
             session->saveClock();
     };
+    const auto frameActor = [&](uint64_t key) -> creatures::Combatant * {
+        if (player && player->combat().id == key)
+            return &player->combat();
+        if (const auto remote = otherFighters.find(key); remote != otherFighters.end())
+            return &remote->second.fighter;
+        if (!client.connected())
+            for (auto &npc : npcs.npcs())
+                if (npc.fighter.id == key)
+                    return &npc.fighter;
+        return nullptr;
+    };
     const auto applyReceivedRelationships = [&] {
         const auto received = client.takeRelationships();
-        creatures::receiveRelationships(received, [&](uint64_t key) -> creatures::Combatant * {
-            if (player && player->combat().id == key)
-                return &player->combat();
-            if (const auto remote = otherFighters.find(key); remote != otherFighters.end())
-                return &remote->second.fighter;
-            if (!client.connected())
-                for (auto &npc : npcs.npcs())
-                    if (npc.fighter.id == key)
-                        return &npc.fighter;
-            return nullptr;
-        });
+        creatures::receiveRelationships(received, frameActor);
+    };
+    const auto refreshReceivedLinks = [&] {
+        for (const auto &[key, remote] : otherFighters)
+            creatures::refreshForwardLink(remote.fighter, frameActor);
     };
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
@@ -1595,6 +1601,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         accelerated |= acceleratesClock(npc.fighter);
                     creatures::regenerate(player->combat(), elapsed);
                     advanceWorldClock(elapsed, accelerated);
+                    if (client.connected())
+                        refreshReceivedLinks();
                     const auto advancePlayer = [&](int32_t actorElapsed) {
                         if (!client.connected()) // physics §4.4: hostile/inert creatures push the player
                             player->body().separate = npcs.pushOnPlayer(player->body());
@@ -1940,7 +1948,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             }
                         // Travel §5.5: a pet standing on wet lake-bed ground (type 3) refills its
                         // owner's riding energy by 0.05 a second.
-                        if (const creatures::Npc *pet = npcs.petOf(c.id); pet && !(pet->body.contact & creatures::IN_WATER)) {
+                        if (const creatures::Npc *pet = npcs.petOf(c); pet && !(pet->body.contact & creatures::IN_WATER)) {
                             const glm::dvec3 feet = pet->body.blocks() - glm::dvec3(0, 0, pet->body.size.z / 2 + 0.2);
                             if (view.held().read((int32_t)std::floor(feet.x), (int32_t)std::floor(feet.y), (int32_t)std::floor(feet.z)).type() ==
                                 worldgen::LAKE_BED)
@@ -2135,12 +2143,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     simulationWorldCalls++;
                     simulationMaxPiece = std::max(simulationMaxPiece, elapsed);
                     bool accelerated = false;
-                    for (auto &[id, remote] : otherFighters) {
+                    for (const auto &[id, remote] : otherFighters)
                         accelerated |= acceleratesClock(remote.fighter);
+                    advanceWorldClock(elapsed, accelerated);
+                    if (client.connected())
+                        refreshReceivedLinks();
+                    for (auto &[id, remote] : otherFighters)
                         if (remote.fighter.health > 0)
                             creatures::tickBuffs(remote.fighter, elapsed, false);
-                    }
-                    advanceWorldClock(elapsed, accelerated);
                     const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
                     worldItems.step(elapsed, !client.connected(), block, [] { return std::rand() & 0x7fff; }, aggregate.sounds);
                     if (!client.connected())
@@ -2958,7 +2968,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 hud.charge = c.charge;
                 hud.stamina = player->body().stamina;
                 // Screens §5.3: the pet's bars (its name from the pet item, else its species).
-                if (const creatures::Npc *pet = npcs.petOf(c.id)) {
+                if (const creatures::Npc *pet = npcs.petOf(c)) {
                     hud.hasPet = true;
                     const DictionaryEntry *species = creatures::speciesKey(pet->fighter.type)
                                                          ? dictionary.find("name", creatures::speciesKey(pet->fighter.type))
@@ -3250,7 +3260,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         hud.prompt = u"[R] Free";
                     // Travel §5.2: the player's own rideable pet offers a ride (with the riding
                     // skill, not already riding).
-                    if (const creatures::Npc *pet = client.connected() ? nullptr : npcs.petOf(c.id);
+                    if (const creatures::Npc *pet = client.connected() ? nullptr : npcs.petOf(c);
                         pet && pet->fighter.id == creatureTarget && creatures::rideable(pet->fighter.type) &&
                         c.skills[1] != 0 && c.action != 106)
                         hud.prompt = u"[R] Ride";
@@ -3281,7 +3291,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // Travel §5.3: riding needs the pet alive and rideable (online the server's
                 // pet is trusted).
                 {
-                    const creatures::Npc *pet = npcs.petOf(c.id);
+                    const creatures::Npc *pet = npcs.petOf(c);
                     player->body().mountValid = client.connected() ||
                                                 (pet && pet->fighter.health >= 0 && creatures::rideable(pet->fighter.type));
                 }

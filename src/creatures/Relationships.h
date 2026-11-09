@@ -27,5 +27,8 @@ struct Combatant;
 // supplies the current world table under its frame protection.
 void receiveRelationships(std::span<const RelationshipRecord> records,
                           const std::function<Combatant *(uint64_t)> &lookup);
+// Supplied nonzero-world-mode producer: a role-five actor republishes its own
+// ID to the actor resolved by its reverse identifier. No life or nonzero-ID gate.
+void refreshForwardLink(const Combatant &actor, const std::function<Combatant *(uint64_t)> &lookup);
 
 } // namespace creatures

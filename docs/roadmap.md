@@ -68,6 +68,15 @@ Differences from the Steam engine that shape the plan:
   remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later
   death/loot adapters are not completion of that native continuation.
+- [x] Bounded fatal-context producers: core snapshots retain cached descriptor
+  coordinates/ordinal and reverse ownership; the forward link stays resident.
+  Ordinary descriptor activation preserves its origin across movement, while
+  engine quest actors keep their distinct context. Link maintenance distinguishes
+  pet-category zero sentinels from ordinary key-zero lookups, including self,
+  recovery, signed allocation and later item copies. The first fatal sound and
+  action-clock reset happen synchronously without a later duplicate. Native
+  selected-actor collection, full reset/configuration, selector-seven production,
+  object association, loot, regional/credit and random-stream ordering stay open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

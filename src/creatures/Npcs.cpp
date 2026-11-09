@@ -285,14 +285,16 @@ int Npcs::draw() {
 // §9.2 (server §5.2): the spawns of the active zones, the 3 x 3 round each player's zone,
 // come alive when any player is within their radius.
 void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base,
-                         uint64_t id, glm::dvec3 p) {
+                         uint64_t id, glm::dvec3 p, bool descriptorBacked) {
     Npc npc;
     npc.zone = key;
-    npc.spawn = index;
+    npc.spawn = descriptorBacked ? index : Npc::NO_SPAWN;
     npc.home = p;
     npc.despawnRadius = s.radius;
     Combatant &c = npc.fighter;
     c.id = id;
+    if (descriptorBacked)
+        c.backing = {key.first, key.second, (int32_t)index};
     c.type = s.type;
     c.controller = (uint8_t)s.controller;
     c.characterClass = s.characterClass;
@@ -388,7 +390,7 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
             if (s.windowStart != s.windowEnd && (timeOfDayMs < s.windowStart || timeOfDayMs > s.windowEnd))
                 continue;
             const uint64_t id = spawnId(key.first, key.second, i);
-            if (std::any_of(list.begin(), list.end(), [&](const Npc &n) { return n.fighter.id == id; }))
+            if (lookupActor(id, {}).combat())
                 continue;
             if (state.countdownMs < 0)
                 state.countdownMs = 0;
@@ -413,8 +415,7 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
         for (size_t i = 0; i < creatures.size(); i++) {
             const worldgen::Spawn &s = creatures[i];
             const uint64_t id = questCreatureId(quest, i);
-            if (questGone.count(id) ||
-                std::any_of(list.begin(), list.end(), [&](const Npc &n) { return n.fighter.id == id; }))
+            if (questGone.count(id) || lookupActor(id, {}).combat())
                 continue;
             const glm::dvec3 p = glm::dvec3((double)s.x, (double)s.y, (double)s.z) / 65536.0;
             const bool near = std::any_of(players.begin(), players.end(), [&](const PlayerView &v) {
@@ -424,7 +425,7 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
             if (near) {
                 const int32_t zx = worldgen::floorDiv((int32_t)std::floor(p.x), worldgen::ZONE);
                 const int32_t zy = worldgen::floorDiv((int32_t)std::floor(p.y), worldgen::ZONE);
-                spawnCreature(s, {zx, zy}, i, 0, id, p);
+                spawnCreature(s, {zx, zy}, i, 0, id, p, false); // engine quests have no native descriptor backing
             }
         }
 }
@@ -778,9 +779,9 @@ void Npcs::removeTargets(const std::set<std::pair<int32_t, int32_t>> &zones) {
 void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block) {
     if (npc.fighter.controller == 6)
         return;
-    if (npc.fighter.controller == 5 && npc.owner) { // pets §10: Combat, then Companion
+    if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
         if (!combat(npc, dtMs, players, block))
-            companion(npc, npc.owner, players, dtMs, block);
+            companion(npc, npc.fighter.ownerId, players, dtMs, block);
         return;
     }
     // Wildlife §4.9: the cell monster, the group leader and its members.
@@ -866,7 +867,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
                 return Seen{&o.fighter, &o.body};
         return std::nullopt;
     };
-    const bool ownedPet = c.controller == 5 && npc.owner;
+    const bool ownedPet = c.controller == 5;
     if (ownedPet) // pets §10.1: what the owner has hit most (nothing while the owner rides)
         npc.target = petTarget(npc, players);
     std::optional<Seen> target = npc.target ? find(npc.target) : std::nullopt;
@@ -1373,11 +1374,17 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
                 propagateThreat(*by, actor, frame);
             }
         }
-    // Preserve the bounded primitive fatal adapter until synchronous fatal
-    // world/object/loot effects are connected at this exact boundary.
+    // First fatal presentation is synchronous. Object/loot/linked/regional and
+    // credit stages still require their separate world-context integration.
     if (target->health <= 0) {
         target->health = 0;
+        glm::vec3 position;
+        for (int axis = 0; axis < 3; axis++)
+            position[axis] = (float)recipient.body()->position[axis] * (1.f / 65536.f);
+        frame.sounds.push_back({glm::dvec3(position), 27, 1, 1});
         target->actionMs = 0;
+        if (recipient.npc)
+            recipient.npc->fatalPresented = true;
     }
 }
 
@@ -1601,8 +1608,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
                 periodicHit(player.fighter, player.body, buff, players, frame);
             });
+    petPass(players, frame); // retained link maintenance precedes descriptor activation
     activate(map, players, timeOfDayMs, day, dtMs);
-    petPass(players); // pets §9
     // Creatures whose zone is let go go with it (inferred); pets stay with their owners.
     list.erase(std::remove_if(list.begin(), list.end(),
                               [&](const Npc &n) { return !map.zones().count(n.zone) && n.fighter.controller != 5; }),
@@ -1660,6 +1667,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         Combatant &c = npc.fighter;
         if (!admitCreatureUpdate(c))
             continue;
+        npc.fatalPresented = false;
         npc.tameMs = std::max(0.f, npc.tameMs - dtMs); // pets §7.3: the taming progress lasts 5 s
         // §13.1: decide every 32 ms of accumulated time while not stunned.
         npc.thinkMs += dtMs;
@@ -1790,9 +1798,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             npc.yaw = yawToward(glm::vec2(npc.body.intent));
         // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher
         // than their shared floor, turned as the owner.
-        if (c.controller == 5 && npc.owner)
+        if (c.controller == 5)
             for (const PlayerView &p : players)
-                if (p.fighter.id == npc.owner && p.fighter.action == 106) {
+                if (p.fighter.id == npc.fighter.ownerId && p.fighter.action == 106) {
                     npc.body.place(p.body.blocks() + glm::dvec3(0, 0, 0.5 * npc.body.size.z - 0.5 * p.body.size.z + 0.01));
                     npc.body.velocity = npc.body.intent = glm::vec3(0);
                     npc.yaw = p.yaw;
@@ -1812,17 +1820,18 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         }
         // Pets §11.1: a dead pet lies until 20 s have passed and its owner is here and not
         // dying, then comes back to its owner, healed and calm.
-        if (n.fighter.controller == 5 && n.owner) {
+        if (n.fighter.controller == 5) {
             if (n.deadMs == 0) {
                 n.fighter.health = 0;
-                frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // destroy2.wav
+                if (!n.fatalPresented)
+                    frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
                 for (Npc &o : list)
                     if (o.target == n.fighter.id)
                         o.target = 0, o.threat = 0;
             }
             n.deadMs += std::max(dtMs, 0.001f);
             for (const PlayerView &p : players)
-                if (p.fighter.id == n.owner && n.deadMs >= 20000 && p.fighter.health >= 0) {
+                if (p.fighter.id == n.fighter.ownerId && n.deadMs >= 20000 && p.fighter.health >= 0) {
                     n.fighter.health = maxHealth(n.fighter);
                     n.body.place(p.body.blocks());
                     n.target = 0;
@@ -1844,7 +1853,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 frame.explosions.push_back({n.body.blocks(), n.fighter.id, n.fighter.level});
                 blast(n, players, frame);
             }
-            frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // destroy2.wav
+            if (!n.fatalPresented)
+                frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
             NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory, n.zone, n.boss};
             death.quest = n.quest, death.questRole = n.questRole;
             if (n.quest)
@@ -1865,7 +1875,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                         frame.kills.push_back({players[k].fighter.id, n.fighter.id, n.fighter.type, xp});
                         if (k == 0)
                             frame.experience += xp;
-                        sharePetExperience(players[k].fighter.id, xp, frame); // pets §12
+                        sharePetExperience(players[k].fighter, xp, frame); // pets §12
                     }
             for (Npc &o : list) // creatures that targeted it forget it
                 if (o.target == n.fighter.id)

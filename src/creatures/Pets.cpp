@@ -6,6 +6,7 @@
 #include "creatures/Physics.h"
 #include "worldgen/Regions.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace creatures {
@@ -43,19 +44,16 @@ Npc *Npcs::findNpc(uint64_t id) {
     return nullptr;
 }
 
-const Npc *Npcs::petOf(uint64_t owner) const {
-    const auto it = pets.find(owner);
-    if (it == pets.end())
-        return nullptr;
+const Npc *Npcs::petOf(const Combatant &owner) const {
     for (const Npc &n : list)
-        if (n.fighter.id == it->second.pet)
+        if (n.fighter.id == owner.linkedId && n.fighter.controller == 5 && n.fighter.ownerId == owner.id)
             return &n;
     return nullptr;
 }
 
 uint64_t Npcs::freeId() const {
     uint64_t smallest = 0;
-    if (actorPassActive) {
+    if (actorLookupActive) {
         for (const auto &[key, actor] : actors)
             if ((actor.npc || actor.player) && ActorKeyLess{}(key, smallest))
                 smallest = key;
@@ -93,82 +91,120 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     c.multipliers[0] *= 1 + 0.5f * skillFactor(owner.skills[0]);
     c.actionMs = 1000000;
     pet.fighter = c;
-    pet.owner = owner.id;
+    pet.fighter.ownerId = owner.id;
     pet.spawn = Npc::NO_SPAWN;
     pet.fighter.relations.threats.clear();
     pet.target = 0;
     pet.threat = 0;
     pet.body.size = pet.looks.box;
     pet.deadMs = 0;
-    pets[owner.id].pet = c.id;
+    pet.fatalPresented = false;
+    if (Combatant *mappedOwner = lookupActor(owner.id, {}).combat())
+        mappedOwner->linkedId = c.id;
 }
 
 // §9: each player's pet, found, rebuilt, made or removed by the Pet slot; §11.2 stale pets.
-void Npcs::petPass(std::vector<PlayerView> &players) {
-    for (PlayerView &p : players) {
-        PetLink &link = pets[p.fighter.id];
-        const Item &slot = p.fighter.equipment[PET_SLOT];
-        Npc *pet = link.pet ? findNpc(link.pet) : nullptr;
-        if (slot.type == 19) {
-            if (!pet) { // §9.1: re-attach a pet that lost its link
-                link.pet = 0;
-                for (Npc &n : list)
-                    if (n.fighter.controller == 5 && n.owner == p.fighter.id) {
-                        pet = &n;
-                        link.pet = n.fighter.id;
-                        break;
-                    }
+void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
+    if (namedWorld)
+        for (PlayerView &p : players) {
+            auto &owner = p.fighter;
+            PetLink &cache = pets[owner.id];
+            const Item &slot = owner.equipment[PET_SLOT];
+            if (slot.type == 19) {
+                // The first and post-recovery forward lookups each exclude zero.
+                ActorEntry linked = owner.linkedId ? lookupActor(owner.linkedId, players) : ActorEntry{};
+                if (!linked.combat()) {
+                    owner.linkedId = 0;
+                    for (const auto &[key, actor] : actors)
+                        if (actor.combat() && actor.combat()->controller == 5 && actor.combat()->ownerId == owner.id) {
+                            owner.linkedId = actor.combat()->id;
+                            break;
+                        }
+                }
+                linked = owner.linkedId ? lookupActor(owner.linkedId, players) : ActorEntry{};
+                bool refreshed = false;
+                const std::vector<uint8_t> key = itemKey(slot);
+                if (linked.npc && (owner.skills[0] != cache.skill || key != cache.item)) {
+                    refreshed = true;
+                    makePet(*linked.npc, slot, owner);
+                }
+                cache.skill = owner.skills[0];
+                cache.item = itemKey(slot); // snapshot precedes the possible construction
+                if (!refreshed && owner.linkedId == 0 && !(p.body.mode & GLIDER)) {
+                    const uint64_t id = freeId();
+                    owner.linkedId = id;
+                    Npc child;
+                    child.fighter.id = id;
+                    child.zone = {worldgen::floorDiv((int32_t)std::floor(p.body.blocks().x), worldgen::ZONE),
+                                  worldgen::floorDiv((int32_t)std::floor(p.body.blocks().y), worldgen::ZONE)};
+                    child.home = p.body.blocks();
+                    Combatant plain;
+                    plain.type = slot.subtype;
+                    plain.level = std::max(1, slot.level);
+                    plain.characterClass = 0;
+                    child.fighter.health = maxHealth(plain);
+                    makePet(child, slot, owner);
+                    child.body.place(p.body.blocks());
+                    child.yaw = p.yaw;
+                    appendNpc(std::move(child));
+                }
+            } else {
+                // This category route deliberately looks up key zero too.
+                const ActorEntry linked = lookupActor(owner.linkedId, players);
+                const Combatant *state = linked.combat();
+                // Keep the preexisting engine feeding grace until its full
+                // selector-seven producer is connected; resident presence wins.
+                const bool feedingGrace = linked.npc && linked.npc->tameMs > 0;
+                if (!state || (!state->hasBuff(7) && !feedingGrace)) {
+                    owner.linkedId = 0;
+                    if (linked.combat())
+                        linked.combat()->health = 0;
+                }
+                cache.skill = owner.skills[0];
+                cache.item = itemKey(slot);
             }
-            const std::vector<uint8_t> key = itemKey(slot);
-            if (pet && (p.fighter.skills[0] != link.skill || key != link.item)) {
-                makePet(*pet, slot, p.fighter); // §9.2 (id, position and health kept)
-            } else if (!pet && !(p.body.mode & GLIDER)) { // §9.3
-                Npc n;
-                n.fighter.id = freeId();
-                n.zone = {worldgen::floorDiv((int32_t)std::floor(p.body.blocks().x), worldgen::ZONE),
-                          worldgen::floorDiv((int32_t)std::floor(p.body.blocks().y), worldgen::ZONE)};
-                n.home = p.body.blocks();
-                // (The health of the creature as made, before the builder raises its maximum.)
-                Combatant plain;
-                plain.type = slot.subtype, plain.level = std::max(1, slot.level), plain.characterClass = 0;
-                n.fighter.health = maxHealth(plain);
-                makePet(n, slot, p.fighter);
-                n.body.place(p.body.blocks());
-                n.yaw = p.yaw;
-                appendNpc(std::move(n));
-            }
-        } else if (pet) { // §9.5: the slot no longer holds a pet item
-            if (pet->tameMs <= 0) {
-                link.pet = 0;
-                pet->fighter.health = 0;
-            }
-        } else {
-            link.pet = 0;
         }
-        link.skill = p.fighter.skills[0];
-        link.item = itemKey(slot);
-    }
-    // §11.2: a pet whose owner is here but no longer names it is put away.
-    for (Npc &n : list) {
-        if (n.fighter.controller != 5 || !n.owner)
+
+    // This later pass is reached even when the category/name gate skipped work.
+    // Actor storage/key traversal remains valid throughout these state writes.
+    for (const auto &[key, actor] : actors) {
+        Combatant *current = actor.combat();
+        if (!current)
             continue;
-        const bool ownerHere = std::any_of(players.begin(), players.end(), [&](const PlayerView &p) {
-            return p.fighter.id == n.owner;
-        });
-        if (ownerHere && pets[n.owner].pet != n.fighter.id) {
-            n.fighter.health = 0;
-            n.fighter.controller = 3;
-            n.owner = 0;
-            n.deadMs = 5000;
+        const ActorEntry linked = lookupActor(current->linkedId, players);
+        if (current == controlledActor && linked.combat() && current->equipment[PET_SLOT].type == 19) {
+            Item &slot = current->equipment[PET_SLOT];
+            const int32_t level = std::bit_cast<int16_t>(uint16_t(linked.combat()->level));
+            const uint32_t experience = uint32_t(linked.combat()->experience);
+            const bool changed = slot.level != level || slot.seed != experience;
+            slot.level = level;
+            slot.seed = experience;
+            if (changed) {
+                frame.petItems.push_back({current->id, level, linked.combat()->experience});
+                // Engine cache synchronization, separate from native item equality.
+                if (const auto cache = pets.find(current->id); cache != pets.end())
+                    cache->second.item = itemKey(slot);
+            }
+        }
+        if (current->controller == 5) {
+            const ActorEntry owner = lookupActor(current->ownerId, players);
+            if (owner.combat() && owner.combat()->linkedId != current->id) {
+                current->backing = {};
+                current->linkedId = 0;
+                current->health = 0;
+                current->controller = 3;
+                current->ownerId = 0;
+                if (actor.npc)
+                    actor.npc->deadMs = 5000; // retained engine corpse-disposal adapter
+            }
         }
     }
 }
-
 // §10.1: the pet's target: the creature its owner has hit most, still alive.
 uint64_t Npcs::petTarget(const Npc &pet, std::vector<PlayerView> &players) {
     const PlayerView *owner = nullptr;
     for (const PlayerView &p : players)
-        if (p.fighter.id == pet.owner)
+        if (p.fighter.id == pet.fighter.ownerId)
             owner = &p;
     if (!owner || owner->fighter.action == 106)
         return 0;
@@ -262,10 +298,7 @@ void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
 
 void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
     owner.relations.counts.clear(); // §13 step 2: the pet's Combat has nothing left to fight
-    const auto it = pets.find(owner.id);
-    if (it == pets.end())
-        return;
-    if (Npc *pet = findNpc(it->second.pet)) {
+    if (Npc *pet = findNpc(owner.linkedId); pet && pet->fighter.controller == 5 && pet->fighter.ownerId == owner.id) {
         pet->fighter.relations.threats.clear();
         pet->target = 0;
         const glm::dvec3 d = pet->body.blocks() - at;
@@ -275,15 +308,15 @@ void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
 }
 
 // §12: the owner's kill experience goes to a living pet, whose item follows.
-void Npcs::sharePetExperience(uint64_t owner, int32_t experience, NpcFrame &frame) {
-    const auto it = pets.find(owner);
-    Npc *pet = it == pets.end() ? nullptr : findNpc(it->second.pet);
-    if (!pet || pet->fighter.health <= 0)
+void Npcs::sharePetExperience(Combatant &owner, int32_t experience, NpcFrame &frame) {
+    const auto it = pets.find(owner.id);
+    Npc *pet = findNpc(owner.linkedId);
+    if (!pet || pet->fighter.controller != 5 || pet->fighter.ownerId != owner.id || pet->fighter.health <= 0)
         return;
     addExperience(pet->fighter, experience);
-    frame.petItems.push_back({owner, pet->fighter.level, pet->fighter.experience});
+    frame.petItems.push_back({owner.id, pet->fighter.level, pet->fighter.experience});
     // (The item's copy follows too, so the pass does not rebuild the pet for it.)
-    if (it->second.item.size() >= 12) {
+    if (it != pets.end() && it->second.item.size() >= 12) {
         for (int k = 0; k < 4; k++) {
             it->second.item[4 + k] = (uint8_t)(pet->fighter.level >> (8 * k));
             it->second.item[8 + k] = (uint8_t)(pet->fighter.experience >> (8 * k));

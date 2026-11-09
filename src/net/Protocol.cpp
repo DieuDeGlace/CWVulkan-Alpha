@@ -120,7 +120,9 @@ creatures::Combatant CreatureRecord::fighter() const {
         c.multipliers[i] = get<float>(bytes, 0x168 + 4 * i);
     c.level = get<int32_t>(bytes, 0x180);
     c.experience = get<int32_t>(bytes, 0x184);
+    c.ownerId = get<uint64_t>(bytes, 0x188);
     c.powerTier = bytes[0x198];
+    c.backing = {get<int32_t>(bytes, 0x1a0), get<int32_t>(bytes, 0x1a4), get<int32_t>(bytes, 0x1a8)};
     for (size_t slot = 0; slot < c.equipment.size(); slot++)
         c.equipment[slot] = creatures::Item::parse(&bytes[EQUIPMENT + ITEM_SIZE * slot]);
     for (size_t i = 0; i < c.skills.size(); i++)
@@ -152,7 +154,11 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
         put<float>(bytes, 0x168 + 4 * i, c.multipliers[i]);
     put<int32_t>(bytes, 0x180, c.level);
     put<int32_t>(bytes, 0x184, c.experience);
+    put<uint64_t>(bytes, 0x188, c.ownerId);
     bytes[0x198] = c.powerTier;
+    put<int32_t>(bytes, 0x1a0, c.backing.x);
+    put<int32_t>(bytes, 0x1a4, c.backing.y);
+    put<int32_t>(bytes, 0x1a8, c.backing.index);
     for (size_t slot = 0; slot < c.equipment.size(); slot++) {
         uint8_t *r = &bytes[EQUIPMENT + ITEM_SIZE * slot];
         std::memset(r, 0, ITEM_SIZE);

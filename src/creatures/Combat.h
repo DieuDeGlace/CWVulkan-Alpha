@@ -73,9 +73,16 @@ enum Slot : int {
     SLOT_COUNT = 13,
 };
 
+// Cached spatial coordinates and descriptor ordinal, retained across movement.
+struct BackingReference {
+    int32_t x = -1, y = -1, index = 0;
+};
+
 // The record fields the combat rules read and write (§1).
 struct Combatant {
     uint64_t id = 0;
+    uint64_t ownerId = 0, linkedId = 0; // reverse core identifier and resident forward identifier
+    BackingReference backing;
     int32_t type = 2;       // creature type
     uint8_t controller = 0; // 0 player, 1 hostile NPC, …
     uint8_t characterClass = 1, specialization = 0;

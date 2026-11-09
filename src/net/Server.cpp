@@ -20,6 +20,7 @@ struct Server::Connection {
     CreatureRecord creature;
     std::vector<creatures::Buff> buffs; // core snapshots exclude the resident list
     creatures::Relations relations;
+    uint64_t linkedId = 0;
     std::map<uint64_t, CreatureRecord> known; // what this player was sent last tick
     Clock::time_point joined = Clock::now();
     std::deque<std::pair<uint64_t, std::vector<uint16_t>>> chat;
@@ -76,7 +77,6 @@ CreatureRecord npcRecord(const creatures::Npc &n) {
     r.setAppearance(n.looks);
     r.setFighter(n.fighter);
     r.bytes[0x50] = n.fighter.controller;
-    std::memcpy(&r.bytes[0x188], &n.owner, 8); // field 35: a pet's owner (pets §14.2)
     return r;
 }
 
@@ -574,6 +574,7 @@ void Server::generationLoop() {
 // Simulation §3, the parts the engine has: incoming hits, the creature step (activation,
 // despawn, behaviour, hits, deaths), and what it produced into each player's world update.
 void Server::stepWorld(float dtMs) {
+    npcs.setNamedWorld(true); // this engine's dedicated world has a persistent profile
     // The players as the creatures see them: their own records, which they move themselves.
     std::vector<creatures::Combatant> fighters;
     std::vector<creatures::Body> bodies;
@@ -587,6 +588,7 @@ void Server::stepWorld(float dtMs) {
         f.health = c->creature.health();
         f.buffs = std::move(c->buffs);
         f.relations = std::move(c->relations);
+        f.linkedId = c->linkedId;
         creatures::Body b;
         b.place(glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0);
         b.velocity = c->creature.velocity();
@@ -1001,6 +1003,7 @@ void Server::stepWorld(float dtMs) {
     for (size_t index = 0; index < fighters.size(); index++) {
         who[index]->buffs = std::move(fighters[index].buffs);
         who[index]->relations = std::move(fighters[index].relations);
+        who[index]->linkedId = fighters[index].linkedId;
     }
 
     // World items §3.5: changed zones are saved and listed to everyone.

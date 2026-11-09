@@ -468,3 +468,26 @@ read completely. They retain the missing positive selector-five association
 producer and distinguish scoped shared import calls from a proven runtime state
 model or complete draw history. Their inclusion records the next fatal/loot
 dependencies; no completed implementation follows merely from those artifacts.
+
+The separate forward-link zero-gates contract was also held and read completely.
+Fatal-context implementation now copies the cached spatial coordinates and
+descriptor ordinal through their core state group, separately from body motion.
+The reverse identifier travels with core state; the forward identifier survives
+core replacement. Ordinary activation assigns descriptor origin, while engine
+quest creation retains the independent default context. Link recovery copies a
+child's own ID; lookup still uses entry keys. The pet-category route bypasses
+numeric-zero forward lookups, while other categories can resolve key zero and
+directly zero its health, including self, unless resident selector seven retains
+the link. The later supplied-mode refresh and designated item copy have their
+own distinct zero rules. First fatal presentation now precedes the retained
+corpse adapter and does not replay its sound.
+
+The engine still supplies its selected PlayerViews, named-session admission,
+NPC-only rebuild helper and item equality/cache adapter. These do not establish
+the complete native selected-role-zero collection, upstream world-count meaning,
+all reset/configuration fields or alias lifetime. Existing feeding grace remains
+an explicit engine adapter beside resident-seven retention until its full native
+producer is connected. Reverse-ID zero on fresh engine storage is deterministic
+engine initialization. Full object association, synchronous loot/linked death,
+regional progress, credit and shared random history remain open. No native code,
+runtime probe or implementation finding was shared across the author boundary.

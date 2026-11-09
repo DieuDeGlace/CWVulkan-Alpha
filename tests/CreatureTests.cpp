@@ -1095,9 +1095,9 @@ int main() {
     // Pets §7: a collie (type 19) walks up to a player holding out collie food and is tamed by
     // its fifth bite.
     {
-        auto zone = std::make_shared<worldgen::Zone>();
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
         worldgen::Spawn s;
-        s.x = 10ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
         s.type = 19;
         s.level = 4;
         s.controller = 1;
@@ -1113,8 +1113,9 @@ int main() {
         me.equipment[12].type = 20, me.equipment[12].subtype = 19;
         me.action = 82;
         Body body;
-        body.place({18.5, 10.5, 1 + 1.08 + 0.01});
+        body.place({274.5, 10.5, 1 + 1.08 + 0.01});
         Npcs npcs;
+        npcs.setNamedWorld(true);
         int bites = 0;
         bool tamed = false;
         for (int i = 0; i < 1500 && !tamed; i++) { // up to 24 s
@@ -1129,8 +1130,8 @@ int main() {
         }
         same(tamed, 1, "the collie is tamed");
         same(bites, 5, "by five bites");
-        const Npc *pet = npcs.petOf(1);
-        same(pet && pet->fighter.controller == 5 && pet->owner == 1, 1, "a pet of the player");
+        const Npc *pet = npcs.petOf(me);
+        same(pet && pet->fighter.controller == 5 && pet->fighter.ownerId == 1, 1, "a pet of the player");
         same(pet ? pet->fighter.multipliers[0] : 0, 100 * (1 + 0.5f * skillFactor(2)), "health multiplier 108.33", 1e-3);
     }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,
@@ -1148,29 +1149,30 @@ int main() {
         Body body;
         body.place({30.5, 30.5, 1 + 1.08 + 0.01});
         Npcs npcs;
+        npcs.setNamedWorld(true);
         auto step = [&] { return npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor); };
         step();
-        const Npc *pet = npcs.petOf(1);
+        const Npc *pet = npcs.petOf(me);
         same(pet ? (int64_t)pet->fighter.id : 0, -1, "the pet's id");
         body.place({50.5, 30.5, 1 + 1.08 + 0.01});
         for (int i = 0; i < 300; i++)
             step();
-        pet = npcs.petOf(1);
+        pet = npcs.petOf(me);
         const double gap = pet ? glm::length(glm::dvec2(pet->body.blocks() - body.blocks())) : 99;
         same(gap < 4.5, 1, "it follows to within 4 blocks");
         body.place({300.5, 30.5, 1 + 1.08 + 0.01});
         npcs.callPet(me, body.blocks());
-        pet = npcs.petOf(1);
+        pet = npcs.petOf(me);
         same(pet && glm::length(glm::dvec2(pet->body.blocks() - body.blocks())) < 0.01, 1, "T brings it from 270 blocks");
         npcs.npcs()[0].fighter.health = 0;
         for (int i = 0; i < 1300; i++) // 20.8 s
             step();
-        pet = npcs.petOf(1);
+        pet = npcs.petOf(me);
         same(pet && pet->fighter.health == maxHealth(pet->fighter), 1, "back after 20 s at full health");
         me.equipment[12] = Item{};
         step();
         step();
-        same(npcs.petOf(1) == nullptr, 1, "gone when the slot is emptied");
+        same(npcs.petOf(me) == nullptr, 1, "gone when the slot is emptied");
     }
 
     // Behaviour §13.2 step 3: below a quarter of its health a creature drinks a potion it carries.

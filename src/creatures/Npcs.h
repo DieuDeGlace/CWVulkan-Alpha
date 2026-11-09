@@ -43,6 +43,7 @@ struct Npc {
     size_t spawn = 0; // index in the zone's spawn list (NO_SPAWN for bombs and pets)
     float despawnRadius = 200; // the spawn's radius (server §5.4)
     float deadMs = 0;          // time since death; the body goes after 1000 ms (server §6.2)
+    bool fatalPresented = false; // engine bookkeeping: the world applier already emitted the death sound
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
@@ -61,7 +62,6 @@ struct Npc {
     float leaveMs = -1;
     // Pets (pets and bombs Part B): the owner (record field 35), the bites of a feeding and
     // the taming progress it carries for 5 s (the kind-7 buff), and who fed it.
-    uint64_t owner = 0;
     int32_t bites = 0;
     float tameProgress = 0, tameMs = 0;
     uint64_t tamer = 0;
@@ -252,6 +252,8 @@ class Npcs {
     std::function<void(Npc &)> onActivate;
     // Starts the creatures' own random stream (rand()) afresh from `s`.
     void reseed(uint32_t s) { seed = s; }
+    // Engine admission adapter for the nonempty world-context maintenance gate.
+    void setNamedWorld(bool named) { namedWorld = named; }
     // Physics §4.5: the static objects creatures collide with (left empty: none).
     ObjectTest objects;
     // Path search §6.5: opens the closed doors overlapping a box (left empty: none).
@@ -282,7 +284,7 @@ class Npcs {
     // 200 blocks away, comes to `at`.
     void callPet(Combatant &owner, glm::dvec3 at);
     // The owner's pet, or null.
-    const Npc *petOf(uint64_t owner) const;
+    const Npc *petOf(const Combatant &owner) const;
     const std::deque<Npc> &all() const { return list; }
     std::deque<Npc> &npcs() { return list; } // pose/test access; structural edits belong outside an actor pass
 
@@ -294,7 +296,7 @@ class Npcs {
     // §9.2 step 7: one creature of spawn `s` (zone `key`, index `index` among `base` zone
     // spawns) at `p`, added to the list.
     void spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base, uint64_t id,
-                       glm::dvec3 p);
+                       glm::dvec3 p, bool descriptorBacked = true);
     void activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day,
                   float dtMs);
     void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block);
@@ -320,7 +322,6 @@ class Npcs {
     void blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame);
     // Pets (Pets.cpp).
     struct PetLink {
-        uint64_t pet = 0;          // the player's pet id (obj +0x11c8)
         int32_t skill = -1;        // copy of the taming skill (obj +0x1d44)
         std::vector<uint8_t> item; // copy of the Pet slot item (obj +0x1d48)
     };
@@ -328,7 +329,7 @@ class Npcs {
     Npc *findNpc(uint64_t id);
     uint64_t freeId() const;
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
-    void petPass(std::vector<PlayerView> &players);
+    void petPass(std::vector<PlayerView> &players, NpcFrame &frame);
     uint64_t petTarget(const Npc &pet, std::vector<PlayerView> &players);
     // Pets §10.2, wildlife §4.7: follow creature `followed`; false when not handled.
     bool companion(Npc &n, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block);
@@ -341,7 +342,7 @@ class Npcs {
     // Wildlife §4.6: walk the route point to point; false when not handled.
     bool walkPath(Npc &n, float dtMs, const BlockType &block);
     void bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame);
-    void sharePetExperience(uint64_t owner, int32_t experience, NpcFrame &frame);
+    void sharePetExperience(Combatant &owner, int32_t experience, NpcFrame &frame);
     int draw(); // rand(): 0..32767
 
     // Appending during the live pass preserves references to existing creatures.
@@ -358,6 +359,7 @@ class Npcs {
     Combatant *controlledActor = nullptr; // valid while the refreshed index is protected
     bool actorPassActive = false;
     bool actorLookupActive = false;
+    bool namedWorld = false;
     void appendNpc(Npc npc);
     void refreshActors(std::span<PlayerView> players);
     ActorEntry lookupActor(uint64_t key, std::span<PlayerView> players);

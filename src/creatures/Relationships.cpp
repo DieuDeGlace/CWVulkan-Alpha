@@ -32,4 +32,10 @@ void receiveRelationships(std::span<const RelationshipRecord> records,
     }
 }
 
+void refreshForwardLink(const Combatant &actor, const std::function<Combatant *(uint64_t)> &lookup) {
+    if (actor.controller == 5)
+        if (Combatant *owner = lookup(actor.ownerId))
+            owner->linkedId = actor.id;
+}
+
 } // namespace creatures
