@@ -497,10 +497,23 @@ void Npcs::appendNpc(Npc npc) {
     actors[added.fighter.id] = {&added, nullptr};
 }
 
+Npcs::ActorEntry Npcs::lookupActor(uint64_t key, std::span<PlayerView> players) {
+    if (actorPassActive) {
+        const auto entry = actors.find(key);
+        return entry == actors.end() ? ActorEntry{} : entry->second;
+    }
+    if (Npc *npc = findNpc(key))
+        return {npc, nullptr};
+    for (PlayerView &player : players)
+        if (player.fighter.id == key)
+            return {nullptr, &player};
+    return {};
+}
+
 void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
     const glm::dvec3 P = bomb.body.blocks();
     frame.bursts.push_back(bombBurst(P)); // particles §5.1
-    auto hit = [&](Combatant &target, Body &body, glm::vec3 box, Npc *npc) {
+    auto hit = [&](Combatant &target, Body &body, glm::vec3 box) {
         if (&target == &bomb.fighter || target.health <= 0 || target.dodgeMs > 0 || body.dodgeMs > 0)
             return;
         const glm::dvec3 d = body.blocks() - P;
@@ -529,19 +542,16 @@ void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
                     return;
                 }
                 frame.seen.push_back({record, body.blocks()});
-                if (npc)
-                    land(*npc, record, &bomb.fighter, players, frame);
-                else
-                    frame.playerHits.push_back(record);
+                applyWorldHit(record, players, frame);
             });
         frame.buffs.insert(frame.buffs.end(), out.buffs.begin(), out.buffs.end());
         frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
         frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
     };
     for (PlayerView &p : players)
-        hit(p.fighter, p.body, p.body.size, nullptr);
+        hit(p.fighter, p.body, p.body.size);
     for (Npc &n : list)
-        hit(n.fighter, n.body, n.looks.box, &n);
+        hit(n.fighter, n.body, n.looks.box);
 }
 
 // Schedules §3.2: the last entry (in list order) whose time has come, else the first.
@@ -1274,8 +1284,30 @@ void Npcs::land(Npc &npc, const HitRecord &hit, const Combatant *source, std::sp
         hitCounts[hit.attacker][npc.fighter.id]++;
 }
 
+void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame) {
+    const ActorEntry recipient = lookupActor(hit.target, players);
+    Combatant *target = recipient.npc ? &recipient.npc->fighter : recipient.player ? &recipient.player->fighter : nullptr;
+    if (!target || !(target->health > 0))
+        return;
+    const bool hasLocal = std::any_of(players.begin(), players.end(), [](const PlayerView &player) { return player.local; });
+    if (!hasLocal && target->controller == 0) {
+        frame.playerHits.push_back(hit);
+        return;
+    }
+    const ActorEntry source = lookupActor(hit.attacker, players);
+    const Combatant *by = source.npc ? &source.npc->fighter : source.player ? &source.player->fighter : nullptr;
+    if (recipient.npc) {
+        land(*recipient.npc, hit, by, players, frame);
+    } else {
+        auto applied = hit;
+        if (recipient.player->local && onControlledHit)
+            onControlledHit(applied);
+        applyHit(*target, recipient.player->body, applied, {by, recipient.player->local, false}, &frame.buffs);
+    }
+}
+
 // §5 for one target of a strike or a beam; true when the hit was not blocked or refused.
-bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, Npc *npc, NpcFrame &frame,
+bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, NpcFrame &frame,
                     HitInput in, std::span<PlayerView> players) {
     const glm::dvec3 from = attackerBody.blocks();
     in.targetOnGround = (body.contact & ON_GROUND) != 0;
@@ -1299,10 +1331,7 @@ bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &ta
                 return;
             }
             frame.seen.push_back({record, body.blocks()});
-            if (npc)
-                land(*npc, record, &attacker, players, frame);
-            else
-                frame.playerHits.push_back(record); // the player's client applies it
+            applyWorldHit(record, players, frame);
         });
     frame.buffs.insert(frame.buffs.end(), out.buffs.begin(), out.buffs.end());
     frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
@@ -1337,7 +1366,7 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
     bool hit = false;
     for (int i = 0; (float)i < length; i++) {
         const glm::dvec3 p = from + glm::dvec3(u * (float)i);
-        const auto test = [&](Combatant &c, Body &body, Npc *npc) {
+        const auto test = [&](Combatant &c, Body &body) {
             if (c.id == attacker.id || c.health <= 0 || touched.count(c.id) || c.dodgeMs > 0)
                 return;
             const glm::dvec3 d = body.blocks() - p;
@@ -1346,14 +1375,14 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
                 return;
             touched.insert(c.id); // (friend or foe: either stops the sparks)
             if (hostile(attacker, c) || hostile(c, attacker)) {
-                landBlow(attacker, attackerBody, c, body, npc, frame, beamInput(attacker, [&] { return draw(); }), players);
+                landBlow(attacker, attackerBody, c, body, frame, beamInput(attacker, [&] { return draw(); }), players);
                 hit = true;
             }
         };
         for (PlayerView &v : players)
-            test(v.fighter, v.body, nullptr);
+            test(v.fighter, v.body);
         for (Npc &n : list)
-            test(n.fighter, n.body, &n);
+            test(n.fighter, n.body);
     }
     // Open points 3 §2.2: the channel sound on the 200-ms grid of the action's own time: 37 when
     // this tick hit an enemy, else 36.
@@ -1373,7 +1402,7 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
     const glm::dvec3 from = attackerBody.blocks();
     const glm::vec3 box = attackerBody.size;
     // Open points 6 §1.5: every creature in reach, each once per swing or pulse.
-    auto hit = [&](Combatant &target, Body &body, Npc *npc) {
+    auto hit = [&](Combatant &target, Body &body) {
         if (std::find(attacker.struck.begin(), attacker.struck.end(), target.id) != attacker.struck.end())
             return;
         glm::dvec3 sightFrom;
@@ -1385,22 +1414,22 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
         attacker.hitLanded = true;
         const auto rolls = [&] { return draw(); };
         const HitInput in = strikeInput(attacker, attackerBody, body, rolls);
-        if (landBlow(attacker, attackerBody, target, body, npc, frame, in, players) && first)
+        if (landBlow(attacker, attackerBody, target, body, frame, in, players) && first)
             afterFirstTarget(attacker, in.area, rolls);
     };
     if (byPlayer) {
         for (Npc &n : list)
             if (n.fighter.controller != 6 && n.fighter.health > 0)
-                hit(n.fighter, n.body, &n);
+                hit(n.fighter, n.body);
     } else {
         for (PlayerView &p : players)
             if (p.fighter.health > 0)
-                hit(p.fighter, p.body, nullptr);
+                hit(p.fighter, p.body);
         // Quests: a battle's two sides strike each other.
         if (npcTarget)
             for (Npc &n : list)
                 if (n.fighter.id == npcTarget && n.fighter.health > 0 && (attackerAlly || n.questRole == 3))
-                    hit(n.fighter, n.body, &n);
+                    hit(n.fighter, n.body);
     }
 }
 

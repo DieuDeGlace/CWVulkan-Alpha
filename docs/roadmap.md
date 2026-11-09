@@ -55,6 +55,14 @@ Differences from the Steam engine that shape the plan:
   Scheduler, actual-world and real loopback regressions cover this connection.
   Complete contact/protected/fatal/loot behavior and native combat acceptance
   remain open.
+- [x] Bounded world-hit delivery: melee, beam and bomb producers resolve targets
+  and sources at application and mutate controlled targets before later actors.
+  SDK copies cannot replay after the pass; no-controlled role-zero worlds relay.
+  Category four and remaining positive-category admission have regressions.
+- [ ] Full synchronous contact/protection/fatal/world-loot processing from the
+  held world-hit contracts, including relationship records, linked actors,
+  regional progress, credit and shared random-stream ordering. Existing later
+  death/loot adapters are not completion of that native continuation.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

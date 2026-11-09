@@ -407,9 +407,31 @@ index refresh. This adapter does not establish arbitrary native key/own-ID alias
 lifetime across calls, every original creation route, lookup consumers or null
 publication. Structural removals remain outside the valid live walk; arbitrary
 callback removal of its current entry is unsupported. Dedicated-world player
-buff scheduling, later controlled hit delivery and received core interpolation
+buff scheduling, remaining controlled hit delivery and received core interpolation
 retain their existing adapters; the client contract does not certify
 original-server ordering. Full target-scan,
 record, fatal/loot and world-transition behavior and native gameplay acceptance
 remain open. Outside a live pass, the existing NPC-only generated-ID policy is
 retained with defined integer wrap; it is not a claim about all native producers.
+
+Two later original-only world-hit target-admission and fatal-effects contracts
+were each held and read completely. The previously held lifecycle contract was
+also fully reread before the shared world-delivery change. Melee, beam and bomb
+emissions now resolve their target and source at application, use entry keys
+inside the live actor pass, and apply controlled target state synchronously.
+The SDK changes only the local application copy; outgoing producer payloads stay
+unchanged and applied hits are not queued for replay. A world without a controlled
+actor still relays living role-zero targets. The socket-hit consumer and its
+later caller phase remain separate.
+
+Primitive category four now retains its earlier vector/lock effects, applies the
+nonzero-roll/class-four/specialization-one resource and resident-eleven helper,
+then emits the self event and returns before ordinary stun/health. Other positive
+categories reaching health use the supplied admission predicate, without the
+former named-category whitelist. Resident overwrite uses the separately held
+record policy; fresh producer padding remains deterministic engine storage.
+These changes do not complete contact propagation, protection-state producers,
+negative-source-free behavior, full synchronous fatal/world/loot effects or native
+combat acceptance. Exceptional health remains outside the ordinary finite-input
+claim. The fatal-effects handoff records further work; it is not a completion
+claim for the engine's later death and loot adapters.

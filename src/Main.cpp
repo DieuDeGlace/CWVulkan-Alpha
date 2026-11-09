@@ -1228,6 +1228,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             return nullptr;
         };
     if (player) {
+        npcs.onControlledHit = [&](creatures::HitRecord &hit) { mods.playerHit(hit.attacker, hit.kind, hit.amount); };
         player->onPeriodicHit = [&](const creatures::Buff &buff) {
             creatures::PlayerView local{player->combat(), player->body(), player->facing(),
                                        player->actionBefore(), false, false, true};

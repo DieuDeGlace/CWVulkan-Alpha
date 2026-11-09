@@ -1105,9 +1105,18 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
             target.mana = 1;
         return;
     }
-    // Category 4 and other specialized consumers require separate handling.
-    if (hit.kind != HIT_DAMAGE && hit.kind != HIT_ABSORBED)
+    if (hit.kind == 4) {
+        if (target.dodgeMs != 0 && target.characterClass == 4 && target.specialization == 1) {
+            target.mana += .25f;
+            if (target.mana > 1)
+                target.mana = 1;
+            const Buff critical{SURE_CRITICAL, 0, 30000, 0};
+            applyBuff(target, critical);
+            if (events)
+                events->push_back({target.id, target.id, critical});
+        }
         return;
+    }
     if (hit.stun > 0)
         target.hitStun = std::max(target.hitStun, hit.stun);
     if (context.replica && !context.local)

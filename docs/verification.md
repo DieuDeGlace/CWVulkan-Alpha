@@ -126,6 +126,24 @@ were reviewed. World pieces stayed at most 20 ms; known bright ground and native
 interactive acceptance remain open. Later controlled hit delivery remains a
 separate engine adapter from the actor scheduling verified here.
 
+WorldHitDeliveryTests exercises target/source relookup, zero and self keys,
+missing and dead sources, living-target admission and delivery-only role-zero
+worlds. An actual earlier-key NPC melee hit mutates the controlled target before
+its later common phase, calls the SDK once, preserves the producer payload and
+queues no replay. A separate live-pass case changes both objects' own IDs while
+application still resolves the original entry keys and enforces source-role
+admission after the positive-hit prefix. Category-four cases cover negative,
+zero and positive roll locks, exact class/specialization admission, motion/lock
+effects before its early return, first-match resident replacement, independent
+source zero and self event IDs. Remaining positive categories use ordinary
+health admission. Complete relationship/protection/fatal effects and native
+gameplay acceptance are still open.
+The world-hit delivery checkpoint passed all 33 CTests. Fresh local and connected
+client smoke checks exited successfully; the loopback server also shut down
+cleanly. Both captures were reviewed and retained their known bright-ground
+observation. The isolated injured character again saved exactly binary32 50
+health. These engine checks do not certify native combat, UI or visual parity.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

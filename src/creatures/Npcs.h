@@ -207,6 +207,12 @@ class Npcs {
     // The optional engine SDK callback adjusts the local application copy only.
     void periodicHit(Combatant &target, Body &body, const Buff &buff, std::span<PlayerView> players, NpcFrame &frame,
                      const std::function<void(HitRecord &)> &localHit = {});
+    // Resolve a world emission again at its application boundary. Controlled
+    // targets apply synchronously; worlds without a controlled actor relay
+    // role-zero targets. The producer owns its original outgoing/seen record.
+    // Full contact propagation and fatal world effects remain separate work.
+    void applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame);
+    std::function<void(HitRecord &)> onControlledHit; // SDK extension: local application copy only
     // Server §5.3: a spawn's creature id, (zy * 65536 + zx) * 256 + index.
     static uint64_t spawnId(int32_t zx, int32_t zy, size_t index) {
         return (((uint64_t)(uint32_t)zy << 16) + (uint32_t)zx) * 256 + index;
@@ -296,7 +302,7 @@ class Npcs {
     // players when an NPC does.
     // One blow of `attacker` (at `from`) on `target`: the hit, its sounds and bursts, and what the
     // attacker gains. True when it landed.
-    bool landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, Npc *npc, NpcFrame &frame,
+    bool landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, NpcFrame &frame,
                   HitInput in, std::span<PlayerView> players);
     // Open points 1 §3: a beam (actions 28, 95) every 100 ms after its wind-up marches a ray
     // block by block to the first solid block (200 at most) and hits the hostile creatures in
@@ -348,6 +354,7 @@ class Npcs {
     ActorMap<ActorEntry> actors;
     bool actorPassActive = false;
     void appendNpc(Npc npc);
+    ActorEntry lookupActor(uint64_t key, std::span<PlayerView> players);
     std::map<std::tuple<int32_t, int32_t, size_t>, SpawnState> spawns;
     std::map<std::pair<int32_t, int32_t>, std::pair<size_t, std::vector<worldgen::Spawn>>> extras; // base, spawns
     std::map<uint32_t, std::vector<worldgen::Spawn>> questSpawns; // quest -> its creatures
