@@ -207,6 +207,22 @@ data, seed 123 despite conflicting reload inputs, nine tiles, preview data and
 170 block edits. The loopback server shut down cleanly. These runtime checks
 retain the known bright-ground and broader native gameplay/visual gates.
 
+A subsequent private black-box experiment loaded the isolated owned 32-bit
+`MSVCR110.dll` (SHA-256
+`b30160e759115e24425b9bcdf606ef6ebce4657487525ede7f1ac40b90ff7e49`),
+after verifying it matched the installation's file. It used only the already
+held named `rand`/`srand` API, inspected no native instructions and compared the
+actual engine Random class with 2,097,344 returned integers: zero mismatches.
+The sample includes 65,536 seeded eight-draw prefixes, a 1,048,576-draw chain,
+six explicit seed heads and the fresh main-thread head. Eight fresh threads
+each checked sixteen initial results, then 8,192 seeded eight-draw prefixes
+with interleaved scheduling; all matched their independent reference streams.
+FatalLootTests retains the six observed prefixes as x64 regression anchors.
+The runtime copy, probe and diagnostics remain private. This characterizes
+the tested API/file and histories; the running game's loaded-module identity,
+thread assignments, earlier calls, descriptor seeding and full draw history
+remain separate acceptance gates. Seed-one engine startup is still a policy.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

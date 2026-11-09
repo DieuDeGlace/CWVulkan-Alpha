@@ -519,3 +519,15 @@ object handling belongs before this loot stage and is still missing; regional
 progress, relationship cleanup, credit, final backing writes and aggregate
 presentation order are also open. These bounded changes do not complete the
 native fatal continuation or certify gameplay equivalence.
+
+The implementer subsequently compared the engine Random class with the owner's
+isolated original 32-bit runtime through the named `rand`/`srand` ABI already
+established by the held import contract. File hashes matched the installation;
+no native instructions, reconstruction code or runtime internals were read.
+All 2,097,344 sampled returns matched, including interleaved histories on eight
+fresh threads. Six observed seed prefixes now supply x64 regression anchors.
+The probe, runtime and observations stay private and were not sent to source
+authors. This bounded runtime evidence supplements the source-side import
+identity contract; it does not rewrite that immutable artifact or establish
+the game's loaded DLL, startup seeds, call/thread assignment or complete replay
+history. Details and limits are in [verification.md](verification.md).

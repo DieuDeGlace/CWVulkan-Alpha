@@ -37,6 +37,28 @@ std::array<uint8_t, 172> appearance(const Appearance &looks) {
 
 int main() {
     {
+        // Observed from the isolated owned runtime's held named rand/srand ABI.
+        // These are bounded API results, not a claim about running-game history.
+        const struct {
+            uint32_t seed;
+            std::array<int, 8> observed;
+        } cases[] = {
+            {0u, {38, 7719, 21238, 2437, 8855, 11797, 8365, 32285}},
+            {1u, {41, 18467, 6334, 26500, 19169, 15724, 11478, 29358}},
+            {12345u, {7584, 19164, 25795, 22125, 5828, 23405, 27477, 5413}},
+            {0xfffffff0u, {32754, 32353, 30323, 10640, 7662, 14505, 24102, 13586}},
+            {0x80000000u, {38, 7719, 21238, 2437, 8855, 11797, 8365, 32285}},
+            {0xffffffffu, {35, 29739, 3374, 11141, 31308, 7870, 5253, 2445}}
+        };
+        for (const auto &sample : cases) {
+            worldgen::Random random(sample.seed);
+            std::array<int, 8> actual;
+            for (auto &value : actual)
+                value = random.draw();
+            check(actual == sample.observed, "64-bit engine draws retain the observed original-runtime seeded prefix");
+        }
+    }
+    {
         worldgen::Random shared(123), reference(123);
         Npcs first(shared), second(shared);
         const auto nextReference = [&] {
