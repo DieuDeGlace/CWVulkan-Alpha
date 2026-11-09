@@ -119,14 +119,16 @@ class Server {
     std::vector<std::array<uint8_t, 40>> events40;
     std::atomic<uint32_t> clockDay{0}, clockMs{43200000};
     worldgen::WorldMap zones; // the loaded zones (§4)
-    creatures::Npcs npcs;
+    // Dedicated-world engine policy: one stream, serialized by lock. This does
+    // not certify original-server RNG/thread/startup behavior.
+    worldgen::Random worldRandom{1};
+    creatures::Npcs npcs{worldRandom};
     // Projectiles §2: the NPCs' projectiles (players' own are simulated by their clients), and
     // their hits on NPCs, applied with the next step's incoming hits.
     creatures::Projectiles projectiles;
     std::vector<creatures::HitRecord> shotHits;
     WorldItems items; // world items §1, per loaded zone
     StaticStates statics; // interaction §4.1, per loaded zone
-    worldgen::Random lootRandom{12345}; // the loot's rand() stream (loot rolls §3)
     BlockEditLists edits;               // block edits §3, per loaded zone
     std::vector<BlockEdit> stepEdits;   // this step's records, for section 1
     // §6.4: each zone's placed objects (number, base block) and which lists changed.

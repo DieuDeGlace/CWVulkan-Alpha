@@ -491,3 +491,31 @@ producer is connected. Reverse-ID zero on fresh engine storage is deterministic
 engine initialization. Full object association, synchronous loot/linked death,
 regional progress, credit and shared random history remain open. No native code,
 runtime probe or implementation finding was shared across the author boundary.
+
+The held random-stream boundary contract now supplies a shared-call identity
+requirement at the scoped gameplay sites. The client routes actions, NPCs,
+presentation, world items, missions and loot through a single owned generator;
+the Player adapter uses the same reference. The dedicated server adopts that
+engine design under its existing lock, without inferring a native server
+counterpart from the client evidence. Reseeding an actor subsystem changes the
+supplied stream for its later users, with no caller-side restoration. Explicit
+terrain-generation and standalone-tool generators remain separate; the required
+engine quest extension retains its existing derived client stream.
+
+This change reuses the engine's existing linear-congruential generator and an
+explicit seed-one gameplay startup policy. The held import-identity evidence
+does not prove that recurrence, original loaded DLL identity, default seed,
+thread state or world-entry history. Existing descriptor activation/mission
+seed admission and timing, complete nested draws and replay persistence remain
+open. No native deterministic-sequence claim follows from shared engine routing.
+
+Fatal application now invokes the actual world loot service before its direct
+nonzero-link health store. The live input adapter preserves raw positions and
+inventory records without an additional Combatant/map snapshot. Later corpse
+outputs identify an already completed loot call and do not replay it; non-hit
+death adapters remain explicit. The inherited equipment-to-loot adapter and
+nested generators retain their separate completeness/provenance limits. Native
+object handling belongs before this loot stage and is still missing; regional
+progress, relationship cleanup, credit, final backing writes and aggregate
+presentation order are also open. These bounded changes do not complete the
+native fatal continuation or certify gameplay equivalence.

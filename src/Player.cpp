@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
-Player::Player(WorldView &v, const creatures::Appearance &a) : view(v), looks(a) {
+Player::Player(WorldView &v, const creatures::Appearance &a, worldgen::Random &r) : view(v), random(r), looks(a) {
     state.size = looks.box;
     state.swimmer = (looks.flags & creatures::SWIMMER) != 0;
     const glm::dvec3 at = view.worldPosition();
@@ -224,7 +224,7 @@ void Player::advance(int32_t dt, bool replica) {
     state.yaw = yaw;
     if (dt > 0)
         worldStep(state, dt, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, objects);
-    const auto u = [] { return (float)(std::rand() & 0x7fff) / 32767.f; };
+    const auto u = [&] { return (float)random.draw() / 32767.f; };
     if (std::exchange(state.thudded, false)) // physics §4.2 step 1
         abilityEffects.placed.push_back({state.blocks(), 32, 1 + 0.2f * u(), 0.5f});
     if (std::exchange(state.rolled, false)) // physics §2 step 15
@@ -299,8 +299,8 @@ void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, floa
         const glm::dvec3 feet = state.blocks() - glm::dvec3(0, 0, state.size.z * 0.5);
         const glm::ivec3 below = glm::ivec3(glm::floor(feet - glm::dvec3(0, 0, 0.5)));
         if (blockType(below.x, below.y, below.z) == 3)
-            abilityEffects.placed.push_back({feet, 33 + (std::rand() & 0x7fff) % 3, 1, 1});
+            abilityEffects.placed.push_back({feet, 33 + random.draw() % 3, 1, 1});
         else
-            abilityEffects.placed.push_back({feet, 32, 1 + 0.2f * (float)(std::rand() & 0x7fff) / 32767.f, 1});
+            abilityEffects.placed.push_back({feet, 32, 1 + 0.2f * (float)random.draw() / 32767.f, 1});
     }
 }

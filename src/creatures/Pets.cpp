@@ -99,6 +99,7 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     pet.body.size = pet.looks.box;
     pet.deadMs = 0;
     pet.fatalPresented = false;
+    pet.fatalLootApplied = false;
     if (Combatant *mappedOwner = lookupActor(owner.id, {}).combat())
         mappedOwner->linkedId = c.id;
 }

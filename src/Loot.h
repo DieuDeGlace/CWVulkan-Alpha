@@ -2,7 +2,8 @@
 // What a creature leaves when it dies (docs/specs/alpha-loot-rolls.md, server simulation
 // §6.4): its equipment, a random armour or weapon and pet food, the drops of its kind, a
 // recipe, coins or leftovers, and its inventory, each dropped as a world item round it. The
-// draws follow the original's order exactly, so one rand() stream gives the same loot.
+// The held contracts bound draw order; runtime state, nested generators and full
+// native loot acceptance remain separate dependencies.
 #include "WorldItems.h"
 #include "creatures/Npcs.h"
 #include "worldgen/Random.h"
@@ -28,6 +29,9 @@ struct LootVictim {
 
 // The victim of an NPC death (its equipment rebuilt as item records).
 LootVictim lootVictim(const creatures::NpcFrame::Death &death);
+// Live fatal input without copying the combatant's resident maps or death event.
+LootVictim lootVictim(const creatures::Combatant &fighter, const creatures::Body &body,
+                     std::span<const creatures::ItemRecord> inventory);
 
 // Item services §1.5: the identifier's fee, in copper (0 without Leftovers, type 14).
 int32_t identificationFee(const creatures::ItemRecord &leftovers);

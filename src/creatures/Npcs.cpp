@@ -277,9 +277,7 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
 }
 
 int Npcs::draw() {
-    // The C library's rand() as Alpha's runtime has it (the 15-bit linear congruence).
-    seed = seed * 214013u + 2531011u;
-    return (int)((seed >> 16) & 0x7fff);
+    return random().draw();
 }
 
 // §9.2 (server §5.2): the spawns of the active zones, the 3 x 3 round each player's zone,
@@ -1374,8 +1372,8 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
                 propagateThreat(*by, actor, frame);
             }
         }
-    // First fatal presentation is synchronous. Object/loot/linked/regional and
-    // credit stages still require their separate world-context integration.
+    // First presentation, world loot and the direct linked-health store are
+    // synchronous. Object, regional and credit stages remain separate work.
     if (target->health <= 0) {
         target->health = 0;
         glm::vec3 position;
@@ -1385,6 +1383,18 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
         target->actionMs = 0;
         if (recipient.npc)
             recipient.npc->fatalPresented = true;
+        if (onFatalLoot) {
+            const auto inventory = recipient.npc ? std::span<const ItemRecord>(recipient.npc->inventory)
+                                                 : std::span<const ItemRecord>{};
+            onFatalLoot(*target, *recipient.body(), inventory);
+            if (recipient.npc)
+                recipient.npc->fatalLootApplied = true;
+        }
+        // Zero is a sentinel at this specific fatal link boundary. This is a
+        // direct store, without recursively generating another fatal sequence.
+        if (target->linkedId)
+            if (Combatant *linked = lookupActor(target->linkedId, players).combat())
+                linked->health = 0;
     }
 }
 
@@ -1668,6 +1678,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         if (!admitCreatureUpdate(c))
             continue;
         npc.fatalPresented = false;
+        npc.fatalLootApplied = false;
         npc.tameMs = std::max(0.f, npc.tameMs - dtMs); // pets §7.3: the taming progress lasts 5 s
         // §13.1: decide every 32 ms of accumulated time while not stunned.
         npc.thinkMs += dtMs;
@@ -1857,6 +1868,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
             NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory, n.zone, n.boss};
             death.quest = n.quest, death.questRole = n.questRole;
+            death.lootApplied = n.fatalLootApplied;
             if (n.quest)
                 questGone.insert(n.fighter.id); // a quest creature is not made again
             std::copy(n.body.position, n.body.position + 3, death.position);

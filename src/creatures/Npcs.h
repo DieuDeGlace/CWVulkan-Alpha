@@ -44,6 +44,7 @@ struct Npc {
     float despawnRadius = 200; // the spawn's radius (server §5.4)
     float deadMs = 0;          // time since death; the body goes after 1000 ms (server §6.2)
     bool fatalPresented = false; // engine bookkeeping: the world applier already emitted the death sound
+    bool fatalLootApplied = false; // the synchronous world loot service already ran
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
@@ -126,6 +127,7 @@ struct NpcFrame {
         uint64_t credited = 0; // missions §5.1: the first player in its threat map, or 0
         uint32_t quest = 0;    // a quest creature's quest and role (docs/design/quests.md)
         uint8_t questRole = 0;
+        bool lootApplied = false; // caller must not replay an already completed world loot call
     };
     std::vector<Death> deaths;
     // Block edits §9: the blows of creatures wider than 4 blocks, which dig craters where the
@@ -191,6 +193,8 @@ struct NpcFrame {
 
 class Npcs {
   public:
+    Npcs() = default; // standalone tools retain their explicit private generator
+    explicit Npcs(worldgen::Random &random) : sharedRandom(&random) {}
     // One step: incoming hits (server §3 step 3), activation and respawn (§9.2), despawn
     // (server §5.4), behaviour (§13), actions, physics, hits, deaths.
     NpcFrame step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
@@ -216,6 +220,9 @@ class Npcs {
     void applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame,
                        const std::function<void(HitRecord &)> &localHit = {});
     std::function<void(HitRecord &)> onControlledHit; // SDK extension: local application copy only
+    // World-owned service, called synchronously after first fatal presentation.
+    // It may update drop storage, but must not structurally mutate the actor table.
+    std::function<void(const Combatant &, const Body &, std::span<const ItemRecord>)> onFatalLoot;
     // Server §5.3: a spawn's creature id, (zy * 65536 + zx) * 256 + index.
     static uint64_t spawnId(int32_t zx, int32_t zy, size_t index) {
         return (((uint64_t)(uint32_t)zy << 16) + (uint32_t)zx) * 256 + index;
@@ -250,8 +257,8 @@ class Npcs {
     // Called for each creature as it comes alive, before its equipment is made (behaviour
     // §9.2 step 6: a dungeon's creatures take the mission level).
     std::function<void(Npc &)> onActivate;
-    // Starts the creatures' own random stream (rand()) afresh from `s`.
-    void reseed(uint32_t s) { seed = s; }
+    // A seed affects the supplied world stream too; no caller-side restoration.
+    void reseed(uint32_t s) { random().seed(s); }
     // Engine admission adapter for the nonempty world-context maintenance gate.
     void setNamedWorld(bool named) { namedWorld = named; }
     // Physics §4.5: the static objects creatures collide with (left empty: none).
@@ -344,6 +351,7 @@ class Npcs {
     void bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame);
     void sharePetExperience(Combatant &owner, int32_t experience, NpcFrame &frame);
     int draw(); // rand(): 0..32767
+    worldgen::Random &random() { return sharedRandom ? *sharedRandom : privateRandom; }
 
     // Appending during the live pass preserves references to existing creatures.
     // Bulk removals occur before/after it, followed by an index refresh next call.
@@ -369,7 +377,8 @@ class Npcs {
     std::map<std::pair<int32_t, int32_t>, std::pair<size_t, std::vector<worldgen::Spawn>>> extras; // base, spawns
     std::map<uint32_t, std::vector<worldgen::Spawn>> questSpawns; // quest -> its creatures
     std::set<uint64_t> questGone; // quest creatures dead or gone (not made again)
-    uint32_t seed = 12345;
+    worldgen::Random privateRandom{12345};
+    worldgen::Random *sharedRandom = nullptr; // owner must outlive this actor world
     float leftoverMs = 0;
 };
 

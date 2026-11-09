@@ -343,6 +343,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
              const ShadowSettings &shadowSettings, const MoonSettings &moonSettings, ModLoader &mods,
              Scene *&activeScene, WorldView *&activeView, Player *&activePlayer, ui::Interface *&activeInterface,
              Audio &audio, std::optional<Options> &restart) {
+    // One engine gameplay stream. Native startup/thread state is still unclosed;
+    // seed one is an explicit engine admission policy, independent of terrain.
+    worldgen::Random worldRandom{1};
     // Joining a server: its seed decides the world (packets §3.9).
     net::Client client;
     WorldViewOptions worldOptions = options.worldOptions;
@@ -418,7 +421,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     bool questBookRead = false, questBookChanged = false;
     uint32_t trackedQuest = 0;
     std::u16string questObjective;
-    worldgen::Random questRandom{(uint32_t)std::rand()};
+    worldgen::Random questRandom{(uint32_t)worldRandom.draw()}; // engine quest extension
     // A speech bubble's page of plain words.
     const auto saying = [](const std::string &text) {
         SpeechPage page;
@@ -434,7 +437,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     missions.wildlife = [&](int32_t x, int32_t y, int32_t h, worldgen::Random &random) {
         return view.terrainGenerator().wildlifeSpecies(x, y, h, 0, random);
     };
-    worldgen::Random missionRandom((uint32_t)std::time(nullptr)); // (Alpha never seeds this stream)
     std::set<std::pair<int32_t, int32_t>> missionRegionsRead, zonesForMissions;
     int32_t missionDay = -1;
     ui::Interface::Front cameraFront = ui::Interface::Front::None; // character screens §7
@@ -593,7 +595,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (size_t slot = 0; slot < inventory.equipment.size(); slot++)
             player->combat().equipment[slot] = creatures::Item::parse(inventory.equipment[slot].data());
     };
-    creatures::Npcs npcs;
+    creatures::Npcs npcs{worldRandom};
     npcs.objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {
         return statics.blocks(view.held(), lo, hi, axis, move, ignored);
     };
@@ -609,7 +611,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             std::vector<creatures::SoundEvent> ignored;
             statics.use(*zone, s.index, n.fighter, n.body, n.yaw, worldItems, 0, // (the day matters only for chests)
                         [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                        [] { return std::rand() & 0x7fff; }, ignored);
+                        [&] { return worldRandom.draw(); }, ignored);
         }
     };
     // Behaviour §9.2 step 6: in a cell with a dungeon mission (kind 5) the location's creatures
@@ -684,7 +686,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Last observed recipe level. Saved characters synchronize this after load;
     // only the engine's unsaved diagnostic character needs a first-frame grant.
     int32_t grantedLevel = 0;
-    worldgen::Random lootRandom((uint32_t)std::time(nullptr)); // the loot's own rand() stream
     double lastZoneRequest = -1;
     // Server simulation §8: a packet-6 request (an item, a target, a kind).
     const auto itemRequest = [](const creatures::ItemRecord &item, std::array<int32_t, 3> target, uint8_t kind) {
@@ -705,7 +706,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (playing())
             choice = creatures::CharacterChoice::parse(playing()->extra.data());
         creatures::generate(type, looks, &choice, [] { return 0; });
-        player.emplace(view, looks);
+        player.emplace(view, looks, worldRandom);
         player->objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *) {
             return statics.blocks(view.held(), lo, hi, axis, move);
         };
@@ -784,6 +785,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     }
     scene.water = options.water;
     activeScene = &scene;
+    npcs.onFatalLoot = [&](const creatures::Combatant &fighter, const creatures::Body &body,
+                           std::span<const creatures::ItemRecord> items) {
+        if (!client.connected())
+            dropLoot(lootVictim(fighter, body, items), worldItems, scene.day,
+                     [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, worldRandom);
+    };
 
     // The interface (alpha-ui-screens.md): the start screen and the system menu.
     // The dictionary the interface reads names from (dict_en.xml, data4.db).
@@ -1239,9 +1246,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             auto &actor = player->combat();
             creatures::chargeSound(actor, beforeMs, dtMs, player->body().blocks(), playerShot);
             creatures::actionSounds(actor, beforeMs, (float)dtMs, player->body().blocks(),
-                                    [] { return std::rand() & 0x7fff; }, playerShot.sounds);
+                                    [&] { return worldRandom.draw(); }, playerShot.sounds);
             creatures::launch(actor, player->body(), actor.aim, beforeMs, (float)dtMs,
-                              [] { return std::rand() & 0x7fff; }, playerLaunched, playerShot,
+                              [&] { return worldRandom.draw(); }, playerLaunched, playerShot,
                               [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); });
             if (!client.connected()) {
                 creatures::PlayerView local{actor, player->body(), player->facing(), beforeMs};
@@ -1277,7 +1284,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         const bool first = c.struck.empty();
                         c.struck.push_back(id);
                         c.hitLanded = true;
-                        const auto rolls = [] { return std::rand() & 0x7fff; };
+                        const auto rolls = [&] { return worldRandom.draw(); };
                         const creatures::HitInput in = creatures::strikeInput(c, player->body(), body, rolls);
                         const creatures::HitOutcome out = creatures::resolveHit(target, body.velocity, &c, in, rolls);
                         for (const auto &event : out.buffs) {
@@ -1458,7 +1465,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     creatures::Combatant &c = player->combat();
                     if (c.level != grantedLevel) {
                         grantedLevel = c.level;
-                        creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [] { return std::rand() & 0x7fff; });
+                        creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [&] { return worldRandom.draw(); });
                     }
                     interface.stationNear = [&](int32_t station) {
                         const glm::dvec3 me = player->body().blocks();
@@ -1484,7 +1491,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     interface.stepCraft(seconds * 1000.f, glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
                     if (const auto recipe = std::exchange(interface.finishedCraft, std::nullopt)) {
                         const creatures::CraftOutcome made =
-                            creatures::craft(inventory, *recipe, [] { return std::rand() & 0x7fff; });
+                            creatures::craft(inventory, *recipe, [&] { return worldRandom.draw(); });
                         if (made.refused) {
                             interface.chatAdd("You can't carry more of these items.\n", {255, 51, 51});
                             audio.play("human-voice01.wav");
@@ -1565,7 +1572,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 client.sendItemRequest(itemRequest(*item, {0, 0, 0}, 6));
                             } else {
                                 worldItems.drop(*item, player->body().blocks() - glm::dvec3(0, 0, player->body().size.z / 2),
-                                                1, scene.day, block, [] { return std::rand() & 0x7fff; });
+                                                1, scene.day, block, [&] { return worldRandom.draw(); });
                                 playAt(57, player->body().blocks(), 1, 1);
                             }
                         }
@@ -1649,7 +1656,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
                         const int32_t dt = elapsed;
                         std::vector<creatures::SoundEvent> landed;
-                        worldItems.step(dt, !client.connected(), block, [] { return std::rand() & 0x7fff; }, landed);
+                        worldItems.step(dt, !client.connected(), block, [&] { return worldRandom.draw(); }, landed);
                         // Online: the zones round the player are asked for once a second (net server
                         // §4.3); their item lists and the player's gifts come back.
                         if (firstWorldCall && client.connected()) {
@@ -1819,7 +1826,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     if (worldgen::floorDiv(key.first, 64) == rx && worldgen::floorDiv(key.second, 64) == ry)
                                         regionZones.insert(key);
                                 npcs.removeTargets(regionZones);
-                                missions.dailyPass(world, rx, ry, players, missionRandom);
+                                missions.dailyPass(world, rx, ry, players, worldRandom);
                                 zonesForMissions.insert(regionZones.begin(), regionZones.end());
                                 for (int32_t k = 0; k < 64 && options.quest; k++)
                                     if (const Missions::Cell *cell = missions.cell(8 * rx + k / 8, 8 * ry + k % 8);
@@ -1840,7 +1847,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             for (const auto &[zx, zy] : std::exchange(zonesForMissions, {}))
                                 if (const worldgen::Zone *zone = view.held().zone(zx, zy))
                                     npcs.setExtraSpawns(zx, zy, zone->spawns.size(),
-                                                        missions.zonePass(world, zx, zy, ground, players, missionRandom));
+                                                        missions.zonePass(world, zx, zy, ground, players, worldRandom));
                             missions.discover(world, me);
                             for (creatures::Npc &n : npcs.npcs()) {
                                 const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
@@ -1905,8 +1912,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             sendBuff(event);
                         // Server §6.4, loot rolls §3: what the dead leave behind.
                         for (const creatures::NpcFrame::Death &death : happened.deaths)
-                            dropLoot(lootVictim(death), worldItems, scene.day,
-                                     [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, lootRandom);
+                            if (!death.lootApplied) // retained non-hit death adapter
+                                dropLoot(lootVictim(death), worldItems, scene.day,
+                                         [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, worldRandom);
                         for (const creatures::NpcFrame::Death &death : happened.deaths) // mod SDK v6
                             mods.creatureDeath(death.fighter.id, death.fighter.type, death.fighter.level, death.credited);
                         for (const creatures::NpcFrame::Death &death : happened.deaths) // quests: hunts and battles
@@ -1937,7 +1945,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                             npcs.setExtraSpawns(zx, zy, zone->spawns.size(), {}, false);
                                 if (death.fighter.controller == 1 && death.credited == c.id)
                                     for (const worldgen::ItemRecord &item :
-                                         missionRewards(missions.cell(done->first, done->second)->mission, c.characterClass, missionRandom)) {
+                                         missionRewards(missions.cell(done->first, done->second)->mission, c.characterClass, worldRandom)) {
                                         if (item.type == 13) {
                                             creatures::addExperience(c, 10 * item.level);
                                             interface.floating.push_back(ui::experienceText(10 * item.level, player->body().blocks()));
@@ -2019,7 +2027,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             view.applyEdits(removed, false);
                             for (const BlockEdit &e : removed)
                                 blockEdits.add(e);
-                            playAt(1, blast.centre, 1, 0.5f + 0.4f * (float)(std::rand() & 0x7fff) / 32767.f);
+                            playAt(1, blast.centre, 1, 0.5f + 0.4f * (float)worldRandom.draw() / 32767.f);
                         }
                         // Block edits §9: big creatures' blows take the natural ground away.
                         for (const auto &impact : happened.craters) {
@@ -2031,7 +2039,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             view.applyEdits(removed, false);
                             for (const BlockEdit &e : removed)
                                 blockEdits.add(e);
-                            playAt(2, impact.centre, 1, 0.5f + 0.4f * (float)(std::rand() & 0x7fff) / 32767.f);
+                            playAt(2, impact.centre, 1, 0.5f + 0.4f * (float)worldRandom.draw() / 32767.f);
                         }
                         if (happened.experience > 0) {
                             creatures::addExperience(c, happened.experience);
@@ -2092,7 +2100,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             };
                             creatures::ShotEffects flight;
                             projectiles.step(dt, targets, source, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                                             [] { return std::rand() & 0x7fff; }, flight, {client.connected(), &c});
+                                             [&] { return worldRandom.draw(); }, flight, {client.connected(), &c});
                             for (const auto &event : flight.buffs)
                                 sendBuff(event);
                             for (const creatures::HitEmission &emission : flight.hits) {
@@ -2152,7 +2160,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         if (remote.fighter.health > 0)
                             creatures::tickBuffs(remote.fighter, elapsed, false);
                     const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
-                    worldItems.step(elapsed, !client.connected(), block, [] { return std::rand() & 0x7fff; }, aggregate.sounds);
+                    worldItems.step(elapsed, !client.connected(), block, [&] { return worldRandom.draw(); }, aggregate.sounds);
                     if (!client.connected())
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, block, aggregate);
                 },
@@ -2215,9 +2223,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         // Models §7.3: a foot coming down at `feet` (blocks), softer on type-3 ground.
         const auto footstep = [&](glm::dvec3 feet) {
             const glm::ivec3 below = glm::ivec3(glm::floor(feet - glm::dvec3(0, 0, 0.5)));
-            const auto u = [] { return (float)(std::rand() & 0x7fff) / 32767.f; };
+            const auto u = [&] { return (float)worldRandom.draw() / 32767.f; };
             if (view.held().read(below.x, below.y, below.z).type() == 3)
-                playAt(33 + (std::rand() & 0x7fff) % 3, feet, 1, 1);
+                playAt(33 + worldRandom.draw() % 3, feet, 1, 1);
             else
                 playAt(32, feet, 1, 1 + 0.2f * u());
         };
@@ -2325,7 +2333,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             // Particles §7.2: the dead are not drawn; they crumble once, a bomb with a flash.
             if (npc.fighter.health <= 0) {
                 if (shattered.insert(npc.fighter.id).second) {
-                    creatureView.shatter(npc.looks, npc.pose, motion, at, [] { return std::rand() & 0x7fff; },
+                    creatureView.shatter(npc.looks, npc.pose, motion, at, [&] { return worldRandom.draw(); },
                                          particles.list);
                     if (npc.fighter.type == 144)
                         flashes.append({{npc.body.position[0], npc.body.position[1], npc.body.position[2]},
@@ -2538,7 +2546,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (shattered.insert(id).second)
                         creatureView.shatter(other.appearance(), otherPoses[id], motion,
                                              glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
-                                             [] { return std::rand() & 0x7fff; }, particles.list);
+                                             [&] { return worldRandom.draw(); }, particles.list);
                     continue;
                 }
                 shattered.erase(id);
@@ -3232,7 +3240,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             creatures::addExperience(player->combat(), 10 * creatures::itemLevel(*got));
                         else
                             receive(*got);
-                        audio.play("pickup.wav", 1, 1 + 0.1f * (float)(std::rand() & 0x7fff) / 32767.f);
+                        audio.play("pickup.wav", 1, 1 + 0.1f * (float)worldRandom.draw() / 32767.f);
                         interface.targetItem.reset();
                     }
                 }
@@ -3333,7 +3341,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             statics.use(*zone, (int32_t)k, player->combat(), player->body(), player->facing(), worldItems,
                                         scene.day,
                                         [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                                        [] { return std::rand() & 0x7fff; }, used);
+                                        [&] { return worldRandom.draw(); }, used);
                             for (const creatures::SoundEvent &e : used)
                                 playAt(e.sound, e.position, e.volume, e.pitch);
                         }
@@ -3652,7 +3660,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         name += ch < 0x80 ? (char)ch : '?';
                     std::vector<CharacterRecord> all = characters();
                     all.push_back(newCharacter(name, choice, interface.creation.characterClass + 1,
-                                               [] { return std::rand() & 0x7fff; }));
+                                               [&] { return worldRandom.draw(); }));
                     SaveDb db;
                     if (db.open(saves / "characters.db", SaveDb::Mode::ReadWrite))
                         writeCharacters(db, all);
@@ -3746,7 +3754,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         {
             const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
             for (const creatures::Burst &b : std::exchange(bursts, {}))
-                particles.expand(b, [] { return std::rand() & 0x7fff; });
+                particles.expand(b, [&] { return worldRandom.draw(); });
             const glm::dvec3 eye = view.worldPosition();
             const double reach = scene.fogDistance + 32;
             // §7.1: as each world second passes, every kind-60 record of the zones in sight
@@ -3769,7 +3777,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             };
             const double t = scene.timeOfDayMs;
             const bool day = t > 21600000 && t < 75600000, evening = t > 43200000 && t < 86400000;
-            const auto u = [] { return (float)(std::rand() & 0x7fff) / 32767.f; };
+            const auto u = [&] { return (float)worldRandom.draw() / 32767.f; };
             for (const auto &[key, zone] : view.held().zones()) {
                 const glm::dvec2 centre = glm::dvec2(key.first + 0.5, key.second + 0.5) * (double)worldgen::ZONE;
                 if (glm::length(centre - glm::dvec2(eye)) > reach)
@@ -3777,23 +3785,23 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // Audio §3: birds sing from the crowns by day and owls call at night; crickets chirp
                 // in the flowers and grass in the afternoon and evening.
                 for (const auto &post : zone->songPosts)
-                    if (ticks(post[0], post[1], 1000) && (std::rand() & 0x7fff) % 10 == 0) {
+                    if (ticks(post[0], post[1], 1000) && worldRandom.draw() % 10 == 0) {
                         const glm::dvec3 at = glm::dvec3((double)post[0], (double)post[1], (double)post[2]) / 65536.0;
                         if (day) {
                             playAt(94, at, 0.1f, 0.9f + 0.2f * u());
                         } else {
                             const float pitch = 0.5f + 0.2f * u();
-                            playAt(99 + (std::rand() & 1), at, 0.1f, pitch);
+                            playAt(99 + (worldRandom.draw() & 1), at, 0.1f, pitch);
                         }
                     }
                 if (evening)
                     for (const worldgen::Plant &plant : zone->plants)
                         if (plant.kind <= 4 && ticks((int64_t)plant.x * 65536, (int64_t)plant.y * 65536, 5000) &&
-                            (std::rand() & 0x7fff) % 70 == 0)
+                            worldRandom.draw() % 70 == 0)
                             playAt(plant.kind <= 1 ? 98 : 97, glm::dvec3(plant.x, plant.y, plant.z), 0.05f,
                                    0.9f + 0.2f * u());
                 for (const worldgen::LeafSource &s : zone->leafSources) {
-                    if (!second || (std::rand() & 0x7fff) % 16 != 0)
+                    if (!second || worldRandom.draw() % 16 != 0)
                         continue;
                     creatures::Particle p;
                     p.style = creatures::LEAF;

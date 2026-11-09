@@ -86,7 +86,13 @@ std::filesystem::path savePath(const ServerOptions &o) {
 
 } // namespace
 
-Server::Server(ServerOptions o) : options(std::move(o)) {}
+Server::Server(ServerOptions o) : options(std::move(o)) {
+    npcs.onFatalLoot = [this](const creatures::Combatant &fighter, const creatures::Body &body,
+                              std::span<const creatures::ItemRecord> inventory) {
+        dropLoot(lootVictim(fighter, body, inventory), items, (int32_t)clockDay,
+                 [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); }, worldRandom);
+    };
+}
 
 Server::~Server() { stop(); }
 
@@ -112,7 +118,7 @@ void Server::questTalk(uint64_t player, uint64_t giver, glm::dvec3 at, std::vect
         if (q->state == quests::DONE) {
             const quests::Quest done = *q;
             tell(player, quests::thanksText(done));
-            for (const worldgen::ItemRecord &item : quests::rewards(done, who->second->creature.fighter().characterClass, lootRandom)) {
+            for (const worldgen::ItemRecord &item : quests::rewards(done, who->second->creature.fighter().characterClass, worldRandom)) {
                 const creatures::ItemRecord record = creatures::toRecord(item);
                 std::array<uint8_t, 288> gift{};
                 std::memcpy(gift.data(), &player, 8);
@@ -642,7 +648,7 @@ void Server::stepWorld(float dtMs) {
     events40.clear();
 
     const auto block = [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); };
-    const auto draw = [] { return std::rand() & 0x7fff; };
+    const auto draw = [this] { return worldRandom.draw(); };
 
     // §8: the players' packet-6 requests. Picking up (kind 5) gives the item back in section 9;
     // dropping (kind 6) puts it in the world at the player's feet.
@@ -793,7 +799,7 @@ void Server::stepWorld(float dtMs) {
                 std::vector<creatures::SoundEvent> ignored;
                 statics.use(*zone, s.index, n.fighter, n.body, n.yaw, items, (int32_t)clockDay,
                             [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); },
-                            [] { return std::rand() & 0x7fff; }, ignored);
+                            [this] { return worldRandom.draw(); }, ignored);
             }
         };
     }
@@ -825,7 +831,7 @@ void Server::stepWorld(float dtMs) {
                 if (worldgen::floorDiv(key.first, 64) == rx && worldgen::floorDiv(key.second, 64) == ry)
                     regionZones.insert(key);
             npcs.removeTargets(regionZones);
-            missions.dailyPass(w, rx, ry, mplayers, lootRandom);
+            missions.dailyPass(w, rx, ry, mplayers, worldRandom);
             zonesForMissions.insert(regionZones.begin(), regionZones.end());
         }
         const auto ground = [this](int32_t x, int32_t y) {
@@ -834,7 +840,7 @@ void Server::stepWorld(float dtMs) {
         };
         for (const auto &[zx, zy] : std::exchange(zonesForMissions, {}))
             if (const worldgen::Zone *zone = zones.zone(zx, zy))
-                npcs.setExtraSpawns(zx, zy, zone->spawns.size(), missions.zonePass(w, zx, zy, ground, mplayers, lootRandom));
+                npcs.setExtraSpawns(zx, zy, zone->spawns.size(), missions.zonePass(w, zx, zy, ground, mplayers, worldRandom));
         for (const Missions::Player &p : mplayers)
             missions.discover(w, p.position);
         for (creatures::Npc &n : npcs.npcs()) {
@@ -916,7 +922,7 @@ void Server::stepWorld(float dtMs) {
                 continue;
             const auto who = connections.at(death.credited);
             const MissionArea &m = missions.cell(done->first, done->second)->mission;
-            for (const worldgen::ItemRecord &item : missionRewards(m, who->creature.fighter().characterClass, lootRandom)) {
+            for (const worldgen::ItemRecord &item : missionRewards(m, who->creature.fighter().characterClass, worldRandom)) {
                 const creatures::ItemRecord record = creatures::toRecord(item);
                 std::array<uint8_t, 288> gift{};
                 std::memcpy(gift.data(), &death.credited, 8);
@@ -964,7 +970,8 @@ void Server::stepWorld(float dtMs) {
 
     // Server §6.4: what the dead leave behind, sent in section 7 with their zones.
     for (const creatures::NpcFrame::Death &death : frame.deaths)
-        dropLoot(lootVictim(death), items, (int32_t)clockDay, block, lootRandom);
+        if (!death.lootApplied) // retained non-hit death adapter
+            dropLoot(lootVictim(death), items, (int32_t)clockDay, block, worldRandom);
 
     // Projectiles §4-§6: the NPCs' shots fly; hits on players go to their clients, hits on
     // NPCs come back in the next step.
@@ -984,7 +991,7 @@ void Server::stepWorld(float dtMs) {
         return nullptr;
     };
     creatures::ShotEffects shot;
-    projectiles.step((int32_t)dtMs, targets, source, block, [] { return std::rand() & 0x7fff; }, shot);
+    projectiles.step((int32_t)dtMs, targets, source, block, [this] { return worldRandom.draw(); }, shot);
     bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
     for (const auto &s : shot.struck) {
         const worldgen::Block b = zones.read(s.cell.x, s.cell.y, s.cell.z);

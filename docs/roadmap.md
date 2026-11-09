@@ -77,6 +77,14 @@ Differences from the Steam engine that shape the plan:
   action-clock reset happen synchronously without a later duplicate. Native
   selected-actor collection, full reset/configuration, selector-seven production,
   object association, loot, regional/credit and random-stream ordering stay open.
+- [x] Shared gameplay random-stream routing and synchronous fatal loot: client
+  and dedicated-world actions, NPCs, presentation, items, missions and loot use
+  one supplied stream. Fatal application updates real drop storage before its
+  direct linked-health store; later death outputs suppress replay. Standalone
+  tools retain their explicit generator. The existing recurrence and seed-one
+  startup are engine policies; native runtime/thread state, descriptor seed
+  admission, all nested draws, object/region/credit stages and full corpse
+  lifecycle remain separate work.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

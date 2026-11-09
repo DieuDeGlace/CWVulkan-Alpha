@@ -187,6 +187,26 @@ the character, seed 123 despite conflicting arguments, nine map tiles, preview
 data and 170 block edits. The loopback server shut down cleanly. The known
 bright-ground rendering observation remains open.
 
+FatalLootTests exercises actual actor appearance producers sharing one supplied
+stream, an intervening presentation draw and a reseed visible to another actor
+subsystem without restoration. Live loot input preserves raw integer positions
+and full inventory bytes without copying resident relationship maps. A real
+drop-service callback sees completed fatal presentation and timer reset while
+the linked actor is still alive; drops already exist when application returns,
+followed by a direct linked-health store without recursive fatal work. Further
+cases distinguish zero/missing/self links and repeated dead-target rejection.
+An actual two-target melee pass publishes the first target's drops before the
+second target, continues the same stream and emits later death records that
+cannot replay loot or consume its draws again. These checks establish bounded
+engine routing and ordering, not the native runtime recurrence, startup/thread
+state, complete seed history, nested generators or full fatal lifecycle.
+All 36 CTests passed for this checkpoint. Fresh isolated health, loopback and
+save/reload runs also passed, with all four captures reviewed. The injured
+character saved exactly binary32 50; the two save phases retained character
+data, seed 123 despite conflicting reload inputs, nine tiles, preview data and
+170 block edits. The loopback server shut down cleanly. These runtime checks
+retain the known bright-ground and broader native gameplay/visual gates.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

@@ -80,16 +80,17 @@ int32_t rebalancedAdaptionCost(int16_t level, uint8_t rarity, int32_t playerLeve
     return (int32_t)((P + 1.f) / (P + 10.f) * (d / (d + 1500.f)) * 10000.f);
 }
 
-LootVictim lootVictim(const creatures::NpcFrame::Death &death) {
-    const creatures::Combatant &c = death.fighter;
+namespace {
+LootVictim collectLootVictim(const creatures::Combatant &c, uint16_t appearanceFlags,
+                             const int64_t position[3], std::span<const creatures::ItemRecord> inventory) {
     LootVictim v;
     v.controller = c.controller;
     v.type = c.type;
-    v.appearanceFlags = death.appearanceFlags;
+    v.appearanceFlags = appearanceFlags;
     v.level = c.level;
     v.tier = c.powerTier;
-    std::copy(death.position, death.position + 3, v.position);
-    for (const creatures::ItemRecord &item : death.inventory)
+    std::copy_n(position, 3, v.position);
+    for (const creatures::ItemRecord &item : inventory)
         if (creatures::itemType(item) != 0)
             v.inventory.push_back({1, item}); // (one unit per entry)
     for (size_t k = 0; k < c.equipment.size(); k++) {
@@ -100,6 +101,16 @@ LootVictim lootVictim(const creatures::NpcFrame::Death &death) {
         creatures::setItemLevel(r, (int16_t)item.level);
     }
     return v;
+}
+} // namespace
+
+LootVictim lootVictim(const creatures::NpcFrame::Death &death) {
+    return collectLootVictim(death.fighter, death.appearanceFlags, death.position, death.inventory);
+}
+
+LootVictim lootVictim(const creatures::Combatant &fighter, const creatures::Body &body,
+                     std::span<const creatures::ItemRecord> inventory) {
+    return collectLootVictim(fighter, fighter.appearanceFlags, body.position, inventory);
 }
 
 void dropLoot(const LootVictim &v, WorldItems &items, int32_t day, const creatures::BlockType &block,

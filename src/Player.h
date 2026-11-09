@@ -15,7 +15,7 @@ struct GLFWwindow;
 class Player {
   public:
     // Stands the player on the ground at the view's start column, looking like `looks`.
-    Player(WorldView &view, const creatures::Appearance &looks);
+    Player(WorldView &view, const creatures::Appearance &looks, worldgen::Random &random);
 
     // Mouse look and wheel (counts since the last call).
     void look(float dx, float dy) { camera.look(dx, dy); }
@@ -76,6 +76,7 @@ class Player {
     uint8_t blockType(int32_t x, int32_t y, int32_t z) const { return view.held().read(x, y, z).type(); }
 
     WorldView &view;
+    worldgen::Random &random;
     creatures::Appearance looks;
     creatures::Body state;
     creatures::PoseState pose;
