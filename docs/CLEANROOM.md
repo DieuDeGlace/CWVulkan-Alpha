@@ -83,8 +83,8 @@ system interfaces, without a new native-code implementation handoff.
 The source-only authors subsequently supplied held common-update, ranged-audio,
 periodic-buff hit and periodic-hit application/fixed-stat contracts. Each complete
 final artifact was read before implementation. The common phase and ranged-audio
-changes have bounded synthetic checks; actual periodic-hit integration and broader
-native fight acceptance remain open. The periodic contracts distinguish motion
+changes have bounded synthetic checks; broader native fight acceptance remains
+open. The periodic contracts distinguish motion
 velocity from the stored response vector and retain unknown semantic labels.
 They do not certify fatal death/loot/threat paths or original-server equivalence.
 The later held hit-contact/threat/fatal-lifecycle contract was also read in full.
@@ -114,7 +114,7 @@ does not establish every input route, pause state or world-transition condition.
 Record codecs preserve received opaque bytes while fresh producer storage is
 deterministically initialized. Primitive application and response checks establish
 bounded target mutations and motion consumption. Complete world relationship,
-fatal/loot processing, periodic production integration and native frame timing
+fatal/loot processing and native frame timing
 remain separate open work; these handoffs do not certify full combat parity.
 The later world-creature health-admission and generic source/self auxiliary
 contracts were also held and read completely. The former now supplies the bounded
@@ -305,3 +305,35 @@ using those observed math scalars. No original actor, pose or transform helper i
 called, and no original implementation is inspected. The recorder and results
 remain private and were not shared with source authors. Selected controls and
 bounded inputs limit this evidence.
+
+The original-only periodic producer-state addendum was held and read completely
+before correcting the three direct flash-scalar stores, repeated mitigation-ratio
+queries and status-exponent rounding. Production countdown now uses the existing
+record producer with the periodic call's explicit flags and zero discriminator.
+Each target record is emitted before immediate application or the no-local,
+role-zero relay. The engine resolves the source again at application, including
+identifier zero, rather than retaining the producer's source-pointer assumption.
+Payload-only shield changes remain inside the resident scan; cleanup still uses
+the nodes collected at their own visits.
+
+This connects local-player, NPC and dedicated-world player countdowns. The
+separately stored engine physics contact is supplied to both periodic producer
+gates, and the engine SDK may adjust the controlled local application copy before
+it is applied. Neither that SDK extension nor engine identity/contact adapters
+establish original frame scheduling. Complete relationship propagation,
+protected-player state, fatal callback effects, loot and native combat acceptance
+remain open; production integration does not certify those downstream paths.
+
+The separate held item-presentation-vector contract was read completely before
+replacing the actor-position direction adapter. Emission now uses the supplied
+three-component vector's ordered binary32 norm, binary64 square root narrowed to
+binary32, raw fixed target position and selected-item/record order. Signed record
+counts, all unsigned qualifying material bytes, grey defaults and the post-color
+variant retain their supplied-input relations. The engine's existing Burst fields
+carry those values; unverified downstream interpretations and imported-math/control
+equivalence are not inferred from the producer contract.
+
+The independently held outer world-call phase contract was also read completely.
+It establishes preliminary scans, queued inputs, actors, later projectile work and
+final publication within each invocation, including retained aggregate revisits.
+It does not turn the existing physics-only split into whole-world timing parity.

@@ -149,9 +149,26 @@ constructor properties; successive partial updates preserve received opaque byte
 Fresh unspecified native storage uses deterministic engine zero without a native
 byte-equality claim. Remaining categories, complete native frame timing and
 original-runtime gameplay acceptance stay open.
-These checks do not establish full combat parity:
-production periodic-hit integration, complete death/loot/threat behavior and native gameplay
-acceptance remain open.
+PeriodicHitTests exercises production countdown and the actual NPC/dedicated-world
+entry points: one call across multiple surviving buckets, expiration without a
+hit, dead/self/zero/missing source resolution, source-owned mitigation, exact
+periodic flags and no action-17 reinsertion. It covers every-shield mutation,
+expired-but-resident multipliers, visit-dependent cleanup, status cancellation
+before the next producer gate, separate response/velocity writes, local SDK
+application once and replica suppression. Direct producer checks distinguish the
+beam flash minimum, ordinary presentation flag and null-source overwrite.
+Item-effect checks cover full argument-vector normalization, the zero/underflow
+gate, raw fixed positions, signed record limits, selected-item/record order,
+unsigned material defaults, color arithmetic and both flag variants. The actual
+periodic scheduler also emits these effects with its zero initial impulse.
+NetTests sends a real packet-8 damage buff to the running loopback server and
+checks the server-generated hit reaches both connected clients, including the
+target, with matching category, timer and vector.
+
+These synthetic and loopback checks do not establish full combat parity.
+Whole-world frame splitting, complete contact/threat/protected-target state,
+fatal callback effects, death/loot ordering and native gameplay acceptance remain
+open.
 
 The held opaque-output trace establishes no RGB gamma encode in the native
 terrain pixel program, but leaves complete sRGB-write, callback, target and display

@@ -205,7 +205,7 @@ void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad
     actionMsBefore = fighter.actionMs;
     if (onActionEffects)
         onActionEffects(actionMsBefore, dt);
-    endActionUpdate(fighter, dt, {true, replica});
+    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit);
     regenerate(fighter, dtMs); // player control §7
 
     // The physics on whole milliseconds.

@@ -63,6 +63,8 @@ class Player {
     // World-owned action effects run after input/lock handling and before buff,
     // stun, cooldown and clock progression, using the pre-movement body.
     std::function<void(int32_t beforeMs, int32_t dtMs)> onActionEffects;
+    // Authoritative periodic hits run inside resident countdown, before cleanup.
+    std::function<void(const creatures::Buff &)> onPeriodicHit;
     std::function<const creatures::Combatant *(uint64_t)> hitSource;
 
   private:

@@ -1223,7 +1223,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     return &npc.fighter;
             return nullptr;
         };
-    if (player)
+    if (player) {
+        player->onPeriodicHit = [&](const creatures::Buff &buff) {
+            creatures::PlayerView local{player->combat(), player->body(), player->facing(),
+                                       player->actionBefore(), false, false, true};
+            npcs.periodicHit(local.fighter, local.body, buff, {&local, 1}, playerActionFrame,
+                            [&](creatures::HitRecord &hit) { mods.playerHit(hit.attacker, hit.kind, hit.amount); });
+        };
         player->onActionEffects = [&](int32_t beforeMs, int32_t dtMs) {
             auto &actor = player->combat();
             creatures::chargeSound(actor, beforeMs, dtMs, player->body().blocks(), playerShot);
@@ -1294,6 +1300,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
             }
         };
+    }
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
         if (interface.optionsToApply) {
@@ -1802,7 +1809,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 const creatures::NpcFrame happened = npcs.step(
                     seconds * 1000.f, view.held(),
-                    {{c, player->body(), player->facing(), player->actionBefore(), false}}, scene.timeOfDayMs, scene.day,
+                    {{c, player->body(), player->facing(), player->actionBefore(), false, false, true}}, scene.timeOfDayMs, scene.day,
                     [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
                     std::exchange(shotHitsOnNpcs, {}), std::exchange(playerActionFrame, {}));
                 projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());

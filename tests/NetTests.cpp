@@ -401,6 +401,27 @@ int main() {
         }) && echoed.size() == 1 && echoed[0].bytes == foreign.bytes,
               "role-zero relay precedes source lookup and does not replace the embedded source with the sending player");
     }
+    {
+        a.takeHits();
+        b.takeHits();
+        const creatures::BuffEvent periodic{a.id(), a.id(), {4, 2, 650, 0x123456789abcdef0ULL}};
+        a.sendEvent40(periodic.serialize());
+        std::vector<Hit> generated, observed;
+        const auto collect = [&](Client &peer, std::vector<Hit> &records) {
+            for (const auto &hit : peer.takeHits())
+                if (hit.attacker() == 0 && hit.target() == a.id() && hit.record().amount == 2)
+                    records.push_back(hit);
+        };
+        check(waitFor([&] {
+            collect(a, generated);
+            collect(b, observed);
+            return !generated.empty() && !observed.empty();
+        }, 10000), "actual server countdown turns packet-8 resident damage into periodic hit output for both clients");
+        check(generated.size() == 1 && observed.size() == 1 && generated[0].bytes == observed[0].bytes &&
+              generated[0].record().kind == creatures::HIT_DAMAGE && generated[0].record().stun == 0 &&
+              generated[0].record().knockBack == glm::vec3(0),
+              "server-generated null-source hit retains category/vector/timer and reaches its target once");
+    }
     ra.setPosition(0, ra.position(0) + (5 << 16));
     a.setOwn(ra);
     check(waitFor([&] { auto o = b.others(); return o.count(1) && o[1].position(0) == ra.position(0); }), "b sees Alice move");

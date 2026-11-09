@@ -200,6 +200,11 @@ bool twoHandedOrRanged(int m) {
 }
 
 float rho(const Combatant &c) { return std::min((float)c.combo / comboMax(c), 1.f); }
+// These verified callers repeat the counter/helper reads in the uncapped branch.
+float queriedComboRatio(const Combatant &c) {
+    const float first = (float)c.combo / comboMax(c);
+    return first > 1.f ? 1.f : (float)c.combo / comboMax(c);
+}
 
 bool isBlocking(const Combatant &c) {
     return c.actionLockMs <= 0 &&
@@ -236,6 +241,55 @@ std::array<const Item *, 2> spiritItems(const Combatant &source) {
         break;
     }
     return items;
+}
+
+void appendItemEffects(const Combatant &source, const HitInput &input, float ratio, HitOutcome &out) {
+    const glm::vec3 supplied = input.knockBack;
+    const float squared = (supplied.y * supplied.y + supplied.x * supplied.x) + supplied.z * supplied.z;
+    glm::vec2 direction(supplied);
+    if (squared > 0) {
+        const float length = (float)std::sqrt((double)squared);
+        const float reciprocal = 1.f / length;
+        direction *= reciprocal;
+    }
+    const glm::vec3 prepared(direction.x * 4.f, direction.y * 4.f, 5.f);
+    out.sweep = ratio;
+    out.sweepDirection = direction;
+    for (const Item *item : spiritItems(source))
+        if (item) {
+            // Owned decoding bounds the storage; malformed native extents have
+            // no safe-memory equivalence claim. Preserve the signed count gate.
+            for (int32_t index = 0; index < item->spirits && index < (int32_t)item->cubes.size(); index++) {
+                const uint8_t material = item->cubes[index].material;
+                if (material < 128)
+                    continue;
+                Burst burst;
+                std::copy(input.targetRecordPosition.begin(), input.targetRecordPosition.end(), burst.position);
+                burst.velocity = prepared;
+                burst.count = (int32_t)(ratio * 3.f + 1.f);
+                const float strength = ratio * .5f;
+                if (material <= 131) {
+                    const float factor = strength * .5f + 1.f;
+                    const float alpha = (1.f + strength) * factor;
+                    switch (material) {
+                    case 128: burst.colour = {factor, factor * .5f, factor * .1f, alpha}; break;
+                    case 129: burst.colour = {factor * .3f, factor, factor * .5f, alpha}; break;
+                    case 130: burst.colour = {factor * .3f, factor * .5f, factor, alpha}; break;
+                    case 131: burst.colour = {factor * .8f, factor * .8f, factor, alpha}; break;
+                    }
+                } else {
+                    burst.colour = {.5f, .5f, .5f, 1.f};
+                }
+                if (input.area) {
+                    burst.velocity *= 2.f;
+                    burst.count += 10;
+                }
+                burst.size = .1f;
+                burst.style = BRIGHT;
+                burst.spread = 3.f;
+                out.bursts.push_back(burst);
+            }
+        }
 }
 
 } // namespace
@@ -327,14 +381,10 @@ float resistance(const Combatant &c) {
 
 float attackSpeed(const Combatant &c) {
     float S = c.controller == 0 ? 1.f : (float)c.powerTier * .0625f + .75f;
-    const auto counterRatio = [&] {
-        const float first = float(c.combo) / comboMax(c);
-        return first > 1.f ? 1.f : float(c.combo) / comboMax(c);
-    };
     if (c.characterClass == 1 && c.specialization == 0)
-        S += 0.5f * counterRatio();
+        S += 0.5f * queriedComboRatio(c);
     if (c.characterClass == 3 && c.specialization == 1)
-        S += counterRatio();
+        S += queriedComboRatio(c);
     S += equipmentRate(c, itemBonuses().speed);
     if (c.hasBuff(HASTE)) {
         float n = (float)c.skills[8];
@@ -818,7 +868,7 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
         }
         // Absorbing shields, weakened by the attacker's combo.
         const float s = target.buffSum(ABSORB);
-        const float c = 1.f - rho(*attacker);
+        const float c = 1.f - queriedComboRatio(*attacker);
         if (c * s > 0) {
             record(HIT_ABSORBED, x, in.knockBack * 0.5f);
             earlyPresentation(91);
@@ -835,29 +885,8 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
         // spirit items.
         // This fresh, cached ratio is not the upper-capped mitigation ratio.
         const float sweep = (float)attacker->combo / comboMax(*attacker);
-        if (sweep > 0.25f) {
-            glm::vec2 d = glm::vec2(in.targetPosition - in.attackerPosition);
-            if (glm::dot(d, d) > 0)
-                d = glm::normalize(d);
-            out.sweep = sweep;
-            out.sweepDirection = d;
-            // Particles §5.9: per weapon and spirit, a burst in the spirit's colour.
-            const float area = in.area ? 2.f : 1.f, t = 0.5f * sweep, f = 0.5f * t + 1;
-            for (const Item *wpn : spiritItems(*attacker))
-                if (wpn)
-                    for (const Item::Cube &k : wpn->cubes) {
-                        glm::vec4 colour;
-                        switch (k.material) {
-                        case 0x80: colour = {f, 0.5f * f, 0.1f * f, (1 + t) * f}; break;
-                        case 0x81: colour = {0.3f * f, f, 0.5f * f, (1 + t) * f}; break;
-                        case 0x82: colour = {0.3f * f, 0.5f * f, f, (1 + t) * f}; break;
-                        case 0x83: colour = {0.8f * f, 0.8f * f, f, (1 + t) * f}; break;
-                        default: continue;
-                        }
-                        out.bursts.push_back(Burst::at(in.targetPosition, area * glm::vec3(4 * d.x, 4 * d.y, 5), colour,
-                                                       0.1f, (int32_t)(3 * sweep + 1) + (in.area ? 10 : 0), BRIGHT));
-                    }
-        }
+        if (sweep > 0.25f)
+            appendItemEffects(*attacker, in, sweep, out);
         if (in.area && sweep > 0) {
             const auto items = spiritItems(*attacker);
             const int count = (items[0] != nullptr) + (items[1] != nullptr);
@@ -907,9 +936,12 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
                 }
             }
         }
-        target.hitFlash = 1;
-        if (attacker->action == 28 && target.hitFlash < 0.3f)
-            target.hitFlash = 0.3f;
+        if (attacker->action == 28) {
+            if (target.hitFlash < 0.3f)
+                target.hitFlash = 0.3f;
+        } else if (in.blockable) {
+            target.hitFlash = 1;
+        }
         // The impact sound by weapon class.
         if (in.blockable && attacker->action != 28) {
             float pitch = 0.9f + 0.2f * r();
@@ -994,7 +1026,7 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
     out.records.back().beam = attacker && attacker->action == 28 ? 1 : 0;
     // Open points 6 §3.2: a stun, for a target free of one for at least 3 s.
     if (attacker && target.hitStun < -3000 && target.controller != 6) {
-        const auto growth = [](int32_t level) { return 1.f - 1.f / ((float)(level - 1) * 0.05f + 1.f); };
+        const auto growth = [](int32_t level) { return 1.f - 1.f / (((float)level - 1.f) * 0.05f + 1.f); };
         const bool big = bigCreature(target.type), attackerBig = bigCreature(attacker->type);
         const int32_t action = attacker->action;
         float v = in.power;
@@ -1006,8 +1038,16 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
             v *= 0.1f;
         if (action == 91 || action == 74 || target.action == 84)
             v = 1;
-        v = std::min(1.f, v * (float)std::pow(2.0, 10.0 * (growth(attacker->level) - growth(target.level))));
-        const float chance = target.hasBuff(DAMAGE_TAKEN) ? 0.f : 0.9f * v;
+        const float sourceGrowth = growth(attacker->level);
+        const float targetGrowth = growth(target.level);
+        const float exponent = (sourceGrowth - targetGrowth) * 10.f;
+        const float scale = (float)std::pow(2.0, (double)exponent);
+        v *= scale;
+        if (v > 1.f)
+            v = 1.f;
+        float chance = v * .9f;
+        if (target.hasBuff(DAMAGE_TAKEN))
+            chance = 0;
         if (r() < chance) {
             out.records.back().stun = target.controller == 0 ? 1500 : 3000 - (1500 * target.powerTier >> 2);
             out.records.back().knockBack.z = 10;

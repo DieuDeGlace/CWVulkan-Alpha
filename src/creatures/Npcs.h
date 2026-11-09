@@ -95,6 +95,7 @@ struct PlayerView {
     // the server players' attacks arrive as hits instead (server §1, the owner rule).
     bool strikes = true;
     bool advanceBuffs = false; // server view; local clients already ran their own countdown
+    bool local = false; // distinguished controlled creature; absent in a dedicated world
 };
 
 // Server §6.2 step 7: a kill credited to a player (world-update section 10).
@@ -167,6 +168,12 @@ class Npcs {
     // Local player dispatch belongs between beginActionUpdate/endActionUpdate,
     // before movement. Carry its events into step and disable later strikes.
     void dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame);
+    // Called only by authoritative resident countdown. Resolve the buff source,
+    // emit and apply each target event before the producer continues. Payload
+    // writes may deplete buffs, but this path never inserts/removes buff nodes.
+    // The optional engine SDK callback adjusts the local application copy only.
+    void periodicHit(Combatant &target, Body &body, const Buff &buff, std::span<PlayerView> players, NpcFrame &frame,
+                     const std::function<void(HitRecord &)> &localHit = {});
     // Server §5.3: a spawn's creature id, (zy * 65536 + zx) * 256 + index.
     static uint64_t spawnId(int32_t zx, int32_t zy, size_t index) {
         return (((uint64_t)(uint32_t)zy << 16) + (uint32_t)zx) * 256 + index;

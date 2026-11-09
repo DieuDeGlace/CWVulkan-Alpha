@@ -48,6 +48,17 @@ Differences from the Steam engine that shape the plan:
 
 ## Next
 
+- [x] Bounded production periodic-hit integration: local-player, NPC and
+  dedicated-world player countdowns use explicit periodic producer arguments,
+  emit before immediate local application or role-zero relay, preserve resident
+  shield/expiration ordering and resolve source IDs again for application.
+  Scheduler, actual-world and real loopback regressions cover this connection.
+  Complete contact/protected/fatal/loot behavior and native combat acceptance
+  remain open.
+- [ ] Whole-world client calls in at-most-20ms pieces with one frame aggregate
+  and the specified later primary input boundary. Current physics splitting
+  alone does not close creature, projectile, buff or input scheduling.
+
 - [x] Bounded engine save/reload acceptance: preserve loaded recipes without
   rerolling grants, install startup map persistence before generation, and display
   the saved character name unless explicitly overridden. An isolated actual-client

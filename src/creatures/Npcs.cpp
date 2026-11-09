@@ -1396,6 +1396,72 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
     }
 }
 
+void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::span<PlayerView> players, NpcFrame &frame,
+                      const std::function<void(HitRecord &)> &localHit) {
+    struct Actor {
+        Combatant *fighter = nullptr;
+        Body *body = nullptr;
+        Npc *npc = nullptr;
+        bool local = false;
+    };
+    const auto lookup = [&](uint64_t id) -> Actor {
+        if (Npc *npc = findNpc(id))
+            return {&npc->fighter, &npc->body, npc};
+        for (PlayerView &player : players)
+            if (player.fighter.id == id)
+                return {&player.fighter, &player.body, nullptr, player.local};
+        return {};
+    };
+    const bool hasLocal = std::any_of(players.begin(), players.end(), [](const PlayerView &player) { return player.local; });
+    // Exact lookup includes zero, dead sources and self references. A missing
+    // source has its own producer draw/amount path; never substitute the target.
+    const Actor source = lookup(buff.source);
+    // The engine stores physics contact separately; present its current value
+    // to both producer gates, including the role-one stuck-contact response.
+    target.contact = body.contact;
+    HitInput input;
+    input.amount = buff.value;
+    input.magic = true;
+    input.blockable = false;
+    input.targetOnGround = (body.contact & ON_GROUND) != 0;
+    input.targetPosition = body.blocks();
+    std::copy_n(body.position, input.targetRecordPosition.size(), input.targetRecordPosition.begin());
+    if (source.body) {
+        input.attackerPosition = source.body->blocks();
+        std::copy_n(source.body->position, input.attackerRecordPosition.size(), input.attackerRecordPosition.begin());
+    }
+    // Selector stays zero even when the source is still performing action 17.
+    // No critical, affix, ordinary presentation, base stun or initial impulse.
+    const HitOutcome out = resolveHit(target, body.velocity, source.fighter, input, [&] { return draw(); },
+        [&](const HitEmission &emission) {
+            const HitRecord &record = emission.record;
+            frame.emittedHits.push_back(record);
+            const Actor recipient = lookup(record.target);
+            if (!recipient.fighter || recipient.fighter->health <= 0)
+                return;
+            frame.seen.push_back({record, recipient.body->blocks()});
+            if (!hasLocal && recipient.fighter->controller == 0) {
+                // A dedicated world relays role-zero events. Its receiver owns
+                // application; applying here would also change later producer gates.
+                frame.playerHits.push_back(record);
+                return;
+            }
+            const Actor resolvedSource = lookup(record.attacker);
+            if (recipient.npc)
+                land(*recipient.npc, record, resolvedSource.fighter, players, frame);
+            else {
+                auto applied = record;
+                if (recipient.local && localHit)
+                    localHit(applied);
+                applyHit(*recipient.fighter, *recipient.body, applied,
+                         {resolvedSource.fighter, recipient.local, false}, &frame.buffs);
+            }
+        });
+    frame.buffs.insert(frame.buffs.end(), out.buffs.begin(), out.buffs.end());
+    frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
+    frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
+}
+
 void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame) {
     for (PlayerView &p : players)
         if (p.strikes && p.fighter.health > 0 && meleeAction(p.fighter.action) &&
@@ -1444,7 +1510,9 @@ NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     }
     for (PlayerView &player : players)
         if (player.advanceBuffs && player.fighter.health > 0)
-            tickBuffs(player.fighter, milliseconds, true);
+            tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
+                periodicHit(player.fighter, player.body, buff, players, frame);
+            });
     activate(map, players, timeOfDayMs, day, dtMs);
     petPass(players); // pets §9
     // Creatures whose zone is let go go with it (inferred); pets stay with their owners.
@@ -1554,7 +1622,9 @@ NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 frame.craters.push_back({centre, radius});
             }
         }
-        endActionUpdate(c, milliseconds, {false, false});
+        endActionUpdate(c, milliseconds, {false, false}, [&](const Buff &buff) {
+            periodicHit(c, npc.body, buff, players, frame);
+        });
         // Physics §4.4: overlapping creatures push each other apart (not bombs, nor creatures
         // in actions 83 and 84); boxes grow by (1, 1, 0) except inert ones.
         if (c.controller != 6 && c.action != 83 && c.action != 84) {
