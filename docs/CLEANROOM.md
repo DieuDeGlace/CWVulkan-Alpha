@@ -348,3 +348,41 @@ The former unconditional post-action heal has been removed. This is a local
 health correction; the surrounding world scan, clock policy, aggregate reuse,
 whole-world subdivision, full frame input order and original-server behavior
 remain separate gates.
+
+The new original-only action-input-phase and world-clock-input contracts were
+held and read completely as part of this frame migration. The client now performs
+consecutive world calls of at most twenty integer milliseconds using retained
+engine output collectors, followed by one input phase. Common actor work, NPCs,
+periodic buffs, item/static timers, projectiles and clock arithmetic share those
+pieces. Device polling and UI/crafting work are not repeated per piece. Output
+views consume newly appended engine notifications without removing the retained
+records; this does not assert that every native aggregate consumer uses such a
+view. The separately identified native rewrite/revisit behavior remains open.
+
+The preliminary health addition precedes each clock step. The clock uses wrapped
+four-byte arithmetic, the supplied acceleration predicate and nonempty-world
+gate, and a strict signed day-end comparison. The persistence predicate compares
+the incremented counter with that counter plus the supplied piece, as specified;
+it is not a wall-clock autosave interval. A new complete socket-clock publication
+is applied once at a frame boundary under the existing engine gate, rather than
+replaying the cached pair each frame. Identical later packets remain new input.
+The engine rejects incomplete socket payloads and requires a complete stored
+clock record; the original EOF and partial-reset behavior is not certified by
+those validation policies.
+
+Configured action execution is separate from the existing preset producer. The
+held-slot walk queries readiness for every held nonzero binding, applies the
+index-one restriction, retains primary suppression on rejected attempts, and
+performs the two post-primary release cleanups without resetting the clock.
+Full-width binding/cooldown keys remain distinct from the low-byte action write.
+Preset production, full movement/device mapping, all outer UI/transition gates,
+native actor-map order and original interactive acceptance remain open. Received
+actor presentation keeps its stated engine clock adapter, now with the shared
+integer duration and per-world-call resident countdown. Preview participants and
+explicit unsaved --hour captures also remain identified engine adapters.
+
+Two further source-only contracts are held and were read completely: action
+binding production and creature-map key order. They establish pre-world binding
+refresh and signed-64-bit live map traversal, respectively. They are retained
+for the following implementation work; their presence does not certify the
+existing preset refresh point or local/NPC container ordering.

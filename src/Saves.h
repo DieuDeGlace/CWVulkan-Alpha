@@ -102,6 +102,9 @@ std::vector<WorldEntry> readWorlds(const SaveDb &db);
 struct WorldClock {
     uint32_t day = 0;
     uint32_t timeOfDayMs = 43200000; // a new world starts at noon
+    // Supplied client world-clock gates. "enabled" is not a pause predicate;
+    // its upstream native producer remains a separate contract boundary.
+    void advanceWorld(int32_t elapsedMs, bool accelerated, bool enabled = true);
     static std::optional<WorldClock> parse(const std::vector<uint8_t> &value);
     std::vector<uint8_t> serialize() const;
 };

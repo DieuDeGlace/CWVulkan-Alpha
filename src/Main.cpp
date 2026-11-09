@@ -15,6 +15,7 @@
 #include "Audio.h"
 #include "Config.h"
 #include "Frame.h"
+#include "SimulationFrame.h"
 #include "Motion.h"
 #include "CubModel.h"
 #include "DataStore.h"
@@ -98,6 +99,7 @@ struct Options {
     bool worldMap = false;      // --map ZOOM: open the world map at that zoom (for captures)
     float mapZoom = 1;
     float yaw = 35, pitch = 25, hour = 12;
+    bool hourOverride = false; // explicit diagnostic time in an unsaved world
     WorldViewOptions worldOptions;
     float travel = 0; // --travel: blocks to fly east before a capture
     std::string connect, name;
@@ -204,8 +206,10 @@ Options parse(int argc, char **argv) {
             o.sway = true;
         else if (!std::strcmp(argv[i], "--no-ground"))
             o.noGround = true;
-        else if (!std::strcmp(argv[i], "--hour"))
+        else if (!std::strcmp(argv[i], "--hour")) {
             o.hour = (float)std::atof(next().c_str());
+            o.hourOverride = true;
+        }
         else if (!std::strcmp(argv[i], "--pitch")) {
             o.pitch = (float)std::atof(next().c_str());
             o.lookGiven = true;
@@ -572,6 +576,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Other players' fighting state as last received; the action clock runs on locally
     // between updates so their swings play smoothly.
     std::map<uint64_t, net::RemoteFighter> otherFighters;
+    std::map<uint64_t, net::CreatureRecord> receivedActors;
     net::CreatureRecord own;
     own.setName(options.name.empty() ? "AlphaVulkan" : options.name);
     if (options.name.empty() && playing())
@@ -618,7 +623,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (!client.connected())
             for (const creatures::Npc &n : npcs.all())
                 add(n.fighter.id, n.fighter, n.body.blocks());
-        for (const auto &[id, other] : client.others())
+        for (const auto &[id, other] : receivedActors)
             add(id, other.fighter(), glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
         return out;
     };
@@ -662,8 +667,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         return true;
     };
     std::vector<creatures::HitRecord> shotHitsOnNpcs;
-    float shotLeftoverMs = 0;
-    float itemLeftoverMs = 0;
     std::vector<creatures::Projectile> playerLaunched;
     creatures::ShotEffects playerShot;
     creatures::NpcFrame playerActionFrame;
@@ -1199,8 +1202,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     int framesUntilCapture = options.capture.empty() ? -1 : 16;
     double last = glfwGetTime();
     const double start = last;
-    double lastSave = last;
-    double lightLeftoverMs = 0;
+    uint64_t simulationWorldCalls = 0, simulationInputFrames = 0;
+    int32_t simulationMaxPiece = 0;
+    double frameLeftoverMs = 0;
     uint32_t lightClockMs = 0;
     std::vector<DrawItem> items;
     std::vector<EffectVertex> effects; // weapon trails (trails §1.3)
@@ -1248,7 +1252,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // the creatures the server lists and sends them as packet 7.
                 if (c.health > 0 && creatures::meleeAction(c.action) &&
                     creatures::strikeWindow(c, beforeMs, (float)dtMs)) {
-                    for (const auto &[id, other] : client.others()) {
+                    for (const auto &[id, other] : receivedActors) {
                         creatures::Combatant target = other.fighter();
                         target.id = id;
                         target.health = other.health();
@@ -1301,6 +1305,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
         };
     }
+    const auto acceleratesClock = [](const creatures::Combatant &actor) {
+        return actor.controller == 0 && actor.action == 84 && actor.health > 0;
+    };
+    const auto advanceWorldClock = [&](int32_t elapsed, bool accelerated) {
+        lightClockMs += uint32_t(elapsed);
+        // Explicit unsaved capture/viewer time remains a diagnostic override.
+        if (!session && !client.connected() && options.hourOverride)
+            return;
+        WorldClock clock{uint32_t(scene.day), uint32_t(scene.timeOfDayMs)};
+        // Admitted online worlds use a nonempty selection string. Native
+        // reset/transition scheduling remains separate from this engine adapter.
+        const bool named = client.connected() || (session && !session->name().empty());
+        clock.advanceWorld(elapsed, accelerated, named);
+        scene.day = std::bit_cast<int32_t>(clock.day);
+        scene.timeOfDayMs = clock.timeOfDayMs;
+        if (session)
+            session->clock = clock;
+        if (session && named && simulation::clockWriteDue(lightClockMs, elapsed))
+            session->saveClock();
+    };
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
         if (interface.optionsToApply) {
@@ -1314,16 +1338,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         const double now = glfwGetTime();
         const float seconds = (float)(now - last);
-        lightLeftoverMs += (now - last) * 1000.0;
+        frameLeftoverMs += (now - last) * 1000.0;
         // GLFW supplies fractional seconds. Keep an integer-duration adapter
         // for this engine clock; native timeGetTime/mode scheduling stays open.
-        const int32_t lightElapsedMs = int32_t(std::clamp(lightLeftoverMs, 0.0, double(INT32_MAX)));
-        lightLeftoverMs -= double(lightElapsedMs);
-        lightClockMs += uint32_t(lightElapsedMs);
+        const int32_t frameElapsedMs = int32_t(std::clamp(frameLeftoverMs, 0.0, double(INT32_MAX)));
+        frameLeftoverMs -= double(frameElapsedMs);
         last = now;
         std::unique_lock<std::mutex> networkFrame;
         if (client.connected())
             networkFrame = client.lockFrame();
+        if (const auto clock = client.takeClock()) {
+            scene.day = std::bit_cast<int32_t>(clock->first);
+            scene.timeOfDayMs = clock->second;
+        }
+        receivedActors = client.connected() ? client.others() : std::map<uint64_t, net::CreatureRecord>{};
+        std::erase_if(otherFighters, [&](const auto &entry) { return !receivedActors.contains(entry.first); });
+        for (const auto &[id, record] : receivedActors) {
+            auto snapshot = record.fighter();
+            snapshot.id = id;
+            otherFighters[id].refresh(std::move(snapshot), frameElapsedMs);
+        }
         mods.frame(seconds);
         auto held = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS ? 1.f : 0.f; };
         const bool menus = interface.wantsMouse();
@@ -1373,673 +1407,729 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         key(GLFW_KEY_ESCAPE);
                 }
             }
-            if (!client.connected()) // physics §4.4: hostile and inert creatures push the player
-                player->body().separate = npcs.pushOnPlayer(player->body());
-            // Physics §3.3: the player's lunge stops at an enemy in contact range.
-            player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
-            player->update(window, seconds * 1000.f, !menus && !interface.typing() && player->combat().health > 0,
-                           interface.mapOpen ? nullptr : &pad, client.connected());
-            // Skills: what Learn committed goes to the player; the window sees the committed
-            // values, and whether a trainer of the player's class stands within 4 blocks (§4.5).
-            {
-                creatures::Combatant &c = player->combat();
-                if (std::exchange(interface.skillsLearnt, false)) {
+            const auto updatePlayerInterface = [&] {
+                // Skills: what Learn committed goes to the player; the window sees the committed
+                // values, and whether a trainer of the player's class stands within 4 blocks (§4.5).
+                {
+                    creatures::Combatant &c = player->combat();
+                    if (std::exchange(interface.skillsLearnt, false)) {
+                        for (size_t i = 0; i < c.skills.size(); i++)
+                            c.skills[i] = interface.playerSkills[i];
+                        c.specialization = (uint8_t)interface.playerSpecialization;
+                    }
                     for (size_t i = 0; i < c.skills.size(); i++)
-                        c.skills[i] = interface.playerSkills[i];
-                    c.specialization = (uint8_t)interface.playerSpecialization;
+                        interface.playerSkills[i] = c.skills[i];
+                    interface.playerSpecialization = c.specialization;
+                    interface.manaCubes = manaCubes;
+                    interface.trainerNear = [&] {
+                        const glm::dvec3 me = player->body().blocks();
+                        for (const creatures::Npc &n : npcs.all()) {
+                            const glm::dvec3 d = n.body.blocks() - me;
+                            if ((n.looks.flags & 0x40) && n.fighter.characterClass == c.characterClass && glm::dot(d, d) < 16)
+                                return true;
+                        }
+                        return false;
+                    };
                 }
-                for (size_t i = 0; i < c.skills.size(); i++)
-                    interface.playerSkills[i] = c.skills[i];
-                interface.playerSpecialization = c.specialization;
-                interface.manaCubes = manaCubes;
-                interface.trainerNear = [&] {
-                    const glm::dvec3 me = player->body().blocks();
-                    for (const creatures::Npc &n : npcs.all()) {
-                        const glm::dvec3 d = n.body.blocks() - me;
-                        if ((n.looks.flags & 0x40) && n.fighter.characterClass == c.characterClass && glm::dot(d, d) < 16)
-                            return true;
+                // Crafting §2.2, §3.2, §5: recipes granted at each new level, the station test, the
+                // craft timer and what a finished craft makes.
+                {
+                    creatures::Combatant &c = player->combat();
+                    if (c.level != grantedLevel) {
+                        grantedLevel = c.level;
+                        creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [] { return std::rand() & 0x7fff; });
                     }
-                    return false;
-                };
-            }
-            // Crafting §2.2, §3.2, §5: recipes granted at each new level, the station test, the
-            // craft timer and what a finished craft makes.
-            {
-                creatures::Combatant &c = player->combat();
-                if (c.level != grantedLevel) {
-                    grantedLevel = c.level;
-                    creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [] { return std::rand() & 0x7fff; });
+                    interface.stationNear = [&](int32_t station) {
+                        const glm::dvec3 me = player->body().blocks();
+                        if (station == creatures::WATER) {
+                            const glm::dvec3 feet = me - glm::dvec3(0, 0, player->body().size.z / 2);
+                            return (player->body().contact & creatures::IN_WATER) != 0 ||
+                                   view.held().read((int32_t)std::floor(feet.x), (int32_t)std::floor(feet.y),
+                                                    (int32_t)std::floor(feet.z)).type() == worldgen::WATER;
+                        }
+                        const int32_t kind = creatures::stationKind(station);
+                        const int32_t pzx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
+                        const int32_t pzy = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::ZONE);
+                        for (int32_t zx = pzx - 1; zx <= pzx + 1; zx++)
+                            for (int32_t zy = pzy - 1; zy <= pzy + 1; zy++)
+                                if (const worldgen::Zone *zone = view.held().zone(zx, zy))
+                                    for (const worldgen::StaticObject &o : zone->statics) {
+                                        const glm::dvec3 d = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0 - me;
+                                        if (o.kind == kind && glm::dot(d, d) < 16)
+                                            return true;
+                                    }
+                        return false;
+                    };
+                    interface.stepCraft(seconds * 1000.f, glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+                    if (const auto recipe = std::exchange(interface.finishedCraft, std::nullopt)) {
+                        const creatures::CraftOutcome made =
+                            creatures::craft(inventory, *recipe, [] { return std::rand() & 0x7fff; });
+                        if (made.refused) {
+                            interface.chatAdd("You can't carry more of these items.\n", {255, 51, 51});
+                            audio.play("human-voice01.wav");
+                        }
+                        for (const int32_t sound : made.sounds)
+                            if (const char *key = creatures::soundKey(sound))
+                                audio.play(key);
+                        if (made.made) {
+                            interface.chatAdd("You receive ", {255, 255, 255});
+                            interface.chatAdd(receivedText(*made.made, dictionary), creatures::nameColour(*made.made) * 255.f);
+                            interface.chatAdd(".\n", {255, 255, 255});
+                        }
+                    }
                 }
-                interface.stationNear = [&](int32_t station) {
-                    const glm::dvec3 me = player->body().blocks();
-                    if (station == creatures::WATER) {
-                        const glm::dvec3 feet = me - glm::dvec3(0, 0, player->body().size.z / 2);
-                        return (player->body().contact & creatures::IN_WATER) != 0 ||
-                               view.held().read((int32_t)std::floor(feet.x), (int32_t)std::floor(feet.y),
-                                                (int32_t)std::floor(feet.z)).type() == worldgen::WATER;
-                    }
-                    const int32_t kind = creatures::stationKind(station);
-                    const int32_t pzx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
-                    const int32_t pzy = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::ZONE);
-                    for (int32_t zx = pzx - 1; zx <= pzx + 1; zx++)
-                        for (int32_t zy = pzy - 1; zy <= pzy + 1; zy++)
-                            if (const worldgen::Zone *zone = view.held().zone(zx, zy))
-                                for (const worldgen::StaticObject &o : zone->statics) {
-                                    const glm::dvec3 d = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0 - me;
-                                    if (o.kind == kind && glm::dot(d, d) < 16)
-                                        return true;
-                                }
-                    return false;
-                };
-                interface.stepCraft(seconds * 1000.f, glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-                if (const auto recipe = std::exchange(interface.finishedCraft, std::nullopt)) {
-                    const creatures::CraftOutcome made =
-                        creatures::craft(inventory, *recipe, [] { return std::rand() & 0x7fff; });
-                    if (made.refused) {
-                        interface.chatAdd("You can't carry more of these items.\n", {255, 51, 51});
-                        audio.play("human-voice01.wav");
-                    }
-                    for (const int32_t sound : made.sounds)
+                // Screens §8.1: the inventory screen's view of the player, and what presses on it did.
+                {
+                    creatures::Combatant &c = player->combat();
+                    ui::Interface::CharacterSheet &sheet = interface.sheet;
+                    sheet.name = own.name();
+                    sheet.level = c.level;
+                    sheet.characterClass = c.characterClass;
+                    sheet.specialization = c.specialization;
+                    sheet.health = creatures::maxHealth(c);
+                    sheet.armour = creatures::armour(c);
+                    sheet.resistance = creatures::resistance(c);
+                    sheet.critical = creatures::criticalChance(c);
+                    sheet.tempo = creatures::attackSpeed(c);
+                    sheet.regeneration = creatures::regeneration(c);
+                    sheet.weaponRating = creatures::weaponRating(c);
+                    sheet.armorRating = creatures::armorRating(c);
+                    sheet.canAct = c.hitStun < 1;
+                    for (const int32_t sound : interface.inventorySounds)
                         if (const char *key = creatures::soundKey(sound))
                             audio.play(key);
-                    if (made.made) {
-                        interface.chatAdd("You receive ", {255, 255, 255});
-                        interface.chatAdd(receivedText(*made.made, dictionary), creatures::nameColour(*made.made) * 255.f);
-                        interface.chatAdd(".\n", {255, 255, 255});
+                    interface.inventorySounds.clear();
+                    // Skills §1.3: when a window starts holding the input the interface plays 0x53
+                    // (menu-open2.wav), when none holds it any more 0x54 (menu-close2.wav).
+                    {
+                        const bool holding = interface.inventoryOpen || interface.craftingOpen || interface.skillsOpen;
+                        if (holding != windowHeld)
+                            if (const char *key = creatures::soundKey(holding ? 0x53 : 0x54))
+                                audio.play(key);
+                        windowHeld = holding;
                     }
+                    if (interface.equipmentChanged) {
+                        wearInventory();
+                        c.health = std::min(c.health, creatures::maxHealth(c));
+                        interface.equipmentChanged = false;
+                    }
+                    if (interface.gliderEquipped) {
+                        c.action = 0;
+                        interface.gliderEquipped = false;
+                    }
+                    // §8.1.10: drinking (80) or eating (81) a consumable; the action step heals
+                    // (item names §9). A bomb (subtype 7) is placed at the player's feet: by the
+                    // server online (packet 6 kind 1), here offline (server §8 kind 1).
+                    for (const creatures::ItemRecord &item : interface.itemsToUse)
+                        if (creatures::itemSubtype(item) == 7) {
+                            if (client.connected())
+                                client.sendItemRequest(itemRequest(item, {0, 0, 0}, 1));
+                            else
+                                npcs.placeBomb(player->body().blocks(), creatures::itemLevel(item));
+                        } else {
+                            const uint8_t sub = creatures::itemSubtype(item);
+                            c.action = sub == 1 || sub == 2 ? 80 : 81;
+                            c.actionMs = 0;
+                            c.held = creatures::Item::parse(item.data());
+                        }
+                    interface.itemsToUse.clear();
                 }
-            }
-            // Screens §8.1: the inventory screen's view of the player, and what presses on it did.
-            {
-                creatures::Combatant &c = player->combat();
-                ui::Interface::CharacterSheet &sheet = interface.sheet;
-                sheet.name = own.name();
-                sheet.level = c.level;
-                sheet.characterClass = c.characterClass;
-                sheet.specialization = c.specialization;
-                sheet.health = creatures::maxHealth(c);
-                sheet.armour = creatures::armour(c);
-                sheet.resistance = creatures::resistance(c);
-                sheet.critical = creatures::criticalChance(c);
-                sheet.tempo = creatures::attackSpeed(c);
-                sheet.regeneration = creatures::regeneration(c);
-                sheet.weaponRating = creatures::weaponRating(c);
-                sheet.armorRating = creatures::armorRating(c);
-                sheet.canAct = c.hitStun < 1;
-                for (const int32_t sound : interface.inventorySounds)
-                    if (const char *key = creatures::soundKey(sound))
-                        audio.play(key);
-                interface.inventorySounds.clear();
-                // Skills §1.3: when a window starts holding the input the interface plays 0x53
-                // (menu-open2.wav), when none holds it any more 0x54 (menu-close2.wav).
                 {
-                    const bool holding = interface.inventoryOpen || interface.craftingOpen || interface.skillsOpen;
-                    if (holding != windowHeld)
-                        if (const char *key = creatures::soundKey(holding ? 0x53 : 0x54))
-                            audio.play(key);
-                    windowHeld = holding;
-                }
-                if (interface.equipmentChanged) {
-                    wearInventory();
-                    c.health = std::min(c.health, creatures::maxHealth(c));
-                    interface.equipmentChanged = false;
-                }
-                if (interface.gliderEquipped) {
-                    c.action = 0;
-                    interface.gliderEquipped = false;
-                }
-                // §8.1.10: drinking (80) or eating (81) a consumable; the action step heals
-                // (item names §9). A bomb (subtype 7) is placed at the player's feet: by the
-                // server online (packet 6 kind 1), here offline (server §8 kind 1).
-                for (const creatures::ItemRecord &item : interface.itemsToUse)
-                    if (creatures::itemSubtype(item) == 7) {
-                        if (client.connected())
-                            client.sendItemRequest(itemRequest(item, {0, 0, 0}, 1));
-                        else
-                            npcs.placeBomb(player->body().blocks(), creatures::itemLevel(item));
-                    } else {
-                        const uint8_t sub = creatures::itemSubtype(item);
-                        c.action = sub == 1 || sub == 2 ? 80 : 81;
-                        c.actionMs = 0;
-                        c.held = creatures::Item::parse(item.data());
+                    const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
+                    if (input.dropOne) {
+                        input.dropOne = false;
+                        if (const auto item = inventory.dropOne()) {
+                            // Online the server drops it (packet 6 kind 6) and sends the zone's list.
+                            if (client.connected()) {
+                                client.sendItemRequest(itemRequest(*item, {0, 0, 0}, 6));
+                            } else {
+                                worldItems.drop(*item, player->body().blocks() - glm::dvec3(0, 0, player->body().size.z / 2),
+                                                1, scene.day, block, [] { return std::rand() & 0x7fff; });
+                                playAt(57, player->body().blocks(), 1, 1);
+                            }
+                        }
                     }
-                interface.itemsToUse.clear();
-            }
-            // Behaviour §16.3, §16.6: ability sounds and outgoing buff records at the player.
-            const creatures::AbilityEffects effects = player->takeAbilityEffects();
-            bursts.insert(bursts.end(), effects.bursts.begin(), effects.bursts.end());
-            for (const creatures::SoundEvent &s : effects.placed)
-                playAt(s.sound, s.position, s.volume, s.pitch);
-            for (const int32_t sound : effects.sounds) // at the player (audio §4 "P")
-                playAt(sound, player->body().blocks(), 1, 1);
-            // §16.6: each buff's 40-byte record goes to the server as packet 8.
-            for (const creatures::BuffEvent &b : effects.buffs)
-                sendBuff(b);
-            // Projectiles §2, §3: the player's ranged actions charge and launch (online the shots
-            // also go to the server); online, the others' shots arrive relayed.
-            {
-                creatures::Combatant &c = player->combat();
-                auto shot = std::exchange(playerShot, {});
-                auto launched = std::exchange(playerLaunched, {});
-                for (const auto &buff : shot.buffs)
-                    sendBuff(buff);
-                for (creatures::Projectile &p : launched) {
-                    if (p.kind == creatures::BOOMERANG_SHOT) // §2.3: the thrower's weapon scale
-                        p.scale = player->appearance().weaponScale;
-                    if (client.connected())
-                        client.sendShoot(p.serialize());
-                    projectiles.list.push_back(p);
                 }
-                for (const auto &record : client.takeShoots()) {
-                    creatures::Projectile p = creatures::Projectile::parse(record.data());
-                    if (p.shooter != c.id)
-                        projectiles.list.push_back(p);
-                }
-                for (const creatures::SoundEvent &s : shot.sounds)
+            };
+            const auto publishPlayerEffects = [&] {
+                // Behaviour §16.3, §16.6: ability sounds and outgoing buff records at the player.
+                const creatures::AbilityEffects effects = player->takeAbilityEffects();
+                bursts.insert(bursts.end(), effects.bursts.begin(), effects.bursts.end());
+                for (const creatures::SoundEvent &s : effects.placed)
                     playAt(s.sound, s.position, s.volume, s.pitch);
-                bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
+                for (const int32_t sound : effects.sounds) // at the player (audio §4 "P")
+                    playAt(sound, player->body().blocks(), 1, 1);
+                // §16.6: each buff's 40-byte record goes to the server as packet 8.
+                for (const creatures::BuffEvent &b : effects.buffs)
+                    sendBuff(b);
+            };
+            playerActionFrame.reset();
+            creatures::NpcFrame::Cursor npcEvents;
+            bool firstWorldCall = true;
+            simulation::clientFrame(frameElapsedMs, true, playerActionFrame,
+                [&](int32_t elapsed, creatures::NpcFrame &aggregate) {
+                    simulationWorldCalls++;
+                    simulationMaxPiece = std::max(simulationMaxPiece, elapsed);
+                    bool accelerated = acceleratesClock(player->combat());
+                    for (const auto &[id, remote] : otherFighters)
+                        accelerated |= acceleratesClock(remote.fighter);
+                    for (const auto &npc : npcs.all())
+                        accelerated |= acceleratesClock(npc.fighter);
+                    creatures::regenerate(player->combat(), elapsed);
+                    advanceWorldClock(elapsed, accelerated);
+                    for (auto &[id, remote] : otherFighters)
+                        if (remote.fighter.health > 0)
+                            creatures::tickBuffs(remote.fighter, elapsed, false);
+                    if (!client.connected()) // physics §4.4: hostile and inert creatures push the player
+                        player->body().separate = npcs.pushOnPlayer(player->body());
+                    // Physics §3.3: the player's lunge stops at an enemy in contact range.
+                    player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
+                    player->advance(elapsed, client.connected());
+                    publishPlayerEffects();
+                    // Projectiles §2, §3: the player's ranged actions charge and launch (online the shots
+                    // also go to the server); online, the others' shots arrive relayed.
+                    {
+                        creatures::Combatant &c = player->combat();
+                        auto shot = std::exchange(playerShot, {});
+                        auto launched = std::exchange(playerLaunched, {});
+                        for (const auto &buff : shot.buffs)
+                            sendBuff(buff);
+                        for (creatures::Projectile &p : launched) {
+                            if (p.kind == creatures::BOOMERANG_SHOT) // §2.3: the thrower's weapon scale
+                                p.scale = player->appearance().weaponScale;
+                            if (client.connected())
+                                client.sendShoot(p.serialize());
+                            projectiles.list.push_back(p);
+                        }
+                        if (firstWorldCall)
+                            for (const auto &record : client.takeShoots()) {
+                                creatures::Projectile p = creatures::Projectile::parse(record.data());
+                                if (p.shooter != c.id)
+                                    projectiles.list.push_back(p);
+                            }
+                        for (const creatures::SoundEvent &s : shot.sounds)
+                            playAt(s.sound, s.position, s.volume, s.pitch);
+                        bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
 
-            }
-            // World items §3: timers and landing sounds, a dropped item from the hand, and the
-            // zones whose items changed saved.
-            {
-                const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
-                itemLeftoverMs += seconds * 1000.f;
-                const int32_t dt = (int32_t)itemLeftoverMs;
-                itemLeftoverMs -= (float)dt;
-                std::vector<creatures::SoundEvent> landed;
-                worldItems.step(dt, !client.connected(), block, [] { return std::rand() & 0x7fff; }, landed);
-                if (input.dropOne) {
-                    input.dropOne = false;
-                    if (const auto item = inventory.dropOne()) {
-                        // Online the server drops it (packet 6 kind 6) and sends the zone's list.
-                        if (client.connected()) {
-                            client.sendItemRequest(itemRequest(*item, {0, 0, 0}, 6));
-                        } else {
-                            worldItems.drop(*item, player->body().blocks() - glm::dvec3(0, 0, player->body().size.z / 2),
-                                            1, scene.day, block, [] { return std::rand() & 0x7fff; });
-                            landed.push_back({player->body().blocks(), 57, 1, 1}); // drop.wav
-                        }
                     }
-                }
-                // Online: the zones round the player are asked for once a second (net server
-                // §4.3); their item lists and the player's gifts come back.
-                if (client.connected()) {
-                    if (lastZoneRequest < 0 || now - lastZoneRequest >= 1) {
-                        lastZoneRequest = now;
-                        const glm::dvec3 me = player->body().blocks();
-                        const int32_t zx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
-                        const int32_t zy = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::ZONE);
-                        std::vector<std::pair<int32_t, int32_t>> wanted;
-                        for (int32_t dx = -1; dx <= 1; dx++)
-                            for (int32_t dy = -1; dy <= 1; dy++)
-                                if (view.held().zone(zx + dx, zy + dy))
-                                    wanted.push_back({zx + dx, zy + dy});
-                        client.requestZones(wanted);
-                        // Missions §6.3: the cell records of the player's region, asked for when
-                        // the player enters it and while the map is open.
-                        const std::pair<int32_t, int32_t> region{worldgen::floorDiv(zx, 64), worldgen::floorDiv(zy, 64)};
-                        if (region != missionRegionAsked || interface.mapOpen) {
-                            missionRegionAsked = region;
-                            client.requestRegions({region});
-                        }
-                    }
-                    for (const auto &record : client.takeMissionRecords()) {
-                        missions.apply(record.data());
-                        // Open points 1 §2: a completed mission's record shows the banner (every
-                        // player with the region loaded sees it, as in Alpha).
-                        int32_t cx = 0, cy = 0;
-                        const MissionArea m = MissionArea::fromRecord(record.data(), cx, cy);
-                        if (m.kind != 0 && m.state == 2)
-                            if (const worldgen::Location *L = cellLocation(view.terrainWorld(), cx, cy)) {
-                                interface.questComplete(ui::objectiveText(m, *L, dictionary));
-                                if (const char *key = creatures::soundKey(30))
-                                    audio.play(key);
-                            }
-                    }
-                    for (const auto &[key, records] : client.takeZoneItems()) {
-                        std::vector<WorldItem> list;
-                        for (const auto &r : records)
-                            list.push_back(WorldItem::fromRecord(r.data()));
-                        worldItems.replace(key.first, key.second, std::move(list));
-                    }
-                    for (const auto &record : client.takeStaticStates())
-                        statics.apply(record.data());
-                    // Block edits §4.1, §3 step 7: the server's edits are applied and forgotten.
-                    std::vector<BlockEdit> edits;
-                    for (const auto &record : client.takeBlockEdits())
-                        edits.push_back(BlockEdit::parse(record.data()));
-                    if (!edits.empty())
-                        view.applyEdits(edits, false);
-                    for (const auto &gift : client.takeGifts()) {
-                        creatures::ItemRecord got;
-                        std::memcpy(got.data(), gift.data(), 280);
-                        receive(got);
-                    }
-                }
-                for (const creatures::SoundEvent &s : landed)
-                    playAt(s.sound, s.position, s.volume, s.pitch);
-                // Interaction §6.3, §6.4: the statics' timers, and seats freed.
-                std::map<StaticStates::Key, const worldgen::Zone *> held;
-                for (const auto &[key, zone] : view.held().zones())
-                    held[key] = zone.get();
-                statics.step(dt,
-                             [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action) {
-                                 if (id == player->combat().id) {
-                                     at = player->body().blocks();
-                                     intent = player->body().intent;
-                                     action = player->combat().action;
-                                     return true;
-                                 }
-                                 for (const creatures::Npc &n : npcs.npcs()) // seated residents
-                                     if (n.fighter.id == id && n.fighter.health > 0) {
-                                         at = n.body.blocks();
-                                         intent = n.body.intent;
-                                         action = n.fighter.action;
-                                         return true;
-                                     }
-                                 return false;
-                             },
-                             held);
-                // Traps (alpha-open-points-1.md §1): offline this game runs them; the hits land
-                // on the player at once and on creatures in the next creature step.
-                if (!client.connected()) {
-                    std::vector<StaticStates::Creature> here{{player->combat().id, player->body().blocks(), 0}};
-                    for (const creatures::Npc &n : npcs.all())
-                        if (n.fighter.health > 0)
-                            here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
-                    std::vector<creatures::HitRecord> trapHits;
-                    std::vector<creatures::SoundEvent> trapSounds;
-                    const worldgen::World &world = view.terrainWorld();
-                    statics.traps(dt, scene.timeOfDayMs, here, held,
-                                  [&](glm::dvec3 at) { return world.levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
-                                  trapHits, trapSounds);
-                    for (const creatures::HitRecord &h : trapHits) {
-                        if (h.target == player->combat().id) {
-                            player->takeHit(h);
-                            if (auto text = ui::hitText(h.amount, h.kind, false, true, player->body().blocks()))
-                                interface.floating.push_back(*text);
-                        } else {
-                            shotHitsOnNpcs.push_back(h);
-                        }
-                    }
-                    for (const creatures::SoundEvent &e : trapSounds)
-                        playAt(e.sound, e.position, e.volume, e.pitch);
-                }
-                // Changed zones are saved, items and states together (a zone save without its
-                // items would empty the zone when it loads again, world items §4.3).
-                std::set<WorldItems::Key> changedZones = worldItems.takeChanged();
-                for (const auto &key : statics.takeChanged())
-                    changedZones.insert(key);
-                for (const auto &key : blockEdits.takeChanged())
-                    changedZones.insert(key);
-                for (const auto &[zx, zy] : changedZones)
-                    if (session && !client.connected())
-                        if (const auto *list = worldItems.zone(zx, zy)) {
-                            std::vector<std::array<uint8_t, 325>> saved;
-                            for (const WorldItem &w : *list)
-                                saved.push_back(w.save());
-                            session->saveZoneItems(zx, zy, std::move(saved));
-                            session->saveZoneStates(zx, zy, statics.stateBytes(zx, zy));
-                            session->saveZoneEdits(zx, zy, blockEdits.saved(zx, zy));
-                        }
-                std::vector<WorldItems::Key> gone;
-                for (const auto &[key, list] : worldItems.all())
-                    if (!view.held().zone(key.first, key.second))
-                        gone.push_back(key);
-                for (const auto &[zx, zy] : gone) {
-                    worldItems.forget(zx, zy);
-                    statics.forget(zx, zy);
-                    blockEdits.forget(zx, zy);
-                }
-            }
-            // Offline the creatures live here (behaviour §13.1); online the server runs them.
-            if (!client.connected()) {
-                creatures::Combatant &c = player->combat();
-                const float before = c.level;
-                // Missions §2.1: the region's daily pass once a day (cleared at midnight and by
-                // inn rests), §2.6 the zone passes, §4 discovery, §5.4 leftover targets.
-                {
-                    const worldgen::World &world = view.terrainWorld();
-                    const glm::dvec3 me = player->body().blocks();
-                    const std::vector<Missions::Player> players{{me, c.level}};
-                    if (scene.day != missionDay) {
-                        missionDay = scene.day;
-                        missions.clearGenerated();
-                    }
-                    const int32_t rx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::REGION);
-                    const int32_t ry = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::REGION);
-                    // §7: the region's saved cells, read the first time it is needed.
-                    if (session && world.region(rx, ry) && missionRegionsRead.insert({rx, ry}).second) {
-                        std::vector<std::string> keys;
-                        for (int32_t i = 0; i < 64; i++)
-                            for (const char *kind : {"mission", "monster"})
-                                keys.push_back(kind + std::to_string(8 * rx + i / 8) + "_" + std::to_string(8 * ry + i % 8));
-                        const auto saved = session->values(keys);
-                        for (int32_t i = 0; i < 64; i++) {
-                            const std::string cell = std::to_string(8 * rx + i / 8) + "_" + std::to_string(8 * ry + i % 8);
-                            const auto mission = saved.find("mission" + cell);
-                            const auto monster = saved.find("monster" + cell);
-                            missions.restore(8 * rx + i / 8, 8 * ry + i % 8,
-                                             mission == saved.end() ? std::nullopt : MissionArea::parse(mission->second),
-                                             monster == saved.end() ? std::nullopt : MonsterArea::parse(monster->second));
-                        }
-                    }
-                    if (world.region(rx, ry) && !missions.generated(rx, ry)) {
-                        std::set<std::pair<int32_t, int32_t>> regionZones;
-                        for (const auto &[key, zone] : view.held().zones())
-                            if (worldgen::floorDiv(key.first, 64) == rx && worldgen::floorDiv(key.second, 64) == ry)
-                                regionZones.insert(key);
-                        npcs.removeTargets(regionZones);
-                        missions.dailyPass(world, rx, ry, players, missionRandom);
-                        zonesForMissions.insert(regionZones.begin(), regionZones.end());
-                        for (int32_t k = 0; k < 64 && options.quest; k++)
-                            if (const Missions::Cell *cell = missions.cell(8 * rx + k / 8, 8 * ry + k % 8);
-                                cell && cell->mission.kind == 1) {
-                                const double x = 256.0 * cell->mission.targetZoneX + 100, y = 256.0 * cell->mission.targetZoneY + 100;
-                                player->body().place({x, y, view.groundHeight((int32_t)x, (int32_t)y) + 3});
-                                view.placeCamera({x, y, view.groundHeight((int32_t)x, (int32_t)y) + 3}, glm::vec3(0, 1, 0));
-                                std::fprintf(stderr, "--quest: cell (%d, %d), zone (%d, %d), type %d\n", 8 * rx + k / 8,
-                                             8 * ry + k % 8, cell->mission.targetZoneX, cell->mission.targetZoneY,
-                                             cell->mission.targetType);
-                                break;
-                            }
-                    }
-                    const auto ground = [&](int32_t x, int32_t y) {
-                        const worldgen::Zone *z = view.held().zoneAt(x, y);
-                        return z ? (float)z->column(x, y).top() : 0.f;
-                    };
-                    for (const auto &[zx, zy] : std::exchange(zonesForMissions, {}))
-                        if (const worldgen::Zone *zone = view.held().zone(zx, zy))
-                            npcs.setExtraSpawns(zx, zy, zone->spawns.size(),
-                                                missions.zonePass(world, zx, zy, ground, players, missionRandom));
-                    missions.discover(world, me);
-                    for (creatures::Npc &n : npcs.npcs()) {
-                        const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
-                        const Missions::Cell *cell = missions.cell(cx, cy);
-                        if ((n.looks.flags & 0x2000) && n.threats.empty() && cell && cell->mission.state == 2)
-                            n.fighter.health = 0;
-                    }
-                    // §7: the saves, of every cell of a region whose pass ran and of changed cells.
-                    if (session) {
-                        std::set<std::pair<int32_t, int32_t>> cells = missions.takeChanged();
-                        for (const auto &[i, j] : missions.takePassed())
-                            for (int32_t k = 0; k < 64; k++)
-                                cells.insert({8 * i + k / 8, 8 * j + k % 8});
-                        std::map<std::string, std::vector<uint8_t>> values;
-                        for (const auto &[cx, cy] : cells)
-                            if (const Missions::Cell *cell = missions.cell(cx, cy)) {
-                                const std::string name = std::to_string(cx) + "_" + std::to_string(cy);
-                                values["mission" + name] = cell->mission.save();
-                                values["monster" + name] = cell->monster.save();
-                            }
-                        if (!values.empty())
-                            session->setValues(values);
-                    }
-                }
-                if (options.extendedQuests) {
-                    if (session && !questBookRead) {
-                        questBookRead = true;
-                        const auto saved = session->values({"av_quests"});
-                        if (const auto it = saved.find("av_quests"); it != saved.end())
-                            questBook = quests::Book::load(it->second);
-                        if (!questBook.quests.empty())
-                            trackedQuest = questBook.quests.back().id;
-                    }
-                    // The quest's creatures, made once the zone of its place is loaded, standing
-                    // on the first open block over the ground.
-                    const auto ground = [&](int32_t x, int32_t y) {
-                        for (int32_t z = 400; z > 0; z--) {
-                            const uint8_t t = view.held().read(x, y, z - 1).type();
-                            if (t != 0 && t != 2)
-                                return z;
-                        }
-                        return 0;
-                    };
-                    for (quests::Quest &q : questBook.quests)
-                        if (q.state == quests::ACTIVE && !npcs.hasQuestCreatures(q.id) &&
-                            view.held().zoneAt((int32_t)std::floor(q.site.x), (int32_t)std::floor(q.site.y))) {
-                            q.site.z = ground((int32_t)std::floor(q.site.x), (int32_t)std::floor(q.site.y));
-                            npcs.setQuestCreatures(q.id, quests::creatures(q, ground));
-                        }
-                    if (questBookChanged && session) { // the world's `av_quests` value
-                        session->setValues({{"av_quests", questBook.save()}});
-                        questBookChanged = false;
-                    }
-                }
-                const creatures::NpcFrame happened = npcs.step(
-                    seconds * 1000.f, view.held(),
-                    {{c, player->body(), player->facing(), player->actionBefore(), false, false, true}}, scene.timeOfDayMs, scene.day,
-                    [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                    std::exchange(shotHitsOnNpcs, {}), std::exchange(playerActionFrame, {}));
-                projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
-                for (const auto &event : happened.buffs)
-                    sendBuff(event);
-                // Server §6.4, loot rolls §3: what the dead leave behind.
-                for (const creatures::NpcFrame::Death &death : happened.deaths)
-                    dropLoot(lootVictim(death), worldItems, scene.day,
-                             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, lootRandom);
-                for (const creatures::NpcFrame::Death &death : happened.deaths) // mod SDK v6
-                    mods.creatureDeath(death.fighter.id, death.fighter.type, death.fighter.level, death.credited);
-                for (const creatures::NpcFrame::Death &death : happened.deaths) // quests: hunts and battles
-                    if (death.quest && questBook.find(death.quest)) {
-                        questBookChanged = true;
-                        if (questBook.died(death.quest, death.questRole)) {
-                            const quests::Quest &q = *questBook.find(death.quest);
-                            interface.chatAdd("Quest done! Return to " + quests::giverName(q) + ".\n", {1, 0.8f, 0.2f});
-                            interface.questComplete(quests::objectiveText(q, q.giverAt));
-                            if (const char *key = creatures::soundKey(30))
-                                audio.play(key);
-                        }
-                    }
-                // Missions §5: a target's death completes its mission; the cell's extra spawns go
-                // and a hostile target pays the player who fought it.
-                for (const creatures::NpcFrame::Death &death : happened.deaths)
-                    if (const auto done = missions.kill(death.zone, death.appearanceFlags, death.boss)) {
-                        mods.missionComplete(done->first, done->second);
-                        // Open points 1 §2: the QUEST COMPLETE banner with the mission's objective, sound 30.
-                        if (const worldgen::Location *L = cellLocation(view.terrainWorld(), done->first, done->second)) {
-                            interface.questComplete(ui::objectiveText(missions.cell(done->first, done->second)->mission, *L, dictionary));
-                            if (const char *key = creatures::soundKey(30))
-                                audio.play(key);
-                        }
-                        for (int32_t zx = 8 * done->first; zx < 8 * done->first + 8; zx++)
-                            for (int32_t zy = 8 * done->second; zy < 8 * done->second + 8; zy++)
-                                if (const worldgen::Zone *zone = view.held().zone(zx, zy))
-                                    npcs.setExtraSpawns(zx, zy, zone->spawns.size(), {}, false);
-                        if (death.fighter.controller == 1 && death.credited == c.id)
-                            for (const worldgen::ItemRecord &item :
-                                 missionRewards(missions.cell(done->first, done->second)->mission, c.characterClass, missionRandom)) {
-                                if (item.type == 13) {
-                                    creatures::addExperience(c, 10 * item.level);
-                                    interface.floating.push_back(ui::experienceText(10 * item.level, player->body().blocks()));
-                                } else {
-                                    receive(creatures::toRecord(item));
+                    // World items §3: timers and landing sounds, a dropped item from the hand, and the
+                    // zones whose items changed saved.
+                    {
+                        const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
+                        const int32_t dt = elapsed;
+                        std::vector<creatures::SoundEvent> landed;
+                        worldItems.step(dt, !client.connected(), block, [] { return std::rand() & 0x7fff; }, landed);
+                        // Online: the zones round the player are asked for once a second (net server
+                        // §4.3); their item lists and the player's gifts come back.
+                        if (firstWorldCall && client.connected()) {
+                            if (lastZoneRequest < 0 || now - lastZoneRequest >= 1) {
+                                lastZoneRequest = now;
+                                const glm::dvec3 me = player->body().blocks();
+                                const int32_t zx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
+                                const int32_t zy = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::ZONE);
+                                std::vector<std::pair<int32_t, int32_t>> wanted;
+                                for (int32_t dx = -1; dx <= 1; dx++)
+                                    for (int32_t dy = -1; dy <= 1; dy++)
+                                        if (view.held().zone(zx + dx, zy + dy))
+                                            wanted.push_back({zx + dx, zy + dy});
+                                client.requestZones(wanted);
+                                // Missions §6.3: the cell records of the player's region, asked for when
+                                // the player enters it and while the map is open.
+                                const std::pair<int32_t, int32_t> region{worldgen::floorDiv(zx, 64), worldgen::floorDiv(zy, 64)};
+                                if (region != missionRegionAsked || interface.mapOpen) {
+                                    missionRegionAsked = region;
+                                    client.requestRegions({region});
                                 }
                             }
-                    }
-                // Travel §5.5: a pet standing on wet lake-bed ground (type 3) refills its
-                // owner's riding energy by 0.05 a second.
-                if (const creatures::Npc *pet = npcs.petOf(c.id); pet && !(pet->body.contact & creatures::IN_WATER)) {
-                    const glm::dvec3 feet = pet->body.blocks() - glm::dvec3(0, 0, pet->body.size.z / 2 + 0.2);
-                    if (view.held().read((int32_t)std::floor(feet.x), (int32_t)std::floor(feet.y), (int32_t)std::floor(feet.z)).type() ==
-                        worldgen::LAKE_BED)
-                        player->body().ridingEnergy = std::min(1.f, player->body().ridingEnergy + 0.05f * seconds);
-                }
-                for (const creatures::HitEmission &emission : happened.playerHits) {
-                    if (!emission.applyLocally)
-                        continue;
-                    creatures::HitRecord hit = emission.record;
-                    if (hit.kind == 6)
-                        continue; // pets §7.3: a bite's signal, not damage
-                    mods.playerHit(hit.attacker, hit.kind, hit.amount);
-                    player->takeHit(hit);
-                }
-                for (const auto &[hit, at] : happened.seen) {
-                    // Materials §1.5: a critical hit by a weapon with spirits flashes at the hit
-                    // for 400 ms (radius 20).
-                    if (hit.critical) {
-                        const creatures::Combatant *by = hit.attacker == c.id ? &c : nullptr;
-                        for (const creatures::Npc &n : npcs.all())
-                            if (n.fighter.id == hit.attacker)
-                                by = &n.fighter;
-                        if (by)
-                            for (const creatures::Item *weapon : {&by->mainHand(), &by->offHand()})
-                                if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
-                                    flashes.append({hit.position, a, 20, 0, 400});
-                    }
-                    if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.target == c.id, at))
-                        interface.floating.push_back(*text);
-                    mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
-                }
-                for (const creatures::SoundEvent &s : happened.sounds)
-                    playAt(s.sound, s.position, s.volume, s.pitch);
-                bursts.insert(bursts.end(), happened.bursts.begin(), happened.bursts.end());
-                const auto blockBursts = [&](const std::vector<BlockEdit> &removed) { // particles §5.2
-                    for (const BlockEdit &e : removed) {
-                        const worldgen::Block b = view.held().read(e.x, e.y, e.z);
-                        bursts.push_back(creatures::blockBurst({e.x, e.y, e.z}, {b.r, b.g, b.b}));
-                    }
-                };
-                // Pets §7.4: a creature tamed by this player turns the food in the Pet slot into
-                // its pet item; §12: the pet item follows the pet's level and experience.
-                for (const auto &t : happened.tamed)
-                    if (t.owner == c.id && creatures::itemType(inventory.equipment[12]) == 20) {
-                        creatures::ItemRecord pet{};
-                        pet[0x00] = 19, pet[0x01] = (uint8_t)t.type;
-                        const uint32_t experience = (uint32_t)t.experience;
-                        std::memcpy(pet.data() + 0x04, &experience, 4);
-                        creatures::setItemLevel(pet, (int16_t)t.level);
-                        inventory.equipment[12] = pet;
-                        c.action = 0;
-                        wearInventory();
-                    }
-                for (const auto &p : happened.petItems)
-                    if (p.owner == c.id && creatures::itemType(inventory.equipment[12]) == 19) {
-                        const uint32_t experience = (uint32_t)p.experience;
-                        std::memcpy(inventory.equipment[12].data() + 0x04, &experience, 4);
-                        creatures::setItemLevel(inventory.equipment[12], (int16_t)p.level);
-                        wearInventory();
-                    }
-                // Block edits §8: a bomb that went off takes the natural ground within 8 blocks.
-                for (const auto &blast : happened.explosions) {
-                    const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
-                    const auto removed = naturalSphere(blast.centre, 8, scene.day, read);
-                    if (removed.empty())
-                        continue;
-                    blockBursts(removed);
-                    view.applyEdits(removed, false);
-                    for (const BlockEdit &e : removed)
-                        blockEdits.add(e);
-                    playAt(1, blast.centre, 1, 0.5f + 0.4f * (float)(std::rand() & 0x7fff) / 32767.f);
-                }
-                // Block edits §9: big creatures' blows take the natural ground away.
-                for (const auto &impact : happened.craters) {
-                    const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
-                    const auto removed = naturalSphere(impact.centre, impact.radius, scene.day, read);
-                    if (removed.empty())
-                        continue;
-                    blockBursts(removed);
-                    view.applyEdits(removed, false);
-                    for (const BlockEdit &e : removed)
-                        blockEdits.add(e);
-                    playAt(2, impact.centre, 1, 0.5f + 0.4f * (float)(std::rand() & 0x7fff) / 32767.f);
-                }
-                if (happened.experience > 0) {
-                    creatures::addExperience(c, happened.experience);
-                    interface.floating.push_back(ui::experienceText(happened.experience, player->body().blocks()));
-                    interface.chatAdd("You gain " + std::to_string(happened.experience) + " XP.\n", {150, 128, 255});
-                }
-                for (int32_t l = (int32_t)before + 1; l <= c.level; l++)
-                    mods.levelUp(l);
-                if (c.level > before) {
-                    audio.play("levelup2.wav");
-                    interface.floating.push_back(ui::levelUpText(player->body().blocks()));
-                }
-            }
-            // Flight follows every creature countdown. Player launches were inserted
-            // before NPC launches; both participate in this frame in that order.
-            {
-                creatures::Combatant &c = player->combat();
-                // §4-§6: the flight, on whole milliseconds. Offline every shot's hits count;
-                // online only our own (the shooter's client decides, §6.2).
-                shotLeftoverMs += seconds * 1000.f;
-                const int32_t dt = (int32_t)shotLeftoverMs;
-                shotLeftoverMs -= (float)dt;
-                if (dt > 0 && !projectiles.list.empty()) {
-                    std::vector<creatures::Combatant> fighters;
-                    std::vector<creatures::Body> bodies;
-                    const auto others = client.connected() ? client.others() : std::map<uint64_t, net::CreatureRecord>{};
-                    fighters.reserve(others.size());
-                    bodies.reserve(others.size());
-                    for (const auto &[id, other] : others) {
-                        creatures::Combatant f = other.fighter();
-                        f.id = id;
-                        f.health = other.health();
-                        f.controller = other.controller();
-                        if (const auto resident = otherFighters.find(id); resident != otherFighters.end())
-                            f.buffs = resident->second.fighter.buffs;
-                        creatures::Body b;
-                        for (int axis = 0; axis < 3; axis++)
-                            b.position[axis] = other.position(axis);
-                        b.size = other.appearance().box;
-                        b.velocity = other.velocity();
-                        b.intent = other.intent();
-                        b.push = other.response();
-                        fighters.push_back(std::move(f));
-                        bodies.push_back(b);
-                    }
-                    std::vector<creatures::ShotTarget> targets{{&c, &player->body()}};
-                    for (size_t i = 0; i < fighters.size(); i++)
-                        targets.push_back({&fighters[i], &bodies[i]});
-                    if (!client.connected())
-                        for (creatures::Npc &n : npcs.npcs())
-                            targets.push_back({&n.fighter, &n.body});
-                    const auto source = [&](uint64_t id) -> creatures::Combatant * {
-                        if (id == c.id)
-                            return &c;
-                        if (!client.connected())
-                            for (creatures::Npc &n : npcs.npcs())
-                                if (n.fighter.id == id)
-                                    return &n.fighter;
-                        return nullptr;
-                    };
-                    creatures::ShotEffects flight;
-                    projectiles.step(dt, targets, source, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                                     [] { return std::rand() & 0x7fff; }, flight, {client.connected(), &c});
-                    for (const auto &event : flight.buffs)
-                        sendBuff(event);
-                    for (const creatures::HitEmission &emission : flight.hits) {
-                        const creatures::HitRecord &h = emission.record;
-                        glm::dvec3 at = player->body().blocks();
-                        for (const creatures::ShotTarget &t : targets)
-                            if (t.fighter->id == h.target)
-                                at = t.body->blocks();
-                        if (client.connected()) {
-                            if (h.attacker != c.id)
-                                continue;
-                            client.sendHit(net::Hit::from(h));
-                        } else if (emission.applyLocally && h.target == c.id) {
-                            player->takeHit(h);
-                        } else if (emission.applyLocally) {
-                            shotHitsOnNpcs.push_back(h);
+                            for (const auto &record : client.takeMissionRecords()) {
+                                missions.apply(record.data());
+                                // Open points 1 §2: a completed mission's record shows the banner (every
+                                // player with the region loaded sees it, as in Alpha).
+                                int32_t cx = 0, cy = 0;
+                                const MissionArea m = MissionArea::fromRecord(record.data(), cx, cy);
+                                if (m.kind != 0 && m.state == 2)
+                                    if (const worldgen::Location *L = cellLocation(view.terrainWorld(), cx, cy)) {
+                                        interface.questComplete(ui::objectiveText(m, *L, dictionary));
+                                        if (const char *key = creatures::soundKey(30))
+                                            audio.play(key);
+                                    }
+                            }
+                            for (const auto &[key, records] : client.takeZoneItems()) {
+                                std::vector<WorldItem> list;
+                                for (const auto &r : records)
+                                    list.push_back(WorldItem::fromRecord(r.data()));
+                                worldItems.replace(key.first, key.second, std::move(list));
+                            }
+                            for (const auto &record : client.takeStaticStates())
+                                statics.apply(record.data());
+                            // Block edits §4.1, §3 step 7: the server's edits are applied and forgotten.
+                            std::vector<BlockEdit> edits;
+                            for (const auto &record : client.takeBlockEdits())
+                                edits.push_back(BlockEdit::parse(record.data()));
+                            if (!edits.empty())
+                                view.applyEdits(edits, false);
+                            for (const auto &gift : client.takeGifts()) {
+                                creatures::ItemRecord got;
+                                std::memcpy(got.data(), gift.data(), 280);
+                                receive(got);
+                            }
                         }
-                        if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.target == c.id, at))
-                            interface.floating.push_back(*text);
-                        mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
+                        for (const creatures::SoundEvent &s : landed)
+                            playAt(s.sound, s.position, s.volume, s.pitch);
+                        // Interaction §6.3, §6.4: the statics' timers, and seats freed.
+                        std::map<StaticStates::Key, const worldgen::Zone *> held;
+                        for (const auto &[key, zone] : view.held().zones())
+                            held[key] = zone.get();
+                        statics.step(dt,
+                                     [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action) {
+                                         if (id == player->combat().id) {
+                                             at = player->body().blocks();
+                                             intent = player->body().intent;
+                                             action = player->combat().action;
+                                             return true;
+                                         }
+                                         for (const creatures::Npc &n : npcs.npcs()) // seated residents
+                                             if (n.fighter.id == id && n.fighter.health > 0) {
+                                                 at = n.body.blocks();
+                                                 intent = n.body.intent;
+                                                 action = n.fighter.action;
+                                                 return true;
+                                             }
+                                         return false;
+                                     },
+                                     held);
+                        // Traps (alpha-open-points-1.md §1): offline this game runs them; the hits land
+                        // on the player at once and on creatures in the next creature step.
+                        if (!client.connected()) {
+                            std::vector<StaticStates::Creature> here{{player->combat().id, player->body().blocks(), 0}};
+                            for (const creatures::Npc &n : npcs.all())
+                                if (n.fighter.health > 0)
+                                    here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
+                            std::vector<creatures::HitRecord> trapHits;
+                            std::vector<creatures::SoundEvent> trapSounds;
+                            const worldgen::World &world = view.terrainWorld();
+                            statics.traps(dt, scene.timeOfDayMs, here, held,
+                                          [&](glm::dvec3 at) { return world.levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
+                                          trapHits, trapSounds);
+                            for (const creatures::HitRecord &h : trapHits) {
+                                if (h.target == player->combat().id) {
+                                    player->takeHit(h);
+                                    if (auto text = ui::hitText(h.amount, h.kind, false, true, player->body().blocks()))
+                                        interface.floating.push_back(*text);
+                                } else {
+                                    shotHitsOnNpcs.push_back(h);
+                                }
+                            }
+                            for (const creatures::SoundEvent &e : trapSounds)
+                                playAt(e.sound, e.position, e.volume, e.pitch);
+                        }
+                        // Changed zones are saved, items and states together (a zone save without its
+                        // items would empty the zone when it loads again, world items §4.3).
+                        std::set<WorldItems::Key> changedZones = worldItems.takeChanged();
+                        for (const auto &key : statics.takeChanged())
+                            changedZones.insert(key);
+                        for (const auto &key : blockEdits.takeChanged())
+                            changedZones.insert(key);
+                        for (const auto &[zx, zy] : changedZones)
+                            if (session && !client.connected())
+                                if (const auto *list = worldItems.zone(zx, zy)) {
+                                    std::vector<std::array<uint8_t, 325>> saved;
+                                    for (const WorldItem &w : *list)
+                                        saved.push_back(w.save());
+                                    session->saveZoneItems(zx, zy, std::move(saved));
+                                    session->saveZoneStates(zx, zy, statics.stateBytes(zx, zy));
+                                    session->saveZoneEdits(zx, zy, blockEdits.saved(zx, zy));
+                                }
+                        std::vector<WorldItems::Key> gone;
+                        for (const auto &[key, list] : worldItems.all())
+                            if (!view.held().zone(key.first, key.second))
+                                gone.push_back(key);
+                        for (const auto &[zx, zy] : gone) {
+                            worldItems.forget(zx, zy);
+                            statics.forget(zx, zy);
+                            blockEdits.forget(zx, zy);
+                        }
                     }
-                    for (const creatures::SoundEvent &s : flight.sounds)
-                        playAt(s.sound, s.position, s.volume, s.pitch);
-                    bursts.insert(bursts.end(), flight.bursts.begin(), flight.bursts.end());
-                    for (const auto &s : flight.struck) { // particles §5.7
-                        const worldgen::Block b = view.held().read(s.cell.x, s.cell.y, s.cell.z);
-                        bursts.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
+                    // Offline the creatures live here (behaviour §13.1); online the server runs them.
+                    if (!client.connected()) {
+                        creatures::Combatant &c = player->combat();
+                        const float before = c.level;
+                        // Missions §2.1: the region's daily pass once a day (cleared at midnight and by
+                        // inn rests), §2.6 the zone passes, §4 discovery, §5.4 leftover targets.
+                        {
+                            const worldgen::World &world = view.terrainWorld();
+                            const glm::dvec3 me = player->body().blocks();
+                            const std::vector<Missions::Player> players{{me, c.level}};
+                            if (scene.day != missionDay) {
+                                missionDay = scene.day;
+                                missions.clearGenerated();
+                            }
+                            const int32_t rx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::REGION);
+                            const int32_t ry = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::REGION);
+                            // §7: the region's saved cells, read the first time it is needed.
+                            if (session && world.region(rx, ry) && missionRegionsRead.insert({rx, ry}).second) {
+                                std::vector<std::string> keys;
+                                for (int32_t i = 0; i < 64; i++)
+                                    for (const char *kind : {"mission", "monster"})
+                                        keys.push_back(kind + std::to_string(8 * rx + i / 8) + "_" + std::to_string(8 * ry + i % 8));
+                                const auto saved = session->values(keys);
+                                for (int32_t i = 0; i < 64; i++) {
+                                    const std::string cell = std::to_string(8 * rx + i / 8) + "_" + std::to_string(8 * ry + i % 8);
+                                    const auto mission = saved.find("mission" + cell);
+                                    const auto monster = saved.find("monster" + cell);
+                                    missions.restore(8 * rx + i / 8, 8 * ry + i % 8,
+                                                     mission == saved.end() ? std::nullopt : MissionArea::parse(mission->second),
+                                                     monster == saved.end() ? std::nullopt : MonsterArea::parse(monster->second));
+                                }
+                            }
+                            if (world.region(rx, ry) && !missions.generated(rx, ry)) {
+                                std::set<std::pair<int32_t, int32_t>> regionZones;
+                                for (const auto &[key, zone] : view.held().zones())
+                                    if (worldgen::floorDiv(key.first, 64) == rx && worldgen::floorDiv(key.second, 64) == ry)
+                                        regionZones.insert(key);
+                                npcs.removeTargets(regionZones);
+                                missions.dailyPass(world, rx, ry, players, missionRandom);
+                                zonesForMissions.insert(regionZones.begin(), regionZones.end());
+                                for (int32_t k = 0; k < 64 && options.quest; k++)
+                                    if (const Missions::Cell *cell = missions.cell(8 * rx + k / 8, 8 * ry + k % 8);
+                                        cell && cell->mission.kind == 1) {
+                                        const double x = 256.0 * cell->mission.targetZoneX + 100, y = 256.0 * cell->mission.targetZoneY + 100;
+                                        player->body().place({x, y, view.groundHeight((int32_t)x, (int32_t)y) + 3});
+                                        view.placeCamera({x, y, view.groundHeight((int32_t)x, (int32_t)y) + 3}, glm::vec3(0, 1, 0));
+                                        std::fprintf(stderr, "--quest: cell (%d, %d), zone (%d, %d), type %d\n", 8 * rx + k / 8,
+                                                     8 * ry + k % 8, cell->mission.targetZoneX, cell->mission.targetZoneY,
+                                                     cell->mission.targetType);
+                                        break;
+                                    }
+                            }
+                            const auto ground = [&](int32_t x, int32_t y) {
+                                const worldgen::Zone *z = view.held().zoneAt(x, y);
+                                return z ? (float)z->column(x, y).top() : 0.f;
+                            };
+                            for (const auto &[zx, zy] : std::exchange(zonesForMissions, {}))
+                                if (const worldgen::Zone *zone = view.held().zone(zx, zy))
+                                    npcs.setExtraSpawns(zx, zy, zone->spawns.size(),
+                                                        missions.zonePass(world, zx, zy, ground, players, missionRandom));
+                            missions.discover(world, me);
+                            for (creatures::Npc &n : npcs.npcs()) {
+                                const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
+                                const Missions::Cell *cell = missions.cell(cx, cy);
+                                if ((n.looks.flags & 0x2000) && n.threats.empty() && cell && cell->mission.state == 2)
+                                    n.fighter.health = 0;
+                            }
+                            // §7: the saves, of every cell of a region whose pass ran and of changed cells.
+                            if (session) {
+                                std::set<std::pair<int32_t, int32_t>> cells = missions.takeChanged();
+                                for (const auto &[i, j] : missions.takePassed())
+                                    for (int32_t k = 0; k < 64; k++)
+                                        cells.insert({8 * i + k / 8, 8 * j + k % 8});
+                                std::map<std::string, std::vector<uint8_t>> values;
+                                for (const auto &[cx, cy] : cells)
+                                    if (const Missions::Cell *cell = missions.cell(cx, cy)) {
+                                        const std::string name = std::to_string(cx) + "_" + std::to_string(cy);
+                                        values["mission" + name] = cell->mission.save();
+                                        values["monster" + name] = cell->monster.save();
+                                    }
+                                if (!values.empty())
+                                    session->setValues(values);
+                            }
+                        }
+                        if (options.extendedQuests) {
+                            if (session && !questBookRead) {
+                                questBookRead = true;
+                                const auto saved = session->values({"av_quests"});
+                                if (const auto it = saved.find("av_quests"); it != saved.end())
+                                    questBook = quests::Book::load(it->second);
+                                if (!questBook.quests.empty())
+                                    trackedQuest = questBook.quests.back().id;
+                            }
+                            // The quest's creatures, made once the zone of its place is loaded, standing
+                            // on the first open block over the ground.
+                            const auto ground = [&](int32_t x, int32_t y) {
+                                for (int32_t z = 400; z > 0; z--) {
+                                    const uint8_t t = view.held().read(x, y, z - 1).type();
+                                    if (t != 0 && t != 2)
+                                        return z;
+                                }
+                                return 0;
+                            };
+                            for (quests::Quest &q : questBook.quests)
+                                if (q.state == quests::ACTIVE && !npcs.hasQuestCreatures(q.id) &&
+                                    view.held().zoneAt((int32_t)std::floor(q.site.x), (int32_t)std::floor(q.site.y))) {
+                                    q.site.z = ground((int32_t)std::floor(q.site.x), (int32_t)std::floor(q.site.y));
+                                    npcs.setQuestCreatures(q.id, quests::creatures(q, ground));
+                                }
+                            if (questBookChanged && session) { // the world's `av_quests` value
+                                session->setValues({{"av_quests", questBook.save()}});
+                                questBookChanged = false;
+                            }
+                        }
+                        npcs.stepInto((float)elapsed, view.held(),
+                            {{c, player->body(), player->facing(), player->actionBefore(), false, false, true}}, scene.timeOfDayMs, scene.day,
+                            [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
+                            aggregate, std::exchange(shotHitsOnNpcs, {}));
+                        const auto happened = aggregate.addedSince(npcEvents);
+                        projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
+                        for (const auto &event : happened.buffs)
+                            sendBuff(event);
+                        // Server §6.4, loot rolls §3: what the dead leave behind.
+                        for (const creatures::NpcFrame::Death &death : happened.deaths)
+                            dropLoot(lootVictim(death), worldItems, scene.day,
+                                     [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, lootRandom);
+                        for (const creatures::NpcFrame::Death &death : happened.deaths) // mod SDK v6
+                            mods.creatureDeath(death.fighter.id, death.fighter.type, death.fighter.level, death.credited);
+                        for (const creatures::NpcFrame::Death &death : happened.deaths) // quests: hunts and battles
+                            if (death.quest && questBook.find(death.quest)) {
+                                questBookChanged = true;
+                                if (questBook.died(death.quest, death.questRole)) {
+                                    const quests::Quest &q = *questBook.find(death.quest);
+                                    interface.chatAdd("Quest done! Return to " + quests::giverName(q) + ".\n", {1, 0.8f, 0.2f});
+                                    interface.questComplete(quests::objectiveText(q, q.giverAt));
+                                    if (const char *key = creatures::soundKey(30))
+                                        audio.play(key);
+                                }
+                            }
+                        // Missions §5: a target's death completes its mission; the cell's extra spawns go
+                        // and a hostile target pays the player who fought it.
+                        for (const creatures::NpcFrame::Death &death : happened.deaths)
+                            if (const auto done = missions.kill(death.zone, death.appearanceFlags, death.boss)) {
+                                mods.missionComplete(done->first, done->second);
+                                // Open points 1 §2: the QUEST COMPLETE banner with the mission's objective, sound 30.
+                                if (const worldgen::Location *L = cellLocation(view.terrainWorld(), done->first, done->second)) {
+                                    interface.questComplete(ui::objectiveText(missions.cell(done->first, done->second)->mission, *L, dictionary));
+                                    if (const char *key = creatures::soundKey(30))
+                                        audio.play(key);
+                                }
+                                for (int32_t zx = 8 * done->first; zx < 8 * done->first + 8; zx++)
+                                    for (int32_t zy = 8 * done->second; zy < 8 * done->second + 8; zy++)
+                                        if (const worldgen::Zone *zone = view.held().zone(zx, zy))
+                                            npcs.setExtraSpawns(zx, zy, zone->spawns.size(), {}, false);
+                                if (death.fighter.controller == 1 && death.credited == c.id)
+                                    for (const worldgen::ItemRecord &item :
+                                         missionRewards(missions.cell(done->first, done->second)->mission, c.characterClass, missionRandom)) {
+                                        if (item.type == 13) {
+                                            creatures::addExperience(c, 10 * item.level);
+                                            interface.floating.push_back(ui::experienceText(10 * item.level, player->body().blocks()));
+                                        } else {
+                                            receive(creatures::toRecord(item));
+                                        }
+                                    }
+                            }
+                        // Travel §5.5: a pet standing on wet lake-bed ground (type 3) refills its
+                        // owner's riding energy by 0.05 a second.
+                        if (const creatures::Npc *pet = npcs.petOf(c.id); pet && !(pet->body.contact & creatures::IN_WATER)) {
+                            const glm::dvec3 feet = pet->body.blocks() - glm::dvec3(0, 0, pet->body.size.z / 2 + 0.2);
+                            if (view.held().read((int32_t)std::floor(feet.x), (int32_t)std::floor(feet.y), (int32_t)std::floor(feet.z)).type() ==
+                                worldgen::LAKE_BED)
+                                player->body().ridingEnergy = std::min(1.f, player->body().ridingEnergy + 0.05f * seconds);
+                        }
+                        for (const creatures::HitEmission &emission : happened.playerHits) {
+                            if (!emission.applyLocally)
+                                continue;
+                            creatures::HitRecord hit = emission.record;
+                            if (hit.kind == 6)
+                                continue; // pets §7.3: a bite's signal, not damage
+                            mods.playerHit(hit.attacker, hit.kind, hit.amount);
+                            player->takeHit(hit);
+                        }
+                        for (const auto &[hit, at] : happened.seen) {
+                            // Materials §1.5: a critical hit by a weapon with spirits flashes at the hit
+                            // for 400 ms (radius 20).
+                            if (hit.critical) {
+                                const creatures::Combatant *by = hit.attacker == c.id ? &c : nullptr;
+                                for (const creatures::Npc &n : npcs.all())
+                                    if (n.fighter.id == hit.attacker)
+                                        by = &n.fighter;
+                                if (by)
+                                    for (const creatures::Item *weapon : {&by->mainHand(), &by->offHand()})
+                                        if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
+                                            flashes.append({hit.position, a, 20, 0, 400});
+                            }
+                            if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.target == c.id, at))
+                                interface.floating.push_back(*text);
+                            mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
+                        }
+                        for (const creatures::SoundEvent &s : happened.sounds)
+                            playAt(s.sound, s.position, s.volume, s.pitch);
+                        bursts.insert(bursts.end(), happened.bursts.begin(), happened.bursts.end());
+                        const auto blockBursts = [&](const std::vector<BlockEdit> &removed) { // particles §5.2
+                            for (const BlockEdit &e : removed) {
+                                const worldgen::Block b = view.held().read(e.x, e.y, e.z);
+                                bursts.push_back(creatures::blockBurst({e.x, e.y, e.z}, {b.r, b.g, b.b}));
+                            }
+                        };
+                        // Pets §7.4: a creature tamed by this player turns the food in the Pet slot into
+                        // its pet item; §12: the pet item follows the pet's level and experience.
+                        for (const auto &t : happened.tamed)
+                            if (t.owner == c.id && creatures::itemType(inventory.equipment[12]) == 20) {
+                                creatures::ItemRecord pet{};
+                                pet[0x00] = 19, pet[0x01] = (uint8_t)t.type;
+                                const uint32_t experience = (uint32_t)t.experience;
+                                std::memcpy(pet.data() + 0x04, &experience, 4);
+                                creatures::setItemLevel(pet, (int16_t)t.level);
+                                inventory.equipment[12] = pet;
+                                c.action = 0;
+                                wearInventory();
+                            }
+                        for (const auto &p : happened.petItems)
+                            if (p.owner == c.id && creatures::itemType(inventory.equipment[12]) == 19) {
+                                const uint32_t experience = (uint32_t)p.experience;
+                                std::memcpy(inventory.equipment[12].data() + 0x04, &experience, 4);
+                                creatures::setItemLevel(inventory.equipment[12], (int16_t)p.level);
+                                wearInventory();
+                            }
+                        // Block edits §8: a bomb that went off takes the natural ground within 8 blocks.
+                        for (const auto &blast : happened.explosions) {
+                            const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
+                            const auto removed = naturalSphere(blast.centre, 8, scene.day, read);
+                            if (removed.empty())
+                                continue;
+                            blockBursts(removed);
+                            view.applyEdits(removed, false);
+                            for (const BlockEdit &e : removed)
+                                blockEdits.add(e);
+                            playAt(1, blast.centre, 1, 0.5f + 0.4f * (float)(std::rand() & 0x7fff) / 32767.f);
+                        }
+                        // Block edits §9: big creatures' blows take the natural ground away.
+                        for (const auto &impact : happened.craters) {
+                            const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
+                            const auto removed = naturalSphere(impact.centre, impact.radius, scene.day, read);
+                            if (removed.empty())
+                                continue;
+                            blockBursts(removed);
+                            view.applyEdits(removed, false);
+                            for (const BlockEdit &e : removed)
+                                blockEdits.add(e);
+                            playAt(2, impact.centre, 1, 0.5f + 0.4f * (float)(std::rand() & 0x7fff) / 32767.f);
+                        }
+                        if (happened.experience > 0) {
+                            creatures::addExperience(c, happened.experience);
+                            interface.floating.push_back(ui::experienceText(happened.experience, player->body().blocks()));
+                            interface.chatAdd("You gain " + std::to_string(happened.experience) + " XP.\n", {150, 128, 255});
+                        }
+                        for (int32_t l = (int32_t)before + 1; l <= c.level; l++)
+                            mods.levelUp(l);
+                        if (c.level > before) {
+                            audio.play("levelup2.wav");
+                            interface.floating.push_back(ui::levelUpText(player->body().blocks()));
+                        }
                     }
-                }
-            }
+                    // Flight follows every creature countdown. Player launches were inserted
+                    // before NPC launches; both participate in this frame in that order.
+                    {
+                        creatures::Combatant &c = player->combat();
+                        // §4-§6: the flight, on whole milliseconds. Offline every shot's hits count;
+                        // online only our own (the shooter's client decides, §6.2).
+                        const int32_t dt = elapsed;
+                        if (!projectiles.list.empty()) {
+                            std::vector<creatures::Combatant> fighters;
+                            std::vector<creatures::Body> bodies;
+                            const auto &others = receivedActors;
+                            fighters.reserve(others.size());
+                            bodies.reserve(others.size());
+                            for (const auto &[id, other] : others) {
+                                creatures::Combatant f = other.fighter();
+                                f.id = id;
+                                f.health = other.health();
+                                f.controller = other.controller();
+                                if (const auto resident = otherFighters.find(id); resident != otherFighters.end())
+                                    f.buffs = resident->second.fighter.buffs;
+                                creatures::Body b;
+                                for (int axis = 0; axis < 3; axis++)
+                                    b.position[axis] = other.position(axis);
+                                b.size = other.appearance().box;
+                                b.velocity = other.velocity();
+                                b.intent = other.intent();
+                                b.push = other.response();
+                                fighters.push_back(std::move(f));
+                                bodies.push_back(b);
+                            }
+                            std::vector<creatures::ShotTarget> targets{{&c, &player->body()}};
+                            for (size_t i = 0; i < fighters.size(); i++)
+                                targets.push_back({&fighters[i], &bodies[i]});
+                            if (!client.connected())
+                                for (creatures::Npc &n : npcs.npcs())
+                                    targets.push_back({&n.fighter, &n.body});
+                            const auto source = [&](uint64_t id) -> creatures::Combatant * {
+                                if (id == c.id)
+                                    return &c;
+                                if (!client.connected())
+                                    for (creatures::Npc &n : npcs.npcs())
+                                        if (n.fighter.id == id)
+                                            return &n.fighter;
+                                return nullptr;
+                            };
+                            creatures::ShotEffects flight;
+                            projectiles.step(dt, targets, source, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
+                                             [] { return std::rand() & 0x7fff; }, flight, {client.connected(), &c});
+                            for (const auto &event : flight.buffs)
+                                sendBuff(event);
+                            for (const creatures::HitEmission &emission : flight.hits) {
+                                const creatures::HitRecord &h = emission.record;
+                                glm::dvec3 at = player->body().blocks();
+                                for (const creatures::ShotTarget &t : targets)
+                                    if (t.fighter->id == h.target)
+                                        at = t.body->blocks();
+                                if (client.connected()) {
+                                    if (h.attacker != c.id)
+                                        continue;
+                                    client.sendHit(net::Hit::from(h));
+                                } else if (emission.applyLocally && h.target == c.id) {
+                                    player->takeHit(h);
+                                } else if (emission.applyLocally) {
+                                    shotHitsOnNpcs.push_back(h);
+                                }
+                                if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.target == c.id, at))
+                                    interface.floating.push_back(*text);
+                                mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
+                            }
+                            for (const creatures::SoundEvent &s : flight.sounds)
+                                playAt(s.sound, s.position, s.volume, s.pitch);
+                            bursts.insert(bursts.end(), flight.bursts.begin(), flight.bursts.end());
+                            for (const auto &s : flight.struck) { // particles §5.7
+                                const worldgen::Block b = view.held().read(s.cell.x, s.cell.y, s.cell.z);
+                                bursts.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
+                            }
+                        }
+                    }
+                    firstWorldCall = false;
+                },
+                [&](creatures::NpcFrame &) {
+                    simulationInputFrames++;
+                    player->readInput(window, frameElapsedMs, !menus && !interface.typing() && player->combat().health > 0,
+                                      interface.mapOpen ? nullptr : &pad);
+                    updatePlayerInterface();
+                    publishPlayerEffects();
+                    player->finishFrame(frameElapsedMs);
+                });
         } else {
-            view.move({held(GLFW_KEY_D) - held(GLFW_KEY_A), held(GLFW_KEY_W) - held(GLFW_KEY_S), held(GLFW_KEY_E) - held(GLFW_KEY_Q)},
-                      seconds, held(GLFW_KEY_LEFT_SHIFT) > 0);
+            // A missing controlled actor does not suppress the world call.
+            // Preview bootstrap and native creature selection remain separate.
+            playerActionFrame.reset();
+            simulation::clientFrame(frameElapsedMs, true, playerActionFrame,
+                [&](int32_t elapsed, creatures::NpcFrame &aggregate) {
+                    simulationWorldCalls++;
+                    simulationMaxPiece = std::max(simulationMaxPiece, elapsed);
+                    bool accelerated = false;
+                    for (auto &[id, remote] : otherFighters) {
+                        accelerated |= acceleratesClock(remote.fighter);
+                        if (remote.fighter.health > 0)
+                            creatures::tickBuffs(remote.fighter, elapsed, false);
+                    }
+                    advanceWorldClock(elapsed, accelerated);
+                    const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
+                    worldItems.step(elapsed, !client.connected(), block, [] { return std::rand() & 0x7fff; }, aggregate.sounds);
+                    if (!client.connected())
+                        npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, block, aggregate);
+                },
+                [&](creatures::NpcFrame &aggregate) {
+                    simulationInputFrames++;
+                    view.move({held(GLFW_KEY_D) - held(GLFW_KEY_A), held(GLFW_KEY_W) - held(GLFW_KEY_S), held(GLFW_KEY_E) - held(GLFW_KEY_Q)},
+                              seconds, held(GLFW_KEY_LEFT_SHIFT) > 0);
+                    for (const auto &sound : aggregate.sounds)
+                        playAt(sound.sound, sound.position, sound.volume, sound.pitch);
+                    bursts.insert(bursts.end(), aggregate.bursts.begin(), aggregate.bursts.end());
+                });
         }
         // A scripted flight east (--travel), then waiting for the zones it reached.
         if (travelled < options.travel) {
@@ -2155,7 +2245,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 const terrain_lights::FixedPosition at{projectile.position[0], projectile.position[1], projectile.position[2]};
                 scene.lights.push_back({view.toRenderFixed(at), 16, glm::vec3(.5f, .5f, .2f) * projectile.radius, at});
             }
-        flashes.advance(lightElapsedMs);
+        flashes.advance(frameElapsedMs);
         for (const auto &flash : flashes.entries())
             scene.lights.push_back({view.toRenderFixed(flash.position), flash.radius, flash.fadedColour(), flash.position});
         const auto creatureLights = [&](const creatures::Combatant &creature,
@@ -2244,7 +2334,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         interface.questMarks.push_back({n.body.blocks() + glm::dvec3(0, 0, n.body.size.z * 0.5 + 0.8), *icon});
                 }
             if (client.connected())
-                for (const auto &[id, other] : client.others()) {
+                for (const auto &[id, other] : receivedActors) {
                     const int32_t zx = (int32_t)((id >> 8) & 0xffff), zy = (int32_t)((id >> 24) & 0xffff);
                     const size_t index = (size_t)(id & 0xff);
                     const worldgen::Zone *zone = view.held().zone(zx, zy);
@@ -2399,35 +2489,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                          shine});
                 }
         }
-        if (session) {
-            session->clock.timeOfDayMs = (uint32_t)scene.timeOfDayMs; // (the arrow keys may have moved it)
-            session->advance(seconds);
-            scene.timeOfDayMs = session->clock.timeOfDayMs;
-            scene.day = (int)session->clock.day;
-            if (now - lastSave > 10) {
-                session->saveClock();
-                lastSave = now;
-            }
-        }
         if (client.connected()) {
-            uint32_t day, ms;
-            if (client.clock(day, ms)) {
-                scene.timeOfDayMs = ms;
-                scene.day = (int)day;
-            }
-            const auto otherRecords = client.others();
-            std::erase_if(otherFighters, [&](const auto &entry) { return !otherRecords.contains(entry.first); });
+            const auto &otherRecords = receivedActors;
             for (const auto &[id, other] : otherRecords) {
                 const glm::vec3 p = view.toRender(glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
                 net::RemoteFighter &f = otherFighters[id];
-                creatures::Combatant now = other.fighter();
-                now.id = id;
-                f.leftoverMs += seconds * 1000.f;
-                const int32_t elapsed = (int32_t)f.leftoverMs;
-                f.leftoverMs -= (float)elapsed;
-                f.refresh(std::move(now), elapsed);
-                if (f.fighter.health > 0)
-                    creatures::tickBuffs(f.fighter, elapsed, false);
+
                 creatures::Motion motion;
                 motion.velocity = other.velocity();
                 motion.yawDegrees = other.yaw();
@@ -2457,7 +2524,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     // Pets §7.4: a bite (kind-6 hit) from a creature the server has made this
                     // player's pet turns the food in the Pet slot into its pet item.
                     if (h.target() == c.id && h.kind() == 6 && creatures::itemType(inventory.equipment[12]) == 20)
-                        for (const auto &[id, other] : client.others()) {
+                        for (const auto &[id, other] : receivedActors) {
                             uint64_t owner = 0;
                             std::memcpy(&owner, &other.bytes[0x188], 8);
                             if (id != h.attacker() || other.controller() != 5 || owner != c.id)
@@ -2503,7 +2570,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
             const auto receivedBuffs = client.takeBuffs();
             if (!receivedBuffs.empty()) {
-                const auto currentRecords = client.others();
+                const auto &currentRecords = receivedActors;
                 for (const creatures::BuffEvent &event : receivedBuffs) {
                     if (player && event.target == player->combat().id) {
                         creatures::applyBuff(player->combat(), event.record);
@@ -2524,7 +2591,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             for (const net::Client::Sound &s : client.takeSounds())
                 playAt(s.id, glm::dvec3(s.position), s.volume, s.pitch);
             // Screens §9.1: "name: " in cyan, the message in white.
-            const auto senders = client.others();
+            const auto &senders = receivedActors;
             if (auto book = client.takeQuestBook()) { // quests: the server keeps this player's book
                 quests::Book received = quests::Book::load(*book);
                 for (uint32_t id : received.handedIn) // (mod SDK v8: a quest newly handed in)
@@ -2649,9 +2716,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             };
             std::vector<Marker> markers;
             markers.push_back({&player->appearance(), at, player->facing()});
-            for (const auto &[id, other] : client.others())
+            for (const auto &[id, other] : receivedActors)
                 otherLooks[id] = other.appearance();
-            for (const auto &[id, other] : client.others()) {
+            for (const auto &[id, other] : receivedActors) {
                 const glm::dvec3 p = glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0;
                 if (std::abs(p.x - at.x) <= 256 && std::abs(p.y - at.y) <= 256)
                     markers.push_back({&otherLooks[id], p, other.yaw()});
@@ -2989,7 +3056,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     for (const creatures::Npc &n : npcs.all())
                         if (n.fighter.health > 0)
                             addBar(n.fighter, n.fighter.id, n.body.blocks(), n.body.size, n.looks.flags, "");
-                for (const auto &[id, other] : client.others()) {
+                for (const auto &[id, other] : receivedActors) {
                     const creatures::Appearance looks = other.appearance();
                     addBar(other.fighter(), id, glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
                            looks.box, looks.flags, other.name());
@@ -3015,7 +3082,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (!client.connected())
                     for (const creatures::Npc &n : npcs.all())
                         creaturePass(n.fighter.id, n.fighter, n.body.blocks(), n.body.size);
-                for (const auto &[id, other] : client.others())
+                for (const auto &[id, other] : receivedActors)
                     creaturePass(id, other.fighter(), glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
                                  other.appearance().box);
                 const int32_t pzx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
@@ -3146,7 +3213,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     for (const creatures::Npc &n : npcs.all())
                         if (n.fighter.id == creatureTarget && !client.connected())
                             controller = n.fighter.controller;
-                    for (const auto &[id, other] : client.others())
+                    for (const auto &[id, other] : receivedActors)
                         if (id == creatureTarget)
                             controller = other.controller();
                     hud.prompt = controller == 3 ? u"[R] Talk" : u"";
@@ -3263,7 +3330,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     place = cellLocation(view.terrainWorld(), cellOf(target.x), cellOf(target.y));
                     if (characterClass != 132 && target != glm::ivec2(-1, -1))
                         view.markDiscovered(target.x, target.y);
-                    for (const auto &[id, other] : client.others())
+                    for (const auto &[id, other] : receivedActors)
                         if (id == creatureTarget)
                             controller = other.controller(), characterClass = other.fighter().characterClass;
                     // Quests: R on a tied-up prisoner frees it once no guard is near (online the
@@ -3620,7 +3687,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     for (const creatures::Npc &n : npcs.all())
                         if (n.fighter.id == id)
                             return std::pair{n.body.blocks(), n.body.size.z};
-                for (const auto &[other, record] : client.others())
+                for (const auto &[other, record] : receivedActors)
                     if (other == id)
                         return std::pair{glm::dvec3(record.position(0), record.position(1), record.position(2)) / 65536.0,
                                          record.appearance().box.z};
@@ -3774,6 +3841,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (framesUntilCapture > 0 && drawn && !settling)
             framesUntilCapture--;
     }
+    if (!options.capture.empty())
+        std::printf("Simulation: %llu world calls, %llu input frames, max piece %d ms\n",
+                    (unsigned long long)simulationWorldCalls, (unsigned long long)simulationInputFrames, simulationMaxPiece);
     if (player && playing()) {
         CharacterRecord &saved = *playing();
         const creatures::Combatant &c = player->combat();

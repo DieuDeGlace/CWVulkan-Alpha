@@ -65,18 +65,20 @@ bool usableNow(const Combatant &c, int32_t id) {
 }
 
 bool freeToAct(const Combatant &c) {
-    if (c.action == 48 || c.charge > 0)
+    if (c.action == 48)
         return false;
-    if (c.actionMs >= (float)duration(c, c.action))
-        return true;
-    switch (c.action) {
-    case 0: case 1: case 2: case 3: case 4: case 6: case 7: case 9: case 10: case 12: case 13: case 14: case 15:
-    case 16: case 18: case 19: case 22: case 26: case 28: case 29: case 31: case 33: case 34: case 37: case 45:
-    case 46: case 57: case 58: case 65: case 66: case 67: case 86: case 98: case 101:
-        return true;
-    default:
-        return false;
+    bool ready = c.actionMs >= duration(c, c.action);
+    if (!ready) {
+        switch (c.action) {
+        case 0: case 1: case 2: case 3: case 4: case 6: case 7: case 9: case 10: case 12: case 13: case 14: case 15:
+        case 16: case 18: case 19: case 22: case 26: case 28: case 29: case 31: case 33: case 34: case 37: case 45:
+        case 46: case 57: case 58: case 65: case 66: case 67: case 86: case 98: case 101:
+            ready = true;
+            break;
+        default: break;
+        }
     }
+    return ready && c.charge <= 0;
 }
 
 namespace {
@@ -160,8 +162,6 @@ void buff(Combatant &c, int32_t id, AbilityEffects &out) {
     case 100: b = {12, 1 + v, 10000}; break;
     case 101:
         b = {1, 0.75f - 0.3f * v, 10000};
-        if (c.hitStun > 0)
-            c.hitStun = 0;
         break;
     case 102: b = {2, 0, 10000}; break;
     case 103: {
@@ -173,6 +173,8 @@ void buff(Combatant &c, int32_t id, AbilityEffects &out) {
     default: return;
     }
     applyBuff(c, b);
+    if (id == 101 && c.hitStun > 0)
+        c.hitStun = 0;
     out.buffs.push_back({c.id, c.id, b});
     c.cooldowns[id] = (float)cooldownLength(c, id);
 }
@@ -197,7 +199,7 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
             c.action = 28, c.actionMs = 0;
         break;
     case 34:
-        if (c.actionMs >= (float)duration(c, c.action))
+        if (c.actionMs >= duration(c, c.action))
             c.action = 34, c.actionMs = 0; // aimed at the player itself (field 36)
         break;
     case 48: {
@@ -254,7 +256,7 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
         break;
     default:
         if (c.mana >= manaCost(c, id))
-            start(c, body, id);
+            start(c, body, uint8_t(id));
         break;
     }
 }
@@ -277,7 +279,7 @@ void release(Combatant &c, int32_t id) {
     case 63: become(11, phases(c, 11).windUp); break;
     case 64: become(16, phases(c, 16).windUp); break;
     case 10:
-        if (c.actionMs > (float)duration(c, 10))
+        if (c.actionMs > duration(c, 10))
             become(3, duration(c, 3));
         break;
     default: break;
@@ -287,16 +289,23 @@ void release(Combatant &c, int32_t id) {
 } // namespace
 
 AbilityEffects useAbilities(Combatant &c, Body &body, const std::array<bool, 6> &held, glm::vec3 aim) {
-    AbilityEffects out;
     const std::array<int32_t, 6> slots = abilitySlots(c);
+    return useBoundAbilities(c, body, std::span(slots).first(slotCount(c)), held, aim);
+}
+
+AbilityEffects useBoundAbilities(Combatant &c, Body &body, std::span<const int32_t> slots,
+                                const std::array<bool, 6> &held, glm::vec3 aim) {
+    AbilityEffects out;
+    const size_t count = std::min(slots.size(), held.size());
     bool used = false;
-    for (int32_t i = 1; i < slotCount(c); i++) {
+    for (size_t i = 1; i < count; i++) {
         const int32_t id = slots[i];
         if (id == 0)
             continue;
         if (held[i]) {
             used = true;
-            if (i == 1 && !freeToAct(c))
+            const bool ready = freeToAct(c);
+            if (i == 1 && !ready)
                 continue;
             if (!usableNow(c, id))
                 continue;
@@ -307,6 +316,10 @@ AbilityEffects useAbilities(Combatant &c, Body &body, const std::array<bool, 6> 
     }
     if (!used && c.action != 48 && held[0])
         startPrimaryAttack(c); // the chaining rule; no mana, cooldown or free-to-act test
+    if (count > 1 && !held[1] && slots[1] == 28 && c.action == 28)
+        c.action = 0;
+    if (count > 0 && !held[0] && slots[0] == 29 && c.action == 29)
+        c.action = 0;
     if (used)
         body.mode &= ~1u;
     return out;

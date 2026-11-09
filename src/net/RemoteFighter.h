@@ -7,7 +7,6 @@ namespace net {
 
 struct RemoteFighter {
     creatures::Combatant fighter;
-    float leftoverMs = 0; // Existing engine fractional frame-duration adapter.
     void refresh(creatures::Combatant snapshot, int32_t elapsedMs);
 
   private:

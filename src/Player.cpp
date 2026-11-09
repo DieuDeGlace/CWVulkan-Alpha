@@ -35,15 +35,9 @@ void Player::revive() {
     fighter.health = creatures::maxHealth(fighter);
 }
 
-void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad *pad, bool replica) {
+void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, const Gamepad *pad) {
     using namespace creatures;
-    replicaWorld = replica;
-    leftoverMs += dtMs;
-    const int32_t dt = (int32_t)leftoverMs;
-    leftoverMs -= (float)dt;
-    dtMs = (float)dt;
-    // Native preliminary health work precedes input and the common actor pass.
-    regenerate(fighter, dt);
+    const float dtMs = (float)milliseconds;
     const bool usePad = controls && pad && pad->connected;
     auto padHeld = [&](Gamepad::Button b) { return usePad && pad->held(b); };
     // A key, or the pad button that stands for it (Gamepad.h).
@@ -105,7 +99,7 @@ void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad
     float aside = (float)held(GLFW_KEY_D) - (float)held(GLFW_KEY_A);
     if (usePad) // the left stick, as far as it is pushed
         ahead += pad->move.y, aside += pad->move.x;
-    const glm::vec3 wish = ahead * f + aside * r;
+    wish = ahead * f + aside * r;
     const bool climbing = (state.mode & CLIMB) && (state.contact & ON_WALL);
     if (climbing) {
         // Rule 1: up and down the wall, and along it.
@@ -197,11 +191,15 @@ void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad
     const creatures::AbilityEffects effects = useAbilities(fighter, state, slotsHeld, fighter.aim);
     abilityEffects.buffs.insert(abilityEffects.buffs.end(), effects.buffs.begin(), effects.buffs.end());
     abilityEffects.sounds.insert(abilityEffects.sounds.end(), effects.sounds.begin(), effects.sounds.end());
-    if (!admitCreatureUpdate(fighter)) {
-        camera.update(state, dtMs, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); });
-        view.placeCamera(camera.position(), camera.direction());
+    fighter.mode = state.mode;
+}
+
+void Player::advance(int32_t dt, bool replica) {
+    using namespace creatures;
+    replicaWorld = replica;
+    const float dtMs = (float)dt;
+    if (!admitCreatureUpdate(fighter))
         return;
-    }
     beginActionUpdate(fighter, dt, &abilityEffects.buffs);
     state.dodgeMs = (int32_t)fighter.dodgeMs;
     actionMsBefore = fighter.actionMs;
@@ -271,8 +269,11 @@ void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad
         yaw = (float)(std::atan2(-wish.x, wish.y) * 180.0 / 3.141592653589793);
     }
 
-    // The camera follows; the view looks through it.
-    camera.update(state, dtMs, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); });
+}
+
+void Player::finishFrame(int32_t dtMs) {
+    // Camera following is an engine frame adapter, separate from actor stepping.
+    camera.update(state, (float)dtMs, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); });
     view.placeCamera(camera.position(), camera.direction());
 }
 

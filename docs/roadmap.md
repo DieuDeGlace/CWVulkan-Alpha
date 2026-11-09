@@ -55,13 +55,18 @@ Differences from the Steam engine that shape the plan:
   Scheduler, actual-world and real loopback regressions cover this connection.
   Complete contact/protected/fatal/loot behavior and native combat acceptance
   remain open.
-- [ ] Whole-world client calls in at-most-20ms pieces with one frame aggregate
-  and the specified later primary input boundary. Current physics splitting
-  alone does not close creature, projectile, buff or input scheduling.
+- [x] Bounded client world-call cadence: actors, buffs, world items/statics,
+  projectiles and clock use the same integer pieces, with retained output
+  collectors and one later control/action input phase. Exact multiples finish
+  with 20; admitted zero/negative durations retain a final call. Actual-client
+  capture statistics and subsystem regressions cover the production connection.
+- [ ] Complete native frame closure: identity/transition and time-scaling inputs,
+  creature-map ordering, native aggregate rewrites/revisits, preview bootstrap,
+  control numerics and preset production, interpolation and wider acceptance.
 - [x] Preliminary controlled health phase: the living role-zero/action-84 gate
   precedes input/common processing, retains integer elapsed conversion, ordered
   binary32 arithmetic and fresh comparison/store maximum queries. Unconditional
-  post-combat regeneration has been removed. Full world scan, clock and frame
+  post-combat regeneration has been removed. Full world scan and frame
   scheduling acceptance remain open.
 
 - [x] Bounded engine save/reload acceptance: preserve loaded recipes without

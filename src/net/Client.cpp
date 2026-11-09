@@ -64,6 +64,8 @@ void Client::disconnect() {
     creatures.clear();
     buffEvents.clear();
     outgoingEvents.clear();
+    haveClock = false;
+    pendingClock.reset();
     sentOnce = false;
 }
 
@@ -147,6 +149,11 @@ bool Client::clock(uint32_t &day, uint32_t &timeOfDayMs) const {
     day = clockDay;
     timeOfDayMs = clockMs;
     return haveClock;
+}
+
+std::optional<std::pair<uint32_t, uint32_t>> Client::takeClock() {
+    std::lock_guard guard(lock);
+    return std::exchange(pendingClock, std::nullopt);
 }
 
 std::optional<std::vector<uint8_t>> Client::takeQuestBook() {
@@ -342,11 +349,14 @@ void Client::receiveLoop() {
         case CLOCK: {
             uint32_t day = 0, ms = 0;
             ok = socket.readU32(day) && socket.readU32(ms);
+            if (!ok)
+                break;
             auto frame = lockFrame();
             std::lock_guard guard(lock);
             clockDay = day;
             clockMs = ms;
             haveClock = true;
+            pendingClock = {day, ms};
             break;
         }
         case WORLD_UPDATE: {

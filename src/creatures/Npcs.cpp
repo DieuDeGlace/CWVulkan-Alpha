@@ -1,5 +1,7 @@
 #include "creatures/Strike.h"
 #include "creatures/Npcs.h"
+#include <cassert>
+#include <bit>
 #include "BlockEdits.h"
 #include "Loot.h"
 #include "worldgen/Random.h"
@@ -1475,6 +1477,13 @@ void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, co
 NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                     int32_t day, const BlockType &block, const std::vector<HitRecord> &incoming, NpcFrame frame,
                     const std::vector<BuffEvent> &buffInput) {
+    stepInto(dtMs, map, std::move(players), timeOfDayMs, day, block, frame, incoming, buffInput);
+    return frame;
+}
+
+void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
+                    int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming,
+                    const std::vector<BuffEvent> &buffInput) {
     leftoverMs += dtMs;
     const int32_t milliseconds = (int32_t)leftoverMs;
     leftoverMs -= (float)milliseconds;
@@ -1770,7 +1779,40 @@ NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         worldStep(n.body, (int32_t)dtMs, block, objects);
         it = n.deadMs >= 1000 ? list.erase(it) : std::next(it);
     }
-    return frame;
+}
+
+NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {
+    const auto take = []<class T>(const std::vector<T> &records, size_t &position) {
+        assert(position <= records.size());
+        const auto added = std::span<const T>(records).subspan(position);
+        position = records.size();
+        return added;
+    };
+    Added added{take(emittedHits, cursor.emittedHits), take(playerHits, cursor.playerHits),
+                take(sounds, cursor.sounds), take(buffs, cursor.buffs), take(kills, cursor.kills),
+                take(shots, cursor.shots), take(bursts, cursor.bursts), take(deaths, cursor.deaths),
+                take(craters, cursor.craters), take(explosions, cursor.explosions), take(tamed, cursor.tamed),
+                take(petItems, cursor.petItems), std::bit_cast<int32_t>(uint32_t(experience) - uint32_t(cursor.experience)),
+                take(seen, cursor.seen)};
+    cursor.experience = experience;
+    return added;
+}
+
+void NpcFrame::reset() {
+    emittedHits.clear();
+    playerHits.clear();
+    sounds.clear();
+    buffs.clear();
+    kills.clear();
+    shots.clear();
+    bursts.clear();
+    deaths.clear();
+    craters.clear();
+    explosions.clear();
+    tamed.clear();
+    petItems.clear();
+    seen.clear();
+    experience = 0;
 }
 
 } // namespace creatures

@@ -83,6 +83,8 @@ static void checkCombatTransport() {
     const auto expectedHit = outboundHit.serialize();
     std::atomic<bool> finish{false}, received{false}, receivedHit{false};
     std::atomic<bool> frameHeld{false}, worldSent{false}, coherentHit{false}, packetOrder{false};
+    std::atomic<bool> repeatClock{false};
+    constexpr uint32_t clockDay = 0xfedcba98u, clockTime = 0x80123456u;
     std::atomic<bool> followupRequested{false}, finalDeltaRequested{false};
     std::thread peer([&] {
         Socket socket = listener.accept();
@@ -108,6 +110,9 @@ static void checkCombatTransport() {
             update.sections[11].emplace_back(bytes.begin(), bytes.end());
         }
         ByteWriter response;
+        response.u32(CLOCK);
+        response.u32(clockDay);
+        response.u32(clockTime);
         CreatureRecord remote;
         remote.setPosition(0, 123456789);
         remote.setPosition(1, -987654321);
@@ -160,7 +165,16 @@ static void checkCombatTransport() {
         finalDelta.bytes(compressed(encodeDelta(19, remote, 1)));
         finalDelta.u32(END_OF_BATCH);
         if (!socket.send(finalDelta.data())) return;
-        while (!finish) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        while (!finish) {
+            if (repeatClock.exchange(false)) {
+                ByteWriter clock;
+                clock.u32(CLOCK);
+                clock.u32(clockDay);
+                clock.u32(clockTime);
+                if (!socket.send(clock.data())) return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     });
     Client client;
     const bool connected = client.connect("127.0.0.1", listener.boundPort());
@@ -172,7 +186,7 @@ static void checkCombatTransport() {
         client.sendHit(Hit::from(outboundHit));
         check(waitFor([&] { return worldSent.load(); }), "peer supplies input while the frame gate is held");
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
-        check(client.takeHits().empty() && client.takeBuffs().empty() && client.others().empty(),
+        check(client.takeHits().empty() && client.takeBuffs().empty() && client.others().empty() && !client.takeClock(),
               "incoming queue mutation and creature insertion wait until the current frame completes");
         creatures::Combatant actor;
         actor.health = 137.5f;
@@ -192,6 +206,11 @@ static void checkCombatTransport() {
         check(events.size() == 2 && events[0].serialize() == first.serialize() && events[1].serialize() == second.serialize(),
               "incoming buff order, nonlocal target, embedded sources and opaque bytes survive transport");
         check(client.takeBuffs().empty(), "received buff queue drains exactly once");
+        const auto clock = client.takeClock();
+        uint32_t observedDay = 0, observedTime = 0;
+        check(clock && clock->first == clockDay && clock->second == clockTime && !client.takeClock() &&
+              client.clock(observedDay, observedTime) && observedDay == clockDay && observedTime == clockTime,
+              "fresh clock publication retains both raw words, drains once and keeps historical lookup separate");
         check(hits.size() == 1 && hits[0].record().serialize() == inboundHit.serialize() && client.takeHits().empty(),
               "packet-7 and compressed-world hits retain lock timer, raw position, flags and opaque bytes");
         const auto peers = client.others();
@@ -236,6 +255,10 @@ static void checkCombatTransport() {
                       record.position(0) == 123456789 && opaquePreserved,
                   "later partial delta preserves prior semantic and opaque fields without reapplying defaults");
         }
+        repeatClock = true;
+        std::optional<std::pair<uint32_t, uint32_t>> repeated;
+        check(waitFor([&] { repeated = client.takeClock(); return repeated.has_value(); }) && repeated == clock,
+              "an identical later clock packet is a fresh publication rather than a cached-value comparison");
     }
     finish = true;
     client.disconnect();

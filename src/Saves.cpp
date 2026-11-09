@@ -5,6 +5,7 @@
 #include "SqlitePath.h"
 #include "ZlibStream.h"
 #include <sqlite3.h>
+#include <bit>
 
 namespace {
 
@@ -305,6 +306,17 @@ std::vector<WorldEntry> readWorlds(const SaveDb &db) {
 }
 
 // §5.1
+void WorldClock::advanceWorld(int32_t elapsedMs, bool accelerated, bool enabled) {
+    timeOfDayMs += uint32_t(elapsedMs) * (accelerated ? 100u : 10u);
+    if (!enabled)
+        timeOfDayMs = 32400000;
+    // The original comparison is signed and strict, retaining day-end equality.
+    while (std::bit_cast<int32_t>(timeOfDayMs) > 86400000) {
+        day++;
+        timeOfDayMs -= 86400000u;
+    }
+}
+
 std::optional<WorldClock> WorldClock::parse(const std::vector<uint8_t> &value) {
     if (value.size() != 8)
         return std::nullopt;

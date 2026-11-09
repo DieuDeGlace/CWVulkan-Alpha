@@ -86,6 +86,26 @@ excess. Observable stat queries establish addition-before-comparison ordering.
 An exact binary32 anchor retains elapsed/seconds/fraction grouping; a negative
 duration is not silently skipped or lower-clamped. A common-phase integration
 case sees this health addition before a periodic hit cancels action 84.
+SimulationFrameTests exercises exact signed piece sequences, shared aggregate
+identity and later input, including skipped supplied world admission. A real
+41-ms subsystem fixture advances common actors, NPC periodic damage, items,
+statics, projectiles and clock through 20/20/1, preserves one hit notification,
+and starts the requested primary only afterward. It checks post-world instant
+buff duration, retained output lists/new-output views, signed clock/wrap/save
+boundaries, configured full-width cooldown keys and action-only release cleanup.
+NetTests also checks clock publication waits for the frame gate, drains once,
+and accepts an identical later packet as fresh input.
+
+With an isolated 41-ms minimum frame setting, the actual engine client reported
+138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
+character retained exactly 50 health on exit and the capture was viewed. A fresh
+connected-client run reported 96 calls across 17 input frames, also at most
+20 ms, then both client and loopback server exited successfully. These are engine
+runtime checks, not original-client timing or gameplay acceptance.
+The subsequent actual-client save/reload check retained seed 123 despite
+conflicting reload arguments, character payload, nine map tiles, preview data
+and 170 edited blocks. Both captures were viewed; each reported a maximum world
+piece of 20 ms. Bright-ground/output-state acceptance remains unresolved.
 A fresh actual-client run used a new isolated synthetic character injured to
 50 health. The viewed idle-world capture showed 50 health, and the character
 saved on exit retained exactly binary32 50 (`0x42480000`) with its world visit.

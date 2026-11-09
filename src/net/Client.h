@@ -56,6 +56,8 @@ class Client {
     std::map<uint64_t, CreatureRecord> others() const;
     // The server's clock (packet 5), and whether one has arrived.
     bool clock(uint32_t &day, uint32_t &timeOfDayMs) const;
+    // New packet publication only, so a frame does not replay a cached clock.
+    std::optional<std::pair<uint32_t, uint32_t>> takeClock();
     // AlphaVulkan's own: the server's latest copy of this player's quest book, once per change
     // (only an AlphaVulkan server sends it).
     std::optional<std::vector<uint8_t>> takeQuestBook();
@@ -121,6 +123,7 @@ class Client {
     std::map<uint64_t, CreatureRecord> creatures;
     bool haveClock = false;
     uint32_t clockDay = 0, clockMs = 0;
+    std::optional<std::pair<uint32_t, uint32_t>> pendingClock;
     std::vector<std::pair<uint64_t, std::string>> chat;
     std::optional<std::vector<uint8_t>> questBook;
     std::vector<Hit> hits;

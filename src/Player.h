@@ -20,9 +20,12 @@ class Player {
     // Mouse look and wheel (counts since the last call).
     void look(float dx, float dy) { camera.look(dx, dy); }
     void wheel(int notches) { camera.wheel(notches); }
-    // Reads the held keys (and the pad, when one is connected), runs the physics for `dtMs`,
-    // and moves the view's camera.
-    void update(GLFWwindow *window, float dtMs, bool controls, const Gamepad *pad = nullptr, bool replica = false);
+    // Common actor/physics phase; the world caller owns preliminary health/clock.
+    // World calls never poll devices or start actions from current-frame input.
+    void advance(int32_t dtMs, bool replica = false);
+    // Called once after all world pieces; leaves intent/actions for the next call.
+    void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr);
+    void finishFrame(int32_t dtMs); // engine camera adapter, once per rendered frame
     // Adds the player's creature to the draw list.
     // Also the player's footsteps (models §7.3), into the ability effects' sounds.
     void draw(std::vector<DrawItem> &items, CreatureView &creatureView, float dtMs,
@@ -80,7 +83,7 @@ class Player {
     float yaw = 0;
     float jumpHeld = 0, jumpLock = 0; // §4, milliseconds
     bool gWasDown = false;            // travel §3.1: G acts on the press
-    float leftoverMs = 0;            // the step runs on whole milliseconds
+    glm::vec3 wish{0}; // most recently published movement input
     int32_t actionMsBefore = 0;
     bool replicaWorld = false;
     glm::dvec3 start{0}; // where the player entered the world, blocks

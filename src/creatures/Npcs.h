@@ -156,6 +156,33 @@ struct NpcFrame {
     int32_t experience = 0;            // the kills' experience for the first player (offline)
     // Hits dealt or taken, with where the target stood (for the combat text).
     std::vector<std::pair<HitRecord, glm::dvec3>> seen;
+
+    // Append-only engine outputs can survive every world piece in a frame.
+    // Consume these views immediately, before another append can reallocate.
+    // A cursor belongs to one aggregate until reset; recreate it after reset.
+    struct Cursor {
+        size_t emittedHits = 0, playerHits = 0, sounds = 0, buffs = 0, kills = 0, shots = 0, bursts = 0;
+        size_t deaths = 0, craters = 0, explosions = 0, tamed = 0, petItems = 0, seen = 0;
+        int32_t experience = 0;
+    };
+    struct Added {
+        std::span<const HitRecord> emittedHits;
+        std::span<const HitEmission> playerHits;
+        std::span<const SoundEvent> sounds;
+        std::span<const BuffEvent> buffs;
+        std::span<const KillRecord> kills;
+        std::span<const Projectile> shots;
+        std::span<const Burst> bursts;
+        std::span<const Death> deaths;
+        std::span<const Impact> craters;
+        std::span<const Explosion> explosions;
+        std::span<const Tamed> tamed;
+        std::span<const PetItem> petItems;
+        int32_t experience = 0;
+        std::span<const std::pair<HitRecord, glm::dvec3>> seen;
+    };
+    Added addedSince(Cursor &cursor) const;
+    void reset(); // clear values while retaining engine buffer capacity
 };
 
 class Npcs {
@@ -164,6 +191,9 @@ class Npcs {
     // (server §5.4), behaviour (§13), actions, physics, hits, deaths.
     NpcFrame step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                   int32_t day, const BlockType &block, const std::vector<HitRecord> &incoming = {}, NpcFrame frame = {},
+                  const std::vector<BuffEvent> &buffInput = {});
+    void stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
+                  int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming = {},
                   const std::vector<BuffEvent> &buffInput = {});
     // Local player dispatch belongs between beginActionUpdate/endActionUpdate,
     // before movement. Carry its events into step and disable later strikes.
