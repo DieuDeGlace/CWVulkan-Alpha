@@ -1,5 +1,6 @@
 // Engine GPU routing diagnostic. No owner assets, native code or native pixel oracle.
 #include "Renderer.h"
+#include "CachedLights.h"
 #include "CreatureLights.h"
 #include "SectorLights.h"
 #include "WorldItems.h"
@@ -155,6 +156,33 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     timed.advance(401);
     if (!black(captureTimed("timed-expired")))
         throw std::runtime_error("Expired sources retained GPU contributions");
+    terrain_lights::CachedSources cached;
+    cached.stage({0, 0}, {{colours[0].position, {1, 0, 0}, 13, 1}});
+    cached.stage({1, 0}, {{colours[1].position, {0, 0, 1}, 14, 1}});
+    const auto captureCached = [&](const char *name) {
+        std::vector<terrain_lights::Candidate> candidates;
+        cached.append(candidates, terrain_lights::ViewAdmission({}, {}, {}, 200), 1000, 1);
+        return capture(name, selector.rebuild(candidates, chunks, {}));
+    };
+    if (!black(captureCached("cached-pending")))
+        throw std::runtime_error("Pending cached sources reached the GPU before refresh");
+    cached.refresh({0, 0}, true, 1);
+    cached.refresh({1, 0}, true, 1);
+    const auto current = captureCached("cached-current");
+    if (current[0][0] < 40 || current[0][1] > 4 || current[0][2] > 4 ||
+        current[1][2] < 80 || current[1][0] > 4 || current[1][1] > 4 ||
+        std::abs(int(current[1][2]) - 2 * int(current[0][0])) > 4)
+        throw std::runtime_error("Cached kind13 day scaling or per-chunk source routing failed");
+    cached.stage({0, 0}, {});
+    cached.stage({1, 0}, {});
+    cached.refresh({0, 0}, true, 0);
+    cached.refresh({1, 0}, false, 1);
+    if (captureCached("cached-retained") != current)
+        throw std::runtime_error("Blocked refresh replaced current cached GPU contributions");
+    cached.reset({0, 0});
+    cached.reset({1, 0});
+    if (!black(captureCached("cached-reset")))
+        throw std::runtime_error("Reset cached sources retained GPU contributions");
     terrain_lights::SectorSources sectorSources;
     worldgen::Zone sector;
     worldgen::StaticObject lamp;
@@ -253,7 +281,7 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     for (const auto &p : fallback)
         if (p[1] < 40 || p[0] > 4 || p[2] > 4)
             throw std::runtime_error("Removed terrain rows did not restore model fallback");
-    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, sector lifecycle, creature body/equipment and fallback\n";
+    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, cached publication, sector lifecycle, creature body/equipment and fallback\n";
 }
 
 } // namespace

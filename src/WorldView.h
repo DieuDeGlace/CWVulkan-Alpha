@@ -7,6 +7,7 @@
 // Positions: the world is 2^24 blocks wide, more than a float holds to the block, so meshes and
 // the camera are kept relative to a render origin near the start point.
 #include "BlockEdits.h"
+#include "CachedLights.h"
 #include "ChunkMesher.h"
 #include "CubModel.h"
 #include "worldgen/MapTile.h"
@@ -69,7 +70,7 @@ class WorldView {
     void fillScene(Scene &scene) const;
     // After dynamic sources have joined the scene, sort the common candidates
     // and rebuild each terrain chunk's resident light records.
-    void finishLighting(Scene &scene, const WorldItems &items,
+    void finishLighting(Scene &scene, const WorldItems &items, int32_t sourceClockMs,
                         std::optional<terrain_lights::FixedPosition> controlled = std::nullopt) const;
     // The camera's place in world blocks, and a world position in render-origin terms.
     glm::dvec3 worldPosition() const { return glm::dvec3(origin.x + (double)eye.x, origin.y + (double)eye.y, eye.z); }
@@ -156,7 +157,12 @@ class WorldView {
     void requestChunk(int32_t x0, int32_t y0);
     void addZone(std::shared_ptr<worldgen::Zone> zone);
     void dropZone(Key zone);
-    void placeChunk(glm::ivec2 corner, ChunkMeshes &meshes);
+    struct DoneChunk {
+        glm::ivec2 corner;
+        ChunkMeshes meshes;
+        std::vector<terrain_lights::CachedSource> lights;
+    };
+    void placeChunk(DoneChunk &chunk);
     std::vector<PlantInstance> plantsOf(const worldgen::Zone &zone);
     std::pair<MeshId, float> plantModel(int32_t kind);
     Key cameraZone() const;
@@ -174,6 +180,9 @@ class WorldView {
 
     std::map<Key, std::vector<PlantInstance>> plants;
     terrain_lights::SectorSources sectorSources;
+    terrain_lights::CachedSources cachedSources;
+    // Deterministic engine startup value. Native initial plane contents are open.
+    mutable std::array<glm::vec4, 6> storedLightPlanes{};
     mutable terrain_lights::Selector lightSelector;
     mutable std::vector<terrain_lights::Candidate> lightCandidates;
     mutable std::vector<terrain_lights::Chunk> lightChunks;
@@ -230,7 +239,7 @@ class WorldView {
     Key landOf(int32_t x, int32_t y) const; // the region cell owning a block column
     void buildLand(Key cell);
     std::map<Key, TileEntry> tiles;
-    std::vector<std::pair<glm::ivec2, ChunkMeshes>> doneChunks;
+    std::vector<DoneChunk> doneChunks;
     std::set<Key> zonesPending;
     std::set<Key> chunksPending, chunksStale; // stale: asked for again while pending
 

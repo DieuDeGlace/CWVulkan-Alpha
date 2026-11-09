@@ -235,8 +235,11 @@ void WorldView::requestChunk(int32_t x0, int32_t y0) {
     auto around = std::make_shared<WorldMap>(map.neighbourhood(floorDiv(x0, Zone::SIZE), floorDiv(y0, Zone::SIZE)));
     post([this, around, x0, y0] {
         ChunkMeshes meshes = meshChunk(*around, terrain, x0, y0);
+        std::vector<terrain_lights::CachedSource> lights;
+        if (const Zone *zone = around->zoneAt(x0, y0))
+            lights = terrain_lights::chunkSources(zone->sprites, {x0 / CHUNK, y0 / CHUNK});
         std::lock_guard guard(doneLock);
-        doneChunks.emplace_back(glm::ivec2(x0, y0), std::move(meshes));
+        doneChunks.push_back({{x0, y0}, std::move(meshes), std::move(lights)});
     });
 }
 
@@ -307,15 +310,24 @@ void WorldView::dropZone(Key key) {
         if (it->first.second >= y0 && it->first.second < y0 + Zone::SIZE) {
             renderer.removeMesh(it->second.solid);
             renderer.removeMesh(it->second.water);
+            cachedSources.reset({it->first.first / CHUNK, it->first.second / CHUNK});
             it = chunks.erase(it);
         } else
             ++it;
     }
 }
 
-void WorldView::placeChunk(glm::ivec2 corner, ChunkMeshes &meshes) {
+void WorldView::placeChunk(DoneChunk &chunk) {
+    const glm::ivec2 corner = chunk.corner;
+    ChunkMeshes &meshes = chunk.meshes;
     if (!map.zoneAt(corner.x, corner.y))
         return; // its zone was let go meanwhile
+    const glm::ivec2 coordinate = corner / CHUNK;
+    cachedSources.stage(coordinate, std::move(chunk.lights));
+    // Engine jobs supply geometry and source state from the same snapshot. The
+    // original cache-key lookup and geometry counter producer remain unverified.
+    const bool geometryReady = !meshes.solid.indices.empty() || !meshes.water.indices.empty();
+    cachedSources.refresh(coordinate, true, geometryReady ? 1 : 0);
     ChunkEntry &entry = chunks[{corner.x, corner.y}];
     renderer.removeMesh(entry.solid);
     renderer.removeMesh(entry.water);
@@ -326,7 +338,7 @@ void WorldView::placeChunk(glm::ivec2 corner, ChunkMeshes &meshes) {
 void WorldView::update() {
     // Take in finished work.
     std::vector<std::shared_ptr<Zone>> zones;
-    std::vector<std::pair<glm::ivec2, ChunkMeshes>> meshed;
+    std::vector<DoneChunk> meshed;
     std::vector<DoneTile> newTiles;
     {
         std::lock_guard guard(doneLock);
@@ -361,8 +373,9 @@ void WorldView::update() {
             onTileReady(t.key.first, t.key.second, *t.tile);
     }
     std::vector<Key> again;
-    for (auto &[corner, meshes] : meshed) {
-        placeChunk(corner, meshes);
+    for (auto &chunk : meshed) {
+        placeChunk(chunk);
+        const auto corner = chunk.corner;
         std::lock_guard guard(doneLock);
         chunksPending.erase({corner.x, corner.y});
         if (chunksStale.erase({corner.x, corner.y}))
@@ -766,7 +779,7 @@ void WorldView::fillScene(Scene &scene) const {
     scene.lights.clear();
 }
 
-void WorldView::finishLighting(Scene &scene, const WorldItems &items,
+void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t sourceClockMs,
                                 std::optional<terrain_lights::FixedPosition> controlled) const {
     const auto reference = terrain_lights::fromBlocks(worldPosition());
     if (!reference) {
@@ -776,17 +789,23 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items,
     const terrain_lights::FixedPosition shift{-int64_t(origin.x) * 65536, -int64_t(origin.y) * 65536, 0};
     lightCandidates.clear();
     lightCandidates.reserve(scene.lights.size());
+    const float daylight = alpha::sunlight(scene.timeOfDayMs);
+    const float reach = scene.fogDistance + 22.4f;
+    const terrain_lights::ViewAdmission earlyView(*reference, shift, storedLightPlanes, reach);
+    cachedSources.append(lightCandidates, earlyView, sourceClockMs, daylight);
+    // Native cached-source reads precede current plane production. This engine
+    // retains its last completed publication; native publication age is unknown.
+    storedLightPlanes = camera(renderer.size()).lightAdmissionPlanes();
     for (const PointLight &source : scene.lights) {
         const auto position = source.fixedPosition ? source.fixedPosition :
             terrain_lights::fromBlocks(glm::dvec3(source.position) + glm::dvec3(origin.x, origin.y, 0));
         if (position)
             lightCandidates.push_back({*position, source.colour, source.radius, 0});
     }
-    const terrain_lights::ViewAdmission view(*reference, shift, camera(renderer.size()).lightAdmissionPlanes(),
-                                            scene.fogDistance + 22.4f);
+    const terrain_lights::ViewAdmission view(*reference, shift, storedLightPlanes, reach);
     // A flying viewer has no controlled creature; use its camera as an explicit
     // engine fallback. Playing uses the controlled body's main fixed position.
-    sectorSources.append(lightCandidates, items, view, controlled.value_or(*reference), alpha::sunlight(scene.timeOfDayMs));
+    sectorSources.append(lightCandidates, items, view, controlled.value_or(*reference), daylight);
     for (auto &candidate : lightCandidates)
         candidate.priority = terrain_lights::priority(candidate.position, *reference);
     terrain_lights::order(lightCandidates);

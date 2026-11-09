@@ -56,6 +56,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -1205,6 +1206,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     const double start = last;
     double lastSave = last;
     double lightLeftoverMs = 0;
+    uint32_t lightClockMs = 0;
     std::vector<DrawItem> items;
     std::vector<EffectVertex> effects; // weapon trails (trails §1.3)
     glm::dvec2 mapCursor(0); // the cursor last frame, for the map's drags
@@ -1315,6 +1317,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         // for this engine clock; native timeGetTime/mode scheduling stays open.
         const int32_t lightElapsedMs = int32_t(std::clamp(lightLeftoverMs, 0.0, double(INT32_MAX)));
         lightLeftoverMs -= double(lightElapsedMs);
+        lightClockMs += uint32_t(lightElapsedMs);
         last = now;
         std::unique_lock<std::mutex> networkFrame;
         if (client.connected())
@@ -2595,7 +2598,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const auto &position = player->body().position;
             lightController = terrain_lights::FixedPosition{position[0], position[1], position[2]};
         }
-        view.finishLighting(scene, worldItems, lightController);
+        view.finishLighting(scene, worldItems, std::bit_cast<int32_t>(lightClockMs), lightController);
         FrameConstants frame = makeFrame(view.camera(renderer.size()), scene, shadowSettings, moonSettings);
         // Screens §5.1: the corner map while playing, 3 x 3 zones round the player's at the
         // starting map zoom (s 0.8).

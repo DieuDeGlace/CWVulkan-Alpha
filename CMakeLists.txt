@@ -112,6 +112,7 @@ add_library(engine STATIC
     src/TerrainLights.cpp
     src/SectorLights.cpp
     src/CreatureLights.cpp
+    src/CachedLights.cpp
     src/Audio.cpp
     src/Dictionary.cpp
     src/ItemNames.cpp
@@ -287,6 +288,8 @@ add_executable(SectorLightTests tests/SectorLightTests.cpp)
 target_link_libraries(SectorLightTests PRIVATE engine)
 add_executable(CreatureLightTests tests/CreatureLightTests.cpp)
 target_link_libraries(CreatureLightTests PRIVATE engine)
+add_executable(CachedLightTests tests/CachedLightTests.cpp)
+target_link_libraries(CachedLightTests PRIVATE engine)
 # The dedicated server.
 add_executable(AlphaServer src/ServerMain.cpp)
 target_link_libraries(AlphaServer PRIVATE engine)
@@ -321,6 +324,7 @@ if(MSVC)
         src/TerrainLights.cpp
         src/SectorLights.cpp
         src/CreatureLights.cpp
+        src/CachedLights.cpp
         src/creatures/Spirits.cpp
         src/Frame.cpp
         tests/SpatialScalarTests.cpp
@@ -367,7 +371,7 @@ target_link_libraries(RangedSchedulingTests PRIVATE engine)
 include(CTest)
 set(ALPHAVULKAN_TEST_GAME_PATH "" CACHE PATH "Owned Alpha installation used by content/save/UI checks")
 if(BUILD_TESTING)
-    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests)
+    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests)
         set(testArguments)
         if(ALPHAVULKAN_TEST_GAME_PATH AND testTarget MATCHES "^(Store|Save|Content|Ui|OwnerContent)Tests$")
             list(APPEND testArguments "${ALPHAVULKAN_TEST_GAME_PATH}")

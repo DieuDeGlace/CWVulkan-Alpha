@@ -254,6 +254,16 @@ Differences from the Steam engine that shape the plan:
   Local/NPC/received actors share body-before-equipment gathering, and decoded
   fighter views retain wire appearance flags. Native rendered-position production,
   interpolation, remaining creature sites and full container order stay open.
+- [x] Bounded cached sprite lights: ordered worker chunk membership, separate
+  pending/current lists, conditional copy publication, admitted-only 33-step
+  radius phase and kind13 half-day color. Mesh jobs carry source state with
+  geometry; unloading resets it. Cached collection precedes current plane
+  publication and dynamic groups. Native scan/key/readiness producers, initial
+  plane state, clock/mathematical environment and presentation/RNG gates stay open.
+- [ ] Native weapon attachment production: the held original-only producer audit
+  closes conditional transforms, reference recovery and identified read/refresh
+  order. Complete pose matrices, special branches, initial validity and whole-frame
+  freshness remain dependencies; production retains its documented fallback.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

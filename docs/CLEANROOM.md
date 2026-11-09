@@ -239,3 +239,34 @@ actors share the bounded body/equipment collector. Production displayed position
 remain the engine's draw adapter, and the two weapon positions retain the stated
 fallback. Other creature sites, native attachment producers, interpolation,
 cached-source publication and complete container ordering remain dependencies.
+
+The fully read held lifecycle and plane-production contracts also bound cached
+sprite lights. Worker selection retains the supplied sprite order after the
+specified binary64 scaling and integer chunk division. Pending/current engine
+lists publish only through explicit cache-miss and nonzero-geometry gates, copy
+without consuming pending data and reset together. Collection advances its
+33-step cosine phase only for admitted flag-bit1 entries, retains zero RGB and
+applies the half-day color factor only to kind13. Cached collection precedes the
+engine's new plane publication and dynamic sources. Mesh jobs transfer source
+state from the same immutable snapshot as geometry.
+
+Native scan/key and geometry-count producers, sector source lifetimes, worker
+metadata outside this light read and surrounding presentation/RNG guards remain
+unclosed. Loaded chunk keys and mesh readiness are explicit engine adapters.
+Initial planes are deterministic engine zero, and early queries use the last
+completed engine publication without claiming native initialization or age. The
+integer GLFW clock and platform cosine also retain their stated equivalence limits.
+
+A private black-box observation calls only the named cosine export through the
+previously held scalar ABI in a verified isolated original runtime. On 32,896
+sampled signed-clock/admitted-phase cases, both narrowed cosine and actual engine
+candidate-radius bits match. This uses selected floating controls, not a proof of
+the running renderer's controls or all possible inputs. The recorder, original
+runtime and observations remain private and were not sent to any source author.
+
+The separate original-only attachment-producer contract was then held and fully
+read. It establishes copied references, conditional model-point writes, later
+adjustments and light reads before identified pose-refresh calls. Complete pose
+matrices, action/history branches, initial float-attachment validity and whole-frame
+freshness remain unresolved. This does not justify replacing the explicit weapon
+fallback with an assumed current-frame attachment.

@@ -291,3 +291,23 @@ both terrain rows when their actors become nonpositive. Native position producer
 and original-client source/visual acceptance remain separate gates.
 The body/received-source checkpoint passes all 27 CTests and the extended GPU
 checks; a walking night client capture also renders terrain, character and HUD.
+
+CachedLightTests covers fractional and negative chunk boundaries, preserved input
+order/flags, staged invisibility, both publication gates, retained pending lists,
+duplicate sources, replacement, empty refresh and reset. Admission tests verify
+that flag-clear and rejected records do not advance the phase, zero RGB does,
+each chunk restarts its phase, keys visit X/Y order and invalid world keys skip.
+Exact anchors exercise clock narrowing, the ordered radius arithmetic and
+unclamped kind13 color scaling. These cosine anchors characterize the local
+platform adapter rather than defining all original runtime results.
+
+The extended procedural GPU probe checks pending black output, red/blue current
+sources with kind13 half-day scaling, unchanged contributions after blocked
+refresh and black output after reset. The full 28 CTests pass. A private original
+runtime observation separately matches narrowed cosine and actual CachedSources
+candidate radii in all 32,896 sampled signed-clock/phase cases under selected
+controls. Native worker controls, source publication scheduling, scan/key
+construction and matched original-client scenes remain open.
+A separate actual-client night capture at the generated town center renders its
+streets, buildings and local lighting; the walking capture also shows character,
+HUD and map. These captures verify engine rendering, not matched native pixels.
