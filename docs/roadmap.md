@@ -58,6 +58,11 @@ Differences from the Steam engine that shape the plan:
 - [ ] Whole-world client calls in at-most-20ms pieces with one frame aggregate
   and the specified later primary input boundary. Current physics splitting
   alone does not close creature, projectile, buff or input scheduling.
+- [x] Preliminary controlled health phase: the living role-zero/action-84 gate
+  precedes input/common processing, retains integer elapsed conversion, ordered
+  binary32 arithmetic and fresh comparison/store maximum queries. Unconditional
+  post-combat regeneration has been removed. Full world scan, clock and frame
+  scheduling acceptance remain open.
 
 - [x] Bounded engine save/reload acceptance: preserve loaded recipes without
   rerolling grants, install startup map persistence before generation, and display

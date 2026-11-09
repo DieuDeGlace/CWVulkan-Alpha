@@ -23,6 +23,84 @@ void check(bool value, const char *description) {
 
 int main() {
     {
+        const auto saved = itemBonuses().health;
+        const auto controlled = [] {
+            Combatant actor;
+            actor.id = 1;
+            actor.characterClass = 0;
+            actor.action = 84;
+            actor.health = 8;
+            actor.multipliers[0] = 0;
+            actor.equipment[MAIN_HAND].type = 3;
+            return actor;
+        };
+        for (int gate : {0, 1, 2, 3, 4, 5}) {
+            auto actor = controlled();
+            if (gate == 1) actor.controller = 1;
+            if (gate == 2) actor.action = 1;
+            if (gate == 3) actor.health = 0;
+            if (gate == 4) actor.health = -1;
+            if (gate == 5) actor.health = std::bit_cast<float>(0x7fc00071u);
+            const uint32_t before = std::bit_cast<uint32_t>(actor.health);
+            int queries = 0;
+            itemBonuses().health = [&](const Item &) { queries++; return 10.f; };
+            regenerate(actor, 0);
+            check(queries == (gate == 0 ? 2 : 0) && std::bit_cast<uint32_t>(actor.health) == before,
+                  "preliminary health requires role zero/action 84/ordered positive health, including on a zero-duration call");
+        }
+        {
+            auto actor = controlled();
+            std::vector<float> healthAtQuery;
+            itemBonuses().health = [&](const Item &) {
+                healthAtQuery.push_back(actor.health);
+                return healthAtQuery.size() == 1 ? 10.f : 20.f;
+            };
+            regenerate(actor, 1000);
+            check(actor.health == 8.5f && healthAtQuery == std::vector<float>{8.f, 8.5f},
+                  "first maximum feeds health addition before a fresh comparison maximum is queried");
+            actor.health = 21;
+            healthAtQuery.clear();
+            itemBonuses().health = [&](const Item &) {
+                healthAtQuery.push_back(actor.health);
+                return 10.f * (float)healthAtQuery.size();
+            };
+            regenerate(actor, 0);
+            check(actor.health == 30 && healthAtQuery == std::vector<float>{21, 21, 21},
+                  "zero-duration excess takes a third maximum query and stores its fresh result");
+        }
+        {
+            auto actor = controlled();
+            actor.health = .66f;
+            itemBonuses().health = [](const Item &) { return 123.45f; };
+            regenerate(actor, 32);
+            check(std::bit_cast<uint32_t>(actor.health) == 0x3f5b866fu,
+                  "preliminary addition keeps seconds/fraction grouping and binary32 stores");
+            actor.health = 1;
+            int queries = 0;
+            itemBonuses().health = [&](const Item &) { queries++; return 100.f; };
+            regenerate(actor, -1000);
+            check(actor.health == -4 && queries == 2,
+                  "admitted negative elapsed is used without a lower health clamp or positive-duration shortcut");
+        }
+        {
+            Npcs world;
+            auto actor = controlled();
+            actor.health = 80;
+            actor.buffs = {{DAMAGE_OVER_TIME, 10, 801, 999}};
+            itemBonuses().health = [](const Item &) { return 100.f; };
+            Body body;
+            PlayerView local{actor, body, 0, 0, false, false, true};
+            NpcFrame frame;
+            regenerate(actor, 10);
+            endActionUpdate(actor, 10, {true, false}, [&](const Buff &buff) {
+                world.periodicHit(actor, body, buff, {&local, 1}, frame);
+            });
+            check(actor.health == 70.05f && actor.action == 0 && actor.hitStun == 2990 && frame.emittedHits.size() == 1,
+                  "preliminary health is visible before periodic damage cancels action 84 in the common actor pass");
+        }
+        itemBonuses().health = saved;
+    }
+    {
         Combatant first, second;
         second.controller = 1;
         check(hostile(first, second) && hostile(second, first),

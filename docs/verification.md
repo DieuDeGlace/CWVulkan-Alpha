@@ -80,6 +80,17 @@ attack. RangedSchedulingTests covers real NPC dispatch plus anticipation, charge
 audio and random-draw boundaries. Role/rank resistance examples check the fixed
 stat relation's distinct base override and common flag bonus, alongside ordered
 equipment additions. Native power-library precision remains a separate limit.
+Preliminary local health examples check the exact role/action/ordered-life gates,
+including NaN rejection, zero-duration comparison and a fresh third maximum on
+excess. Observable stat queries establish addition-before-comparison ordering.
+An exact binary32 anchor retains elapsed/seconds/fraction grouping; a negative
+duration is not silently skipped or lower-clamped. A common-phase integration
+case sees this health addition before a periodic hit cancels action 84.
+A fresh actual-client run used a new isolated synthetic character injured to
+50 health. The viewed idle-world capture showed 50 health, and the character
+saved on exit retained exactly binary32 50 (`0x42480000`) with its world visit.
+This checks removal of passive healing in the engine client, independently of
+the helper tests; it is not an original-client gameplay comparison.
 Large-clock examples preserve 16,777,217 ms in integer state and on the wire.
 Incoming-hit examples use the actual NPC facade to distinguish resolved and
 unresolved sources, ID zero, and class/weapon threat precedence.

@@ -678,8 +678,9 @@ int main() {
         Combatant c;
         same(maxHealth(c), 260, "warrior health", 1e-4);
         c.health = 1;
+        c.action = 84;
         regenerate(c, 1000);
-        same(c.health, 1 + 13, "5 % per second", 1e-4);
+        same(c.health, 1 + 13, "action 84 adds 5 % per second", 1e-4);
     }
 
     // Behaviour §4.6: experience for the next level, and a level-up refilling health.

@@ -254,7 +254,9 @@ void receiveHit(Combatant &controlled, Body &body, const HitRecord &hit, std::ve
 // §14: the data2.db key of a sound id, or null for ids that play nothing.
 const char *soundKey(int32_t id);
 
-// Player control §7: health regeneration of the local player.
-void regenerate(Combatant &c, float dtMs);
+// Preliminary world scan: only the living role-zero controlled actor in action
+// 84 receives this addition. Call before inputs/main actor work. Zero/negative
+// elapsed still performs the specified maximum queries and ordered upper bound.
+void regenerate(Combatant &c, int32_t dtMs);
 
 } // namespace creatures

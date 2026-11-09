@@ -1221,11 +1221,16 @@ const char *soundKey(int32_t id) {
     return id >= 0 && id <= 100 ? KEYS[id] : nullptr;
 }
 
-void regenerate(Combatant &c, float dtMs) {
-    if (c.health <= 0)
+void regenerate(Combatant &c, int32_t dtMs) {
+    if (c.controller != 0 || c.action != 84 || !(c.health > 0))
         return;
-    const float m = maxHealth(c);
-    c.health = std::min(c.health + m * dtMs * 0.001f * 0.05f, m);
+    const float maximum = maxHealth(c);
+    const float seconds = (float)dtMs * .001f;
+    const float fraction = seconds * .05f;
+    c.health += maximum * fraction;
+    const float limit = maxHealth(c);
+    if (c.health > limit)
+        c.health = maxHealth(c);
 }
 
 float itemRegeneration(const Item &item) {

@@ -337,3 +337,14 @@ The independently held outer world-call phase contract was also read completely.
 It establishes preliminary scans, queued inputs, actors, later projectile work and
 final publication within each invocation, including retained aggregate revisits.
 It does not turn the existing physics-only split into whole-world timing parity.
+
+That same complete contract supplies the local preliminary health phase. The
+controlled engine actor now receives its role-zero/action-84/ordered-positive
+health gate before input and common action processing. Integer elapsed converts
+to binary32 before seconds and fraction scaling; the first maximum feeds the
+addition, a fresh second maximum feeds comparison and only ordered excess queries
+the third stored maximum. Zero and negative elapsed retain these boundaries.
+The former unconditional post-action heal has been removed. This is a local
+health correction; the surrounding world scan, clock policy, aggregate reuse,
+whole-world subdivision, full frame input order and original-server behavior
+remain separate gates.

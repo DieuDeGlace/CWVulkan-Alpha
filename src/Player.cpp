@@ -42,6 +42,8 @@ void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad
     const int32_t dt = (int32_t)leftoverMs;
     leftoverMs -= (float)dt;
     dtMs = (float)dt;
+    // Native preliminary health work precedes input and the common actor pass.
+    regenerate(fighter, dt);
     const bool usePad = controls && pad && pad->connected;
     auto padHeld = [&](Gamepad::Button b) { return usePad && pad->held(b); };
     // A key, or the pad button that stands for it (Gamepad.h).
@@ -206,7 +208,6 @@ void Player::update(GLFWwindow *window, float dtMs, bool controls, const Gamepad
     if (onActionEffects)
         onActionEffects(actionMsBefore, dt);
     endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit);
-    regenerate(fighter, dtMs); // player control §7
 
     // The physics on whole milliseconds.
     state.local = true;
