@@ -43,6 +43,25 @@ float priority(const FixedPosition &position, const FixedPosition &reference);
 void order(std::vector<Candidate> &candidates);
 ShaderLights shaderPrefix(const Selection &selection);
 
+struct FadingSource {
+    FixedPosition position{};
+    glm::vec3 colour{0};
+    float radius = 20;
+    int32_t ageMs = 0, durationMs = 400;
+    glm::vec3 fadedColour() const;
+};
+
+class FadingSources {
+  public:
+    void append(const FadingSource &source) { sources.push_back(source); }
+    // Integer age update and deferred expiry preserve survivor/append order.
+    void advance(int32_t elapsedMs);
+    std::span<const FadingSource> entries() const { return sources; }
+
+  private:
+    std::vector<FadingSource> sources;
+};
+
 class Selector {
   public:
     // Inputs are in shared priority order. Active chunk coordinates must be unique.

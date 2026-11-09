@@ -1058,6 +1058,7 @@ int main() {
         Item sword;
         sword.type = 3;
         sword.cubes = {{0, 0, 0, 128}, {0, 0, 1, 130}, {0, 0, 2, 1}};
+        sword.spirits = 3;
         glm::vec3 a(0);
         same(averageSpiritColour(sword, a), 1, "a sword with spirits");
         same(a.x, 0.975, "average r", 1e-5);

@@ -55,6 +55,20 @@ ShaderLights shaderPrefix(const Selection &selection) {
     return upload;
 }
 
+glm::vec3 FadingSource::fadedColour() const {
+    const float fraction = float(ageMs) / float(durationMs);
+    const float fade = 1.f - fraction;
+    return colour * (fade < 0.f ? 0.f : fade);
+}
+
+void FadingSources::advance(int32_t elapsedMs) {
+    for (auto &source : sources)
+        source.ageMs = std::bit_cast<int32_t>(uint32_t(source.ageMs) + uint32_t(elapsedMs));
+    // Equality survives, including its zero-colour slot. Defined integer wrap is
+    // an engine safety policy; native wrap/exceptional states are not certified.
+    std::erase_if(sources, [](const FadingSource &source) { return source.ageMs > source.durationMs; });
+}
+
 const std::vector<Selection> &Selector::rebuild(std::span<const Candidate> ordered, std::span<const Chunk> chunks,
                                               const FixedPosition &shift) {
     if (cachedChunks.size() != chunks.size() || !std::equal(cachedChunks.begin(), cachedChunks.end(), chunks.begin())) {

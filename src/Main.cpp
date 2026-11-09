@@ -432,14 +432,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     int32_t missionDay = -1;
     ui::Interface::Front cameraFront = ui::Interface::Front::None; // character screens §7
     bool windowHeld = false; // skills §1.3: whether a window held the input last frame
-    struct Flash {
-        glm::dvec3 at;
-        glm::vec3 colour;
-        float ageMs;
-        float radius = 20, lifeMs = 400;
-    };
     // Timed lights: materials §1.5's critical-hit flashes, particles §7.2's bomb flash.
-    std::vector<Flash> flashes;
+    terrain_lights::FadingSources flashes;
     std::set<uint64_t> shattered; // particles §7.2: dead creatures already broken up
     std::pair<int32_t, int32_t> missionRegionAsked{INT32_MIN, INT32_MIN}; // online: the region last asked for
     std::optional<MissionArea> questRemembered; // missions §8.2: the mission the quest tag shows
@@ -1209,6 +1203,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     double last = glfwGetTime();
     const double start = last;
     double lastSave = last;
+    double lightLeftoverMs = 0;
     std::vector<DrawItem> items;
     std::vector<EffectVertex> effects; // weapon trails (trails §1.3)
     glm::dvec2 mapCursor(0); // the cursor last frame, for the map's drags
@@ -1314,6 +1309,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         const double now = glfwGetTime();
         const float seconds = (float)(now - last);
+        lightLeftoverMs += (now - last) * 1000.0;
+        // GLFW supplies fractional seconds. Keep an integer-duration adapter
+        // for this engine clock; native timeGetTime/mode scheduling stays open.
+        const int32_t lightElapsedMs = int32_t(std::clamp(lightLeftoverMs, 0.0, double(INT32_MAX)));
+        lightLeftoverMs -= double(lightElapsedMs);
         last = now;
         std::unique_lock<std::mutex> networkFrame;
         if (client.connected())
@@ -1880,7 +1880,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         if (by)
                             for (const creatures::Item *weapon : {&by->mainHand(), &by->offHand()})
                                 if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
-                                    flashes.push_back({at, a, 0});
+                                    flashes.append({hit.position, a, 20, 0, 400});
                     }
                     if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.target == c.id, at))
                         interface.floating.push_back(*text);
@@ -2142,13 +2142,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             player->draw(items, creatureView, seconds * 1000.f, &effects);
             actionFlames(player->combat(), player->body().size.x, player->body().blocks());
         }
-        for (Flash &fl : flashes) {
-            fl.ageMs += seconds * 1000.f;
-            if (fl.ageMs <= fl.lifeMs)
-                scene.lights.push_back(pointLightAt(fl.at, view.toRender(fl.at), fl.radius,
-                                                    fl.colour * std::max(1 - fl.ageMs / fl.lifeMs, 0.f)));
-        }
-        std::erase_if(flashes, [](const Flash &fl) { return fl.ageMs > fl.lifeMs; });
+        flashes.advance(lightElapsedMs);
+        for (const auto &flash : flashes.entries())
+            scene.lights.push_back({view.toRenderFixed(flash.position), flash.radius, flash.fadedColour(), flash.position});
         if (player) {
             const creatures::Combatant &me = player->combat();
             if (const float rho = me.combo / std::max(creatures::comboMax(me), 1.f); rho > 0)
@@ -2175,7 +2171,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     creatureView.shatter(npc.looks, npc.pose, motion, at, [] { return std::rand() & 0x7fff; },
                                          particles.list);
                     if (npc.fighter.type == 144)
-                        flashes.push_back({at, glm::vec3(1, 0.8f, 0.5f), 0, 16, 800});
+                        flashes.append({{npc.body.position[0], npc.body.position[1], npc.body.position[2]},
+                                        {1, 0.8f, 0.5f}, 16, 0, 800});
                 }
                 continue;
             }

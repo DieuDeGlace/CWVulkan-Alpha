@@ -1,4 +1,5 @@
 #include "TerrainLights.h"
+#include "creatures/Spirits.h"
 #include <bit>
 #include <cstdio>
 #include <limits>
@@ -19,6 +20,65 @@ static Candidate light(int64_t x, int64_t y, float radius, glm::vec3 colour = {1
     return result;
 }
 int main() {
+    FadingSources timed;
+    const FixedPosition precise{(int64_t(1) << 54) + 1, 17, -33};
+    timed.append({precise, {1, .5f, .25f}, 20, 0, 400});
+    timed.append({point(16, 16), {0, 0, 1}, 16, 0, 800});
+    timed.advance(400);
+    check(timed.entries().size() == 2 && timed.entries()[0].ageMs == 400 &&
+              timed.entries()[0].fadedColour() == glm::vec3(0) &&
+              timed.entries()[1].fadedColour() == glm::vec3(0, 0, .5f),
+          "duration equality preserves a zero-colour source before later sources");
+    check(timed.entries()[0].position == precise && timed.entries()[0].radius == 20,
+          "fading retains complete fixed coordinates and the original radius");
+    timed.advance(1);
+    check(timed.entries().size() == 1 && timed.entries()[0].ageMs == 401 &&
+              timed.entries()[0].position == point(16, 16),
+          "strictly expired sources are removed while survivor order is retained");
+    timed.append({point(16, 16), {0, 0, 1}, 16, 0, 800});
+    timed.append({point(16, 16), {0, 0, 1}, 16, 0, 800});
+    check(timed.entries().size() == 3 && timed.entries()[1].ageMs == 0 && timed.entries()[2].ageMs == 0,
+          "later producer appends do not merge coincident identities or inherit old age");
+    timed.advance(399);
+    check(timed.entries().size() == 3 && timed.entries()[0].ageMs == 800,
+          "mixed source durations retain the later equality boundary");
+    timed.advance(1);
+    check(timed.entries().size() == 2 && timed.entries()[0].ageMs == 400 && timed.entries()[1].ageMs == 400,
+          "deferred expiry keeps both younger duplicates in append order");
+    check(FadingSource{{}, {1, .5f, .25f}, 20, -200, 400}.fadedColour() == glm::vec3(1.5f, .75f, .375f),
+          "fading has a lower-only clamp rather than an invented upper cap");
+    check(FadingSource{{}, {1, 1, 1}, 20, 401, 400}.fadedColour() == glm::vec3(0),
+          "render evaluation clamps an ordinary negative fade");
+    FadingSources largeAge;
+    largeAge.append({{}, {1, 1, 1}, 20, 16777216, 16777217});
+    check(largeAge.entries()[0].fadedColour() == glm::vec3(0),
+          "age and duration narrow to float separately before division");
+    largeAge.advance(1);
+    check(largeAge.entries().size() == 1 && largeAge.entries()[0].ageMs == 16777217,
+          "integer ages advance beyond binary32's unit precision and preserve equality");
+    largeAge.advance(1);
+    check(largeAge.entries().empty(), "integer expiry does not stall at the float precision boundary");
+
+    creatures::Item glowing;
+    glowing.spirits = 3;
+    glowing.cubes = {{0, 0, 0, 128}, {0, 0, 0, 132}, {0, 0, 0, 255}, {0, 0, 0, 130}};
+    glm::vec3 average(9);
+    check(creatures::averageSpiritColour(glowing, average) &&
+              std::bit_cast<uint32_t>(average.r) == 0x3f555556 &&
+              std::bit_cast<uint32_t>(average.g) == 0x3f155556 &&
+              std::bit_cast<uint32_t>(average.b) == 0x3ec44444,
+          "all material bytes >=128 qualify; three ordered sums use one float reciprocal");
+    glowing.spirits = 1;
+    check(creatures::averageSpiritColour(glowing, average) && average == glm::vec3(1.5f, .75f, .15f),
+          "only the descriptor's signed-count prefix contributes to item glow");
+    glowing.spirits = -1;
+    check(!creatures::averageSpiritColour(glowing, average) && average == glm::vec3(0),
+          "nonpositive descriptor count writes zero even with retained decoded storage");
+    glowing.spirits = 1;
+    glowing.cubes[0].material = 127;
+    check(!creatures::averageSpiritColour(glowing, average) && average == glm::vec3(0),
+          "ordinary materials below128 do not qualify and leave zero sums");
+
     const auto fixed = fromBlocks({1.0 / 65536, -1.0 / 65536, .5});
     check(fixed && *fixed == FixedPosition{1, -1, 32768}, "world coordinates retain fixed-point fractions");
     check(!fromBlocks({std::numeric_limits<double>::infinity(), 0, 0}),

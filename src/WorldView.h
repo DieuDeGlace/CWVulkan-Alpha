@@ -73,6 +73,9 @@ class WorldView {
     glm::vec3 toRender(glm::dvec3 at) const {
         return glm::vec3((float)(at.x - origin.x), (float)(at.y - origin.y), (float)at.z);
     }
+    glm::vec3 toRenderFixed(const terrain_lights::FixedPosition &at) const {
+        return terrain_lights::renderPosition(at, {-int64_t(origin.x) * 65536, -int64_t(origin.y) * 65536, 0});
+    }
     // This frame's draw list. `clockMs` is the world's millisecond clock, which sways the
     // plants that sway (vegetation-wind.md §4).
     std::vector<DrawItem> items(double clockMs);

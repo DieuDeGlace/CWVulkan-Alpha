@@ -214,6 +214,9 @@ rows, a larger subsequent upload checks buffer reallocation/descriptor replaceme
 empty rows check clearing, disabled first-ten slots check the absence of active
 compaction, and removing rows restores the green global model fallback. These
 checks pass on the local GPU, independently of native pixel acceptance.
+Additional timed-source frames pass a duration-equality zero color and a half-faded
+blue contribution through the real terrain shader, then verify black output after
+expiry. No original game content is used by this diagnostic.
 
 Saved-character entry now synchronizes the observed recipe level after restoring
 the saved list. It does not reroll randomized grants for the loaded level; later
@@ -230,3 +233,13 @@ This verifies an engine save/reload path; interactive menu flows and original-ga
 save interoperability remain separate acceptance gates.
 The final run also visually confirmed the saved character's name in both HUD
 captures. An explicit `--name` remains an engine display/network-name override.
+
+Timed-light checks cover strict expiry versus duration equality, zero-color
+residency, ordered nonmerging appends, mixed durations, fixed positions beyond
+binary64 unit precision and integer age advancement beyond binary32 unit
+precision. They separately check lower-only fade clamping and conversion of age
+and duration to float before division. Item glow checks use exact RGB anchors for
+mixed bytes 128/132/255, signed descriptor counts, prefix selection and zero
+results for no qualifying entries. These checks bound source arithmetic and
+storage; native main-loop time sampling and complete producer admission remain
+separate from the engine's GLFW duration adapter.

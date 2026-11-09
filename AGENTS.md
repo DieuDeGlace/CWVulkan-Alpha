@@ -47,5 +47,9 @@
   Retain clean-room records, SDK/source-module support, owner-content setup and
   reproducible builds. Exclude original game content and private diagnostics;
   source publication does not certify beta readiness or inherited claims.
+- Standing owner instruction: commit and push every tested checkpoint to
+  DieuDeGlace/CWVulkan-Alpha. Verify the checkpoint and source exclusions first,
+  preserve existing history and report the pushed commit. Keep original content,
+  saves, captures, private diagnostics and local handoff out of every push.
 - Audit inherited provenance before release. An existing spec or checked roadmap
   item alone does not establish independent authorship or native parity.

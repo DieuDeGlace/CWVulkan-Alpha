@@ -32,8 +32,9 @@ void takeSpiritItem(Inventory &inventory, const ItemRecord &entry);
 // §3.9, materials §1.1: an attached cube's colour at strength 0 (the spirits' own colours,
 // ordinary materials' factors on the white cube).
 glm::vec3 spiritColour(uint8_t material);
-// Materials §1.5: the average colour of an item's spirit cubes at strength 1 (f = 1.5), and
-// whether it has any.
+// Held light-source contract: average qualifying material bytes >=128 in the
+// signed-count prefix. 128..131 use strength 1.5; higher bytes contribute grey.
+// Returns whether any qualify; no qualifying records write zero RGB.
 bool averageSpiritColour(const Item &item, glm::vec3 &colour);
 
 } // namespace creatures

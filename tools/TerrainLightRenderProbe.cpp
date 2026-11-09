@@ -134,11 +134,28 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
         disabledPrefix.push_back(light({8, 8, 4}, i < terrain_lights::UPLOADED ? 0.f : 16.f, {1, 0, 0}));
     if (!black(capture("fixed-ten-prefix", selector.rebuild(disabledPrefix, chunks, {}))))
         throw std::runtime_error("Shader compacted disabled slots or consumed beyond slot ten");
+    terrain_lights::FadingSources timed;
+    timed.append({colours[0].position, {1, 0, 0}, 16, 0, 400});
+    timed.append({colours[1].position, {0, 0, 1}, 16, 0, 800});
+    const auto captureTimed = [&](const char *name) {
+        std::vector<terrain_lights::Candidate> candidates;
+        for (const auto &source : timed.entries())
+            candidates.push_back({source.position, source.fadedColour(), source.radius, 0});
+        return capture(name, selector.rebuild(candidates, chunks, {}));
+    };
+    timed.advance(400);
+    const auto faded = captureTimed("timed-equality");
+    if (faded[0][0] > 4 || faded[0][1] > 4 || faded[0][2] > 4 ||
+        faded[1][0] > 4 || faded[1][1] > 4 || faded[1][2] < 50 || faded[1][2] > 120)
+        throw std::runtime_error("Timed source equality/half-fade did not reach the terrain shader");
+    timed.advance(401);
+    if (!black(captureTimed("timed-expired")))
+        throw std::runtime_error("Expired sources retained GPU contributions");
     const auto fallback = capture("global-fallback", {});
     for (const auto &p : fallback)
         if (p[1] < 40 || p[0] > 4 || p[2] > 4)
             throw std::runtime_error("Removed terrain rows did not restore model fallback");
-    std::cout << "PASS: GPU terrain routing, buffer growth, clearing, fixed ten-prefix and fallback\n";
+    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading and fallback\n";
 }
 
 } // namespace

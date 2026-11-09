@@ -228,6 +228,10 @@ Differences from the Steam engine that shape the plan:
   and lifetime, renderer reference/anchor following, exceptional GPU arithmetic
   and matched native scenes. The sampled original sort observations match the
   engine on 50,000 finite-key cases; this does not certify every mixed tie.
+- [x] Bounded fading-source arithmetic: integer age/duration, strict expiry with
+  equality retained, raw fixed positions and ordered appends. Item glow includes
+  every qualifying material byte in the signed-count prefix and uses ordered
+  accumulation. Complete native producer admission and clock scheduling remain open.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

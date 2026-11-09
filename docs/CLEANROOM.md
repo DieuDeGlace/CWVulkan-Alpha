@@ -185,3 +185,15 @@ tracker synchronizes after load. Later mismatches publish the new observed level
 before one grant invocation, without a catch-up loop. The unsaved diagnostic
 character's initial grant is separate from real character creation. Full recipe
 content tables, update scheduling and wider entry failure paths remain bounded.
+
+The complete held terrain-light-source-lifecycle contract was reread before the
+timed-light and item-color changes. Engine-owned fading records retain canonical
+fixed-point positions and integer ages, advance before gathering, retain duration
+equality and erase strictly expired entries without changing survivor order.
+Event flashes use their raw hit position; later bomb presentation appends a source
+from the main position after that frame's collection. Item color respects the
+signed descriptor count and qualifying bytes at least 128, including the specified
+grey contribution above 131, with ordered sums and reciprocal multiplication.
+Malformed descriptor counts remain bounded by owned decoded storage. Native
+clock/mode scheduling, complete producer eligibility/culling and attachment
+freshness are still open; the GLFW integer-duration adapter is engine behavior.

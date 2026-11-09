@@ -39,7 +39,7 @@ try {
         }
         if ($relative -eq 'SHA256SUMS.txt') { continue }
         if (-not $hashes.ContainsKey($relative)) { throw "Unmanifested file: $relative" }
-        if ($relative -match '(?i)(^|/)(Cube\.exe|Server\.exe|msvcr110\.dll|Save|captures|owner-cache|runtime|logs)(/|$)|\.(db|avzd|avrg|avsp|avnc|avnp|bin|log|dmp|rec|cwz|cwa|cws|cwm|cub|wav|png|plx|fnt)$') {
+        if ($relative -match '(?i)(^|/)(Cube\.exe|Server\.exe|msvcr110\.dll|Save|captures|owner-cache|runtime|logs)(/|$)|\.(db|avzd|avrg|avsp|avzc|avcr|avct|avnc|avnp|avns|bin|log|dmp|rec|cwz|cwa|cws|cwm|cub|wav|png|plx|fnt)$') {
             throw "Owner content or private diagnostics in package: $relative"
         }
         $stream = $entry.Open()

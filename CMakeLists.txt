@@ -313,6 +313,7 @@ if(MSVC)
         src/AlphaLook.cpp
         src/worldgen/Regions.cpp src/worldgen/Random.cpp
         src/TerrainLights.cpp
+        src/creatures/Spirits.cpp
         src/Frame.cpp
         tests/SpatialScalarTests.cpp
         PROPERTIES COMPILE_OPTIONS /fp:strict)

@@ -117,11 +117,17 @@ void takeSpiritItem(Inventory &inv, const ItemRecord &entry) {
 bool averageSpiritColour(const Item &item, glm::vec3 &colour) {
     glm::vec3 sum(0);
     int n = 0;
-    for (const Item::Cube &k : item.cubes)
-        if (k.material >= 128 && k.material <= 131)
-            sum += 1.5f * spiritColour(k.material), n++;
-    if (n)
-        colour = sum / (float)n;
+    // Valid descriptors keep the signed count and decoded vector in sync.
+    // Bound malformed counts by owned storage rather than reading beyond it.
+    const size_t count = item.spirits > 0 ? std::min(size_t(item.spirits), item.cubes.size()) : 0;
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t material = item.cubes[i].material;
+        if (material >= 128) {
+            sum += material <= 131 ? 1.5f * spiritColour(material) : glm::vec3(.5f);
+            ++n;
+        }
+    }
+    colour = n ? sum * (1.f / float(n)) : glm::vec3(0);
     return n > 0;
 }
 
