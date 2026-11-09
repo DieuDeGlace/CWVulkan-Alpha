@@ -237,6 +237,10 @@ Differences from the Steam engine that shape the plan:
   controlled-position sector rectangle and static-before-item order. Generated
   item lights are collected once and update with live replacement/unloading;
   rendering a model is independent from emitting its light. CPU/GPU checks pass.
+- [x] Source-admission plane kernel: ordered four-term P*V arithmetic, raw
+  unnormalized coefficients and the native w+z lower-depth extraction. Projection
+  inputs, view/reference following and shared-state scheduling remain open; the
+  current engine camera supplies the matrices. Mesh clipping stays independent.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

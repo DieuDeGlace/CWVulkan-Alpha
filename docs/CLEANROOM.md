@@ -205,5 +205,17 @@ order; culling radius does not enlarge the distance limit. Sector collection
 uses the controlled main position, visits existing keys in X/Y order and processes
 statics before current live item state. Generated items are no longer collected
 both from a stale zone cache and the live list, and model drawing does not decide
-whether their lights exist. The original plane/reference production and cached
+whether their lights exist. Upstream projection/view/reference inputs and cached
 chunk source publication remain separate dependencies from this bounded path.
+
+The independent source-admission plane-production contract was then held and read
+completely before replacing the engine's normalized frustum shortcut. Given P and
+V, the kernel computes all four scalar binary32 products for every P*V element,
+adds in order, and extracts the six raw row combinations without normalization.
+The lower depth plane uses w+z even with zero-to-one projection coefficients.
+The implementation preserves specified coefficient operand order and constructs a
+completed engine value; it does not claim the original renderer's incremental
+shared-state publication or early-query scheduling. Horizontal shifts precede
+float conversion while Z remains unchanged. Native projection input selection,
+imported tangent accuracy, view following/shake and R/A evolution remain open;
+the current camera supplies engine matrices to this bounded arithmetic kernel.

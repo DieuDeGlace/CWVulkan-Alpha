@@ -170,7 +170,7 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     candle.position[2] = 65536;
     liveItems.replace(0, 0, {candle});
     const terrain_lights::ViewAdmission sourceView(*terrain_lights::fromBlocks(glm::dvec3(camera.eye)), {},
-                                                  camera.viewPlanes(), 200);
+                                                  camera.lightAdmissionPlanes(), 200);
     const auto captureSector = [&](const char *name) {
         std::vector<terrain_lights::Candidate> candidates;
         sectorSources.append(candidates, liveItems, sourceView, {24 * 65536, 8 * 65536, 0}, 0);

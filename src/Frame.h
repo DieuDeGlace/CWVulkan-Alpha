@@ -21,8 +21,9 @@ struct Camera {
     glm::vec3 forward() const;
     glm::mat4 view() const;
     glm::mat4 projection(float nearPlane, float farPlane, float lens) const;
-    // Engine camera adapter. Original plane production is not yet certified.
-    std::array<glm::vec4, 6> viewPlanes() const;
+    // Raw native extraction applied to the engine camera matrices. Native FOV,
+    // projection inputs, following and reference generation remain separate.
+    std::array<glm::vec4, 6> lightAdmissionPlanes() const;
 };
 
 // Rendering §10: a point light (street lights, torches, campfires, glowing items), in

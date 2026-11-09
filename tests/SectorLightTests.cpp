@@ -43,15 +43,54 @@ static void admission() {
     planes[0] = {1, 0, 0, -1.f / 131072};
     check(ViewAdmission(precise, {-(int64_t(1) << 54), 0, 0}, planes, 0).accepts(precise, 0),
           "full shifted fixed coordinates precede float narrowing for plane tests");
+    planes[0] = {0, 0, 1, -10};
+    check(!ViewAdmission(point(0, 0, 5), point(0, 0, 100), planes, 0).accepts(point(0, 0, 5), 0),
+          "plane conversion applies horizontal shifts only and leaves raw Z unchanged");
 
     Camera camera;
     camera.aspect = 1;
-    const auto cameraPlanes = camera.viewPlanes();
-    for (const auto &plane : cameraPlanes)
-        check(std::abs(glm::length(glm::vec3(plane)) - 1.f) < 1e-6f, "engine camera planes have unit normals");
+    const auto cameraPlanes = camera.lightAdmissionPlanes();
+    check(glm::length(glm::vec3(cameraPlanes[0])) > 2.f &&
+              glm::length(glm::vec3(cameraPlanes[5])) < .001f,
+          "camera adapter preserves unequal raw plane scales");
     const ViewAdmission cameraView({}, {}, cameraPlanes, 100);
     check(cameraView.accepts(point(0, 10), 0) && !cameraView.accepts(point(0, -10), 0),
           "engine Vulkan camera adapter admits in front and rejects behind");
+    const auto belowNear = fromBlocks({0, .075, 0});
+    check(belowNear && cameraView.accepts(*belowNear, 0),
+          "source lower-depth plane uses w+z rather than the Vulkan geometry near plane");
+}
+
+static void planeProduction() {
+    glm::mat4 projection(1), view(1);
+    projection[0][0] = 2;
+    projection[1][1] = 3;
+    projection[2][2] = 4;
+    view[3][0] = 5;
+    const auto scaled = admissionPlanes(projection, view);
+    check(scaled[0] == glm::vec4(2, 0, 0, 11) && scaled[1] == glm::vec4(-2, 0, 0, -9) &&
+              scaled[2] == glm::vec4(0, 3, 0, 1) && scaled[3] == glm::vec4(0, -3, 0, 1) &&
+              scaled[4] == glm::vec4(0, 0, 4, 1) && scaled[5] == glm::vec4(0, 0, -4, 1),
+          "P*V column-vector product retains raw row3 +/- rows0/1/2 in consumer order");
+    projection = glm::mat4(0);
+    for (int column = 0; column < 4; ++column)
+        projection[column][0] = 1;
+    view = glm::mat4(0);
+    view[0] = {16777216, 1, -16777216, -1};
+    const auto cancellation = admissionPlanes(projection, view);
+    check(cancellation[0].x == -1 && cancellation[1].x == 1,
+          "four products accumulate sequentially rather than as paired sums");
+    projection = glm::mat4(1);
+    view = glm::mat4(1);
+    view[0][0] = std::numeric_limits<float>::infinity();
+    check(std::isnan(admissionPlanes(projection, view)[0].x),
+          "the complete product retains structural-zero multiplications");
+    std::array<glm::vec4, 6> unordered{};
+    unordered[0].w = std::numeric_limits<float>::quiet_NaN();
+    check(ViewAdmission({}, {}, unordered, 1).accepts({}, 0),
+          "unordered plane results do not take the ordered-negative rejection branch");
+    unordered[0].w = -0.f;
+    check(ViewAdmission({}, {}, unordered, 1).accepts({}, 0), "either sign of plane equality survives");
 }
 
 static void sourceRules() {
@@ -156,6 +195,7 @@ static void collection() {
 
 int main() {
     admission();
+    planeProduction();
     sourceRules();
     collection();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

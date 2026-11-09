@@ -782,7 +782,7 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items,
         if (position)
             lightCandidates.push_back({*position, source.colour, source.radius, 0});
     }
-    const terrain_lights::ViewAdmission view(*reference, shift, camera(renderer.size()).viewPlanes(),
+    const terrain_lights::ViewAdmission view(*reference, shift, camera(renderer.size()).lightAdmissionPlanes(),
                                             scene.fogDistance + 22.4f);
     // A flying viewer has no controlled creature; use its camera as an explicit
     // engine fallback. Playing uses the controlled body's main fixed position.

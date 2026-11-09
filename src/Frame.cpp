@@ -19,13 +19,8 @@ glm::mat4 Camera::projection(float nearPlane, float farPlane, float lens) const 
     return p;
 }
 
-std::array<glm::vec4, 6> Camera::viewPlanes() const {
-    const glm::mat4 rows = glm::transpose(projection(NEAR_PLANE, FAR_PLANE, lensDegrees) * view());
-    std::array<glm::vec4, 6> planes{rows[3] + rows[0], rows[3] - rows[0], rows[3] + rows[1],
-                                    rows[3] - rows[1], rows[2], rows[3] - rows[2]};
-    for (auto &plane : planes)
-        plane /= glm::length(glm::vec3(plane));
-    return planes;
+std::array<glm::vec4, 6> Camera::lightAdmissionPlanes() const {
+    return terrain_lights::admissionPlanes(projection(NEAR_PLANE, FAR_PLANE, lensDegrees), view());
 }
 
 FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowSettings &shadowSettings,

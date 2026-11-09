@@ -42,9 +42,13 @@ glm::vec3 renderPosition(const FixedPosition &position, const FixedPosition &shi
 float priority(const FixedPosition &position, const FixedPosition &reference);
 void order(std::vector<Candidate> &candidates);
 ShaderLights shaderPrefix(const Selection &selection);
+// Ordered binary32 P*V product and raw plane extraction from the held producer
+// contract. Projection inputs and construction of V are separate dependencies.
+std::array<glm::vec4, 6> admissionPlanes(const glm::mat4 &projection, const glm::mat4 &view);
 
 // The held source gate takes supplied planes/reference/shift. Construction of
 // those values by the original renderer remains a separate parity dependency.
+// Only the horizontal shift components apply; point Z remains unchanged.
 class ViewAdmission {
   public:
     ViewAdmission(FixedPosition reference, FixedPosition shift, std::array<glm::vec4, 6> planes, float reach);

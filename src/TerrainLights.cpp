@@ -43,9 +43,40 @@ float priority(const FixedPosition &position, const FixedPosition &reference) {
     return float(squaredDistance(position, reference)) * (1.f / 65536.f);
 }
 
+std::array<glm::vec4, 6> admissionPlanes(const glm::mat4 &projection, const glm::mat4 &view) {
+    glm::mat4 product(0);
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 4; ++column) {
+            const float first = view[column][0] * projection[0][row];
+            const float second = view[column][1] * projection[1][row];
+            const float pair = first + second;
+            const float third = view[column][2] * projection[2][row];
+            const float triple = pair + third;
+            const float fourth = view[column][3] * projection[3][row];
+            product[column][row] = triple + fourth;
+        }
+    std::array<glm::vec4, 6> planes{};
+    // Match the producer's coefficient order without adopting its shared mutable
+    // storage. The engine publishes this completed value on its rendering thread.
+    for (int plane : {0, 1, 2, 3, 5, 4})
+        for (int component = 0; component < 4; ++component) {
+            const int row = plane / 2;
+            const float last = product[component][3], other = product[component][row];
+            if (plane & 1)
+                planes[plane][component] = last - other;
+            else {
+                const bool otherFirst = plane == 0 ? component == 1 :
+                                        plane == 2 ? component == 1 || component == 3 :
+                                                     component == 1 || component == 2;
+                planes[plane][component] = otherFirst ? other + last : last + other;
+            }
+        }
+    return planes;
+}
+
 ViewAdmission::ViewAdmission(FixedPosition referencePosition, FixedPosition renderShift,
                              std::array<glm::vec4, 6> viewPlanes, float reach)
-    : reference(referencePosition), shift(renderShift), planes(viewPlanes), distance(reach) {
+    : reference(referencePosition), shift{renderShift[0], renderShift[1], 0}, planes(viewPlanes), distance(reach) {
     const float squared = reach * reach;
     const float fixedLimit = squared * 65536.f;
     // Invalid conversion is outside the ordinary native contract. Fail closed

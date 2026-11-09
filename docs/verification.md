@@ -254,3 +254,17 @@ while preserving sector and list order. Procedural GPU frames also exercise the
 actual collector, then hide an item and unload the sector. Their expected light
 contributions clear independently of the green global fallback. Camera/reference
 production and complete native source coverage remain acceptance dependencies.
+
+Plane-production fixtures check P*V order, sequential four-term binary32 rounding,
+raw unequal plane scales, structural-zero multiplications under the test floating
+environment and the w+z lower-depth bound. Supplied-plane tests also retain either
+sign of zero, ordered-negative rejection and unordered completion, and verify that
+only horizontal fixed-point shifts apply. Those checks establish the kernel for
+the supplied matrices and ambient test environment. Native projection inputs,
+view/reference following, partial publication, imported math and scheduling remain
+separate acceptance gates; mesh clipping still uses the engine's Vulkan frustum.
+
+The raw-plane checkpoint passes all 26 CTests and the procedural GPU routing,
+growth, clearing, timed-source and sector-lifecycle checks. A walking night client
+capture also renders terrain, character and HUD. These engine checks do not close
+native camera construction or original-client visual acceptance.
