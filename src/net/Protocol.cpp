@@ -96,6 +96,7 @@ CreatureRecord CreatureRecord::nativeDefaults() {
 
 creatures::Combatant CreatureRecord::fighter() const {
     creatures::Combatant c;
+    c.appearanceFlags = get<uint16_t>(bytes, 0x06e); // appearance field13, flags at +6
     c.controller = bytes[0x050];
     c.type = get<int32_t>(bytes, 0x054);
     c.action = bytes[0x058];

@@ -2153,17 +2153,27 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         flashes.advance(lightElapsedMs);
         for (const auto &flash : flashes.entries())
             scene.lights.push_back({view.toRenderFixed(flash.position), flash.radius, flash.fadedColour(), flash.position});
-        const auto itemLights = [&](const creatures::Combatant &creature, const creatures::Body &body) {
-            const terrain_lights::FixedPosition main{body.position[0], body.position[1], body.position[2]};
+        const auto creatureLights = [&](const creatures::Combatant &creature,
+                                         const terrain_lights::FixedPosition &main, glm::dvec3 displayed) {
+            const auto append = [&](const auto &sources) {
+                for (const auto &source : sources)
+                    if (source)
+                        scene.lights.push_back({view.toRenderFixed(source->position), source->radius,
+                                                source->colour, source->position});
+            };
+            // Displayed position is the engine's current draw adapter. Native
+            // rendered-position production/interpolation remains unverified.
+            if (const auto rendered = terrain_lights::fromBlocks(displayed))
+                append(terrain_lights::bodySources(creature, main, *rendered));
             // Native float weapon attachments are not supplied by the engine pose
             // yet. Keep an explicit main-position fallback for those two sites.
-            for (const auto &source : terrain_lights::equipmentSources(creature, main, {main, main}))
-                if (source)
-                    scene.lights.push_back({view.toRenderFixed(source->position), source->radius,
-                                            source->colour, source->position});
+            append(terrain_lights::equipmentSources(creature, main, {main, main}));
         };
-        if (player)
-            itemLights(player->combat(), player->body());
+        if (player) {
+            const creatures::Body &body = player->body();
+            creatureLights(player->combat(), {body.position[0], body.position[1], body.position[2]},
+                           body.blocks() - glm::dvec3(0, 0, body.bob));
+        }
         for (creatures::Npc &npc : npcs.npcs()) {
             creatures::Motion motion;
             motion.velocity = npc.body.velocity;
@@ -2191,7 +2201,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             if (creatureView.draw(items, npc.looks, npc.pose, motion, view.toRender(at), seconds * 1000.f, &effects))
                 footstep(npc.body.blocks() - glm::dvec3(0, 0, npc.body.size.z * 0.5));
             actionFlames(npc.fighter, npc.looks.box.x, at);
-            itemLights(npc.fighter, npc.body);
+            creatureLights(npc.fighter, {npc.body.position[0], npc.body.position[1], npc.body.position[2]}, at);
         }
         // Quests: the icon each giver shows (none when it has nothing for this player).
         // (Online the giver is one of the server's creatures: its home is its spawn's place.)
@@ -2431,6 +2441,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     footstep(centre - glm::dvec3(0, 0, other.appearance().box.z * 0.5));
                 actionFlames(f.fighter, other.appearance().box.x,
                              glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
+                // Light admission reads the current received snapshot, independent
+                // of the engine's interpolated action clock and resident buffs.
+                creatureLights(now, {other.position(0), other.position(1), other.position(2)}, centre);
             }
             if (player) {
                 creatures::Combatant &c = player->combat();

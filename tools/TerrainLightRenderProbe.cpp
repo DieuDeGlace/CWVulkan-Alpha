@@ -193,6 +193,33 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     sectorSources.remove(0, 0);
     if (!black(captureSector("sector-unloaded")))
         throw std::runtime_error("Unloaded sector retained GPU static/item contributions");
+    creatures::Combatant displayedCreature, mainCreature;
+    displayedCreature.type = 117;
+    displayedCreature.controller = 1;
+    displayedCreature.appearanceFlags = 0x0200;
+    mainCreature.type = 135;
+    auto raisedMain = colours[1].position;
+    raisedMain[2] -= 98304; // The kind135 source adds exactly 1.5 blocks.
+    const auto captureBody = [&](const char *name) {
+        std::vector<terrain_lights::Candidate> candidates;
+        const auto append = [&](const auto &sources) {
+            for (const auto &source : sources)
+                if (source)
+                    candidates.push_back(*source);
+        };
+        // Distinct main/rendered inputs make accidental position substitution
+        // route a light to the wrong quad, rather than hiding the error.
+        append(terrain_lights::bodySources(displayedCreature, colours[1].position, colours[0].position));
+        append(terrain_lights::bodySources(mainCreature, raisedMain, colours[0].position));
+        return capture(name, selector.rebuild(candidates, chunks, {}));
+    };
+    const auto body = captureBody("creature-body-sources");
+    if (body[0][0] < 40 || body[0][1] < 40 || body[0][2] < 1.5f * body[0][0] ||
+        body[1][1] < 50 || body[1][1] < 3 * body[1][0] || body[1][1] < 3 * body[1][2])
+        throw std::runtime_error("Creature main/rendered sources did not reach their intended terrain rows");
+    displayedCreature.health = mainCreature.health = 0;
+    if (!black(captureBody("creature-body-cleared")))
+        throw std::runtime_error("Nonpositive creature health retained body-light contributions");
     creatures::Combatant leftCreature, rightCreature;
     leftCreature.combo = rightCreature.combo = 100;
     auto &shoulders = leftCreature.equipment[creatures::SHOULDERS_SLOT];
@@ -226,7 +253,7 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     for (const auto &p : fallback)
         if (p[1] < 40 || p[0] > 4 || p[2] > 4)
             throw std::runtime_error("Removed terrain rows did not restore model fallback");
-    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, sector lifecycle, equipment and fallback\n";
+    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, sector lifecycle, creature body/equipment and fallback\n";
 }
 
 } // namespace

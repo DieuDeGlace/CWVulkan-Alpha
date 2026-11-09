@@ -227,6 +227,15 @@ shoulder/chest category gates, and average-times-ratio before the final color
 factor. The helper accepts distinct fixed-point weapon attachments and main
 position; the production local/NPC adapter still supplies an explicit main-position
 fallback for the two unverified weapon attachments. Kind-1 projectile lights now
-precede fading and creature sources and retain their raw coordinates. Other
-creature sites, remote-source coverage, native attachment producers, cached-source
-publication and complete container ordering remain separate dependencies.
+precede fading and creature sources and retain their raw coordinates.
+
+The same fully reread contract supplies the mutually exclusive kind117 and
+kind135..138 sources, followed by the independent appearance-bit0200 source.
+Their supplied main/rendered coordinates, constant RGB, height and positive-health
+gates are implemented separately from the equipment ratio. The received semantic
+fighter view now retains its already stored appearance flags; appearance-only
+deltas update that view without changing other fields. Local, NPC and received
+actors share the bounded body/equipment collector. Production displayed positions
+remain the engine's draw adapter, and the two weapon positions retain the stated
+fallback. Other creature sites, native attachment producers, interpolation,
+cached-source publication and complete container ordering remain dependencies.

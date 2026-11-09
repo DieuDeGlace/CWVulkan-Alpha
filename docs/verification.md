@@ -280,3 +280,14 @@ The production hand-position fallback and missing native source sites remain ope
 these checks do not certify native attachments or full source collection.
 The equipment-light checkpoint passes all 27 CTests, the extended procedural GPU
 checks and a walking night client capture with terrain, character and HUD.
+
+Additional CreatureLightTests cover the five kind-specific body sources, exact
+main-position height, distinct rendered inputs, independent coincident flag
+sources, role-specific RGB and ordered-positive health. A received-record fixture
+checks flag decoding without record mutation, then applies an appearance-only
+wire delta and removes only the flag source. Procedural GPU frames deliberately
+give main/rendered sites different positions to expose substitutions, and clear
+both terrain rows when their actors become nonpositive. Native position producers
+and original-client source/visual acceptance remain separate gates.
+The body/received-source checkpoint passes all 27 CTests and the extended GPU
+checks; a walking night client capture also renders terrain, character and HUD.

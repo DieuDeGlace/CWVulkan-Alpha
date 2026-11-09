@@ -248,6 +248,12 @@ Differences from the Steam engine that shape the plan:
   still use an explicit main-position fallback. Kind-1 projectile lights precede
   fading and creatures. Other creature sources/attachments and full container
   admission remain open.
+- [x] Bounded creature body lights: kind117 uses supplied rendered coordinates;
+  kinds135..138 use raw main Z+1.5; appearance bit0200 adds its separate role-based
+  source. Positive health admits these independently of the equipment counter.
+  Local/NPC/received actors share body-before-equipment gathering, and decoded
+  fighter views retain wire appearance flags. Native rendered-position production,
+  interpolation, remaining creature sites and full container order stay open.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

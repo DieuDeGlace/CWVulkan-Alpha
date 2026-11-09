@@ -1,5 +1,6 @@
 #include "CreatureLights.h"
 #include "creatures/Combat.h"
+#include "net/Protocol.h"
 #include <bit>
 #include <cstdio>
 #include <limits>
@@ -18,7 +19,7 @@ static Item spirit(uint8_t type, uint8_t material) {
     item.cubes = {{0, 0, 0, material}};
     return item;
 }
-static bool empty(const std::array<std::optional<Candidate>, 4> &sources) {
+template<size_t N> static bool empty(const std::array<std::optional<Candidate>, N> &sources) {
     for (const auto &source : sources)
         if (source)
             return false;
@@ -30,7 +31,74 @@ static bool colourBits(glm::vec3 colour, std::array<uint32_t, 3> expected) {
            std::bit_cast<uint32_t>(colour.b) == expected[2];
 }
 
+static void bodyLights() {
+    Combatant creature;
+    const FixedPosition main{(int64_t(1) << 54) + 1, -17, 33}, rendered{-5, 7, -9};
+    constexpr std::array<glm::vec3, 4> colours{{{.1f, .5f, .1f}, {.1f, .1f, .5f},
+                                               {.5f, .1f, .2f}, {.8f, .8f, .6f}}};
+    for (int32_t kind = 135; kind <= 138; ++kind) {
+        creature.type = kind;
+        const auto lights = bodySources(creature, main, rendered);
+        check(lights[0] && !lights[1] && lights[0]->position == FixedPosition{main[0], main[1], 98337} &&
+                  lights[0]->colour == colours[size_t(kind - 135)] && lights[0]->radius == 16,
+              "kinds135..138 use exact main-position Z+1.5 and their separate constant colors");
+    }
+    creature.type = 117;
+    const auto displayed = bodySources(creature, main, rendered);
+    check(displayed[0] && displayed[0]->position == rendered && displayed[0]->colour == glm::vec3(0, .4f, .8f),
+          "kind117 uses the supplied rendered triplet rather than main or shifted main position");
+    creature.appearanceFlags = 0x0200;
+    creature.controller = 1;
+    const auto combined = bodySources(creature, main, rendered);
+    check(combined[0] && combined[1] && combined[1]->position == rendered && combined[1]->radius == 16 &&
+              combined[1]->colour == glm::vec3(.4f, 0, .25f),
+          "the independent role-one flag source follows the kind source without merging at the same point");
+    creature.type = 2;
+    for (uint8_t role : {uint8_t(0), uint8_t(5), uint8_t(255)}) {
+        creature.controller = role;
+        const auto lights = bodySources(creature, main, rendered);
+        check(!lights[0] && lights[1] && lights[1]->colour == glm::vec3(.5f),
+              "all roles other than one use neutral flag-source RGB");
+    }
+    creature.appearanceFlags = 0x0002;
+    check(empty(bodySources(creature, main, rendered)), "the flag test uses bit0x0200 rather than its low-byte counterpart");
+    creature.type = 134;
+    check(empty(bodySources(creature, main, rendered)), "nearby unlisted kinds do not acquire invented glow");
+    creature.type = 135;
+    for (float health : {0.f, -1.f, std::numeric_limits<float>::quiet_NaN()}) {
+        creature.health = health;
+        check(empty(bodySources(creature, main, rendered)), "body sources require ordered positive health");
+    }
+}
+
+static void receivedLights() {
+    net::CreatureRecord record;
+    Appearance appearance;
+    appearance.flags = 0x0210;
+    record.setAppearance(appearance);
+    Combatant creature;
+    creature.type = 117;
+    creature.controller = 1;
+    record.setFighter(creature);
+    const auto before = record.bytes;
+    const auto decoded = record.fighter();
+    const auto lights = bodySources(decoded, {}, {1, 2, 3});
+    check(decoded.appearanceFlags == 0x0210 && record.bytes == before && lights[0] && lights[1] &&
+              lights[1]->colour == glm::vec3(.4f, 0, .25f),
+          "received fighter views carry appearance flags without mutating the stored record");
+    net::CreatureRecord changed = record;
+    appearance.flags = 0;
+    changed.setAppearance(appearance);
+    const auto packet = net::encodeDelta(42, changed, uint64_t(1) << 13);
+    check(net::applyDelta(packet, record) == 42, "appearance-only wire delta is accepted");
+    const auto after = bodySources(record.fighter(), {}, {1, 2, 3});
+    check(after[0] && !after[1] && record.fighter().type == 117,
+          "an appearance-only update removes the flag light while retaining the kind source and other core fields");
+}
+
 int main() {
+    bodyLights();
+    receivedLights();
     Combatant creature;
     creature.combo = 100; // Default limit 50: Q = 2 without a clamp.
     creature.equipment[MAIN_HAND] = spirit(3, 128);
