@@ -61,7 +61,7 @@ Differences from the Steam engine that shape the plan:
   with 20; admitted zero/negative durations retain a final call. Actual-client
   capture statistics and subsystem regressions cover the production connection.
 - [ ] Complete native frame closure: identity/transition and time-scaling inputs,
-  creature-map ordering, native aggregate rewrites/revisits, preview bootstrap,
+  key/own-ID lifetime, native aggregate rewrites/revisits, preview bootstrap,
   control numerics, interpolation and wider acceptance.
 - [x] Bounded action-binding production: refresh two/five concrete entries before
   world calls, retain masked positions, and reuse the selected list for later
@@ -69,6 +69,12 @@ Differences from the Steam engine that shape the plan:
   the strict heavy-chain boundary and fresh ordinary-primary fallback have
   regressions. Complete display/cooldown-map lifecycle and native interactive
   acceptance remain open.
+- [x] Bounded signed-key actor traversal: the controlled client runs at its key
+  among NPC updates; appends preserve creature references and live successors
+  decide whether inserted actors are reached. The protected received-state path
+  also merges by key. In-pass generated keys include mapped players and retain
+  signed-minimum wrap. Current engine key producers, dedicated player scheduling,
+  target scans and full identity/fatal lifecycle remain separate gates.
 - [x] Preliminary controlled health phase: the living role-zero/action-84 gate
   precedes input/common processing, retains integer elapsed conversion, ordered
   binary32 arithmetic and fresh comparison/store maximum queries. Unconditional

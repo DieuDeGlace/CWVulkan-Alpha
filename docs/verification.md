@@ -107,6 +107,25 @@ still unresolved. This does not certify original-game visual or menu parity.
 NetTests also checks clock publication waits for the frame gate, drains once,
 and accepts an identical later packet as fresh input.
 
+ActorOrderTests checks complete signed-key anchors across both word boundaries,
+distinct key/own-ID values, duplicate and null mappings, stable entry identity,
+and live insertion/removal before successor advance. Production NPC fixtures
+place the controlled callback before, between and after NPC keys, including zero,
+and observe actual resident countdowns on either side. A dead NPC remains through
+the actor boundary without ticking. Actual in-pass bomb appends include the
+controlled entry in generated-key selection, preserve existing references, defer
+earlier keys, visit a signed-minimum-wrapped later key and tick on the next pass.
+Protected received-state examples check the same controlled/remote merge. These
+checks do not establish native creation admission, arbitrary key/ID aliases,
+fatal cleanup, target-scan ordering or original-server behavior.
+All 32 CTests passed. Fresh isolated client checks retained exactly 50 health,
+connected through the loopback server and shut both processes down cleanly.
+Save/reload preserved the character, seed 123 despite conflicting reload inputs,
+advancing clock, nine map tiles, preview and 170 block edits. All four captures
+were reviewed. World pieces stayed at most 20 ms; known bright ground and native
+interactive acceptance remain open. Later controlled hit delivery remains a
+separate engine adapter from the actor scheduling verified here.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

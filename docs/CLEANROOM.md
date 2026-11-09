@@ -375,8 +375,8 @@ held-slot walk queries readiness for every held nonzero binding, applies the
 index-one restriction, retains primary suppression on rejected attempts, and
 performs the two post-primary release cleanups without resetting the clock.
 Full-width binding/cooldown keys remain distinct from the low-byte action write.
-Full movement/device mapping, all outer UI/transition gates, native actor-map
-order and original interactive acceptance remain open. Received
+Full movement/device mapping, all outer UI/transition gates and original
+interactive acceptance remain open. Received
 actor presentation keeps its stated engine clock adapter, now with the shared
 integer duration and per-world-call resident countdown. Preview participants and
 explicit unsaved --hour captures also remain identified engine adapters.
@@ -390,6 +390,26 @@ at and beyond the action-67 continuation boundary. Ordinary-primary fallback
 still selects from current actor state. Neither decimal 28 nor 29 is emitted by
 the closed native preset producer; configured consumer checks do not imply a
 vanilla producer. Complete display/cooldown-map lifecycle, stat dependencies,
-outer admission and native interactive acceptance remain open. The signed-key
-contract is retained for subsequent actor traversal work; its presence does not
-certify existing local/NPC container ordering.
+outer admission and native interactive acceptance remain open.
+
+The signed-key contract now also supplies the engine actor traversal. The local
+client callback runs at its key among NPCs; protected received-state countdowns
+merge with the local callback using the same signed order. NPC storage preserves
+references on append, and the reusable ordered index walks live successors.
+An in-pass insertion before the current key is not revisited; a later insertion
+can be visited. Generated in-pass keys include mapped player entries in their
+minimum scan and use defined low-64-bit decrement. Existing entry nodes are
+retained across refreshes, without a per-piece sort of the creature storage.
+Offline local and NPC projectiles share the ordered output collector.
+
+Engine producers currently assign entry keys from actor IDs at each invocation's
+index refresh. This adapter does not establish arbitrary native key/own-ID alias
+lifetime across calls, every original creation route, lookup consumers or null
+publication. Structural removals remain outside the valid live walk; arbitrary
+callback removal of its current entry is unsupported. Dedicated-world player
+buff scheduling, later controlled hit delivery and received core interpolation
+retain their existing adapters; the client contract does not certify
+original-server ordering. Full target-scan,
+record, fatal/loot and world-transition behavior and native gameplay acceptance
+remain open. Outside a live pass, the existing NPC-only generated-ID policy is
+retained with defined integer wrap; it is not a claim about all native producers.

@@ -352,7 +352,7 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
         c.action = 83;
         npc.body.mode |= 0x400;
     }
-    list.push_back(std::move(npc));
+    appendNpc(std::move(npc));
 }
 
 void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs,
@@ -487,8 +487,14 @@ uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
     npc.body.place(at);
     npc.body.fallStart = (float)at.z;
     const uint64_t id = c.id;
-    list.push_back(std::move(npc));
+    appendNpc(std::move(npc));
     return id;
+}
+
+void Npcs::appendNpc(Npc npc) {
+    list.push_back(std::move(npc));
+    Npc &added = list.back();
+    actors[added.fighter.id] = {&added, nullptr};
 }
 
 void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
@@ -1483,7 +1489,8 @@ NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
 
 void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                     int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming,
-                    const std::vector<BuffEvent> &buffInput) {
+                    const std::vector<BuffEvent> &buffInput,
+                    const std::function<void(int32_t)> &advanceControlled) {
     leftoverMs += dtMs;
     const int32_t milliseconds = (int32_t)leftoverMs;
     leftoverMs -= (float)milliseconds;
@@ -1555,11 +1562,35 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     list.erase(std::remove_if(list.begin(), list.end(), [&](const Npc &n) { return n.quest && questGone.count(n.fighter.id); }),
                list.end());
 
-    // Library callers may still dispatch here. The local client has already
-    // dispatched before its common tail and passes strikes=false.
-    dispatchPlayerActions(players, milliseconds, block, frame);
+    // Engine producers currently use an actor's ID as its entry key. Refresh
+    // pointers after pre-pass removals while retaining nodes for surviving keys.
+    // The live walk below uses these keys, never a mutable actor ID or role.
+    for (auto &[key, actor] : actors)
+        actor = {};
+    for (Npc &npc : list)
+        actors[npc.fighter.id] = {&npc, nullptr};
+    for (PlayerView &player : players)
+        actors[player.fighter.id] = {nullptr, &player};
+    std::erase_if(actors, [](const auto &entry) { return !entry.second.npc && !entry.second.player; });
 
-    for (Npc &npc : list) {
+    struct ActorPassScope {
+        bool &active;
+        ~ActorPassScope() { active = false; }
+    } actorPassScope{actorPassActive};
+    actorPassActive = true;
+    for (auto entry = actors.begin(); entry != actors.end(); ++entry) {
+        const ActorEntry actor = entry->second;
+        if (actor.player) {
+            if (actor.player->local && advanceControlled)
+                advanceControlled(milliseconds);
+            // Library players dispatch at their own key; the actual client
+            // dispatches inside its common update and supplies strikes=false.
+            dispatchPlayerActions(std::span(actor.player, 1), milliseconds, block, frame);
+            continue;
+        }
+        if (!actor.npc)
+            continue;
+        Npc &npc = *actor.npc;
         Combatant &c = npc.fighter;
         if (!admitCreatureUpdate(c))
             continue;
@@ -1702,6 +1733,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 }
     }
 
+    actorPassActive = false;
     // §9.4, §12.3, server §6.2: deaths. At the moment of death the spawn's countdown starts and
     // every player in the threat map is credited (hostile creatures only); the body is
     // removed 1000 ms later.

@@ -575,7 +575,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     std::map<uint64_t, creatures::Appearance> otherLooks; // for the corner map's markers
     // Other players' fighting state as last received; the action clock runs on locally
     // between updates so their swings play smoothly.
-    std::map<uint64_t, net::RemoteFighter> otherFighters;
+    creatures::ActorMap<net::RemoteFighter> otherFighters;
     std::map<uint64_t, net::CreatureRecord> receivedActors;
     net::CreatureRecord own;
     own.setName(options.name.empty() ? "AlphaVulkan" : options.name);
@@ -1580,18 +1580,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         accelerated |= acceleratesClock(npc.fighter);
                     creatures::regenerate(player->combat(), elapsed);
                     advanceWorldClock(elapsed, accelerated);
-                    for (auto &[id, remote] : otherFighters)
-                        if (remote.fighter.health > 0)
-                            creatures::tickBuffs(remote.fighter, elapsed, false);
-                    if (!client.connected()) // physics §4.4: hostile and inert creatures push the player
-                        player->body().separate = npcs.pushOnPlayer(player->body());
-                    // Physics §3.3: the player's lunge stops at an enemy in contact range.
-                    player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
-                    player->advance(elapsed, client.connected());
-                    publishPlayerEffects();
-                    // Projectiles §2, §3: the player's ranged actions charge and launch (online the shots
-                    // also go to the server); online, the others' shots arrive relayed.
-                    {
+                    const auto advancePlayer = [&](int32_t actorElapsed) {
+                        if (!client.connected()) // physics §4.4: hostile/inert creatures push the player
+                            player->body().separate = npcs.pushOnPlayer(player->body());
+                        player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
+                        player->advance(actorElapsed, client.connected());
+                        publishPlayerEffects();
+                        // Keep offline launch order in the same actor output list.
+                        // Online sends remain at this actor's producer boundary.
                         creatures::Combatant &c = player->combat();
                         auto shot = std::exchange(playerShot, {});
                         auto launched = std::exchange(playerLaunched, {});
@@ -1600,9 +1596,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (creatures::Projectile &p : launched) {
                             if (p.kind == creatures::BOOMERANG_SHOT) // §2.3: the thrower's weapon scale
                                 p.scale = player->appearance().weaponScale;
-                            if (client.connected())
+                            if (client.connected()) {
                                 client.sendShoot(p.serialize());
-                            projectiles.list.push_back(p);
+                                projectiles.list.push_back(p);
+                            } else {
+                                aggregate.shots.push_back(p);
+                            }
                         }
                         if (firstWorldCall)
                             for (const auto &record : client.takeShoots()) {
@@ -1614,7 +1613,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             playAt(s.sound, s.position, s.volume, s.pitch);
                         bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
 
-                    }
+                    };
+                    if (client.connected())
+                        creatures::visitReceivedActors(otherFighters, player->combat().id,
+                            [&] { advancePlayer(elapsed); }, [&](net::RemoteFighter &remote) {
+                                if (remote.fighter.health > 0)
+                                    creatures::tickBuffs(remote.fighter, elapsed, false);
+                            });
                     // World items §3: timers and landing sounds, a dropped item from the hand, and the
                     // zones whose items changed saved.
                     {
@@ -1870,7 +1875,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         npcs.stepInto((float)elapsed, view.held(),
                             {{c, player->body(), player->facing(), player->actionBefore(), false, false, true}}, scene.timeOfDayMs, scene.day,
                             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                            aggregate, std::exchange(shotHitsOnNpcs, {}));
+                            aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer);
                         const auto happened = aggregate.addedSince(npcEvents);
                         projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
                         for (const auto &event : happened.buffs)

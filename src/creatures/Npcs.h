@@ -5,6 +5,7 @@
 // RandomWalk), fight, die, and come back after 20 minutes or on the next day. Offline the
 // client runs them for its one player; online the server runs the same step for all.
 #include "creatures/Appearance.h"
+#include "creatures/ActorMap.h"
 #include "creatures/Combat.h"
 #include "creatures/Inventory.h"
 #include "creatures/Paths.h"
@@ -14,6 +15,7 @@
 #include "worldgen/Random.h"
 #include "worldgen/WorldMap.h"
 #include <functional>
+#include <deque>
 #include <map>
 #include <set>
 #include <span>
@@ -194,7 +196,8 @@ class Npcs {
                   const std::vector<BuffEvent> &buffInput = {});
     void stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                   int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming = {},
-                  const std::vector<BuffEvent> &buffInput = {});
+                  const std::vector<BuffEvent> &buffInput = {},
+                  const std::function<void(int32_t)> &advanceControlled = {});
     // Local player dispatch belongs between beginActionUpdate/endActionUpdate,
     // before movement. Carry its events into step and disable later strikes.
     void dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame);
@@ -212,6 +215,7 @@ class Npcs {
     // countdowns, so they come back from their spawns.
     void restAll() {
         list.clear();
+        actors.clear();
         spawns.clear();
     }
     // Missions §3: a zone's extra spawns, after the `base` ones its generator made. The old
@@ -270,8 +274,8 @@ class Npcs {
     void callPet(uint64_t owner, glm::dvec3 at);
     // The owner's pet, or null.
     const Npc *petOf(uint64_t owner) const;
-    const std::vector<Npc> &all() const { return list; }
-    std::vector<Npc> &npcs() { return list; } // (their pose state changes as they are drawn)
+    const std::deque<Npc> &all() const { return list; }
+    std::deque<Npc> &npcs() { return list; } // pose/test access; structural edits belong outside an actor pass
 
   private:
     struct SpawnState {
@@ -334,7 +338,16 @@ class Npcs {
     void sharePetExperience(uint64_t owner, int32_t experience, NpcFrame &frame);
     int draw(); // rand(): 0..32767
 
-    std::vector<Npc> list;
+    // Appending during the live pass preserves references to existing creatures.
+    // Bulk removals occur before/after it, followed by an index refresh next call.
+    std::deque<Npc> list;
+    struct ActorEntry {
+        Npc *npc = nullptr;
+        PlayerView *player = nullptr;
+    };
+    ActorMap<ActorEntry> actors;
+    bool actorPassActive = false;
+    void appendNpc(Npc npc);
     std::map<std::tuple<int32_t, int32_t, size_t>, SpawnState> spawns;
     std::map<std::pair<int32_t, int32_t>, std::pair<size_t, std::vector<worldgen::Spawn>>> extras; // base, spawns
     std::map<uint32_t, std::vector<worldgen::Spawn>> questSpawns; // quest -> its creatures

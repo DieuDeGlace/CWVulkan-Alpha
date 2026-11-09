@@ -54,10 +54,17 @@ const Npc *Npcs::petOf(uint64_t owner) const {
 }
 
 uint64_t Npcs::freeId() const {
-    int64_t smallest = 0;
-    for (const Npc &n : list)
-        smallest = std::min(smallest, (int64_t)n.fighter.id);
-    return (uint64_t)(smallest - 1);
+    uint64_t smallest = 0;
+    if (actorPassActive) {
+        for (const auto &[key, actor] : actors)
+            if ((actor.npc || actor.player) && ActorKeyLess{}(key, smallest))
+                smallest = key;
+    } else {
+        for (const Npc &n : list)
+            if (ActorKeyLess{}(n.fighter.id, smallest))
+                smallest = n.fighter.id;
+    }
+    return smallest - uint64_t(1); // defined low-64-bit wrap, including the signed minimum
 }
 
 // §9.2 steps 1-5 and §9.4: the creature becomes the pet of `owner` as the Pet slot item says.
@@ -128,7 +135,7 @@ void Npcs::petPass(std::vector<PlayerView> &players) {
                 makePet(n, slot, p.fighter);
                 n.body.place(p.body.blocks());
                 n.yaw = p.yaw;
-                list.push_back(std::move(n));
+                appendNpc(std::move(n));
             }
         } else if (pet) { // §9.5: the slot no longer holds a pet item
             if (pet->tameMs <= 0) {
