@@ -417,7 +417,7 @@ int main() {
         hit.amount = 1;
         npcs.step(0, map, {{source, body, 0, 0, false}}, 43200000, 0,
             [](int32_t, int32_t, int32_t z) { return (uint8_t)(z <= 0 ? 1 : 0); }, {hit});
-        const auto &threats = npcs.all()[0].threats;
+        const auto &threats = npcs.all()[0].fighter.relations.threats;
         if (scenario == 5)
             check(threats.empty(), "an unresolved source creates no hit threat entry");
         else {

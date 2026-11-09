@@ -63,6 +63,7 @@ void Client::disconnect() {
     std::lock_guard guard(lock);
     creatures.clear();
     buffEvents.clear();
+    relationshipEvents.clear();
     outgoingEvents.clear();
     haveClock = false;
     pendingClock.reset();
@@ -189,6 +190,11 @@ std::vector<Hit> Client::takeHits() {
 std::vector<::creatures::BuffEvent> Client::takeBuffs() {
     std::lock_guard guard(lock);
     return std::exchange(buffEvents, {});
+}
+
+std::vector<::creatures::RelationshipRecord> Client::takeRelationships() {
+    std::lock_guard guard(lock);
+    return std::exchange(relationshipEvents, {});
 }
 
 void Client::sendLoop() {
@@ -421,6 +427,8 @@ void Client::receiveLoop() {
                 std::memcpy(&s.volume, &bytes[20], 4);
                 sounds.push_back(s);
             }
+            for (const auto &bytes : update->sections[10])
+                relationshipEvents.push_back(::creatures::RelationshipRecord::parse(bytes.data()));
             for (const auto &bytes : update->sections[11])
                 buffEvents.push_back(::creatures::BuffEvent::parse(bytes.data()));
             // Behaviour §4.6 (b), §12.3: a player id and an item; an item of type 13 is a mission's

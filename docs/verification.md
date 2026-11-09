@@ -144,6 +144,29 @@ cleanly. Both captures were reviewed and retained their known bright-ground
 observation. The isolated injured character again saved exactly binary32 50
 health. These engine checks do not certify native combat, UI or visual parity.
 
+RelationshipTests covers contact keys and binary32 count saturation, contribution
+rounding order, signed notification order and strict eight-unit distance at raw
+positions beyond binary64 integer precision. Dead candidates, negative zero,
+existing negative/unordered values and unchanged output views have separate
+cases. Protection examples retain earlier interruption/contact effects after
+rejection and exercise new zero-amount contributions, dead distant role-zero
+contributors, missing keys and nonpositive values. Healing tests distinguish
+argument direction, mere key membership, live propagation and category exits.
+The independently checked kind-89 predicate cases cover all three mask bits.
+
+Complete relationship records round-trip all 24 bytes. Receiver examples check
+target/source/target lookup order, zero/equal/missing/null IDs, distinct aliases,
+dead actors and last-assignment wins without changing count/contact state.
+NetTests blocks publication with the actual frame gate, verifies ordered opaque
+bytes through section eleven, then exercises a real server contact that publishes
+the same complete record to both clients. Remote core refresh preserves resident
+relation values and float bits. These checks retain native actor-lifetime,
+classification producers, malformed-input and broader gameplay acceptance gates.
+All 34 CTests passed for this relationship checkpoint. Fresh isolated client,
+loopback and save/reload checks exited successfully. Reviewed captures retained
+the world, character, HUD, nine map tiles and 170 edited blocks; the injured
+character saved exactly binary32 50. The known bright-ground observation persists.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

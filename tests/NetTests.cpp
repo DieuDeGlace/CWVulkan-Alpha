@@ -66,6 +66,8 @@ static void checkCombatTransport() {
     second.record.timePadding = {13, 17, 19, 23};
     const creatures::BuffEvent sent{1, 19, {6, 8, -17, 123456789}};
     const auto expectedSend = sent.serialize();
+    const std::array<creatures::RelationshipRecord, 3> relationships{{
+        {19, 0, -3.25f, {1, 2, 3, 4}}, {19, 1, -0.f, {5, 6, 7, 8}}, {1, 1, 17, {9, 10, 11, 12}}}};
     creatures::HitRecord inboundHit;
     inboundHit.attacker = 77;
     inboundHit.target = 1;
@@ -108,6 +110,10 @@ static void checkCombatTransport() {
         for (const auto &event : {first, second}) {
             const auto bytes = event.serialize();
             update.sections[11].emplace_back(bytes.begin(), bytes.end());
+        }
+        for (const auto &event : relationships) {
+            const auto bytes = event.serialize();
+            update.sections[10].emplace_back(bytes.begin(), bytes.end());
         }
         ByteWriter response;
         response.u32(CLOCK);
@@ -186,7 +192,8 @@ static void checkCombatTransport() {
         client.sendHit(Hit::from(outboundHit));
         check(waitFor([&] { return worldSent.load(); }), "peer supplies input while the frame gate is held");
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
-        check(client.takeHits().empty() && client.takeBuffs().empty() && client.others().empty() && !client.takeClock(),
+        check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
+              client.others().empty() && !client.takeClock(),
               "incoming queue mutation and creature insertion wait until the current frame completes");
         creatures::Combatant actor;
         actor.health = 137.5f;
@@ -195,17 +202,25 @@ static void checkCombatTransport() {
         client.setOwn(published);
         frame.unlock();
         std::vector<creatures::BuffEvent> events;
+        std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<Hit> hits;
         check(waitFor([&] {
             for (const auto &event : client.takeBuffs()) events.push_back(event);
+            for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &hit : client.takeHits()) hits.push_back(hit);
-            return events.size() >= 2 && !hits.empty() && received && receivedHit;
+            return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
+                   !hits.empty() && received && receivedHit;
         }), "actual client exchanges packet-8 and section-12 buff records");
         check(coherentHit && packetOrder,
               "sender captures completed frame state before hit records and sends hits before buff events");
         check(events.size() == 2 && events[0].serialize() == first.serialize() && events[1].serialize() == second.serialize(),
               "incoming buff order, nonlocal target, embedded sources and opaque bytes survive transport");
         check(client.takeBuffs().empty(), "received buff queue drains exactly once");
+        check(receivedRelationships.size() == relationships.size() &&
+              receivedRelationships[0].serialize() == relationships[0].serialize() &&
+              receivedRelationships[1].serialize() == relationships[1].serialize() &&
+              receivedRelationships[2].serialize() == relationships[2].serialize() && client.takeRelationships().empty(),
+              "section-eleven relationships retain order, zero/self IDs, float bits and all opaque bytes before one frame drain");
         const auto clock = client.takeClock();
         uint32_t observedDay = 0, observedTime = 0;
         check(clock && clock->first == clockDay && clock->second == clockTime && !client.takeClock() &&
@@ -478,6 +493,34 @@ int main() {
               120000),
           "creatures come alive round Alice");
     check(npc >= ((uint64_t)32700 << 24), "with a spawn id");
+    {
+        uint64_t target = 0;
+        for (const auto &[id, record] : a.others())
+            if (record.controller() != 0 && record.health() > 0) {
+                target = id;
+                break;
+            }
+        check(target != 0, "relationship fixture finds a living mapped NPC");
+        if (target) {
+            a.takeRelationships();
+            b.takeRelationships();
+            const Hit contact = Hit::make(a.id(), target, 0, 0, {}, 0);
+            a.sendHit(contact);
+            std::optional<creatures::RelationshipRecord> first, second;
+            const auto collect = [&](Client &client, auto &result) {
+                for (const auto &record : client.takeRelationships())
+                    if (record.target == target && record.source == a.id())
+                        result = record;
+            };
+            check(waitFor([&] {
+                collect(a, first);
+                collect(b, second);
+                return first.has_value() && second.has_value();
+            }), "real world contact publishes section-eleven relationship records to both peers");
+            check(first && second && first->value > 0 && first->serialize() == second->serialize(),
+                  "real server preserves the same complete relationship payload for target and other peers");
+        }
+    }
     // Server simulation §8, world items §3: Alice drops a sword, sees it in her zone's list
     // (section 7), picks it up and gets it back as a gift (section 9).
     {

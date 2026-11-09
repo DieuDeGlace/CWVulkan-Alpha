@@ -10,12 +10,20 @@
 #include <cmath>
 #include <optional>
 #include <set>
+#include <utility>
 
 namespace creatures {
 
 namespace {
 
 constexpr float PI = 3.14159265358979f;
+
+struct FlagScope {
+    bool &flag;
+    bool previous;
+    explicit FlagScope(bool &value) : flag(value), previous(std::exchange(value, true)) {}
+    ~FlagScope() { flag = previous; }
+};
 
 glm::vec2 facing(float yawDegrees) {
     const float a = yawDegrees * PI / 180.f;
@@ -40,8 +48,9 @@ bool hostile(const Combatant &a, const Combatant &b) {
         return false;
     if ((a.controller == 1) != (b.controller == 1))
         return true;
-    if (a.controller == 1 && b.controller == 1)
-        return harmless(a.type, a.appearanceFlags) != harmless(b.type, b.appearanceFlags);
+    if (a.controller == 1 && b.controller == 1 &&
+        harmless(a.type, a.appearanceFlags) != harmless(b.type, b.appearanceFlags))
+        return true;
     return (a.mode & 0x20) || (b.mode & 0x20);
 }
 
@@ -497,8 +506,22 @@ void Npcs::appendNpc(Npc npc) {
     actors[added.fighter.id] = {&added, nullptr};
 }
 
+void Npcs::refreshActors(std::span<PlayerView> players) {
+    controlledActor = nullptr;
+    for (auto &[key, actor] : actors)
+        actor = {};
+    for (Npc &npc : list)
+        actors[npc.fighter.id] = {&npc, nullptr};
+    for (PlayerView &player : players) {
+        actors[player.fighter.id] = {nullptr, &player};
+        if (player.local)
+            controlledActor = &player.fighter;
+    }
+    std::erase_if(actors, [](const auto &entry) { return !entry.second.combat(); });
+}
+
 Npcs::ActorEntry Npcs::lookupActor(uint64_t key, std::span<PlayerView> players) {
-    if (actorPassActive) {
+    if (actorLookupActive) {
         const auto entry = actors.find(key);
         return entry == actors.end() ? ActorEntry{} : entry->second;
     }
@@ -511,6 +534,9 @@ Npcs::ActorEntry Npcs::lookupActor(uint64_t key, std::span<PlayerView> players) 
 }
 
 void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
+    if (!actorLookupActive)
+        refreshActors(players);
+    FlagScope indexScope{actorLookupActive};
     const glm::dvec3 P = bomb.body.blocks();
     frame.bursts.push_back(bombBurst(P)); // particles §5.1
     auto hit = [&](Combatant &target, Body &body, glm::vec3 box) {
@@ -932,7 +958,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         if (npc.chaseMs > 20000) {
             npc.target = 0;
             npc.threat = 0;
-            npc.threats.clear();
+            npc.fighter.relations.threats.clear();
             npc.path.clear();
             npc.cooldownMs = 3000;
             npc.chaseMs = 0;
@@ -954,7 +980,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             if (feet != goal)
                 npc.path.rounds(npc.body.size, npc.body.size.x, block);
             npc.threat *= 0.9f;
-            if (const auto it = npc.threats.find(npc.target); it != npc.threats.end())
+            if (const auto it = npc.fighter.relations.threats.find(npc.target); it != npc.fighter.relations.threats.end())
                 it->second *= 0.9f;
         }
         glm::vec3 u = glm::vec3(toTarget);
@@ -1254,55 +1280,104 @@ void Npcs::randomWalk(Npc &npc, float dtMs) {
     npc.fighter.actionMs = 1000000;
 }
 
-// Server §6.1 step 3, for an NPC target: the attacker's threat grows by 0.01 + amount * m,
-// then the hit is applied as on the client.
-void Npcs::land(Npc &npc, const HitRecord &hit, const Combatant *source, std::span<PlayerView> players, NpcFrame &frame) {
-    if (source && hit.amount >= 0) {
-        float &threat = npc.threats[hit.attacker];
-        threat = hitThreat(*source, hit.amount) + threat;
-        if (!npc.target) {
-            npc.target = hit.attacker; // it turns on whoever hit it (inferred)
-            npc.threat = 1;
+void Npcs::propagateThreat(Combatant &source, const ActorEntry &recipient, NpcFrame &frame) {
+    assert(actorLookupActive);
+    Combatant &target = *recipient.combat();
+    const float current = target.relations.threats[source.id];
+    frame.relationships.push_back({target.id, source.id, current});
+    for (const auto &[key, actor] : actors) {
+        Combatant *candidate = actor.combat();
+        if (!candidate || candidate == &source || candidate == &target || !hostile(*candidate, source))
+            continue;
+        float distance[3];
+        for (size_t axis = 0; axis < 3; axis++) {
+            const uint64_t difference = uint64_t(actor.body()->position[axis]) - uint64_t(recipient.body()->position[axis]);
+            distance[axis] = (float)std::bit_cast<int64_t>(difference) * (1.f / 65536.f);
+        }
+        const float x2 = distance[0] * distance[0];
+        const float y2 = distance[1] * distance[1];
+        const float z2 = distance[2] * distance[2];
+        const float squared = (y2 + x2) + z2;
+        if (!(squared < 64.f))
+            continue;
+        float &value = candidate->relations.threats[source.id];
+        if (value == 0) {
+            value = .5f;
+            frame.relationships.push_back({candidate->id, source.id, value});
         }
     }
-    bool protectedAdmission = false;
-    if (npc.fighter.appearanceFlags & 0x2000)
-        for (const auto &[id, value] : npc.threats)
-            if (value > 0) {
-                const Npc *knownNpc = findNpc(id);
-                if (knownNpc && knownNpc->fighter.controller == 0)
-                    protectedAdmission = true;
-                if (!knownNpc)
-                    for (const PlayerView &player : players)
-                        if (player.fighter.id == id && player.fighter.controller == 0)
-                            protectedAdmission = true;
-                if (protectedAdmission)
-                    break;
-            }
-    applyHit(npc.fighter, npc.body, hit, {source, false, false, protectedAdmission}, &frame.buffs);
-    if (hit.attacker && !findNpc(hit.attacker) && hit.amount >= 0) // a player's hit (pets §10.1)
-        hitCounts[hit.attacker][npc.fighter.id]++;
 }
 
-void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame) {
+bool Npcs::protectionGranted(const Combatant &target, std::span<PlayerView> players) {
+    if (!(target.appearanceFlags & 0x2000))
+        return true;
+    for (const auto &[key, value] : target.relations.threats)
+        if (value > 0) {
+            const Combatant *contributor = lookupActor(key, players).combat();
+            if (contributor && contributor->controller == 0)
+                return true;
+        }
+    return false;
+}
+
+void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame,
+                         const std::function<void(HitRecord &)> &localHit) {
+    if (!actorLookupActive)
+        refreshActors(players);
+    FlagScope indexScope{actorLookupActive};
     const ActorEntry recipient = lookupActor(hit.target, players);
-    Combatant *target = recipient.npc ? &recipient.npc->fighter : recipient.player ? &recipient.player->fighter : nullptr;
+    Combatant *target = recipient.combat();
     if (!target || !(target->health > 0))
         return;
-    const bool hasLocal = std::any_of(players.begin(), players.end(), [](const PlayerView &player) { return player.local; });
-    if (!hasLocal && target->controller == 0) {
+    if (!controlledActor && target->controller == 0) {
         frame.playerHits.push_back(hit);
         return;
     }
     const ActorEntry source = lookupActor(hit.attacker, players);
-    const Combatant *by = source.npc ? &source.npc->fighter : source.player ? &source.player->fighter : nullptr;
-    if (recipient.npc) {
-        land(*recipient.npc, hit, by, players, frame);
-    } else {
-        auto applied = hit;
-        if (recipient.player->local && onControlledHit)
+    Combatant *by = source.combat();
+    auto applied = hit;
+    const bool local = target == controlledActor;
+    if (local) {
+        if (localHit)
+            localHit(applied);
+        else if (onControlledHit)
             onControlledHit(applied);
-        applyHit(*target, recipient.player->body, applied, {by, recipient.player->local, false}, &frame.buffs);
+    }
+    prepareHitApplication(*target, applied);
+    if (by && applied.amount >= 0) {
+        by->relations.contact = applied.target;
+        target->relations.contact = applied.attacker;
+        by->relations.counts[applied.target] += 1.f;
+        float &value = target->relations.threats[applied.attacker];
+        value = hitThreat(*by, applied.amount) + value;
+        propagateThreat(*by, recipient, frame);
+        // Preserve the existing engine AI acquisition adapter independently
+        // from the exact contact identifier and resident relationship maps.
+        if (recipient.npc && !recipient.npc->target) {
+            recipient.npc->target = applied.attacker;
+            recipient.npc->threat = 1;
+        }
+    }
+    const auto phase = applyPreparedHit(*target, *recipient.body(), applied,
+        {by, local, false, protectionGranted(*target, players)}, &frame.buffs);
+    if (phase != HitApplicationPhase::health)
+        return;
+    // These engine world calls use mode zero. Missing-source negative input
+    // retains an explicit engine omission policy for the native unsafe fanout.
+    if (by && applied.amount < 0)
+        for (const auto &[key, actor] : actors) {
+            Combatant *candidate = actor.combat();
+            if (candidate && hostile(*by, *candidate) && candidate->relations.threats.contains(target->id)) {
+                const float adjustment = applied.amount * .1f;
+                candidate->relations.threats[by->id] -= adjustment;
+                propagateThreat(*by, actor, frame);
+            }
+        }
+    // Preserve the bounded primitive fatal adapter until synchronous fatal
+    // world/object/loot effects are connected at this exact boundary.
+    if (target->health <= 0) {
+        target->health = 0;
+        target->actionMs = 0;
     }
 }
 
@@ -1435,24 +1510,12 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
 
 void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::span<PlayerView> players, NpcFrame &frame,
                       const std::function<void(HitRecord &)> &localHit) {
-    struct Actor {
-        Combatant *fighter = nullptr;
-        Body *body = nullptr;
-        Npc *npc = nullptr;
-        bool local = false;
-    };
-    const auto lookup = [&](uint64_t id) -> Actor {
-        if (Npc *npc = findNpc(id))
-            return {&npc->fighter, &npc->body, npc};
-        for (PlayerView &player : players)
-            if (player.fighter.id == id)
-                return {&player.fighter, &player.body, nullptr, player.local};
-        return {};
-    };
-    const bool hasLocal = std::any_of(players.begin(), players.end(), [](const PlayerView &player) { return player.local; });
+    if (!actorLookupActive)
+        refreshActors(players);
+    FlagScope indexScope{actorLookupActive};
     // Exact lookup includes zero, dead sources and self references. A missing
     // source has its own producer draw/amount path; never substitute the target.
-    const Actor source = lookup(buff.source);
+    const ActorEntry source = lookupActor(buff.source, players);
     // The engine stores physics contact separately; present its current value
     // to both producer gates, including the role-one stuck-contact response.
     target.contact = body.contact;
@@ -1463,36 +1526,21 @@ void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::spa
     input.targetOnGround = (body.contact & ON_GROUND) != 0;
     input.targetPosition = body.blocks();
     std::copy_n(body.position, input.targetRecordPosition.size(), input.targetRecordPosition.begin());
-    if (source.body) {
-        input.attackerPosition = source.body->blocks();
-        std::copy_n(source.body->position, input.attackerRecordPosition.size(), input.attackerRecordPosition.begin());
+    if (const Body *sourceBody = source.body()) {
+        input.attackerPosition = sourceBody->blocks();
+        std::copy_n(sourceBody->position, input.attackerRecordPosition.size(), input.attackerRecordPosition.begin());
     }
     // Selector stays zero even when the source is still performing action 17.
     // No critical, affix, ordinary presentation, base stun or initial impulse.
-    const HitOutcome out = resolveHit(target, body.velocity, source.fighter, input, [&] { return draw(); },
+    const HitOutcome out = resolveHit(target, body.velocity, source.combat(), input, [&] { return draw(); },
         [&](const HitEmission &emission) {
             const HitRecord &record = emission.record;
             frame.emittedHits.push_back(record);
-            const Actor recipient = lookup(record.target);
-            if (!recipient.fighter || recipient.fighter->health <= 0)
+            const ActorEntry recipient = lookupActor(record.target, players);
+            if (!recipient.combat() || !(recipient.combat()->health > 0))
                 return;
-            frame.seen.push_back({record, recipient.body->blocks()});
-            if (!hasLocal && recipient.fighter->controller == 0) {
-                // A dedicated world relays role-zero events. Its receiver owns
-                // application; applying here would also change later producer gates.
-                frame.playerHits.push_back(record);
-                return;
-            }
-            const Actor resolvedSource = lookup(record.attacker);
-            if (recipient.npc)
-                land(*recipient.npc, record, resolvedSource.fighter, players, frame);
-            else {
-                auto applied = record;
-                if (recipient.local && localHit)
-                    localHit(applied);
-                applyHit(*recipient.fighter, *recipient.body, applied,
-                         {resolvedSource.fighter, recipient.local, false}, &frame.buffs);
-            }
+            frame.seen.push_back({record, recipient.body()->blocks()});
+            applyWorldHit(record, players, frame, localHit);
         });
     frame.buffs.insert(frame.buffs.end(), out.buffs.begin(), out.buffs.end());
     frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
@@ -1525,22 +1573,17 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     leftoverMs -= (float)milliseconds;
     dtMs = (float)milliseconds;
     clockMs = timeOfDayMs;
+    refreshActors(players);
+    FlagScope indexScope{actorLookupActive};
     // Server §3 step 3: hits sent by players' clients land on the NPCs they name.
-    for (const HitRecord &hit : incoming)
-        for (Npc &n : list)
-            if (n.fighter.id == hit.target && n.fighter.health > 0) {
-                const Combatant *source = nullptr;
-                if (const Npc *by = findNpc(hit.attacker))
-                    source = &by->fighter;
-                else
-                    for (const PlayerView &player : players)
-                        if (player.fighter.id == hit.attacker) {
-                            source = &player.fighter;
-                            break;
-                        }
-                land(n, hit, source, players, frame);
-                frame.seen.push_back({hit, n.body.blocks()});
-            }
+    for (const HitRecord &hit : incoming) {
+        const ActorEntry recipient = lookupActor(hit.target, players);
+        if (recipient.npc && recipient.combat()->health > 0) {
+            const glm::dvec3 at = recipient.body()->blocks();
+            applyWorldHit(hit, players, frame);
+            frame.seen.push_back({hit, at});
+        }
+    }
     // Input hits precede buff application; resident countdown is later in this
     // same update. Neither source identity nor target health gates a buff record.
     for (const BuffEvent &event : buffInput) {
@@ -1572,8 +1615,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             return false;
         const glm::dvec3 h = n.body.blocks() - n.home;
         for (const PlayerView &p : players)
-            if (const auto t = n.threats.find(p.fighter.id);
-                t != n.threats.end() && t->second > 0 && glm::dot(h, h) < 262144.0)
+            if (const auto t = n.fighter.relations.threats.find(p.fighter.id);
+                t != n.fighter.relations.threats.end() && t->second > 0 && glm::dot(h, h) < 262144.0)
                 return false;
         double m = -1;
         for (const PlayerView &p : players) {
@@ -1594,13 +1637,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     // Engine producers currently use an actor's ID as its entry key. Refresh
     // pointers after pre-pass removals while retaining nodes for surviving keys.
     // The live walk below uses these keys, never a mutable actor ID or role.
-    for (auto &[key, actor] : actors)
-        actor = {};
-    for (Npc &npc : list)
-        actors[npc.fighter.id] = {&npc, nullptr};
-    for (PlayerView &player : players)
-        actors[player.fighter.id] = {nullptr, &player};
-    std::erase_if(actors, [](const auto &entry) { return !entry.second.npc && !entry.second.player; });
+    refreshActors(players);
 
     struct ActorPassScope {
         bool &active;
@@ -1763,6 +1800,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     }
 
     actorPassActive = false;
+    actorLookupActive = false; // later corpse removal can move deque elements
     // §9.4, §12.3, server §6.2: deaths. At the moment of death the spawn's countdown starts and
     // every player in the threat map is credited (hostile creatures only); the body is
     // removed 1000 ms later.
@@ -1788,8 +1826,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                     n.fighter.health = maxHealth(n.fighter);
                     n.body.place(p.body.blocks());
                     n.target = 0;
-                    n.threats.clear();
-                    hitCounts[n.owner].clear();
+                    n.fighter.relations.threats.clear();
+                    p.fighter.relations.counts.clear();
                     n.deadMs = 0;
                 }
             ++it;
@@ -1807,14 +1845,12 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 blast(n, players, frame);
             }
             frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // destroy2.wav
-            for (auto &[who, counts] : hitCounts)
-                counts.erase(n.fighter.id);
             NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory, n.zone, n.boss};
             death.quest = n.quest, death.questRole = n.questRole;
             if (n.quest)
                 questGone.insert(n.fighter.id); // a quest creature is not made again
             std::copy(n.body.position, n.body.position + 3, death.position);
-            for (const auto &[who, threat] : n.threats)
+            for (const auto &[who, threat] : n.fighter.relations.threats)
                 if (threat > 0 && !death.credited)
                     for (const PlayerView &p : players)
                         if (p.fighter.id == who)
@@ -1825,7 +1861,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                                               (n.looks.flags & 0x200) != 0, n.looks.flags);
             if (n.fighter.controller == 1)
                 for (size_t k = 0; k < players.size(); k++)
-                    if (n.threats.count(players[k].fighter.id) || n.target == players[k].fighter.id) {
+                    if (n.fighter.relations.threats.count(players[k].fighter.id) || n.target == players[k].fighter.id) {
                         frame.kills.push_back({players[k].fighter.id, n.fighter.id, n.fighter.type, xp});
                         if (k == 0)
                             frame.experience += xp;
@@ -1854,7 +1890,7 @@ NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {
                 take(shots, cursor.shots), take(bursts, cursor.bursts), take(deaths, cursor.deaths),
                 take(craters, cursor.craters), take(explosions, cursor.explosions), take(tamed, cursor.tamed),
                 take(petItems, cursor.petItems), std::bit_cast<int32_t>(uint32_t(experience) - uint32_t(cursor.experience)),
-                take(seen, cursor.seen)};
+                take(seen, cursor.seen), take(relationships, cursor.relationships)};
     cursor.experience = experience;
     return added;
 }
@@ -1864,6 +1900,7 @@ void NpcFrame::reset() {
     playerHits.clear();
     sounds.clear();
     buffs.clear();
+    relationships.clear();
     kills.clear();
     shots.clear();
     bursts.clear();

@@ -43,7 +43,6 @@ struct Npc {
     size_t spawn = 0; // index in the zone's spawn list (NO_SPAWN for bombs and pets)
     float despawnRadius = 200; // the spawn's radius (server §5.4)
     float deadMs = 0;          // time since death; the body goes after 1000 ms (server §6.2)
-    std::map<uint64_t, float> threats; // the threat map: who hit it, and how much
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
@@ -112,6 +111,7 @@ struct NpcFrame {
     std::vector<HitEmission> playerHits; // local policy is not sent over the wire
     std::vector<SoundEvent> sounds;
     std::vector<BuffEvent> buffs;
+    std::vector<RelationshipRecord> relationships;
     std::vector<KillRecord> kills;
     std::vector<Projectile> shots; // projectiles the NPCs launched (projectiles §2)
     std::vector<Burst> bursts;     // particles §5 (section 3)
@@ -165,6 +165,7 @@ struct NpcFrame {
     struct Cursor {
         size_t emittedHits = 0, playerHits = 0, sounds = 0, buffs = 0, kills = 0, shots = 0, bursts = 0;
         size_t deaths = 0, craters = 0, explosions = 0, tamed = 0, petItems = 0, seen = 0;
+        size_t relationships = 0;
         int32_t experience = 0;
     };
     struct Added {
@@ -182,6 +183,7 @@ struct NpcFrame {
         std::span<const PetItem> petItems;
         int32_t experience = 0;
         std::span<const std::pair<HitRecord, glm::dvec3>> seen;
+        std::span<const RelationshipRecord> relationships;
     };
     Added addedSince(Cursor &cursor) const;
     void reset(); // clear values while retaining engine buffer capacity
@@ -211,7 +213,8 @@ class Npcs {
     // targets apply synchronously; worlds without a controlled actor relay
     // role-zero targets. The producer owns its original outgoing/seen record.
     // Full contact propagation and fatal world effects remain separate work.
-    void applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame);
+    void applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame,
+                       const std::function<void(HitRecord &)> &localHit = {});
     std::function<void(HitRecord &)> onControlledHit; // SDK extension: local application copy only
     // Server §5.3: a spawn's creature id, (zy * 65536 + zx) * 256 + index.
     static uint64_t spawnId(int32_t zx, int32_t zy, size_t index) {
@@ -277,7 +280,7 @@ class Npcs {
     uint64_t placeBomb(glm::dvec3 at, int32_t level);
     // Pets §13 (packet 6 kind 8, the T key): the owner's pet stops fighting and, more than
     // 200 blocks away, comes to `at`.
-    void callPet(uint64_t owner, glm::dvec3 at);
+    void callPet(Combatant &owner, glm::dvec3 at);
     // The owner's pet, or null.
     const Npc *petOf(uint64_t owner) const;
     const std::deque<Npc> &all() const { return list; }
@@ -313,7 +316,6 @@ class Npcs {
     void strike(Combatant &attacker, const Body &attackerBody, float yaw, std::span<PlayerView> players,
                 bool byPlayer, NpcFrame &frame, const BlockType &block, uint64_t npcTarget = 0, bool attackerAlly = false);
     // Server §6.1 step 3: a hit landing on an NPC (threat, then damage).
-    void land(Npc &npc, const HitRecord &hit, const Combatant *source, std::span<PlayerView> players, NpcFrame &frame);
     // Pets and bombs §4.2: the blast of `bomb` hits every live creature in reach.
     void blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame);
     // Pets (Pets.cpp).
@@ -323,8 +325,6 @@ class Npcs {
         std::vector<uint8_t> item; // copy of the Pet slot item (obj +0x1d48)
     };
     std::map<uint64_t, PetLink> pets; // by owner
-    // Each player's hits per creature (obj +0x13ac), which a pet's Combat follows.
-    std::map<uint64_t, std::map<uint64_t, int32_t>> hitCounts;
     Npc *findNpc(uint64_t id);
     uint64_t freeId() const;
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
@@ -350,11 +350,19 @@ class Npcs {
     struct ActorEntry {
         Npc *npc = nullptr;
         PlayerView *player = nullptr;
+        Combatant *combat() const { return npc ? &npc->fighter : player ? &player->fighter : nullptr; }
+        Body *body() const { return npc ? &npc->body : player ? &player->body : nullptr; }
+        bool local() const { return player && player->local; }
     };
     ActorMap<ActorEntry> actors;
+    Combatant *controlledActor = nullptr; // valid while the refreshed index is protected
     bool actorPassActive = false;
+    bool actorLookupActive = false;
     void appendNpc(Npc npc);
+    void refreshActors(std::span<PlayerView> players);
     ActorEntry lookupActor(uint64_t key, std::span<PlayerView> players);
+    void propagateThreat(Combatant &source, const ActorEntry &target, NpcFrame &frame);
+    bool protectionGranted(const Combatant &target, std::span<PlayerView> players);
     std::map<std::tuple<int32_t, int32_t, size_t>, SpawnState> spawns;
     std::map<std::pair<int32_t, int32_t>, std::pair<size_t, std::vector<worldgen::Spawn>>> extras; // base, spawns
     std::map<uint32_t, std::vector<worldgen::Spawn>> questSpawns; // quest -> its creatures

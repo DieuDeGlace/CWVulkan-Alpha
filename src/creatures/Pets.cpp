@@ -95,7 +95,7 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     pet.fighter = c;
     pet.owner = owner.id;
     pet.spawn = Npc::NO_SPAWN;
-    pet.threats.clear();
+    pet.fighter.relations.threats.clear();
     pet.target = 0;
     pet.threat = 0;
     pet.body.size = pet.looks.box;
@@ -173,8 +173,8 @@ uint64_t Npcs::petTarget(const Npc &pet, std::vector<PlayerView> &players) {
     if (!owner || owner->fighter.action == 106)
         return 0;
     uint64_t best = 0;
-    int32_t most = 0;
-    for (const auto &[id, count] : hitCounts[pet.owner]) {
+    float most = 0;
+    for (const auto &[id, count] : owner->fighter.relations.counts) {
         const Npc *n = findNpc(id);
         if (count > most && n && n->fighter.health > 0)
             best = id, most = count;
@@ -260,13 +260,13 @@ void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
     }
 }
 
-void Npcs::callPet(uint64_t owner, glm::dvec3 at) {
-    hitCounts[owner].clear(); // §13 step 2: the pet's Combat has nothing left to fight
-    const auto it = pets.find(owner);
+void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
+    owner.relations.counts.clear(); // §13 step 2: the pet's Combat has nothing left to fight
+    const auto it = pets.find(owner.id);
     if (it == pets.end())
         return;
     if (Npc *pet = findNpc(it->second.pet)) {
-        pet->threats.clear();
+        pet->fighter.relations.threats.clear();
         pet->target = 0;
         const glm::dvec3 d = pet->body.blocks() - at;
         if (glm::dot(d, d) > 40000.0)

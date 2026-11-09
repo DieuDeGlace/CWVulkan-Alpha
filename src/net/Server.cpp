@@ -19,6 +19,7 @@ struct Server::Connection {
     Socket socket;
     CreatureRecord creature;
     std::vector<creatures::Buff> buffs; // core snapshots exclude the resident list
+    creatures::Relations relations;
     std::map<uint64_t, CreatureRecord> known; // what this player was sent last tick
     Clock::time_point joined = Clock::now();
     std::deque<std::pair<uint64_t, std::vector<uint16_t>>> chat;
@@ -585,6 +586,7 @@ void Server::stepWorld(float dtMs) {
         f.controller = 0;
         f.health = c->creature.health();
         f.buffs = std::move(c->buffs);
+        f.relations = std::move(c->relations);
         creatures::Body b;
         b.place(glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0);
         b.velocity = c->creature.velocity();
@@ -710,7 +712,11 @@ void Server::stepWorld(float dtMs) {
                 break;
             }
             case 8: // pets §13: the T key calls the pet back
-                npcs.callPet(id, at);
+                for (auto &player : players)
+                    if (player.fighter.id == id) {
+                        npcs.callPet(player.fighter, at);
+                        break;
+                    }
                 break;
             case 7: // block edits §6: a voxel object, by the sender's record
                 placeObject(c->creature);
@@ -832,7 +838,7 @@ void Server::stepWorld(float dtMs) {
         for (creatures::Npc &n : npcs.npcs()) {
             const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
             const Missions::Cell *cell = missions.cell(cx, cy);
-            if ((n.looks.flags & 0x2000) && n.threats.empty() && cell && cell->mission.state == 2)
+            if ((n.looks.flags & 0x2000) && n.fighter.relations.threats.empty() && cell && cell->mission.state == 2)
                 n.fighter.health = 0;
         }
     }
@@ -992,8 +998,10 @@ void Server::stepWorld(float dtMs) {
     for (const creatures::HitRecord &h : trapHits)
         if (connections.count(h.target))
             outgoingHits.push_back(h);
-    for (size_t index = 0; index < fighters.size(); index++)
+    for (size_t index = 0; index < fighters.size(); index++) {
         who[index]->buffs = std::move(fighters[index].buffs);
+        who[index]->relations = std::move(fighters[index].relations);
+    }
 
     // World items §3.5: changed zones are saved and listed to everyone.
     const std::set<std::pair<int32_t, int32_t>> changedZones = items.takeChanged();
@@ -1008,6 +1016,10 @@ void Server::stepWorld(float dtMs) {
     const auto objectsChanged = std::exchange(placedChanged, {});
     for (auto &[id, c] : connections) {
         WorldUpdate &out = c->outgoing;
+        for (const auto &event : frame.relationships) {
+            const auto bytes = event.serialize();
+            out.sections[10].emplace_back(bytes.begin(), bytes.end());
+        }
         for (const auto &event : frame.buffs) {
             const auto bytes = event.serialize();
             out.sections[11].emplace_back(bytes.begin(), bytes.end());

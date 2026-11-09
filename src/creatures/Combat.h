@@ -9,6 +9,7 @@
 #include "creatures/Particles.h"
 #include "creatures/Buffs.h"
 #include "creatures/Hits.h"
+#include "creatures/Relationships.h"
 #include <map>
 #include <vector>
 
@@ -114,6 +115,7 @@ struct Combatant {
     std::vector<Buff> buffs;
     std::vector<int32_t> specials; // special actions an NPC may use (§9.3, §13.2)
     std::map<int32_t, float> cooldowns; // §16.1: ability id -> remaining ms (entries stay at 0)
+    Relations relations;
 
     const Item &mainHand() const { return equipment[MAIN_HAND]; }
     const Item &offHand() const { return equipment[OFF_HAND]; }
@@ -247,6 +249,13 @@ struct HitApplicationContext {
 // stay with the world caller; protectionGranted supplies its resolved map gate.
 void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicationContext context = {},
               std::vector<BuffEvent> *events = nullptr);
+// The world caller inserts contact/relationship work between these phases.
+// Initial target admission belongs to that caller; this internal result says
+// only whether health processing was reached, not whether a hit was accepted.
+void prepareHitApplication(Combatant &target, const HitRecord &hit);
+enum class HitApplicationPhase { stopped, health };
+HitApplicationPhase applyPreparedHit(Combatant &target, Body &body, const HitRecord &hit,
+                                     HitApplicationContext context, std::vector<BuffEvent> *events = nullptr);
 // Incoming network consumer, after controlled-target resolution. This is a
 // separate native phase from the world applier above; no source lookup occurs.
 void receiveHit(Combatant &controlled, Body &body, const HitRecord &hit, std::vector<BuffEvent> *events = nullptr);

@@ -1065,6 +1065,14 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
               std::vector<BuffEvent> *events) {
     if (target.health <= 0)
         return;
+    prepareHitApplication(target, hit);
+    if (applyPreparedHit(target, body, hit, context, events) == HitApplicationPhase::health && target.health <= 0) {
+        target.health = 0;
+        target.actionMs = 0;
+    }
+}
+
+void prepareHitApplication(Combatant &target, const HitRecord &hit) {
     if (hit.amount > 0) {
         const uint32_t combined = (uint32_t)target.level - 1u + (uint32_t)target.powerTier;
         const float exponent = (float)std::bit_cast<int32_t>(combined) * .25f;
@@ -1080,10 +1088,14 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
             target.hitStun = 3000;
         }
     }
+}
+
+HitApplicationPhase applyPreparedHit(Combatant &target, Body &body, const HitRecord &hit,
+                                     HitApplicationContext context, std::vector<BuffEvent> *events) {
     if ((target.appearanceFlags & 0x2000) && !context.protectionGranted)
-        return;
+        return HitApplicationPhase::stopped;
     if (hit.kind == HIT_IMMUNE)
-        return;
+        return HitApplicationPhase::stopped;
     if (hit.amount >= 0) {
         glm::vec3 response = hit.knockBack;
         if (target.hitStun > 0 && hit.stun <= 0)
@@ -1103,7 +1115,7 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
         target.mana += .25f;
         if (target.mana > 1)
             target.mana = 1;
-        return;
+        return HitApplicationPhase::stopped;
     }
     if (hit.kind == 4) {
         if (target.dodgeMs != 0 && target.characterClass == 4 && target.specialization == 1) {
@@ -1115,12 +1127,12 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
             if (events)
                 events->push_back({target.id, target.id, critical});
         }
-        return;
+        return HitApplicationPhase::stopped;
     }
     if (hit.stun > 0)
         target.hitStun = std::max(target.hitStun, hit.stun);
     if (context.replica && !context.local)
-        return;
+        return HitApplicationPhase::stopped;
     if (hit.amount > 0 && hit.kind == HIT_ABSORBED) {
         for (Buff &shield : target.buffs)
             if (shield.kind == ABSORB) {
@@ -1147,10 +1159,7 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
         if (target.health > maxHealth(target))
             target.health = maxHealth(target);
     }
-    if (target.health <= 0) {
-        target.health = 0;
-        target.actionMs = 0;
-    }
+    return HitApplicationPhase::health;
 }
 
 void receiveHit(Combatant &controlled, Body &body, const HitRecord &hit, std::vector<BuffEvent> *events) {

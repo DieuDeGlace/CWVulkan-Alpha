@@ -1326,6 +1326,20 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (session && named && simulation::clockWriteDue(lightClockMs, elapsed))
             session->saveClock();
     };
+    const auto applyReceivedRelationships = [&] {
+        const auto received = client.takeRelationships();
+        creatures::receiveRelationships(received, [&](uint64_t key) -> creatures::Combatant * {
+            if (player && player->combat().id == key)
+                return &player->combat();
+            if (const auto remote = otherFighters.find(key); remote != otherFighters.end())
+                return &remote->second.fighter;
+            if (!client.connected())
+                for (auto &npc : npcs.npcs())
+                    if (npc.fighter.id == key)
+                        return &npc.fighter;
+            return nullptr;
+        });
+    };
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
         if (interface.optionsToApply) {
@@ -1823,7 +1837,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             for (creatures::Npc &n : npcs.npcs()) {
                                 const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
                                 const Missions::Cell *cell = missions.cell(cx, cy);
-                                if ((n.looks.flags & 0x2000) && n.threats.empty() && cell && cell->mission.state == 2)
+                                if ((n.looks.flags & 0x2000) && n.fighter.relations.threats.empty() && cell && cell->mission.state == 2)
                                     n.fighter.health = 0;
                             }
                             // §7: the saves, of every cell of a region whose pass ran and of changed cells.
@@ -2104,6 +2118,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     firstWorldCall = false;
                 },
                 [&](creatures::NpcFrame &) {
+                    applyReceivedRelationships();
                     simulationInputFrames++;
                     player->readInput(window, frameElapsedMs, !menus && !interface.typing() && player->combat().health > 0,
                                       interface.mapOpen ? nullptr : &pad);
@@ -2132,6 +2147,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, block, aggregate);
                 },
                 [&](creatures::NpcFrame &aggregate) {
+                    applyReceivedRelationships();
                     simulationInputFrames++;
                     view.move({held(GLFW_KEY_D) - held(GLFW_KEY_A), held(GLFW_KEY_W) - held(GLFW_KEY_S), held(GLFW_KEY_E) - held(GLFW_KEY_Q)},
                               seconds, held(GLFW_KEY_LEFT_SHIFT) > 0);
@@ -3259,7 +3275,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (client.connected())
                         client.sendItemRequest(itemRequest({}, {0, 0, 0}, 8));
                     else
-                        npcs.callPet(c.id, me);
+                        npcs.callPet(player->combat(), me);
                 }
                 tWasDown = tDown;
                 // Travel §5.3: riding needs the pet alive and rideable (online the server's

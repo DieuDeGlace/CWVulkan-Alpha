@@ -1159,7 +1159,7 @@ int main() {
         const double gap = pet ? glm::length(glm::dvec2(pet->body.blocks() - body.blocks())) : 99;
         same(gap < 4.5, 1, "it follows to within 4 blocks");
         body.place({300.5, 30.5, 1 + 1.08 + 0.01});
-        npcs.callPet(1, body.blocks());
+        npcs.callPet(me, body.blocks());
         pet = npcs.petOf(1);
         same(pet && glm::length(glm::dvec2(pet->body.blocks() - body.blocks())) < 0.01, 1, "T brings it from 270 blocks");
         npcs.npcs()[0].fighter.health = 0;

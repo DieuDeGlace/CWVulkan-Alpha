@@ -59,8 +59,13 @@ Differences from the Steam engine that shape the plan:
   and sources at application and mutate controlled targets before later actors.
   SDK copies cannot replay after the pass; no-controlled role-zero worlds relay.
   Category four and remaining positive-category admission have regressions.
-- [ ] Full synchronous contact/protection/fatal/world-loot processing from the
-  held world-hit contracts, including relationship records, linked actors,
+- [x] Bounded world relationships and contributor protection: all semantic
+  actors retain contact/count/threat state, ordered nearby and healing fanout
+  use raw fixed coordinates, and typed relationship records reach both peers
+  through section eleven. Frame assignment follows world calls and precedes
+  input. Original flag producers, map lifetime and all world modes remain open.
+- [ ] Full synchronous fatal/world-loot processing from the held contracts,
+  remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later
   death/loot adapters are not completion of that native continuation.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,

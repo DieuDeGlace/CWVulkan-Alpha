@@ -68,6 +68,8 @@ class Client {
     std::vector<Hit> takeHits();
     // Ordered section-12 records; the caller applies them after world simulation.
     std::vector<::creatures::BuffEvent> takeBuffs();
+    // Section 11; frame applies the drained queue after world calls, before input.
+    std::vector<::creatures::RelationshipRecord> takeRelationships();
     // Experience the server's reward records gave the local player since the last call
     // (behaviour spec §4.6).
     int32_t takeExperience();
@@ -128,6 +130,7 @@ class Client {
     std::optional<std::vector<uint8_t>> questBook;
     std::vector<Hit> hits;
     std::vector<::creatures::BuffEvent> buffEvents;
+    std::vector<::creatures::RelationshipRecord> relationshipEvents;
     int32_t experience = 0;
     std::vector<Sound> sounds;
     std::vector<std::array<uint8_t, 72>> bursts;

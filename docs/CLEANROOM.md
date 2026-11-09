@@ -435,3 +435,36 @@ negative-source-free behavior, full synchronous fatal/world/loot effects or nati
 combat acceptance. Exceptional health remains outside the ordinary finite-input
 claim. The fatal-effects handoff records further work; it is not a completion
 claim for the engine's later death and loot adapters.
+
+Further source-only relationship-delivery, fatal-context and kind-89 boundary
+contracts were held and read completely. Resident contact identifiers and
+binary32 count/threat maps now belong to every semantic combatant, with signed
+key ordering. The world caller performs the positive prefix, direct bookkeeping
+and ordered nearby fanout before resolving contributor protection. Healing uses
+its separate argument direction, membership test and later fanout. NPC AI and
+pet targeting read these same maps; core snapshots preserve resident state.
+The separate kind-89 check confirms the earlier hexadecimal set's inclusion of
+decimal 89 and supersedes its omission from the later decimal list. Earlier held
+artifacts remain unchanged.
+
+Relationship outputs retain their complete 24-byte extent, including four opaque
+bytes. Fresh engine producers initialize those bytes deterministically; native
+fresh values remain unspecified. Received bytes survive decode and queue copies.
+Server publication sends the ordered records to each peer. Client publication
+uses the frame gate, and frame assignment runs after world calls before action
+input. It requires both IDs to resolve, skips equal IDs, repeats the first lookup
+and assigns only that actor's threat entry. Distinct IDs aliasing one pointer are
+accepted; health, role, ownership and value sign do not add receiver gates.
+
+These are bounded provided-state and complete-record changes. Engine key
+production across calls, upstream classification/protection flags, full map
+lifetime, malformed-data policies, source-free healing and remaining world modes
+retain their explicit limits. Existing AI acquisition, pet reset and dedicated
+player scheduling remain identified adapters. Full synchronous fatal effects,
+object associations, regional/credit/loot work and shared random-stream timing
+are still open; the retained corpse adapter is not that native continuation.
+The additional held object-association and random-boundary contracts were also
+read completely. They retain the missing positive selector-five association
+producer and distinguish scoped shared import calls from a proven runtime state
+model or complete draw history. Their inclusion records the next fatal/loot
+dependencies; no completed implementation follows merely from those artifacts.
