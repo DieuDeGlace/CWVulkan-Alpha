@@ -311,3 +311,13 @@ construction and matched original-client scenes remain open.
 A separate actual-client night capture at the generated town center renders its
 streets, buildings and local lighting; the walking capture also shows character,
 HUD and map. These captures verify engine rendering, not matched native pixels.
+
+RemoteFighterTests changes health, equipment, counters and flags while the received
+action and clock stay equal, then checks that presentation adopts those fields
+while its local clock advances. Resident buff bytes survive without consumption
+or expiration. Further checks cover action/clock resets, death, defined counter
+wrap, two-byte mode width, untouched adjacent padding, mode-only partial deltas
+and retention through health-only deltas. All 29 CTests pass. An actual loopback
+client/server smoke also connects, renders a capture and shuts both test processes
+down successfully. Native interpolation and original-client/server acceptance
+remain open; the known bright-ground rendering observation persists.

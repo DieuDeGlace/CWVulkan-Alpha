@@ -49,6 +49,7 @@
 #include "ui/LandNames.h"
 #include "ui/Screens.h"
 #include "net/Client.h"
+#include "net/RemoteFighter.h"
 #include <windows.h> // (before GLFW, which would otherwise define APIENTRY first)
 #include <shobjidl.h> // (the setup folder picker)
 #undef interface // (a COM macro; the game names its interface object so)
@@ -570,13 +571,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     std::map<uint64_t, creatures::Appearance> otherLooks; // for the corner map's markers
     // Other players' fighting state as last received; the action clock runs on locally
     // between updates so their swings play smoothly.
-    struct OtherFighter {
-        creatures::Combatant fighter;
-        int32_t action = -1;
-        int32_t sentMs = 0;
-        float leftoverMs = 0;
-    };
-    std::map<uint64_t, OtherFighter> otherFighters;
+    std::map<uint64_t, net::RemoteFighter> otherFighters;
     net::CreatureRecord own;
     own.setName(options.name.empty() ? "AlphaVulkan" : options.name);
     if (options.name.empty() && playing())
@@ -2410,21 +2405,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             std::erase_if(otherFighters, [&](const auto &entry) { return !otherRecords.contains(entry.first); });
             for (const auto &[id, other] : otherRecords) {
                 const glm::vec3 p = view.toRender(glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
-                OtherFighter &f = otherFighters[id];
+                net::RemoteFighter &f = otherFighters[id];
                 creatures::Combatant now = other.fighter();
                 now.id = id;
                 f.leftoverMs += seconds * 1000.f;
                 const int32_t elapsed = (int32_t)f.leftoverMs;
                 f.leftoverMs -= (float)elapsed;
-                if (now.action != f.action || now.actionMs != f.sentMs) {
-                    auto residentBuffs = std::move(f.fighter.buffs);
-                    f.fighter = now;
-                    f.fighter.buffs = std::move(residentBuffs); // core snapshots exclude this list
-                    f.action = now.action;
-                    f.sentMs = now.actionMs;
-                } else {
-                    f.fighter.actionMs += elapsed;
-                }
+                f.refresh(std::move(now), elapsed);
                 if (f.fighter.health > 0)
                     creatures::tickBuffs(f.fighter, elapsed, false);
                 creatures::Motion motion;
@@ -2444,9 +2431,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     footstep(centre - glm::dvec3(0, 0, other.appearance().box.z * 0.5));
                 actionFlames(f.fighter, other.appearance().box.x,
                              glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
-                // Light admission reads the current received snapshot, independent
-                // of the engine's interpolated action clock and resident buffs.
-                creatureLights(now, {other.position(0), other.position(1), other.position(2)}, centre);
+                // Core fields are current and resident buffs stay on the actor.
+                // Native interpolation and render scheduling remain separate.
+                creatureLights(f.fighter, {other.position(0), other.position(1), other.position(2)}, centre);
             }
             if (player) {
                 creatures::Combatant &c = player->combat();
@@ -2509,10 +2496,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         auto [entry, created] = otherFighters.try_emplace(event.target);
                         if (created) {
                             auto &state = entry->second;
-                            state.fighter = target->second.fighter();
-                            state.fighter.id = event.target;
-                            state.action = state.fighter.action;
-                            state.sentMs = state.fighter.actionMs;
+                            auto snapshot = target->second.fighter();
+                            snapshot.id = event.target;
+                            state.refresh(std::move(snapshot), 0);
                         }
                         creatures::applyBuff(entry->second.fighter, event.record);
                     }

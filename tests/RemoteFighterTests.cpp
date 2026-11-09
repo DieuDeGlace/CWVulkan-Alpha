@@ -1,0 +1,103 @@
+#include "net/RemoteFighter.h"
+#include "net/Protocol.h"
+#include <cstdio>
+#include <limits>
+
+using namespace creatures;
+static int failures = 0;
+static void check(bool ok, const char *message) {
+    if (!ok) { ++failures; std::printf("FAIL %s\n", message); }
+}
+
+static void currentState() {
+    net::RemoteFighter remote;
+    Buff resident{9, .25f, -3, 42};
+    resident.typePadding = {7, 8, 9};
+    resident.timePadding = {1, 2, 3, 4};
+    remote.fighter.buffs.push_back(resident);
+    Combatant snapshot;
+    snapshot.id = 42;
+    snapshot.action = 37;
+    snapshot.actionMs = 100;
+    snapshot.health = 90;
+    remote.refresh(snapshot, 20);
+    check(remote.fighter.actionMs == 100 && remote.fighter.health == 90,
+          "first snapshot starts at the received clock without an extra frame increment");
+    snapshot.health = 17;
+    snapshot.combo = 23;
+    snapshot.multipliers[1] = .75f;
+    snapshot.equipment[MAIN_HAND].type = 3;
+    snapshot.equipment[MAIN_HAND].subtype = WAND;
+    snapshot.equipment[MAIN_HAND].spirits = 1;
+    snapshot.equipment[MAIN_HAND].cubes = {{1, 2, 3, 129}};
+    snapshot.mode = 0x0200;
+    snapshot.appearanceFlags = 0x0210;
+    snapshot.buffs = {{255, 9, 1000, 99}};
+    remote.refresh(snapshot, 20);
+    check(remote.fighter.actionMs == 120 && remote.fighter.health == 17 && remote.fighter.combo == 23 &&
+              remote.fighter.multipliers[1] == .75f && remote.fighter.mode == 0x0200 &&
+              remote.fighter.appearanceFlags == 0x0210 && remote.fighter.mainHand().subtype == WAND &&
+              remote.fighter.mainHand().cubes.size() == 1 && remote.fighter.mainHand().cubes[0].material == 129,
+          "unchanged action/clock still publishes current health, counters, stats, equipment and flags");
+    check(remote.fighter.buffs.size() == 1 && remote.fighter.buffs[0].serialize() == resident.serialize(),
+          "core refresh preserves every resident buff byte without consuming, expiring or accepting snapshot buffs");
+    snapshot.actionMs = 101;
+    remote.refresh(snapshot, 20);
+    check(remote.fighter.actionMs == 101, "a changed received clock resets the presentation clock");
+    snapshot.action = 38;
+    snapshot.actionMs = 101;
+    remote.refresh(snapshot, 20);
+    check(remote.fighter.actionMs == 101 && remote.fighter.action == 38,
+          "a changed action resets even when the received clock is equal");
+    snapshot.health = 0;
+    remote.refresh(snapshot, 0);
+    check(remote.fighter.health == 0 && remote.fighter.actionMs == 101,
+          "death and zero-duration frames still refresh received core fields");
+    snapshot.actionMs = std::numeric_limits<int32_t>::max();
+    remote.refresh(snapshot, 0);
+    remote.refresh(snapshot, 1);
+    check(remote.fighter.actionMs == std::numeric_limits<int32_t>::min(),
+          "the engine presentation counter has defined native-width wrap instead of signed overflow");
+}
+
+static void wireMode() {
+    net::CreatureRecord record;
+    record.bytes[0x116] = 0xa5;
+    record.bytes[0x117] = 0x5a;
+    Combatant snapshot;
+    snapshot.mode = 0x12340200;
+    snapshot.actionMs = 9;
+    record.setFighter(snapshot);
+    check(record.bytes[0x114] == 0 && record.bytes[0x115] == 2 &&
+              record.bytes[0x116] == 0xa5 && record.bytes[0x117] == 0x5a && record.fighter().mode == 0x0200,
+          "semantic mode transfer uses exactly the existing two-byte property and preserves neighboring opaque bytes");
+    net::RemoteFighter remote;
+    remote.refresh(record.fighter(), 0);
+    net::CreatureRecord changed = record;
+    snapshot = changed.fighter();
+    snapshot.mode = 0x8041;
+    changed.setFighter(snapshot);
+    const uint64_t mask = net::changedFields(changed, &record);
+    check(mask == (uint64_t(1) << 14), "a mode-only edit changes only existing wire field14");
+    check(net::applyDelta(net::encodeDelta(42, changed, mask), record) == 42, "a mode-only partial delta decodes");
+    remote.refresh(record.fighter(), 20);
+    check(remote.fighter.mode == 0x8041 && remote.fighter.actionMs == 29 &&
+              record.bytes[0x116] == 0xa5 && record.bytes[0x117] == 0x5a,
+          "mode-only reception reaches presentation without changing the action clock policy or padding");
+    changed = record;
+    snapshot = changed.fighter();
+    snapshot.health = 7;
+    changed.setFighter(snapshot);
+    check(net::applyDelta(net::encodeDelta(42, changed, uint64_t(1) << 27), record) == 42,
+          "a health-only partial delta decodes");
+    remote.refresh(record.fighter(), 1);
+    check(remote.fighter.health == 7 && remote.fighter.mode == 0x8041 && remote.fighter.actionMs == 30,
+          "omitted mode retains its previous value while health refreshes during an unchanged action");
+}
+
+int main() {
+    currentState();
+    wireMode();
+    std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
+    return failures ? 1 : 0;
+}

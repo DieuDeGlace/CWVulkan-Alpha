@@ -625,6 +625,11 @@ Differences from the Steam engine that shape the plan:
   player in the world and in its party list (name, class, level, health), and its chat comes
   back to it. On 2026-11-05 it also received our creatures and fought them (see Strikes above).
   (Done: loot, world items, pick-up and drop, static objects, the inn rest request.)
+- [x] Remote presentation data flow: current semantic snapshots replace health,
+  stats, equipment and flags even when action/clock are equal. Resident buff
+  state stays separate and the engine action-clock adapter keeps its reset/advance
+  policy. Existing two-byte mode transfer and partial-delta retention are covered;
+  native interpolation, frame scheduling and wider multiplayer acceptance stay open.
 - [ ] Mod SDK hooks for each system as it arrives (world generation, creatures, items, UI, net).
 - [x] Mod SDK v3: `getPlayer`, `onPlayerHit`, `onLevelUp` (docs/modding.md has a table per version).
 - [x] Mod SDK v4: `showText`, `showBanner`, `getStaticCount`/`getStatic`, `onHitSeen`.

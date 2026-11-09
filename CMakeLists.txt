@@ -191,6 +191,7 @@ add_library(engine STATIC
     src/ui/FrontScreens.cpp
     src/ui/BenchScreen.cpp
     src/net/Protocol.cpp
+    src/net/RemoteFighter.cpp
     src/net/Socket.cpp
     src/net/Server.cpp
     src/net/Client.cpp)
@@ -290,6 +291,8 @@ add_executable(CreatureLightTests tests/CreatureLightTests.cpp)
 target_link_libraries(CreatureLightTests PRIVATE engine)
 add_executable(CachedLightTests tests/CachedLightTests.cpp)
 target_link_libraries(CachedLightTests PRIVATE engine)
+add_executable(RemoteFighterTests tests/RemoteFighterTests.cpp)
+target_link_libraries(RemoteFighterTests PRIVATE engine)
 # The dedicated server.
 add_executable(AlphaServer src/ServerMain.cpp)
 target_link_libraries(AlphaServer PRIVATE engine)
@@ -371,7 +374,7 @@ target_link_libraries(RangedSchedulingTests PRIVATE engine)
 include(CTest)
 set(ALPHAVULKAN_TEST_GAME_PATH "" CACHE PATH "Owned Alpha installation used by content/save/UI checks")
 if(BUILD_TESTING)
-    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests)
+    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests RemoteFighterTests)
         set(testArguments)
         if(ALPHAVULKAN_TEST_GAME_PATH AND testTarget MATCHES "^(Store|Save|Content|Ui|OwnerContent)Tests$")
             list(APPEND testArguments "${ALPHAVULKAN_TEST_GAME_PATH}")

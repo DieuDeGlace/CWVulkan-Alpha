@@ -270,3 +270,13 @@ adjustments and light reads before identified pose-refresh calls. Complete pose
 matrices, action/history branches, initial float-attachment validity and whole-frame
 freshness remain unresolved. This does not justify replacing the explicit weapon
 fallback with an assumed current-frame attachment.
+
+The fully reread receiver-publication and constructor-default contracts establish
+that decoded noncontrolled core state is assigned independently of an action-clock
+change. The engine presentation adapter now refreshes every semantic snapshot,
+retains its separately received resident buffs and preserves the existing local
+clock reset/advance policy. That policy remains an engine interpolation adapter.
+The existing two-byte wire mode property now transfers through the semantic
+fighter view/setter without changing adjacent opaque bytes or the wire format.
+This repairs engine data flow and does not certify native interpolation or wider
+frame scheduling.
