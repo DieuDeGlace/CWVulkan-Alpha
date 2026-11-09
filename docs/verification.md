@@ -321,3 +321,23 @@ and retention through health-only deltas. All 29 CTests pass. An actual loopback
 client/server smoke also connects, renders a capture and shuts both test processes
 down successfully. Native interpolation and original-client/server acceptance
 remain open; the known bright-ground rendering observation persists.
+
+Extended CreatureLightTests covers all four remaining gates, raw subtype checks
+without invented category gates, independent resident-presence admission,
+unsigned-byte lantern extrema, unclamped colors and nonconsumption. Placement
+anchors retain large raw bases, rounded ninety-degree trig and negative-height
+truncation. Action cases check all listed memberships, strict integer equality,
+negative/fractional/large cutoffs, no stat query for unconditional/unsupported
+actions, one query per conditional case and the default helper's equipment order.
+The extended GPU probe renders lantern/action sources in separate terrain rows,
+then clears both after their gates reject. All 29 CTests pass for this checkpoint.
+Native displayed-position/angle production, frame timing and matched native
+scenes remain separate from these supplied-input checks.
+
+A private recorder makes three original scalar trig calls for each of 33,018
+bounded yaw/height/clock cases under selected floating controls. The observed
+narrowed trig bits match the platform adapter; actual engine collectors match
+the supplied-input point/vector placement and color relations using those
+observations. This executes no
+original creature, pose or transform helper and proves no whole-game equivalence.
+The current town night capture also renders successfully.

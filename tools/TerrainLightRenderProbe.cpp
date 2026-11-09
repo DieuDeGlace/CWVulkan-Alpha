@@ -277,11 +277,37 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     leftCreature.combo = rightCreature.combo = 0;
     if (!black(captureEquipment("equipment-cleared")))
         throw std::runtime_error("Zero counter retained equipment-light contributions");
+    creatures::Combatant lanternCreature, actionCreature;
+    lanternCreature.mode = 0x0200;
+    lanternCreature.equipment[10].type = 24;
+    actionCreature.action = 28;
+    auto lanternBase = colours[0].position, actionBase = colours[1].position;
+    lanternBase[0] -= 32768;
+    lanternBase[1] -= 65536;
+    actionBase[1] -= 65536;
+    const auto captureYaw = [&](const char *name) {
+        std::vector<terrain_lights::Candidate> candidates;
+        for (const auto &source : terrain_lights::yawSources(lanternCreature, lanternBase, 0, 0))
+            if (source)
+                candidates.push_back(*source);
+        if (const auto source = terrain_lights::actionSource(actionCreature, actionBase, 0))
+            candidates.push_back(*source);
+        return capture(name, selector.rebuild(candidates, chunks, {}));
+    };
+    const auto yaw = captureYaw("yaw-action-sources");
+    if (yaw[0][0] < 25 || yaw[0][1] < 20 || yaw[0][2] < 15 ||
+        yaw[0][0] <= yaw[0][1] || yaw[0][1] <= yaw[0][2] ||
+        yaw[1][0] < 40 || yaw[1][0] <= yaw[1][1] || yaw[1][1] <= yaw[1][2])
+        throw std::runtime_error("Lantern/action yaw sources did not reach their intended terrain rows");
+    lanternCreature.mode = 0;
+    actionCreature.action = 1;
+    if (!black(captureYaw("yaw-action-cleared")))
+        throw std::runtime_error("Rejected lantern/action gates retained GPU contributions");
     const auto fallback = capture("global-fallback", {});
     for (const auto &p : fallback)
         if (p[1] < 40 || p[0] > 4 || p[2] > 4)
             throw std::runtime_error("Removed terrain rows did not restore model fallback");
-    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, cached publication, sector lifecycle, creature body/equipment and fallback\n";
+    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, cached publication, sector lifecycle, creature body/equipment/yaw/action and fallback\n";
 }
 
 } // namespace

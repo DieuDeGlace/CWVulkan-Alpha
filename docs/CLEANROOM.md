@@ -280,3 +280,28 @@ The existing two-byte wire mode property now transfers through the semantic
 fighter view/setter without changing adjacent opaque bytes or the wire format.
 This repairs engine data flow and does not certify native interpolation or wider
 frame scheduling.
+
+The new original-only yaw-light gate and scalar-trig ABI contracts were each held
+and read completely before use. The remaining three independent creature gates
+and the later action-light gate now preserve their category/bit/presence rules,
+separate per-admission yaw evaluations and fixed conversion before integer
+placement. Conditional action lights query the stat once, multiply by the stored
+creature scalar, divide and truncate to a signed integer cutoff; unconditional
+actions skip that query. Color retains its separate cosine narrowing and ordered
+products. The existing attack-speed helper retains the specified repeated ratio
+query in its unclamped branch; no other ratio helper was changed.
+
+All fourteen creature sites described by the held lifecycle contract are now
+represented for supplied state. Production still uses the engine displayed
+position/yaw adapter and the documented main-position fallback for weapon float
+attachments. Native angle following, complete caller/frame admission, container
+order, attachment freshness, imported math/controls and original visual acceptance
+remain open. This collector coverage does not establish complete light parity.
+
+A private observation uses the newly held scalar ABI and a hash-verified isolated
+original runtime for 33,018 bounded yaw/height/clock cases. Narrowed trig values
+match, and engine point/vector placement and color agree with the finite relations
+using those observed math scalars. No original actor, pose or transform helper is
+called, and no original implementation is inspected. The recorder and results
+remain private and were not shared with source authors. Selected controls and
+bounded inputs limit this evidence.

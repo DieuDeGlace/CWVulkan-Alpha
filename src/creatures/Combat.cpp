@@ -327,10 +327,14 @@ float resistance(const Combatant &c) {
 
 float attackSpeed(const Combatant &c) {
     float S = c.controller == 0 ? 1.f : (float)c.powerTier * .0625f + .75f;
+    const auto counterRatio = [&] {
+        const float first = float(c.combo) / comboMax(c);
+        return first > 1.f ? 1.f : float(c.combo) / comboMax(c);
+    };
     if (c.characterClass == 1 && c.specialization == 0)
-        S += 0.5f * rho(c);
+        S += 0.5f * counterRatio();
     if (c.characterClass == 3 && c.specialization == 1)
-        S += rho(c);
+        S += counterRatio();
     S += equipmentRate(c, itemBonuses().speed);
     if (c.hasBuff(HASTE)) {
         float n = (float)c.skills[8];

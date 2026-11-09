@@ -5,6 +5,94 @@
 #include <cmath>
 
 namespace terrain_lights {
+namespace {
+std::optional<FixedPosition> yawPosition(const FixedPosition &base, float degrees, float height, bool point) {
+    const float radians = degrees * std::bit_cast<float>(0x3c8efa35u);
+    const float cosine = float(std::cos(double(radians)));
+    const float sine = float(std::sin(double(radians)));
+    glm::mat4 rotation(1);
+    rotation[0] = {cosine, sine, 0, 0};
+    rotation[1] = {-sine, cosine, 0, 0};
+    const glm::vec3 local = point ? glm::vec3(.5f, 1, height * .3f) : glm::vec3(0, 1, 0);
+    float reciprocal = 1;
+    if (point) {
+        const float xy = rotation[0][3] * local.x + rotation[1][3] * local.y;
+        const float xyz = xy + rotation[2][3] * local.z;
+        const float denominator = xyz + rotation[3][3];
+        reciprocal = 1.f / denominator;
+    }
+    FixedPosition position = base;
+    for (int axis = 0; axis < 3; ++axis) {
+        const float x = rotation[0][axis] * local.x, y = rotation[1][axis] * local.y;
+        const float xy = axis == 0 ? y + x : x + y;
+        const float xyz = xy + rotation[2][axis] * local.z;
+        const float offset = point ? reciprocal * (xyz + rotation[3][axis]) : xyz;
+        const float fixed = offset * 65536.f;
+        // Exceptional/out-of-range conversion has no ordinary native contract.
+        if (!(double(fixed) >= -0x1p63 && double(fixed) < 0x1p63))
+            return std::nullopt;
+        position[axis] = std::bit_cast<int64_t>(uint64_t(base[axis]) + uint64_t(int64_t(fixed)));
+    }
+    return position;
+}
+bool admitsAction(const creatures::Combatant &creature, SpeedQuery query) {
+    float numerator;
+    switch (creature.action) {
+    case 28: case 36: case 94: case 95:
+        return true;
+    case 37: case 43: case 89:
+        numerator = creature.mainHand().subtype == 12 ? 600.f : 1200.f;
+        break;
+    case 38: case 44: numerator = 500; break;
+    case 87: numerator = 5000; break;
+    case 88: case 92: numerator = 400; break;
+    default: return false;
+    }
+    const float speed = (query ? query : creatures::attackSpeed)(creature);
+    const float denominator = speed * creature.multipliers[1];
+    const float threshold = numerator / denominator;
+    if (!(double(threshold) >= -0x1p31 && double(threshold) < 0x1p31))
+        return false;
+    return creature.actionMs < int32_t(threshold);
+}
+} // namespace
+
+std::array<std::optional<Candidate>, 3> yawSources(
+    const creatures::Combatant &creature, const FixedPosition &renderedPosition,
+    float stateYawDegrees, float height) {
+    std::array<std::optional<Candidate>, 3> sources{};
+    if (!(creature.health > 0))
+        return sources;
+    if (creature.mainHand().subtype == 20 || creature.offHand().subtype == 20)
+        if (const auto position = yawPosition(renderedPosition, stateYawDegrees, height, true))
+            sources[0] = Candidate{*position, {1.2f, 1, .5f}, 32, 0};
+    const auto &lantern = creature.equipment[10];
+    if ((creature.mode & 0x0200) && lantern.type == 24)
+        if (const auto position = yawPosition(renderedPosition, stateYawDegrees, height, true)) {
+            const float radius = float(10 + 8 * int(lantern.rarity));
+            const float quarter = float(lantern.rarity) * .25f;
+            const float strength = quarter + .75f;
+            sources[1] = Candidate{*position, glm::vec3(.6f, .5f, .4f) * strength, radius, 0};
+        }
+    if (creature.hasBuff(9))
+        if (const auto position = yawPosition(renderedPosition, stateYawDegrees, height, true))
+            sources[2] = Candidate{*position, {.6f, .4f, 0}, 16, 0};
+    return sources;
+}
+
+std::optional<Candidate> actionSource(const creatures::Combatant &creature,
+    const FixedPosition &renderedPosition, float renderedYawDegrees, SpeedQuery speed) {
+    if (!(creature.health > 0) || !admitsAction(creature, speed))
+        return std::nullopt;
+    const auto position = yawPosition(renderedPosition, renderedYawDegrees, 0, false);
+    if (!position)
+        return std::nullopt;
+    const float angle = float(creature.actionMs) * .01f;
+    const float cosine = float(std::cos(double(angle)));
+    const float variation = cosine * .1f;
+    const float strength = variation + 1.f;
+    return Candidate{*position, glm::vec3(.3f, .2f, .1f) * strength, 20, 0};
+}
 
 std::array<std::optional<Candidate>, 2> bodySources(
     const creatures::Combatant &creature, const FixedPosition &mainPosition,

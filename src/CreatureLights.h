@@ -8,6 +8,18 @@ namespace creatures { struct Combatant; }
 
 namespace terrain_lights {
 
+// First three independent sites, each constructing its own yaw offset from the
+// current state angle and supplied appearance height. No buff consumption.
+std::array<std::optional<Candidate>, 3> yawSources(
+    const creatures::Combatant &creature, const FixedPosition &renderedPosition,
+    float stateYawDegrees, float height);
+
+using SpeedQuery = float (*)(const creatures::Combatant &);
+// Site ten uses a separate rendered angle. Conditional actions query speed once;
+// unconditional/unsupported actions do not. Null selects the engine stat helper.
+std::optional<Candidate> actionSource(const creatures::Combatant &creature,
+    const FixedPosition &renderedPosition, float renderedYawDegrees, SpeedQuery speed = nullptr);
+
 // The mutually exclusive kind-specific source precedes the appearance-flag
 // source. Neither site depends on the equipment counter or a view-plane test.
 std::array<std::optional<Candidate>, 2> bodySources(

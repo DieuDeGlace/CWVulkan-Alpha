@@ -2152,7 +2152,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const auto &flash : flashes.entries())
             scene.lights.push_back({view.toRenderFixed(flash.position), flash.radius, flash.fadedColour(), flash.position});
         const auto creatureLights = [&](const creatures::Combatant &creature,
-                                         const terrain_lights::FixedPosition &main, glm::dvec3 displayed) {
+                                         const terrain_lights::FixedPosition &main, glm::dvec3 displayed,
+                                         float height, float yaw) {
             const auto append = [&](const auto &sources) {
                 for (const auto &source : sources)
                     if (source)
@@ -2161,8 +2162,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             };
             // Displayed position is the engine's current draw adapter. Native
             // rendered-position production/interpolation remains unverified.
-            if (const auto rendered = terrain_lights::fromBlocks(displayed))
+            if (const auto rendered = terrain_lights::fromBlocks(displayed)) {
+                append(terrain_lights::yawSources(creature, *rendered, yaw, height));
                 append(terrain_lights::bodySources(creature, main, *rendered));
+                // The engine currently uses its displayed yaw for both angle
+                // inputs. Native rendered-angle following remains separate.
+                append(std::array{terrain_lights::actionSource(creature, *rendered, yaw)});
+            }
             // Native float weapon attachments are not supplied by the engine pose
             // yet. Keep an explicit main-position fallback for those two sites.
             append(terrain_lights::equipmentSources(creature, main, {main, main}));
@@ -2170,7 +2176,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (player) {
             const creatures::Body &body = player->body();
             creatureLights(player->combat(), {body.position[0], body.position[1], body.position[2]},
-                           body.blocks() - glm::dvec3(0, 0, body.bob));
+                           body.blocks() - glm::dvec3(0, 0, body.bob), player->appearance().box.z, player->facing());
         }
         for (creatures::Npc &npc : npcs.npcs()) {
             creatures::Motion motion;
@@ -2199,7 +2205,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             if (creatureView.draw(items, npc.looks, npc.pose, motion, view.toRender(at), seconds * 1000.f, &effects))
                 footstep(npc.body.blocks() - glm::dvec3(0, 0, npc.body.size.z * 0.5));
             actionFlames(npc.fighter, npc.looks.box.x, at);
-            creatureLights(npc.fighter, {npc.body.position[0], npc.body.position[1], npc.body.position[2]}, at);
+            creatureLights(npc.fighter, {npc.body.position[0], npc.body.position[1], npc.body.position[2]},
+                           at, npc.looks.box.z, npc.yaw);
         }
         // Quests: the icon each giver shows (none when it has nothing for this player).
         // (Online the giver is one of the server's creatures: its home is its spawn's place.)
@@ -2433,7 +2440,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                              glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
                 // Core fields are current and resident buffs stay on the actor.
                 // Native interpolation and render scheduling remain separate.
-                creatureLights(f.fighter, {other.position(0), other.position(1), other.position(2)}, centre);
+                creatureLights(f.fighter, {other.position(0), other.position(1), other.position(2)},
+                               centre, other.appearance().box.z, other.yaw());
             }
             if (player) {
                 creatures::Combatant &c = player->combat();

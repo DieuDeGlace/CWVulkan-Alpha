@@ -254,6 +254,12 @@ Differences from the Steam engine that shape the plan:
   Local/NPC/received actors share body-before-equipment gathering, and decoded
   fighter views retain wire appearance flags. Native rendered-position production,
   interpolation, remaining creature sites and full container order stay open.
+- [x] Remaining bounded creature light gates: raw subtype20, modeword0200 with
+  item24, resident type9 and the separate action site. The three yaw sites precede
+  body lights, then action precedes equipment. Signed integer action cutoffs,
+  per-gate trig evaluations and raw rendered placement retain the held arithmetic.
+  All14 specified creature sites are represented for supplied inputs. Native
+  position/angle production, frame/caller admission and full parity remain open.
 - [x] Bounded cached sprite lights: ordered worker chunk membership, separate
   pending/current lists, conditional copy publication, admitted-only 33-step
   radius phase and kind13 half-day color. Mesh jobs carry source state with

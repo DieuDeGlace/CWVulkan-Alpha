@@ -96,9 +96,135 @@ static void receivedLights() {
           "an appearance-only update removes the flag light while retaining the kind source and other core fields");
 }
 
+static int speedQueries = 0;
+static float suppliedSpeed = 2;
+static float querySpeed(const Combatant &) { ++speedQueries; return suppliedSpeed; }
+
+static void yawLights() {
+    Combatant creature;
+    creature.equipment[MAIN_HAND].subtype = 20; // The gate deliberately has no category check.
+    creature.equipment[OFF_HAND].subtype = 20;
+    creature.mode = 0x0200;
+    creature.equipment[10].type = 24;
+    creature.equipment[10].rarity = 255;
+    creature.buffs = {{9, 0, -1, 7}, {9, 1, 0, 8}};
+    const auto firstBuff = creature.buffs.front().serialize();
+    const FixedPosition base{(int64_t(1) << 54) + 1, -17, 33};
+    const auto lights = yawSources(creature, base, 0, 10);
+    check(lights[0] && lights[1] && lights[2], "all three independent yaw gates contribute once");
+    if (lights[0] && lights[1] && lights[2]) {
+        const FixedPosition expected{base[0] + 32768, base[1] + 65536, base[2] + 196608};
+        check(lights[0]->position == expected && lights[1]->position == expected && lights[2]->position == expected &&
+                  lights[0]->radius == 32 && lights[1]->radius == 2050 && lights[2]->radius == 16,
+              "separate yaw sources preserve raw rendered coordinates and the full unsigned lantern range");
+        check(lights[0]->colour == glm::vec3(1.2f, 1, .5f) &&
+                  colourBits(lights[1]->colour, {0x421acccd, 0x42010000, 0x41ce6667}) &&
+                  lights[2]->colour == glm::vec3(.6f, .4f, 0),
+              "yaw colors retain source order and unclamped lantern scaling");
+    }
+    check(creature.buffs.size() == 2 && creature.buffs.front().serialize() == firstBuff,
+          "type9 presence neither expires nor consumes a resident record");
+    const auto quarter = yawSources(creature, {}, 90, -.1f);
+    check(quarter[0] && quarter[0]->position == FixedPosition{-65536, 32767, -1966},
+          "rounded ninety-degree trig and negative height convert by truncation before integer placement");
+    creature.equipment[MAIN_HAND].subtype = creature.equipment[OFF_HAND].subtype = 0;
+    creature.mode = 2;
+    creature.buffs.clear();
+    check(empty(yawSources(creature, {}, 0, 10)), "low-byte mode bit2 does not substitute for word bit0200");
+    creature.mode = 0x0200;
+    creature.equipment[10].type = 23;
+    check(empty(yawSources(creature, {}, 0, 10)), "mode alone does not bypass the lantern category gate");
+    creature.equipment[MAIN_HAND].subtype = 20;
+    check(empty(yawSources(creature, {}, std::numeric_limits<float>::infinity(), 10)),
+          "out-of-contract nonfinite placements use the engine omission policy without invalid integer casts");
+    creature.health = 0;
+    check(empty(yawSources(creature, {}, 0, 10)), "dead actors do not emit yaw sources");
+}
+
+static void actionLights() {
+    Combatant creature;
+    speedQueries = 0;
+    suppliedSpeed = 2;
+    for (int action : {28, 36, 94, 95}) {
+        creature.action = action;
+        creature.actionMs = std::numeric_limits<int32_t>::max();
+        check(bool(actionSource(creature, {}, 0, querySpeed)), "unconditional action sites do not test their clock");
+    }
+    creature.action = 45;
+    check(!actionSource(creature, {}, 0, querySpeed) && speedQueries == 0,
+          "unconditional and unsupported actions never call the threshold stat helper");
+    const std::array<std::pair<int, int>, 8> thresholds{{{37, 600}, {38, 250}, {43, 600}, {44, 250},
+                                                       {87, 2500}, {88, 200}, {89, 600}, {92, 200}}};
+    for (const auto &[action, threshold] : thresholds) {
+        creature.action = action;
+        creature.actionMs = threshold - 1;
+        const int previous = speedQueries;
+        check(bool(actionSource(creature, {}, 0, querySpeed)) && speedQueries == previous + 1,
+              "each conditional action queries its stat once and admits the integer below its threshold");
+        creature.actionMs = threshold;
+        check(!actionSource(creature, {}, 0, querySpeed), "equality rejects every conditional action");
+    }
+    creature.action = 37;
+    creature.equipment[MAIN_HAND].subtype = 12;
+    creature.equipment[MAIN_HAND].type = 0;
+    creature.actionMs = 299;
+    check(bool(actionSource(creature, {}, 0, querySpeed)), "raw main subtype12 selects numerator600 without a category test");
+    creature.actionMs = 300;
+    check(!actionSource(creature, {}, 0, querySpeed), "subtype12 boundary remains a signed integer comparison");
+    creature.action = 38;
+    creature.multipliers[1] = .75f;
+    suppliedSpeed = 3;
+    creature.actionMs = 221;
+    check(bool(actionSource(creature, {}, 0, querySpeed)), "fractional thresholds truncate after multiplying the stat by its creature scalar");
+    creature.actionMs = 222;
+    check(!actionSource(creature, {}, 0, querySpeed), "the fractional part does not extend the integer admission boundary");
+    creature.multipliers[1] = 1;
+    suppliedSpeed = std::bit_cast<float>(0x37f9fffcu);
+    creature.actionMs = 16777219;
+    check(bool(actionSource(creature, {}, 0, querySpeed)), "large action clocks are not narrowed to float for threshold comparison");
+    suppliedSpeed = -2;
+    creature.actionMs = -251;
+    check(bool(actionSource(creature, {}, 0, querySpeed)), "negative clocks and thresholds retain their signed relation");
+    creature.actionMs = -250;
+    check(!actionSource(creature, {}, 0, querySpeed), "negative threshold equality also rejects");
+    suppliedSpeed = 0;
+    check(!actionSource(creature, {}, 0, querySpeed), "invalid zero-divisor conversion uses the engine omission policy");
+    creature.action = 28;
+    creature.actionMs = 0;
+    const FixedPosition base{(int64_t(1) << 54) + 1, -17, 33};
+    const auto light = actionSource(creature, base, 90, querySpeed);
+    check(light && light->position == FixedPosition{base[0] - 65536, base[1], base[2]} && light->radius == 20 &&
+              colourBits(light->colour, {0x3ea8f5c3, 0x3e6147af, 0x3de147af}),
+          "action sites use the separate vector attachment and ordered cosine color modulation");
+    creature.health = 0;
+    const int previous = speedQueries;
+    check(!actionSource(creature, {}, 0, querySpeed) && speedQueries == previous,
+          "ordered positive health precedes any action stat query");
+
+    Combatant equipped;
+    equipped.characterClass = 2;
+    equipped.action = 38;
+    constexpr std::array<int, 9> slots{OFF_HAND, MAIN_HAND, CHEST_SLOT, BOOTS_SLOT, GLOVES_SLOT,
+                                       SHOULDERS_SLOT, AMULET_SLOT, RING_LEFT, RING_RIGHT};
+    constexpr std::array<uint8_t, 9> types{3, 3, 4, 6, 5, 7, 8, 9, 9};
+    for (size_t i = 0; i < slots.size(); ++i) {
+        equipped.equipment[slots[i]].type = types[i];
+        equipped.equipment[slots[i]].seed = uint32_t(i + 1);
+    }
+    auto original = itemBonuses().speed;
+    std::vector<uint32_t> visits;
+    itemBonuses().speed = [&](const Item &item) { visits.push_back(item.seed); return 0.f; };
+    const auto defaultLight = actionSource(equipped, {}, 0);
+    itemBonuses().speed = std::move(original);
+    check(defaultLight && visits == std::vector<uint32_t>{1, 2, 3, 4, 5, 6, 7, 8, 9},
+          "the production default queries the stat once and visits qualifying equipment in the held order");
+}
+
 int main() {
     bodyLights();
     receivedLights();
+    yawLights();
+    actionLights();
     Combatant creature;
     creature.combo = 100; // Default limit 50: Q = 2 without a clamp.
     creature.equipment[MAIN_HAND] = spirit(3, 128);
