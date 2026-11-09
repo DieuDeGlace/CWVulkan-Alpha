@@ -24,6 +24,7 @@
 #include "Mods.h"
 #include "Renderer.h"
 #include "CreatureView.h"
+#include "CreatureLights.h"
 #include "Player.h"
 #include "creatures/Strike.h"
 #include "creatures/Inventory.h"
@@ -2142,17 +2143,27 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             player->draw(items, creatureView, seconds * 1000.f, &effects);
             actionFlames(player->combat(), player->body().size.x, player->body().blocks());
         }
+        // World-list sources precede fading and creature sources. Read canonical
+        // fixed positions directly; drawing a projectile model is independent.
+        for (const creatures::Projectile &projectile : projectiles.list)
+            if (projectile.kind == creatures::SPELL) {
+                const terrain_lights::FixedPosition at{projectile.position[0], projectile.position[1], projectile.position[2]};
+                scene.lights.push_back({view.toRenderFixed(at), 16, glm::vec3(.5f, .5f, .2f) * projectile.radius, at});
+            }
         flashes.advance(lightElapsedMs);
         for (const auto &flash : flashes.entries())
             scene.lights.push_back({view.toRenderFixed(flash.position), flash.radius, flash.fadedColour(), flash.position});
-        if (player) {
-            const creatures::Combatant &me = player->combat();
-            if (const float rho = me.combo / std::max(creatures::comboMax(me), 1.f); rho > 0)
-                for (const creatures::Item *weapon : {&me.mainHand(), &me.offHand()})
-                    if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
-                        scene.lights.push_back(pointLightAt(player->body().blocks(), view.toRender(player->body().blocks()),
-                                                           10, a * rho * 0.3f));
-        }
+        const auto itemLights = [&](const creatures::Combatant &creature, const creatures::Body &body) {
+            const terrain_lights::FixedPosition main{body.position[0], body.position[1], body.position[2]};
+            // Native float weapon attachments are not supplied by the engine pose
+            // yet. Keep an explicit main-position fallback for those two sites.
+            for (const auto &source : terrain_lights::equipmentSources(creature, main, {main, main}))
+                if (source)
+                    scene.lights.push_back({view.toRenderFixed(source->position), source->radius,
+                                            source->colour, source->position});
+        };
+        if (player)
+            itemLights(player->combat(), player->body());
         for (creatures::Npc &npc : npcs.npcs()) {
             creatures::Motion motion;
             motion.velocity = npc.body.velocity;
@@ -2180,11 +2191,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             if (creatureView.draw(items, npc.looks, npc.pose, motion, view.toRender(at), seconds * 1000.f, &effects))
                 footstep(npc.body.blocks() - glm::dvec3(0, 0, npc.body.size.z * 0.5));
             actionFlames(npc.fighter, npc.looks.box.x, at);
-            // Materials §1.5: a creature on a combo chain glows in its weapons' spirit colour.
-            if (const float rho = npc.fighter.combo / std::max(creatures::comboMax(npc.fighter), 1.f); rho > 0)
-                for (const creatures::Item *weapon : {&npc.fighter.mainHand(), &npc.fighter.offHand()})
-                    if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
-                        scene.lights.push_back(pointLightAt(at, view.toRender(at), 10, a * rho * 0.3f));
+            itemLights(npc.fighter, npc.body);
         }
         // Quests: the icon each giver shows (none when it has nothing for this player).
         // (Online the giver is one of the server's creatures: its home is its spawn's place.)
@@ -2241,10 +2248,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         // along the flight.
         for (const creatures::Projectile &p : projectiles.list) {
             const glm::vec3 at = view.toRender(p.blocks());
-            if (p.kind == creatures::SPELL) {
-                scene.lights.push_back(pointLightAt(p.blocks(), at, 16, glm::vec3(0.5f, 0.5f, 0.2f) * p.radius));
+            if (p.kind == creatures::SPELL)
                 continue;
-            }
             if (p.kind == creatures::BURST)
                 continue;
             uint16_t model = p.kind == creatures::ROCK ? 2101 : 840;

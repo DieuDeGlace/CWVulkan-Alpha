@@ -1,7 +1,9 @@
 // Engine GPU routing diagnostic. No owner assets, native code or native pixel oracle.
 #include "Renderer.h"
+#include "CreatureLights.h"
 #include "SectorLights.h"
 #include "WorldItems.h"
+#include "creatures/Combat.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <stb_image.h>
@@ -191,11 +193,40 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     sectorSources.remove(0, 0);
     if (!black(captureSector("sector-unloaded")))
         throw std::runtime_error("Unloaded sector retained GPU static/item contributions");
+    creatures::Combatant leftCreature, rightCreature;
+    leftCreature.combo = rightCreature.combo = 100;
+    auto &shoulders = leftCreature.equipment[creatures::SHOULDERS_SLOT];
+    shoulders.type = 7;
+    shoulders.spirits = 1;
+    shoulders.cubes = {{0, 0, 0, 128}};
+    auto &chest = rightCreature.equipment[creatures::CHEST_SLOT];
+    chest.type = 4;
+    chest.spirits = 1;
+    chest.cubes = {{0, 0, 0, 130}};
+    const auto captureEquipment = [&](const char *name) {
+        std::vector<terrain_lights::Candidate> candidates;
+        for (size_t i = 0; i < colours.size(); ++i) {
+            const auto &creature = i == 0 ? leftCreature : rightCreature;
+            const auto &position = colours[i].position;
+            for (const auto &source : terrain_lights::equipmentSources(creature, position, {position, position}))
+                if (source)
+                    candidates.push_back(*source);
+        }
+        return capture(name, selector.rebuild(candidates, chunks, {}));
+    };
+    const auto equipment = captureEquipment("equipment-sources");
+    if (equipment[0][0] < 10 || equipment[0][0] < 1.5f * equipment[0][1] ||
+        equipment[0][1] < 2 * equipment[0][2] || equipment[1][2] < 10 ||
+        equipment[1][2] < 1.5f * equipment[1][1] || equipment[1][1] < equipment[1][0])
+        throw std::runtime_error("Shoulder/chest source colours did not reach their terrain rows");
+    leftCreature.combo = rightCreature.combo = 0;
+    if (!black(captureEquipment("equipment-cleared")))
+        throw std::runtime_error("Zero counter retained equipment-light contributions");
     const auto fallback = capture("global-fallback", {});
     for (const auto &p : fallback)
         if (p[1] < 40 || p[0] > 4 || p[2] > 4)
             throw std::runtime_error("Removed terrain rows did not restore model fallback");
-    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, sector lifecycle and fallback\n";
+    std::cout << "PASS: GPU terrain routing, growth, clearing, ten-prefix, timed fading, sector lifecycle, equipment and fallback\n";
 }
 
 } // namespace

@@ -241,6 +241,13 @@ Differences from the Steam engine that shape the plan:
   unnormalized coefficients and the native w+z lower-depth extraction. Projection
   inputs, view/reference following and shared-state scheduling remain open; the
   current engine camera supplies the matrices. Mesh clipping stays independent.
+- [x] Bounded equipment-light sites: main/off hands, shoulders and chest retain
+  their ordered category gates, finite nonzero counter ratio and separately
+  rounded color factors. Local/NPC paths share this implementation. Raw main
+  positions and supplied weapon anchors stay distinct; production weapon anchors
+  still use an explicit main-position fallback. Kind-1 projectile lights precede
+  fading and creatures. Other creature sources/attachments and full container
+  admission remain open.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

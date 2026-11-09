@@ -219,3 +219,14 @@ shared-state publication or early-query scheduling. Horizontal shifts precede
 float conversion while Z remains unchanged. Native projection input selection,
 imported tangent accuracy, view following/shake and R/A evolution remain open;
 the current camera supplies engine matrices to this bounded arithmetic kernel.
+
+The same held source-lifecycle contract supplies the four equipment light sites.
+The engine now uses ordered-positive health admission, the finite nonzero counter
+ratio without a denominator floor or ratio clamp, independent main/off-hand and
+shoulder/chest category gates, and average-times-ratio before the final color
+factor. The helper accepts distinct fixed-point weapon attachments and main
+position; the production local/NPC adapter still supplies an explicit main-position
+fallback for the two unverified weapon attachments. Kind-1 projectile lights now
+precede fading and creature sources and retain their raw coordinates. Other
+creature sites, remote-source coverage, native attachment producers, cached-source
+publication and complete container ordering remain separate dependencies.

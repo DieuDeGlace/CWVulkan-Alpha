@@ -268,3 +268,15 @@ The raw-plane checkpoint passes all 26 CTests and the procedural GPU routing,
 growth, clearing, timed-source and sector-lifecycle checks. A walking night client
 capture also renders terrain, character and HUD. These engine checks do not close
 native camera construction or original-client visual acceptance.
+
+CreatureLightTests checks all four equipment sites, distinct supplied hand
+anchors, coincident shoulder/chest sources, raw positions beyond binary64 integer
+precision, exact color rounding, ratios above one and below zero, category/count
+rejection and ordered-positive health admission. Exceptional ratios use an
+explicit engine omission policy outside the held ordinary numeric contract.
+Procedural GPU frames pass shoulder/chest sources through the actual terrain
+selector and shader, then clear their contributions when the counters reach zero.
+The production hand-position fallback and missing native source sites remain open;
+these checks do not certify native attachments or full source collection.
+The equipment-light checkpoint passes all 27 CTests, the extended procedural GPU
+checks and a walking night client capture with terrain, character and HUD.
