@@ -375,14 +375,21 @@ held-slot walk queries readiness for every held nonzero binding, applies the
 index-one restriction, retains primary suppression on rejected attempts, and
 performs the two post-primary release cleanups without resetting the clock.
 Full-width binding/cooldown keys remain distinct from the low-byte action write.
-Preset production, full movement/device mapping, all outer UI/transition gates,
-native actor-map order and original interactive acceptance remain open. Received
+Full movement/device mapping, all outer UI/transition gates, native actor-map
+order and original interactive acceptance remain open. Received
 actor presentation keeps its stated engine clock adapter, now with the shared
 integer duration and per-world-call resident countdown. Preview participants and
 explicit unsaved --hour captures also remain identified engine adapters.
 
 Two further source-only contracts are held and were read completely: action
-binding production and creature-map key order. They establish pre-world binding
-refresh and signed-64-bit live map traversal, respectively. They are retained
-for the following implementation work; their presence does not certify the
-existing preset refresh point or local/NPC container ordering.
+binding production and creature-map key order. The client now refreshes concrete
+two/five-entry bindings before world calls and shares that selection with later
+input and HUD reads. Fixed engine storage replaces native vector allocation;
+zero-masked entries retain their indices. The heavy primary chain returns to 57
+at and beyond the action-67 continuation boundary. Ordinary-primary fallback
+still selects from current actor state. Neither decimal 28 nor 29 is emitted by
+the closed native preset producer; configured consumer checks do not imply a
+vanilla producer. Complete display/cooldown-map lifecycle, stat dependencies,
+outer admission and native interactive acceptance remain open. The signed-key
+contract is retained for subsequent actor traversal work; its presence does not
+certify existing local/NPC container ordering.

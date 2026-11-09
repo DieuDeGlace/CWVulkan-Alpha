@@ -142,6 +142,11 @@ std::array<int32_t, 6> abilitySlots(const Combatant &c) {
     return s;
 }
 
+void AbilityBindings::refresh(const Combatant &c) {
+    storage = abilitySlots(c);
+    count = slotCount(c);
+}
+
 namespace {
 
 void start(Combatant &c, Body &body, int32_t id) {
@@ -289,8 +294,9 @@ void release(Combatant &c, int32_t id) {
 } // namespace
 
 AbilityEffects useAbilities(Combatant &c, Body &body, const std::array<bool, 6> &held, glm::vec3 aim) {
-    const std::array<int32_t, 6> slots = abilitySlots(c);
-    return useBoundAbilities(c, body, std::span(slots).first(slotCount(c)), held, aim);
+    AbilityBindings bindings;
+    bindings.refresh(c);
+    return useBoundAbilities(c, body, bindings.values(), held, aim);
 }
 
 AbilityEffects useBoundAbilities(Combatant &c, Body &body, std::span<const int32_t> slots,

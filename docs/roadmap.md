@@ -62,7 +62,13 @@ Differences from the Steam engine that shape the plan:
   capture statistics and subsystem regressions cover the production connection.
 - [ ] Complete native frame closure: identity/transition and time-scaling inputs,
   creature-map ordering, native aggregate rewrites/revisits, preview bootstrap,
-  control numerics and preset production, interpolation and wider acceptance.
+  control numerics, interpolation and wider acceptance.
+- [x] Bounded action-binding production: refresh two/five concrete entries before
+  world calls, retain masked positions, and reuse the selected list for later
+  input and the bar. Raw equipment precedence, noncanonical specializations,
+  the strict heavy-chain boundary and fresh ordinary-primary fallback have
+  regressions. Complete display/cooldown-map lifecycle and native interactive
+  acceptance remain open.
 - [x] Preliminary controlled health phase: the living role-zero/action-84 gate
   precedes input/common processing, retains integer elapsed conversion, ordered
   binary32 arithmetic and fresh comparison/store maximum queries. Unconditional

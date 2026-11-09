@@ -23,6 +23,8 @@ class Player {
     // Common actor/physics phase; the world caller owns preliminary health/clock.
     // World calls never poll devices or start actions from current-frame input.
     void advance(int32_t dtMs, bool replica = false);
+    void refreshAbilityBindings() { bindings.refresh(fighter); }
+    std::span<const int32_t> abilityBindings() const { return bindings.values(); }
     // Called once after all world pieces; leaves intent/actions for the next call.
     void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr);
     void finishFrame(int32_t dtMs); // engine camera adapter, once per rendered frame
@@ -79,6 +81,7 @@ class Player {
     creatures::PoseState pose;
     creatures::FollowCamera camera;
     creatures::AbilityEffects abilityEffects;
+    creatures::AbilityBindings bindings;
     creatures::Combatant fighter;
     float yaw = 0;
     float jumpHeld = 0, jumpLock = 0; // §4, milliseconds

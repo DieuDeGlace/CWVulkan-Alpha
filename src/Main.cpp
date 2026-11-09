@@ -1563,6 +1563,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 for (const creatures::BuffEvent &b : effects.buffs)
                     sendBuff(b);
             };
+            // Select concrete bindings once before all world pieces. Later
+            // equipment, action-clock and skill changes do not rebuild this list.
+            player->refreshAbilityBindings();
             playerActionFrame.reset();
             creatures::NpcFrame::Cursor npcEvents;
             bool firstWorldCall = true;
@@ -2953,10 +2956,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 // §5.5, behaviour §16: the bar's slots, grey when not usable now, with the
                 // cooldown left over its length.
-                const std::array<int32_t, 6> slots = creatures::abilitySlots(c);
+                const auto slots = player->abilityBindings();
                 for (int k = 0; k < 6; k++) {
                     ui::HudState::AbilitySlot &slot = hud.abilities[k];
-                    slot.id = slots[k];
+                    slot.id = (size_t)k < slots.size() ? slots[k] : 0;
                     slot.usable = c.health > 0 && (k == 0 || slot.id == 0 || creatures::usableNow(c, slot.id));
                     const int32_t length = slot.id ? creatures::cooldownLength(c, slot.id) : 0;
                     const auto left = c.cooldowns.find(slot.id);

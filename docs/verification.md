@@ -93,6 +93,17 @@ statics, projectiles and clock through 20/20/1, preserves one hit notification,
 and starts the requested primary only afterward. It checks post-world instant
 buff duration, retained output lists/new-output views, signed clock/wrap/save
 boundaries, configured full-width cooldown keys and action-only release cleanup.
+Binding examples cover empty construction, two/five-entry refresh, signed skill
+masking, specialization bytes 0/1/2/255, raw subtype precedence and strict heavy
+continuation equality. A 41-ms integration changes class, equipment and skills
+during world calls, then executes the earlier binding/count; the next refresh
+adopts the changed state. Ordinary-primary fallback independently selects from
+current equipment. These are supplied-state engine checks, not native input/UI
+acceptance or a proof of all stat and cooldown-map dependencies.
+All 31 CTests passed for this binding checkpoint. An isolated current-client run
+rendered the selected ability bar, HUD and world, then saved exactly 50 health
+and exited successfully. The capture was reviewed; its known bright ground is
+still unresolved. This does not certify original-game visual or menu parity.
 NetTests also checks clock publication waits for the frame gate, drains once,
 and accepts an identical later packet as fresh input.
 

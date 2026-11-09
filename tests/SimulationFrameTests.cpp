@@ -3,6 +3,7 @@
 #include "StaticStates.h"
 #include "WorldItems.h"
 #include "creatures/Npcs.h"
+#include <algorithm>
 #include <bit>
 #include <cstdio>
 
@@ -250,6 +251,115 @@ int main() {
         useBoundAbilities(actor, body, bindings, {true, true, false, false, false, false}, {});
         check(actor.action == 0 && actor.actionMs == 100 && !(body.mode & CLIMB),
               "negative cooldown rejects a configured held slot while retaining primary suppression and final mode clearing");
+    }
+    {
+        Combatant actor;
+        AbilityBindings bindings;
+        check(bindings.values().empty(), "binding construction has no logical entries");
+        for (const int32_t characterClass : {0, 1, 2, 3, 4, 5, 255}) {
+            actor.characterClass = (uint8_t)characterClass;
+            actor.skills[6] = 0;
+            actor.skills[7] = -1;
+            actor.skills[8] = INT32_MIN;
+            bindings.refresh(actor);
+            const auto values = bindings.values();
+            const bool hasClass = characterClass >= 1 && characterClass <= 4;
+            check(values.size() == (hasClass ? 5 : 2) && (!hasClass ||
+                  (values[2] == 0 && values[3] == 0 && values[4] == 0)),
+                  "refresh preserves two/five entries and masks nonpositive skills without removing slots");
+        }
+        actor.skills[6] = actor.skills[7] = actor.skills[8] = 1;
+        for (const int32_t specialization : {0, 1, 2, 255}) {
+            actor.specialization = (uint8_t)specialization;
+            for (const auto &[characterClass, expected] :
+                 std::array<std::pair<uint8_t, std::array<int32_t, 3>>, 4>{{
+                     {1, {54, 86, specialization == 0 ? 102 : 101}},
+                     {2, {21, 50, specialization == 1 ? 100 : 99}},
+                     {3, {specialization == 1 ? 34 : 88, 103, 49}},
+                     {4, {48, 79, specialization == 0 ? 97 : 96}}}}) {
+                actor.characterClass = characterClass;
+                bindings.refresh(actor);
+                check(std::equal(expected.begin(), expected.end(), bindings.values().begin() + 2),
+                      "class suffix distinguishes equality-to-one from zero/nonzero specialization");
+            }
+        }
+        actor.characterClass = 0;
+        actor.equipment[MAIN_HAND].type = 0;
+        actor.action = 42;
+        actor.actionMs = 0;
+        for (const auto &[subtype, pair] :
+             std::array<std::pair<uint8_t, std::array<int32_t, 2>>, 3>{{
+                 {10, {30, 31}}, {11, {38, 46}}, {12, {40, 37}}}}) {
+            actor.equipment[MAIN_HAND].subtype = subtype;
+            for (const int32_t specialization : {1, 2}) {
+                actor.specialization = (uint8_t)specialization;
+                bindings.refresh(actor);
+                const std::array<int32_t, 2> expected = specialization == 1 ?
+                    (subtype == 10 ? std::array<int32_t, 2>{32, 33} : subtype == 11 ?
+                     std::array<int32_t, 2>{44, 45} : std::array<int32_t, 2>{42, 43}) : pair;
+                check(std::equal(expected.begin(), expected.end(), bindings.values().begin()),
+                      "direct raw subtype pairs bypass category, class and primary continuation tests");
+            }
+        }
+        actor.equipment[MAIN_HAND].subtype = 5;
+        actor.equipment[OFF_HAND].type = 0;
+        actor.equipment[OFF_HAND].subtype = 6;
+        bindings.refresh(actor);
+        check(bindings.values()[0] == 6 && bindings.values()[1] == 5,
+              "empty main category precedes primary subtype five while secondary subtype five precedes off-hand six");
+        actor.equipment[MAIN_HAND].type = 3;
+        actor.equipment[MAIN_HAND].subtype = 8;
+        bindings.refresh(actor);
+        check(bindings.values()[0] == 26 && bindings.values()[1] == 25,
+              "secondary uses raw off-hand six before main eight without requiring an off-hand category");
+        actor.equipment[MAIN_HAND].subtype = 15;
+        actor.equipment[OFF_HAND] = {};
+        for (const uint8_t action : {uint8_t(57), uint8_t(67)}) {
+            actor.action = action;
+            const int32_t boundary = duration(actor, action) + 200;
+            for (const int32_t offset : {-1, 0, 1}) {
+                actor.actionMs = boundary + offset;
+                bindings.refresh(actor);
+                check(bindings.values()[0] == (offset < 0 ? (action == 57 ? 67 : 58) : 57),
+                      "heavy chain has strict continuation boundaries and returns to 57 at equality and later");
+            }
+        }
+    }
+    {
+        Combatant actor;
+        actor.characterClass = 1;
+        actor.specialization = 1;
+        actor.skills[8] = 1;
+        actor.hitStun = 200;
+        AbilityBindings bindings;
+        bindings.refresh(actor);
+        Body body;
+        NpcFrame events;
+        simulation::clientFrame(41, true, events,
+            [&](int32_t elapsed, NpcFrame &) {
+                beginActionUpdate(actor, elapsed);
+                endActionUpdate(actor, elapsed);
+                actor.characterClass = 0;
+                actor.skills[8] = 0;
+                actor.equipment[MAIN_HAND].subtype = 10;
+            },
+            [&](NpcFrame &) {
+                useBoundAbilities(actor, body, bindings.values(), {false, false, false, false, true, false}, {});
+            });
+        check(bindings.values().size() == 5 && bindings.values()[4] == 101 && actor.hasBuff(1) && actor.hitStun == 0,
+              "later input executes captured binding/count despite world changes to class, equipment and skill");
+        bindings.refresh(actor);
+        check(bindings.values().size() == 2 && bindings.values()[0] == 32,
+              "the following refresh replaces logical values and count from current state");
+        actor.equipment[MAIN_HAND] = {};
+        bindings.refresh(actor);
+        actor.equipment[MAIN_HAND].type = 3;
+        actor.equipment[MAIN_HAND].subtype = 6;
+        actor.action = 0;
+        actor.actionMs = 10000;
+        useBoundAbilities(actor, body, bindings.values(), {true, false, false, false, false, false}, {});
+        check(bindings.values()[0] == 6 && actor.action == 22,
+              "ordinary primary fallback selects from current state rather than the captured bar entry");
     }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

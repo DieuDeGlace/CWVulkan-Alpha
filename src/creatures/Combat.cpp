@@ -564,7 +564,9 @@ int32_t primaryAttack(const Combatant &c) {
     if (twoHandedOrRanged(m)) {
         if (c.action == 57)
             return chain(57, 67);
-        return c.action == 67 ? chain(67, 58) : 57;
+        if (c.action == 67 && c.actionMs < duration(c, 67) + 200)
+            return 58;
+        return 57;
     }
     if (o == SHIELD)
         return chain(10, 9);

@@ -24,6 +24,19 @@ bool freeToAct(const Combatant &c);
 // §16.2: the bar's six ids (0 = empty): M1, M2, keys 1, 2, 3, 4.
 std::array<int32_t, 6> abilitySlots(const Combatant &c);
 
+// One concrete pre-world selection, shared by later input and the ability bar.
+// Fixed engine storage avoids allocations; only the native two/five slots are
+// exposed. Construction is empty, and every refresh replaces all logical values.
+class AbilityBindings {
+  public:
+    void refresh(const Combatant &c);
+    std::span<const int32_t> values() const { return std::span(storage).first(count); }
+
+  private:
+    std::array<int32_t, 6> storage{};
+    size_t count = 0;
+};
+
 // §16.3 for one frame. `held` are the controls of the six slots; `aim` is the vector from the
 // player to the point under the crosshair, blocks. Returns the buff records the frame
 // produced (§16.6; packet 8 when online).

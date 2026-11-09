@@ -188,7 +188,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
                 fighter.action = 0, fighter.actionMs = 0;
         }
     }
-    const creatures::AbilityEffects effects = useAbilities(fighter, state, slotsHeld, fighter.aim);
+    const creatures::AbilityEffects effects = useBoundAbilities(fighter, state, bindings.values(), slotsHeld, fighter.aim);
     abilityEffects.buffs.insert(abilityEffects.buffs.end(), effects.buffs.begin(), effects.buffs.end());
     abilityEffects.sounds.insert(abilityEffects.sounds.end(), effects.sounds.begin(), effects.sounds.end());
     fighter.mode = state.mode;
