@@ -87,6 +87,9 @@ std::filesystem::path savePath(const ServerOptions &o) {
 } // namespace
 
 Server::Server(ServerOptions o) : options(std::move(o)) {
+    npcs.onFatalObject = [this](const creatures::Combatant &fighter, creatures::NpcFrame &frame) {
+        statics.fatal(zones, fighter.backing, frame);
+    };
     npcs.onFatalLoot = [this](const creatures::Combatant &fighter, const creatures::Body &body,
                               std::span<const creatures::ItemRecord> inventory) {
         dropLoot(lootVictim(fighter, body, inventory), items, (int32_t)clockDay,
@@ -1058,15 +1061,7 @@ void Server::stepWorld(float dtMs) {
         for (const auto &key : c->wantedZones)
             if (items.zone(key.first, key.second))
                 listed.insert(key);
-        std::set<std::pair<int32_t, int32_t>> stateZones = changedStatics;
-        for (const auto &key : c->wantedZones)
-            stateZones.insert(key);
-        for (const auto &[zx, zy] : stateZones)
-            if (const worldgen::Zone *zone = zones.zone(zx, zy))
-                for (int32_t k = 0; k < (int32_t)zone->statics.size(); k++) {
-                    const auto record = statics.record(*zone, k);
-                    out.sections[5].emplace_back(record.begin(), record.end());
-                }
+        statics.appendUpdates(zones, frame.staticStates, changedStatics, c->wantedZones, out.sections[5]);
         // Block edits §3, §10: this step's edits go to everyone; a requested zone's whole list
         // goes to whoever asked. Section 8: the changed placed-object lists.
         for (const BlockEdit &e : stepEdits) {

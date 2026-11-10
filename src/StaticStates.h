@@ -14,6 +14,7 @@
 #include <functional>
 #include <map>
 #include <set>
+#include <span>
 #include <vector>
 
 class WorldItems;
@@ -23,6 +24,7 @@ struct StaticState {
     int32_t timerMs = 0;   // +0x34: ms since the last change
     uint64_t occupant = 0; // +0x40: who sits or sleeps on it
     std::vector<creatures::ItemRecord> contents; // +0x48: a chest's loot
+    uint32_t stateWord = 0; // uninterpreted common-state word +0x38
 };
 
 // §6.3: how far a moving static is open (0 closed … 1 open) for the drawing of §4.4.
@@ -61,6 +63,15 @@ class StaticStates {
     // Packets §3.6: a static's 88-byte section-6 record, and applying one received.
     std::array<uint8_t, 88> record(const worldgen::Zone &zone, int32_t index) const;
     void apply(const uint8_t *record);
+    // Cached coordinates select the zone; the first kind-five, nonzero-state
+    // object with a matching retained association changes before loot runs.
+    bool fatal(const worldgen::WorldMap &map, const creatures::BackingReference &backing, creatures::NpcFrame &frame);
+    // Engine publication adapter: ordered immediate records, then final changed
+    // or requested zone state. Suppress an identical final record already sent
+    // immediately unless the peer explicitly requested that complete zone.
+    void appendUpdates(const worldgen::WorldMap &map, std::span<const std::array<uint8_t, 88>> immediate,
+                       const std::set<Key> &changedZones, const std::set<Key> &requestedZones,
+                       std::vector<std::vector<uint8_t>> &output) const;
     // Zones whose states changed since the last call (to save and to send in section 6).
     std::set<Key> takeChanged() { return std::exchange(changed, {}); }
 

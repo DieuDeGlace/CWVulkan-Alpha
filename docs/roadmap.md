@@ -85,6 +85,14 @@ Differences from the Steam engine that shape the plan:
   startup are engine policies; native runtime/thread state, descriptor seed
   admission, all nested draws, object/region/credit stages and full corpse
   lifecycle remain separate work.
+- [x] Bounded fatal object stage for supplied associations: cached coordinates
+  select the zone, the first matching kind-five object changes before loot,
+  and the immediate snapshot uses its static-array index. Association metadata
+  remains distinct from state-prefix updates; the uninterpreted state word is
+  retained. Snapshot order, timer inversion, narrowed sound positions and
+  production hit ordering have regressions. Positive association generation,
+  complete received geometry/prefix publication and broader native acceptance
+  remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

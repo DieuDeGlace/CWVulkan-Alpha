@@ -531,3 +531,33 @@ authors. This bounded runtime evidence supplements the source-side import
 identity contract; it does not rewrite that immutable artifact or establish
 the game's loaded DLL, startup seeds, call/thread assignment or complete replay
 history. Details and limits are in [verification.md](verification.md).
+
+The already held fatal-effects and object-association contracts now supply the
+bounded pre-loot object stage. The engine retains a separate descriptor
+association with default minus one, without deriving it from the object's array
+index. Supplied cached coordinates use the documented admission interval; the
+first matching kind-five object with nonzero state changes synchronously,
+emits its narrowed-position sound and appends a snapshot using the static-array
+index. Full engine copies retain association metadata; state-word reception and
+state changes leave it separate. The common prefix's uninterpreted word at
+offset 0x38 is retained without assigning semantics. Fresh snapshot padding
+remains deterministic engine initialization, not a native all-bytes claim.
+
+The local client and dedicated world connect that stage before loot. Ordered
+immediate snapshots precede the server's retained final-zone publication adapter;
+an identical final snapshot is omitted unless a complete zone was requested.
+That publication policy does not infer original-server equivalence. The native
+positive-association producer, complete received geometry/prefix publication,
+descriptor replacement/lifetime and wider native acceptance remain open. The
+existing held artifacts are unchanged; ongoing source-only research receives
+no engine, test or runtime findings.
+
+The additional original-only object-producer/snapshot contract was subsequently
+held and read in full. It confirms the common-state word's zero construction
+and full-width copying, while retaining the missing first positive-association
+writer. The native receive reader consumes an 88-byte body but inserts its keys
+and common fields through field-wise copying, which skips alignment gaps. The
+engine raw snapshot queue deliberately retains received padding; that is an
+engine storage policy, not evidence that native queue padding is identical.
+Complete native geometry replacement, malformed-record behavior and lifecycle
+publication remain separate from this bounded state/word implementation.

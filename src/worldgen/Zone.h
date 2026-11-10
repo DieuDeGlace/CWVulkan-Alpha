@@ -95,6 +95,8 @@ struct StaticObject {
     uint8_t state = 0;   // +0x30: 1 for objects made from a prefab blob, 2 for a filled chest
     int32_t timer = 0;   // +0x34: a spike trap's phase, ms
     std::vector<ItemRecord> contents; // +0x48: a chest's items
+    uint32_t stateWord = 0; // uninterpreted common-state word +0x38
+    int32_t descriptorIndex = -1; // retained association +0x178, independent of this object's array index
 };
 
 // Vegetation spec §1.3, structures spec §1.10.2 item 5: a sprite placed by a structure (a

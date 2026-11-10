@@ -1372,8 +1372,8 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
                 propagateThreat(*by, actor, frame);
             }
         }
-    // First presentation, world loot and the direct linked-health store are
-    // synchronous. Object, regional and credit stages remain separate work.
+    // First presentation, object state, loot and linked health are synchronous.
+    // Regional progress, relationship cleanup and credit remain separate work.
     if (target->health <= 0) {
         target->health = 0;
         glm::vec3 position;
@@ -1383,6 +1383,8 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
         target->actionMs = 0;
         if (recipient.npc)
             recipient.npc->fatalPresented = true;
+        if (onFatalObject)
+            onFatalObject(*target, frame);
         if (onFatalLoot) {
             const auto inventory = recipient.npc ? std::span<const ItemRecord>(recipient.npc->inventory)
                                                  : std::span<const ItemRecord>{};
@@ -1912,7 +1914,7 @@ NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {
                 take(shots, cursor.shots), take(bursts, cursor.bursts), take(deaths, cursor.deaths),
                 take(craters, cursor.craters), take(explosions, cursor.explosions), take(tamed, cursor.tamed),
                 take(petItems, cursor.petItems), std::bit_cast<int32_t>(uint32_t(experience) - uint32_t(cursor.experience)),
-                take(seen, cursor.seen), take(relationships, cursor.relationships)};
+                take(seen, cursor.seen), take(relationships, cursor.relationships), take(staticStates, cursor.staticStates)};
     cursor.experience = experience;
     return added;
 }
@@ -1923,6 +1925,7 @@ void NpcFrame::reset() {
     sounds.clear();
     buffs.clear();
     relationships.clear();
+    staticStates.clear();
     kills.clear();
     shots.clear();
     bursts.clear();

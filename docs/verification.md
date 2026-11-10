@@ -223,6 +223,32 @@ the tested API/file and histories; the running game's loaded-module identity,
 thread assignments, earlier calls, descriptor seeding and full draw history
 remain separate acceptance gates. Seed-one engine startup is still a policy.
 
+FatalObjectTests covers independent association defaults/copies, cached-coordinate
+bounds, negative matching ordinals and first-match selection across kind,
+association and state gates. Snapshot checks distinguish the static-array index
+from the descriptor ordinal and retain the changed timer plus uninterpreted
+common-state word. Exact sound checks narrow large fixed-point positions to
+binary32 before scaling. Timer cases cover equality, negative inputs and defined
+32-bit wrap before the signed lower clamp. Frame views drain once and reset
+retains capacity. Publication preserves immediate order, suppresses an identical
+final record, retains later changes and responds fully to requested zones.
+A production hit fixture observes first death presentation, object state/sound/
+snapshot, loot and direct linked-health store in that order. These are bounded
+provided-state checks; they do not prove a native positive-association producer,
+full static-prefix geometry reception, padding equality or gameplay acceptance.
+NetTests also sends two actual object snapshots through the publication helper
+and a compressed loopback world update. The client's frame gate blocks queue
+publication, then all 88 received bytes, order, uninterpreted state-word bits and
+supplied padding survive one drain. Incomplete retained engine storage is omitted
+instead of manufacturing zero records; that malformed-state policy is separate
+from native container validity.
+All 37 CTests passed for this checkpoint. Fresh client health, loopback and both
+save/reload phases passed, and all four captures were reviewed. The injured
+character retained exactly binary32 50 health; reload preserved seed 123 despite
+conflicting inputs, character data, nine map tiles, preview data and 170 edits.
+The loopback server shut down cleanly. The known bright-ground observation and
+broader native gameplay/UI/visual acceptance remain open.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

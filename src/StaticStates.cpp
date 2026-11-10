@@ -1,6 +1,7 @@
 #include "StaticStates.h"
 #include "WorldItems.h"
 #include <algorithm>
+#include <bit>
 #include <cstring>
 
 float openFraction(int32_t kind, const StaticState &s) {
@@ -20,6 +21,7 @@ void StaticStates::generated(const worldgen::Zone &zone) {
         StaticState s;
         s.state = o.state;
         s.timerMs = o.timer;
+        s.stateWord = o.stateWord;
         for (const worldgen::ItemRecord &item : o.contents)
             s.contents.push_back(creatures::toRecord(item));
         list.push_back(std::move(s));
@@ -65,7 +67,8 @@ std::array<uint8_t, 88> StaticStates::record(const worldgen::Zone &zone, int32_t
     put(0x30, &o.rotation, 4);       // word 8
     put(0x34, o.scale, 12);          // words 9-11
     r[0x40] = s.state;               // byte 0x30
-    put(0x44, &s.timerMs, 4);        // word 13 (word 14 unknown, 0)
+    put(0x44, &s.timerMs, 4);        // word 13
+    put(0x48, &s.stateWord, 4);      // word 14, retained without assigning semantics
     put(0x50, &s.occupant, 8);       // words 16-17
     return r;
 }
@@ -81,7 +84,61 @@ void StaticStates::apply(const uint8_t *r) {
     StaticState &s = it->second[index];
     s.state = r[0x40];
     std::memcpy(&s.timerMs, r + 0x44, 4);
+    std::memcpy(&s.stateWord, r + 0x48, 4);
     std::memcpy(&s.occupant, r + 0x50, 8);
+}
+
+bool StaticStates::fatal(const worldgen::WorldMap &map, const creatures::BackingReference &backing,
+                          creatures::NpcFrame &frame) {
+    if (backing.x < 0 || backing.x >= 65536 || backing.y < 0 || backing.y >= 65536)
+        return false;
+    const auto *held = map.zone(backing.x, backing.y);
+    const auto found = zones.find({backing.x, backing.y});
+    if (!held || found == zones.end())
+        return false;
+    auto &states = found->second;
+    for (size_t index = 0; index < held->statics.size() && index < states.size(); index++) {
+        const auto &object = held->statics[index];
+        auto &state = states[index];
+        if (object.kind == 5 && object.descriptorIndex == backing.index && state.state != 0) {
+            set(object, state, 0, frame.sounds);
+            changed.insert(found->first);
+            frame.staticStates.push_back(record(*held, (int32_t)index));
+            return true;
+        }
+    }
+    return false;
+}
+
+void StaticStates::appendUpdates(const worldgen::WorldMap &map, std::span<const std::array<uint8_t, 88>> immediate,
+                                 const std::set<Key> &changedZones, const std::set<Key> &requestedZones,
+                                 std::vector<std::vector<uint8_t>> &output) const {
+    std::map<std::array<int32_t, 3>, const std::array<uint8_t, 88> *> latest;
+    for (const auto &snapshot : immediate) {
+        output.emplace_back(snapshot.begin(), snapshot.end());
+        std::array<int32_t, 3> key;
+        std::memcpy(key.data(), snapshot.data(), 12);
+        latest[key] = &snapshot;
+    }
+    std::set<Key> listed = changedZones;
+    listed.insert(requestedZones.begin(), requestedZones.end());
+    for (const auto &[x, y] : listed) {
+        const auto *held = map.zone(x, y);
+        const auto *current = zone(x, y);
+        if (!held || !current)
+            continue; // engine omission policy for incomplete retained storage
+        const bool requested = requestedZones.contains({x, y});
+        const size_t count = std::min({held->statics.size(), current->size(), size_t(INT32_MAX) + 1});
+        for (size_t index = 0; index < count; index++) {
+            const auto snapshot = record(*held, (int32_t)index);
+            if (!requested) {
+                const auto previous = latest.find({x, y, (int32_t)index});
+                if (previous != latest.end() && *previous->second == snapshot)
+                    continue;
+            }
+            output.emplace_back(snapshot.begin(), snapshot.end());
+        }
+    }
 }
 
 void StaticStates::traps(int32_t dtMs, double clockMs, const std::vector<Creature> &creatures,
@@ -146,16 +203,21 @@ void StaticStates::set(const worldgen::StaticObject &o, StaticState &s, uint8_t 
                        std::vector<creatures::SoundEvent> &sounds) {
     if (s.state == to)
         return;
-    s.timerMs = std::max(1000 - s.timerMs, 0);
+    s.timerMs = std::max(std::bit_cast<int32_t>(1000u - uint32_t(s.timerMs)), 0);
     s.state = to;
-    const glm::dvec3 at = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
+    glm::dvec3 at;
     int32_t sound = 54;
-    if (o.kind == 5)
+    if (o.kind == 5) {
         sound = 51;
-    else if (o.kind == 6)
-        sound = to != 0 ? 53 : 0;
-    else if (o.kind == 7)
-        sound = to != 0 ? 52 : 0;
+        at = {double(float(o.x) * (1.f / 65536.f)), double(float(o.y) * (1.f / 65536.f)),
+              double(float(o.z) * (1.f / 65536.f))};
+    } else {
+        at = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
+        if (o.kind == 6)
+            sound = to != 0 ? 53 : 0;
+        else if (o.kind == 7)
+            sound = to != 0 ? 52 : 0;
+    }
     if (sound)
         sounds.push_back({at, sound, 1, 1});
 }

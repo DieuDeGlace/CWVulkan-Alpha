@@ -68,6 +68,29 @@ static void checkCombatTransport() {
     const auto expectedSend = sent.serialize();
     const std::array<creatures::RelationshipRecord, 3> relationships{{
         {19, 0, -3.25f, {1, 2, 3, 4}}, {19, 1, -0.f, {5, 6, 7, 8}}, {1, 1, 17, {9, 10, 11, 12}}}};
+    auto objectZone = std::make_shared<worldgen::Zone>(4, 6);
+    for (int32_t association : {7, 8}) {
+        worldgen::StaticObject object;
+        object.kind = 5;
+        object.state = 1;
+        object.timer = 250;
+        object.descriptorIndex = association;
+        object.stateWord = 0xfedcba98u;
+        objectZone->statics.push_back(object);
+    }
+    worldgen::WorldMap objectMap;
+    objectMap.add(objectZone);
+    StaticStates objectStates;
+    objectStates.generated(*objectZone);
+    creatures::NpcFrame objectEvents;
+    check(objectStates.fatal(objectMap, {4, 6, 7}, objectEvents) &&
+          objectStates.fatal(objectMap, {4, 6, 8}, objectEvents), "transport fixture produces two ordered object snapshots");
+    std::vector<std::vector<uint8_t>> expectedStaticPayloads;
+    objectStates.appendUpdates(objectMap, objectEvents.staticStates, objectStates.takeChanged(), {}, expectedStaticPayloads);
+    // Received padding has no semantic value but must survive the raw queue.
+    check(expectedStaticPayloads.size() == 2, "publication does not duplicate the fixture's immediate snapshots");
+    if (!expectedStaticPayloads.empty())
+        expectedStaticPayloads[0][0x0f] = 0xa7;
     creatures::HitRecord inboundHit;
     inboundHit.attacker = 77;
     inboundHit.target = 1;
@@ -115,6 +138,7 @@ static void checkCombatTransport() {
             const auto bytes = event.serialize();
             update.sections[10].emplace_back(bytes.begin(), bytes.end());
         }
+        update.sections[5] = expectedStaticPayloads;
         ByteWriter response;
         response.u32(CLOCK);
         response.u32(clockDay);
@@ -193,6 +217,7 @@ static void checkCombatTransport() {
         check(waitFor([&] { return worldSent.load(); }), "peer supplies input while the frame gate is held");
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
         check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
+              client.takeStaticStates().empty() &&
               client.others().empty() && !client.takeClock(),
               "incoming queue mutation and creature insertion wait until the current frame completes");
         creatures::Combatant actor;
@@ -203,13 +228,15 @@ static void checkCombatTransport() {
         frame.unlock();
         std::vector<creatures::BuffEvent> events;
         std::vector<creatures::RelationshipRecord> receivedRelationships;
+        std::vector<std::vector<uint8_t>> receivedStatics;
         std::vector<Hit> hits;
         check(waitFor([&] {
             for (const auto &event : client.takeBuffs()) events.push_back(event);
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
+            for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
             for (const auto &hit : client.takeHits()) hits.push_back(hit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
-                   !hits.empty() && received && receivedHit;
+                   receivedStatics.size() >= expectedStaticPayloads.size() && !hits.empty() && received && receivedHit;
         }), "actual client exchanges packet-8 and section-12 buff records");
         check(coherentHit && packetOrder,
               "sender captures completed frame state before hit records and sends hits before buff events");
@@ -221,6 +248,8 @@ static void checkCombatTransport() {
               receivedRelationships[1].serialize() == relationships[1].serialize() &&
               receivedRelationships[2].serialize() == relationships[2].serialize() && client.takeRelationships().empty(),
               "section-eleven relationships retain order, zero/self IDs, float bits and all opaque bytes before one frame drain");
+        check(receivedStatics == expectedStaticPayloads && client.takeStaticStates().empty(),
+              "ordered section-six snapshots preserve all 88 bytes through frame-protected publication and one drain");
         const auto clock = client.takeClock();
         uint32_t observedDay = 0, observedTime = 0;
         check(clock && clock->first == clockDay && clock->second == clockTime && !client.takeClock() &&

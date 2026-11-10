@@ -113,6 +113,7 @@ struct NpcFrame {
     std::vector<SoundEvent> sounds;
     std::vector<BuffEvent> buffs;
     std::vector<RelationshipRecord> relationships;
+    std::vector<std::array<uint8_t, 88>> staticStates; // immediate section-six snapshots, in production order
     std::vector<KillRecord> kills;
     std::vector<Projectile> shots; // projectiles the NPCs launched (projectiles §2)
     std::vector<Burst> bursts;     // particles §5 (section 3)
@@ -168,6 +169,7 @@ struct NpcFrame {
         size_t emittedHits = 0, playerHits = 0, sounds = 0, buffs = 0, kills = 0, shots = 0, bursts = 0;
         size_t deaths = 0, craters = 0, explosions = 0, tamed = 0, petItems = 0, seen = 0;
         size_t relationships = 0;
+        size_t staticStates = 0;
         int32_t experience = 0;
     };
     struct Added {
@@ -186,6 +188,7 @@ struct NpcFrame {
         int32_t experience = 0;
         std::span<const std::pair<HitRecord, glm::dvec3>> seen;
         std::span<const RelationshipRecord> relationships;
+        std::span<const std::array<uint8_t, 88>> staticStates;
     };
     Added addedSince(Cursor &cursor) const;
     void reset(); // clear values while retaining engine buffer capacity
@@ -220,6 +223,9 @@ class Npcs {
     void applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame,
                        const std::function<void(HitRecord &)> &localHit = {});
     std::function<void(HitRecord &)> onControlledHit; // SDK extension: local application copy only
+    // Cached-origin object work runs after first presentation/clock reset,
+    // before loot. This service may append snapshots but must retain actor storage.
+    std::function<void(const Combatant &, NpcFrame &)> onFatalObject;
     // World-owned service, called synchronously after first fatal presentation.
     // It may update drop storage, but must not structurally mutate the actor table.
     std::function<void(const Combatant &, const Body &, std::span<const ItemRecord>)> onFatalLoot;

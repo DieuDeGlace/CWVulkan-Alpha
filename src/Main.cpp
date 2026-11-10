@@ -785,6 +785,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     }
     scene.water = options.water;
     activeScene = &scene;
+    npcs.onFatalObject = [&](const creatures::Combatant &fighter, creatures::NpcFrame &frame) {
+        if (!client.connected())
+            statics.fatal(view.held(), fighter.backing, frame);
+    };
     npcs.onFatalLoot = [&](const creatures::Combatant &fighter, const creatures::Body &body,
                            std::span<const creatures::ItemRecord> items) {
         if (!client.connected())
