@@ -123,9 +123,11 @@ creatures::Combatant CreatureRecord::fighter() const {
     c.ownerId = get<uint64_t>(bytes, 0x188);
     c.powerTier = bytes[0x198];
     c.backing = {get<int32_t>(bytes, 0x1a0), get<int32_t>(bytes, 0x1a4), get<int32_t>(bytes, 0x1a8)};
-    for (size_t slot = 0; slot < c.equipment.size(); slot++)
-        c.equipment[slot] = creatures::Item::parse(&bytes[EQUIPMENT + ITEM_SIZE * slot]);
-    std::memcpy(c.linkedItem.source.data(), bytes.data() + EQUIPMENT + ITEM_SIZE * 12, ITEM_SIZE);
+    for (size_t slot = 0; slot < c.equipment.size(); slot++) {
+        creatures::ItemRecord record;
+        std::memcpy(record.data(), bytes.data() + EQUIPMENT + ITEM_SIZE * slot, ITEM_SIZE);
+        c.setEquipment(slot, record);
+    }
     for (size_t i = 0; i < c.skills.size(); i++)
         c.skills[i] = get<int32_t>(bytes, 0x1128 + 4 * i);
     return c;
@@ -166,8 +168,7 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     put<int32_t>(bytes, 0x1a8, c.backing.index);
     for (size_t slot = 0; slot < c.equipment.size(); slot++) {
         uint8_t *r = &bytes[EQUIPMENT + ITEM_SIZE * slot];
-        creatures::ItemRecord record = slot == 12 ? c.linkedItem.source : creatures::ItemRecord{};
-        c.equipment[slot].write(record);
+        const auto record = c.equipmentRecord(slot);
         std::memcpy(r, record.data(), ITEM_SIZE);
     }
     for (size_t i = 0; i < c.skills.size(); i++)

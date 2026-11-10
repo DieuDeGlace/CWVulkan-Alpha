@@ -13,14 +13,19 @@ void RemoteFighter::refresh(creatures::Combatant snapshot, int32_t elapsedMs) {
     auto relations = std::move(fighter.relations);
     const uint64_t linkedId = fighter.linkedId;
     const auto itemSnapshot = fighter.linkedItem.retained;
-    auto itemSource = fighter.linkedItem.source;
-    creatures::copyItemFields(snapshot.linkedItem.source, itemSource); // core assignment skips destination padding
+    constexpr std::array<size_t, 5> gaps{2, 3, 15, 18, 19};
+    std::array<std::array<uint8_t, gaps.size()>, creatures::SLOT_COUNT> padding;
+    for (size_t slot = 0; slot < padding.size(); slot++)
+        for (size_t gap = 0; gap < gaps.size(); gap++)
+            padding[slot][gap] = fighter.equipmentSource(slot)[gaps[gap]];
     fighter = std::move(snapshot);
     fighter.buffs = std::move(residentBuffs); // Resident events are outside core snapshots.
     fighter.relations = std::move(relations);
     fighter.linkedId = linkedId; // This identifier is outside the native core state copy.
     fighter.linkedItem.retained = itemSnapshot;
-    fighter.linkedItem.source = itemSource;
+    for (size_t slot = 0; slot < padding.size(); slot++)
+        for (size_t gap = 0; gap < gaps.size(); gap++)
+            fighter.equipmentSource(slot)[gaps[gap]] = padding[slot][gap];
     fighter.actionMs = displayedClock;
     receivedAction = action;
     receivedClock = clock;

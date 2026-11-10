@@ -333,8 +333,10 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     }
     if (onActivate)
         onActivate(npc);
-    for (int slot = 0; slot < 13; slot++)
-        if (const worldgen::ItemRecord &r = s.equipment[slot]; r.type) {
+    for (int slot = 0; slot < SLOT_COUNT - 1; slot++) {
+        const worldgen::ItemRecord &r = s.equipment[slot];
+        c.equipmentSource(slot) = toRecord(r);
+        if (r.type) {
             c.equipment[slot].type = r.type;
             c.equipment[slot].subtype = r.subtype;
             c.equipment[slot].material = r.material;
@@ -342,6 +344,7 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
             c.equipment[slot].level = r.level ? r.level : c.level;
             c.equipment[slot].seed = r.seed;
         }
+    }
     c.appearanceFlags = npc.looks.flags;
     c.linkedItem.source = toRecord(s.equipment[12]);
     c.equipment[12] = Item::parse(c.linkedItem.source.data());

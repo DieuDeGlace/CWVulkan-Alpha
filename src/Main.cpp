@@ -594,8 +594,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (!player)
             return;
         for (size_t slot = 0; slot < inventory.equipment.size(); slot++)
-            player->combat().equipment[slot] = creatures::Item::parse(inventory.equipment[slot].data());
-        player->combat().linkedItem.source = inventory.equipment[12];
+            player->combat().setEquipment(slot, inventory.equipment[slot]);
     };
     creatures::Npcs npcs{worldRandom};
     npcs.creditItems = [&](creatures::Combatant &actor) -> creatures::CreditItems {

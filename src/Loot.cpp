@@ -93,13 +93,8 @@ LootVictim collectLootVictim(const creatures::Combatant &c, uint16_t appearanceF
     for (const creatures::ItemRecord &item : inventory)
         if (creatures::itemType(item) != 0)
             v.inventory.push_back({1, item}); // (one unit per entry)
-    for (size_t k = 0; k < c.equipment.size(); k++) {
-        const creatures::Item &item = c.equipment[k];
-        creatures::ItemRecord &r = v.equipment[k];
-        r[0x00] = item.type, r[0x01] = item.subtype, r[0x0c] = item.rarity, r[0x0d] = item.material;
-        std::memcpy(r.data() + 0x04, &item.seed, 4);
-        creatures::setItemLevel(r, (int16_t)item.level);
-    }
+    for (size_t k = 0; k < c.equipment.size(); k++)
+        v.equipment[k] = c.equipmentRecord(k);
     return v;
 }
 } // namespace

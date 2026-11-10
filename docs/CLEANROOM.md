@@ -782,3 +782,27 @@ The dedicated engine world now supplies the decoded complete mode word to its
 temporary player body before linked maintenance. This repairs an engine binding
 using the already held raw-word and linked-admission boundaries; the real peer
 regression does not establish an original-server counterpart.
+
+The later original-only created-actor behavior and target-selection contracts
+were each FINAL/STABLE/HELD and read completely. They establish ordered child
+updates, bounded child state/draw relations, the selection prefix's identities,
+live traversal, numeric boundaries and relationship publication. The broad
+first-child continuation, second-child terrain path, reference-coordinate
+producers and visibility geometry remain bounded. These research artifacts do
+not certify production implementation of the complete created-actor behavior.
+
+Complete equipment backing now extends the earlier slot-twelve storage to all
+thirteen slots. Twelve additional owned records reuse the existing last-slot
+source without duplicating it. Raw imports retain received bytes; semantic item
+edits overlay represented fields on that backing. Core refresh and equipment
+assignment preserve each destination's five alignment bytes while transferring
+all body entries, independently of the signed active count. Fresh engine gaps
+remain deterministic zero, without an original padding-equality claim.
+
+Owned inventory, current network state and NPC descriptor backing supply these
+records. The existing NPC gear view and level adapter remain separately bounded;
+this storage change does not certify full activation/generation provenance.
+The loot input adapter now carries complete current equipment instead of a
+limited header reconstruction. Nested generation, loot admission and broader
+native gameplay remain separate gates. No implementation or runtime findings
+were supplied to any source-side author.

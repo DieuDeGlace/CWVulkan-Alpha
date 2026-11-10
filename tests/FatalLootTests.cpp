@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 
 using namespace creatures;
 namespace {
@@ -91,7 +92,17 @@ int main() {
         fighter.appearanceFlags = 0x200;
         fighter.level = 17;
         fighter.powerTier = 3;
-        fighter.equipment[MAIN_HAND] = Item{3, 1, 2, 4, 7, 123};
+        ItemRecord equipment;
+        for (size_t i = 0; i < equipment.size(); i++)
+            equipment[i] = uint8_t(i * 19 + 7);
+        equipment[0] = 3;
+        equipment[1] = 1;
+        equipment[12] = 4;
+        equipment[13] = 2;
+        setItemLevel(equipment, 7);
+        const int32_t bodyCount = 2;
+        std::memcpy(equipment.data() + 0x114, &bodyCount, 4);
+        fighter.setEquipment(MAIN_HAND, equipment);
         Body body;
         body.position[0] = (int64_t(1) << 56) + 3;
         body.position[1] = -(int64_t(1) << 56) - 5;
@@ -111,6 +122,8 @@ int main() {
               live.equipment == delayed.equipment && live.appearanceFlags == delayed.appearanceFlags &&
               live.level == delayed.level && live.tier == delayed.tier,
               "live loot retains raw integer positions/full inventory bytes and the established equipment adapter");
+        check(live.equipment[MAIN_HAND] == equipment && delayed.equipment[MAIN_HAND] == equipment,
+              "both live and delayed loot retain complete equipment flags, active and inactive body entries and backing bytes");
     }
     {
         worldgen::Random shared(123);

@@ -76,6 +76,14 @@ Differences from the Steam engine that shape the plan:
   draw counts and setup publication. Future setup behavior, other candidate
   appearance outputs and lifetime remain bounded; this is research closure,
   not a claim that the production actor-creation path is implemented.
+- [x] Complete equipment core backing: all thirteen records retain inactive
+  entries and opaque bytes through import, wire transfer and semantic refresh.
+  Equipment assignment preserves destination gaps and resident comparison state;
+  loot receives complete current records. Existing NPC gear-view/generation
+  provenance and complete native actor creation remain open.
+- [ ] Created-actor behavior: held source contracts establish ordered child
+  processing and a target-selection prefix. Later action/navigation, reference
+  producers, visibility geometry and complete production integration remain open.
 - [ ] Full synchronous fatal/world-loot processing from the held contracts,
   remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later

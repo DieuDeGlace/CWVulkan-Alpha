@@ -3,7 +3,9 @@
 #include "DataStore.h"
 #include "Install.h"
 #include "Player.h"
+#include "net/Protocol.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
@@ -70,12 +72,29 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
     require(actor.mode == 0xa660 && body.mode == actor.mode, "Stun left the two production views inconsistent");
     player.advance(20);
     require(actor.mode == 0xa660 && body.mode == actor.mode, "The next piece revived cleared movement flags");
+    std::array<creatures::ItemRecord, creatures::SLOT_COUNT> ownedEquipment{};
+    for (size_t slot = 0; slot < ownedEquipment.size(); slot++) {
+        auto &item = ownedEquipment[slot];
+        creatures::setItemLevel(item, 1);
+        item[2] = uint8_t(0xa0 + slot);
+        item[0x80] = uint8_t(0xb0 + slot);
+        item[0x113] = uint8_t(0xc0 + slot);
+        actor.setEquipment(slot, item);
+    }
+    player.readInput(window, 20, false, nullptr, &noMouse);
+    player.advance(20);
+    net::CreatureRecord outgoing;
+    outgoing.setFighter(actor);
+    for (size_t slot = 0; slot < ownedEquipment.size(); slot++)
+        require(std::equal(ownedEquipment[slot].begin(), ownedEquipment[slot].end(),
+                           outgoing.bytes.begin() + 0x2f0 + slot * ownedEquipment[slot].size()),
+                "Production Player input/physics or outgoing codec lost equipment backing");
     actor.health = 0;
     actor.mode = 0xf020;
     body.mode = 0x1200;
     player.advance(20);
     require(actor.mode == 0xf020 && body.mode == 0x1200, "A rejected dead update replaced state");
-    std::cout << "PlayerStateProbe passed: actual input, supplied controller, physics, stun, replacement and dead admission\n";
+    std::cout << "PlayerStateProbe passed: actual input, supplied controller, physics, stun, replacement, complete equipment and dead admission\n";
 }
 }
 

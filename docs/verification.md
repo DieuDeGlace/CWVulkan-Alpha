@@ -154,6 +154,25 @@ to the dedicated server, rendered its reviewed capture and exited successfully;
 the test server shut down normally. Native server/gameplay equivalence remains
 separate from this bounded engine check.
 
+Complete equipment regressions cover all thirteen source records with negative,
+zero, ordinary, full and oversized signed body counts. The real codec retains
+every raw byte, while semantic copies preserve each destination's five gaps.
+An inactive nonlinked byte changes only the existing equipment delta group and
+survives actual partial decoding and core refresh. Direct semantic edits retain
+unrepresented backing; self-copy and resident comparison state are also checked.
+Live and delayed loot inputs retain the same complete equipment record.
+
+The extended PlayerStateProbe imports complete records, runs production input
+and physics, then checks the actual outgoing codec for every slot. This is
+bounded engine data-flow evidence, separate from complete creation, generation,
+loot and native gameplay acceptance.
+All 44 CTests and the extended production Player diagnostic passed. Fresh reward,
+injured-health, loopback and both save/reload phases passed with all five captures
+reviewed. Saved reward state retained level 2, -33 XP and 7 Platinum Coins;
+injured health remained binary32 50. Reload retained seed 123, nine map tiles,
+the preview and 170 edits. Known bright ground and broader native visual and
+gameplay gates remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

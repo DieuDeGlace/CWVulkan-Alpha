@@ -94,7 +94,7 @@ CharacterRecord newCharacter(const std::string &name, const creatures::Character
     c.characterClass = (uint8_t)cls;
     c.level = 1;
     for (size_t slot = 0; slot < r.equipment.size(); slot++)
-        c.equipment[slot] = creatures::Item::parse(r.equipment[slot].data());
+        c.setEquipment(slot, r.equipment[slot]);
     r.health = creatures::maxHealth(c);
     r.skills.assign(11, 0);
     return r;

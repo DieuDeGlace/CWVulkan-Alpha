@@ -68,6 +68,25 @@ void Item::write(ItemRecord &record) const {
     std::memcpy(record.data() + 0x114, &spirits, 4);
 }
 
+ItemRecord Combatant::equipmentRecord(size_t slot) const {
+    auto record = equipmentSource(slot);
+    equipment[slot].write(record);
+    return record;
+}
+
+void Combatant::setEquipment(size_t slot, const ItemRecord &record) {
+    equipmentSource(slot) = record;
+    equipment[slot] = Item::parse(record.data());
+}
+
+void Combatant::copyEquipmentFrom(const Combatant &source) {
+    for (size_t slot = 0; slot < equipment.size(); slot++) {
+        const auto record = source.equipmentRecord(slot);
+        copyItemFields(record, equipmentSource(slot));
+        equipment[slot] = Item::parse(equipmentSource(slot).data());
+    }
+}
+
 ItemBonuses &itemBonuses() {
     static ItemBonuses bonuses{itemHealth, itemDamage, itemArmour, itemResistance, itemSpeed, itemCritical};
     return bonuses;

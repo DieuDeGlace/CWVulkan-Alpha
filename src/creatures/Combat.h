@@ -84,6 +84,16 @@ struct BackingReference {
     int32_t x = -1, y = -1, index = 0;
 };
 
+// The last slot already has actor-owned backing in LinkedItemState. Retain the
+// other records too, including inactive body entries and alignment bytes.
+struct EquipmentSources {
+    std::array<ItemRecord, SLOT_COUNT - 1> records{};
+    EquipmentSources() {
+        for (auto &record : records)
+            setItemLevel(record, 1);
+    }
+};
+
 // The record fields the combat rules read and write (§1).
 struct Combatant {
     uint64_t id = 0;
@@ -130,6 +140,18 @@ struct Combatant {
     std::vector<int32_t> specials; // special actions an NPC may use (§9.3, §13.2)
     std::map<int32_t, float> cooldowns; // §16.1: ability id -> remaining ms (entries stay at 0)
     Relations relations;
+    EquipmentSources equipmentSources;
+
+    ItemRecord &equipmentSource(size_t slot) {
+        return slot == SLOT_COUNT - 1 ? linkedItem.source : equipmentSources.records[slot];
+    }
+    const ItemRecord &equipmentSource(size_t slot) const {
+        return slot == SLOT_COUNT - 1 ? linkedItem.source : equipmentSources.records[slot];
+    }
+    ItemRecord equipmentRecord(size_t slot) const;
+    void setEquipment(size_t slot, const ItemRecord &record);
+    // Semantic field assignment retains each destination record's five gaps.
+    void copyEquipmentFrom(const Combatant &source);
 
     const Item &mainHand() const { return equipment[MAIN_HAND]; }
     const Item &offHand() const { return equipment[OFF_HAND]; }
