@@ -462,9 +462,7 @@ bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
             } else if (button == 1 && vendorOpen) { // sold straight from the box
                 creatures::ItemRecord &slot = inventory->equipment[creatures::equipmentBoxes[i].slot];
                 if (creatures::itemType(slot)) {
-                    creatures::Stack one{1, slot};
-                    sell(one);
-                    slot[0x00] = slot[0x01] = 0;
+                    vendor::sellSlot(slot, buyBack, inventory->money, vendorServices());
                 }
             } else if (button == 1) {
                 sound(inventory->unequip(i));

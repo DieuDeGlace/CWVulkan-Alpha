@@ -1073,3 +1073,32 @@ They do not establish a first positive local mode-0x20 writer or a first
 nonnegative spatial association/loading source. Existing raw values remain
 preserved; no producer or descriptor-ordinal assignment is invented from these
 negative findings. Neither author received implementation or runtime feedback.
+
+The original-only vendor widget/transaction contract was HELD, read completely
+and SHA-256 verified before the independent row/transfer implementation:
+`alpha-vendor-widget-transactions.md`,
+`41134b15e2792966695478dea9ebbd0c6da5ea225756d26dd551b638335a171d`.
+The author received no engine, tests, captures, logs or runtime observations.
+The engine separates grouped widget state from ordered services for price,
+capacity, insertion, feedback and refresh. Production code uses those services;
+it does not flatten stock or infer positive-count admission for vendor rows.
+Player capacity compares the supplied item and wraps the complete matching
+count sum. Price arithmetic uses separate binary32 operations and the original
+two-evaluation boundary; platform `pow` remains an imported-math approximation
+boundary rather than a native-runtime accuracy claim.
+
+The production exporter resolves the selected actor ID on explicit refresh to
+avoid retaining pointers into an engine vector. Its online compact descriptor
+bridge also remains explicit. These are engine ownership adapters, not proof of
+the original cached-pointer identity or timing. Panel art, negative-count icon
+color, full control geometry, upstream selector priority, periodic refresh,
+recipe/interface continuation, allocation/concurrency, network reconciliation
+and original-client transaction/visual acceptance remain bounded dependencies.
+
+The separate server origins audit was also HELD, read completely and verified:
+`alpha-server-mode-association-origins.md`,
+`5c331886f32ea40b40d5146a7140f1fe164c43ae9652a8280381e57bf111198f`.
+It independently establishes server receiver identity, raw mode publication and
+spatial default/copy boundaries. It still does not establish the upstream first
+mode-0x20 selection or a first nonnegative spatial association. Its presence is
+not certification of the engine's receive-lock sequence or whole server.

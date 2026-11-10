@@ -1468,7 +1468,8 @@ int main() {
         same(itemLevel(inv.bags[2][0].item), 1, "the stored quantity field is 1");
         same(inv.canCarry(herb), 1, "nine may take more");
         inv.bags[2][0].count = 50;
-        same(inv.canCarry(herb), 0, "fifty is the limit");
+        same(inv.canCarry(herb), 1, "capacity does not normalize the supplied quantity field");
+        same(inv.canCarry(inv.bags[2][0].item), 0, "fifty matching stored items is the limit");
         inv.add(sword);
         inv.add(sword);
         same(inv.bags[0][0].count == 1 && inv.bags[0][1].count == 1, 1, "weapons do not stack");

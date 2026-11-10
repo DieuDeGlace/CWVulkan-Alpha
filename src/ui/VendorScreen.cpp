@@ -1,6 +1,5 @@
-// The vendor window (docs/specs/alpha-talk-vendors.md §3, alpha-ui-screens.md §8.1.3 type 3):
-// the vendor's stock and the buy-back list in wide rows with their prices, right of the
-// inventory; buying, selling and buying back, all with the one price and no margin.
+// Grouped row identities and ordered transfers follow the held vendor-widget
+// contract. Panel art/placement and input-button mapping remain engine adapters.
 #include "ui/Screens.h"
 #include "ui/Widgets.h"
 #include <algorithm>
@@ -35,18 +34,27 @@ void Interface::loadVendor() {
 }
 
 void Interface::sell(creatures::Stack &stack) {
-    if (stack.empty() || !inventory)
-        return;
-    const ItemRecord item = stack.item;
-    if (--stack.count < 1) {
-        stack.count = 0;
-        stack.item[0x00] = stack.item[0x01] = 0;
-    }
-    inventory->money += (uint32_t)creatures::price(item);
-    inventorySounds.push_back(0x3a); // drop-coin.wav
-    buyBack.push_back({1, item});
-    if (buyBack.size() > 10)
-        buyBack.erase(buyBack.begin());
+    if (inventory)
+        vendor::sellEntry(stack.count, stack.item, buyBack, inventory->money, vendorServices());
+}
+
+vendor::Services Interface::vendorServices() {
+    vendor::Services services;
+    services.price = [](const ItemRecord &item) { return creatures::price(item); };
+    services.canCarry = [&](const ItemRecord &item) { return inventory->canCarry(item); };
+    services.add = [&](const ItemRecord &item) { inventory->add(item); };
+    services.feedback = [&](int32_t sound) { inventorySounds.push_back(sound); };
+    services.carryLimit = [&] { chatAdd("You can't carry more of these items.\n", {255, 51, 51}); };
+    services.refresh = [&] { refreshVendor(); };
+    // The engine's player widget derives its layout from the current bags.
+    services.updatePlayer = [&] { scrollRange(); };
+    return services;
+}
+
+void Interface::refreshVendor() {
+    if (vendorGrid.currentGroup != 1 && vendorExport) vendorExport(vendorInventory);
+    vendor::refresh(vendorInventory, nullptr, vendorGrid.currentGroup, buyBack);
+    vendorGrid.update(&vendorInventory, PANEL.x, PANEL.y, int32_t(ROW.x), int32_t(ROW.y));
 }
 
 void Interface::drawVendor(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
@@ -57,28 +65,25 @@ void Interface::drawVendor(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
         painter.draw(*vendorPanel, 0, Transform(1));
     }
     outlined(painter, u"Vendor", O + glm::vec2(15, 25), 12, 3, glm::vec4(1));
-    // Tab 0 the stock, tab 1 the buy-back list newest first.
-    std::vector<std::pair<int32_t, ItemRecord>> rows;
-    if (vendorTab == 0)
-        for (const ItemRecord &item : vendorStock)
-            rows.push_back({1, item});
-    else
-        for (auto it = buyBack.rbegin(); it != buyBack.rend(); ++it)
-            rows.push_back({it->count, it->item});
-    vendorRow = std::clamp(vendorRow, 0, std::max(0, (int32_t)rows.size() - ROWS));
+    vendorGrid.update(&vendorInventory, PANEL.x, PANEL.y, int32_t(ROW.x), int32_t(ROW.y));
+    vendorGrid.hover = {};
+    const auto [first, end] = vendorGrid.visible(vendorInventory);
     for (int r = 0; r < ROWS; r++) {
         const glm::vec2 corner = O + rowCorner(r);
         if (wideItemBox) {
             placeWidget(*wideItemBox, 0, corner);
             painter.draw(*wideItemBox, 0, Transform(1));
         }
-        const size_t i = (size_t)(vendorRow + r);
-        if (i >= rows.size())
+        const size_t i = first + size_t(r);
+        if (i >= end)
             continue;
-        const ItemRecord &item = rows[i].second;
+        const auto &entry = vendorInventory.groups[size_t(vendorGrid.currentGroup)][i];
+        const ItemRecord &item = entry.item;
         const bool over = inside(mouse, corner, ROW);
-        if (over)
+        if (over) {
+            vendorGrid.hover = {vendorGrid.currentGroup, int32_t(i)};
             vendorHovered = item;
+        }
         if (itemModel) {
             const ItemModel m = itemModel(item);
             painter.item(itemDraw(m.mesh, m.size, creatures::itemType(item) == 9, corner + glm::vec2(20), itemTurn,
@@ -89,8 +94,8 @@ void Interface::drawVendor(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
             name += u" +" + number(creatures::powerOf(creatures::itemLevel(item)));
         outlined(painter, name, corner + glm::vec2(ROW.y + 10, 10), 10, 2, glm::vec4(creatures::nameColour(item), 1),
                  plasma::WRAP, ROW.x - ROW.y - 20);
-        if (rows[i].first > 1)
-            outlined(painter, number(rows[i].first), corner + glm::vec2(36, 37), 10, 2, glm::vec4(1), plasma::RIGHT);
+        if (vendor::quantityText(entry.count, creatures::itemType(item)))
+            outlined(painter, number(entry.count), corner + glm::vec2(36, 37), 10, 2, glm::vec4(1), plasma::RIGHT);
         // The price in coins at the row's right edge, each part 40 px further left, zero parts
         // skipped.
         const int32_t p = creatures::price(item);
@@ -102,7 +107,7 @@ void Interface::drawVendor(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
                 right -= 40;
             }
     }
-    if (upButton && downButton && (int32_t)rows.size() > ROWS)
+    if (upButton && downButton && vendorGrid.range > 1)
         for (auto [doc, at] : {std::pair{&*upButton, upCorner()}, std::pair{&*downButton, downCorner()}}) {
             tint(*doc, 0, inside(local, at, {21, 19}) ? CYAN : glm::vec4(1));
             placeWidget(*doc, 0, O + at);
@@ -110,7 +115,7 @@ void Interface::drawVendor(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
         }
     for (int k = 0; k < (int)vendorTabs.size(); k++) {
         plasma::Document &doc = vendorTabs[k];
-        const bool over = inside(local, tabCorner(k), {38, 38}), current = k == vendorTab;
+        const bool over = inside(local, tabCorner(k), {38, 38}), current = k == vendorGrid.currentGroup;
         tint(doc, 0, over || current ? glm::vec4(1) : glm::vec4(0.8f, 0.8f, 0.8f, 1));
         tint(doc, doc.find("frame"), over ? CYAN : current ? glm::vec4(0, 1, 0, 1) : glm::vec4(1));
         placeWidget(doc, 0, O + tabCorner(k));
@@ -122,62 +127,36 @@ bool Interface::vendorPress(glm::vec2 W, glm::vec2 mouse, int button) {
     if (!inventory)
         return false;
     const glm::vec2 O = origin(W), local = mouse - O;
+    vendorGrid.update(&vendorInventory, PANEL.x, PANEL.y, int32_t(ROW.x), int32_t(ROW.y));
     for (int k = 0; k < 2; k++)
         if (inside(local, tabCorner(k), {38, 38})) {
-            if (button == 0 && k != vendorTab) {
-                vendorTab = k, vendorRow = 0;
+            if (button == 0 && vendorGrid.choose(k, vendorInventory, PANEL.x, PANEL.y, int32_t(ROW.x), int32_t(ROW.y))) {
                 inventorySounds.push_back(creatures::SOUND_TAB);
+                refreshVendor();
             }
             return true;
         }
     if (!inside(local, {0, 0}, PANEL))
         return false;
-    if (button == 0 && inside(local, upCorner(), {21, 19}))
-        vendorRow = std::max(vendorRow - 1, 0);
-    else if (button == 0 && inside(local, downCorner(), {21, 19}))
-        vendorRow++;
-    for (int r = 0; r < ROWS && button == 1; r++) {
+    const bool validGroup = vendorGrid.currentGroup >= 0 && size_t(vendorGrid.currentGroup) < vendorGrid.scroll.size();
+    if (button == 0 && validGroup && inside(local, upCorner(), {21, 19}))
+        vendorGrid.scroll[size_t(vendorGrid.currentGroup)] = std::max(vendorGrid.scroll[size_t(vendorGrid.currentGroup)] - 1, 0);
+    else if (button == 0 && validGroup && inside(local, downCorner(), {21, 19}))
+        vendorGrid.scroll[size_t(vendorGrid.currentGroup)] =
+            std::min(vendorGrid.scroll[size_t(vendorGrid.currentGroup)] + 1, std::max(vendorGrid.range - 1, 0));
+    const auto [first, end] = vendorGrid.visible(vendorInventory);
+    vendorGrid.hover = {};
+    for (int r = 0; r < ROWS; r++) {
         if (!inside(local, rowCorner(r), ROW))
             continue;
-        const size_t i = (size_t)(vendorRow + r);
-        const auto refuse = [&] {
-            chatAdd("You can't carry more of these items.\n", {255, 51, 51});
-            inventorySounds.push_back(creatures::SOUND_NOT_HERE);
-        };
-        if (vendorTab == 0 && i < vendorStock.size()) {
-            // §3.4 buy: unlimited stock.
-            const ItemRecord &item = vendorStock[i];
-            const uint32_t cost = (uint32_t)creatures::price(item);
-            if (cost > inventory->money)
-                break;
-            if (!inventory->canCarry(item)) {
-                refuse();
-                break;
-            }
-            inventory->add(item);
-            inventory->money -= cost;
-            inventorySounds.push_back(0x39); // drop.wav
-        } else if (vendorTab == 1 && i < buyBack.size()) {
-            // §3.4 buy back: the whole stack, as far as the money goes.
-            creatures::Stack &entry = buyBack[buyBack.size() - 1 - i];
-            const uint32_t cost = (uint32_t)creatures::price(entry.item);
-            int32_t bought = 0;
-            for (int32_t n = 0; n < entry.count; n++) {
-                if (!inventory->canCarry(entry.item)) {
-                    refuse();
-                    break;
-                }
-                if (cost <= inventory->money) {
-                    inventory->add(entry.item);
-                    inventory->money -= cost;
-                    bought++;
-                }
-            }
-            entry.count -= bought;
-            if (entry.count <= 0)
-                buyBack.erase(buyBack.begin() + (ptrdiff_t)(buyBack.size() - 1 - i));
-            inventorySounds.push_back(0x39);
-        }
+        const size_t i = first + size_t(r);
+        if (i >= end) break;
+        vendorGrid.hover = {vendorGrid.currentGroup, int32_t(i)};
+        if (button == 0 && vendorGrid.select()) inventorySounds.push_back(0x55);
+        if (button == 1 || button == 2)
+            vendor::purchase(vendorInventory, vendorOpen, vendorGrid.hover, vendorGrid.currentGroup,
+                             buyBack, inventory->money, vendorServices());
+        break;
     }
     return true;
 }

@@ -108,9 +108,15 @@ Differences from the Steam engine that shape the plan:
 - [x] Bounded grouped inventory consumers: NPCs now own one grouped value.
   Health-item selection mutates its real count across all groups; fatal inputs
   retain counted rows and submit positive units without consuming the source.
-  Vendor export keeps a complete independent value before the existing widget
-  projection. Native widget/transaction/periodic refresh, full generation,
-  nested drop publication and original-client acceptance remain open.
+  Vendor export keeps a complete independent value. Full generation, nested
+  drop publication and original-client acceptance remain open.
+- [x] Bounded vendor rows and transfers: the panel addresses actual group/entry
+  indices, retains zero/negative rows and per-group scroll, and refreshes buyback
+  from its live reverse order. Purchases and partial buybacks preserve signed
+  affordability, separate displayed/live prices, repeated queries and mutation
+  order. Bag and direct-slot sales retain their distinct clear timing. Full
+  widget art/control geometry, upstream input selection, periodic scheduling,
+  cached-pointer lifetime and native/server acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

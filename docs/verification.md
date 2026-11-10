@@ -450,6 +450,36 @@ argument and aborted in argument parsing. The corrected invocation passed on
 the unchanged binary. Bright ground, negative XP display and hardware controller
 acceptance remain open; the vendor capture establishes rendering only.
 
+VendorTests now exercises the independently supplied transaction services and
+the public inventory input path. It covers logical group/entry indices across
+zero/negative rows, scroll truncation/range, selection, reverse buyback refresh
+and independently owned stale buffer rows. Ordered traces check normal price
+re-evaluation, signed funds, capacity refusal, category-zero insertion no-ops,
+different displayed/live buyback prices, repeated unaffordable attempts,
+quantity re-reads, partial transfers and exact-zero removal. Sale callbacks
+observe the distinct bag/direct-slot clear times, wrap and ten-node retention.
+Player capacity cases retain raw supplied identity, hand contributions, negative
+counts and wrapping totals. Price fixtures cover signed level/rarity inputs,
+the first minimum test and the un-clamped second evaluation. The default uses
+platform power calls; it does not establish original imported-math accuracy.
+
+The panel now draws the actual current group's rows without creating a flat
+stock projection. UI tests purchase zero-quantity stock, sell from a player bag,
+switch to the refreshed buyback group and repurchase a live node. Original
+widget art, control geometry, negative-count icon color, upstream selection
+priority, periodic refresh, cached-pointer lifetime, recipe/interface work,
+network reconciliation and native transaction/visual acceptance remain open.
+
+This vendor checkpoint passes all 54 CTests and the production Player/controller
+diagnostic. Fresh reward, injured-health, dedicated-server, save/reload and vendor
+runs passed; all six captures were reviewed. Reward state remains level 2/-33 XP/
+7 Platinum Coins; injured health remains binary32 50 with one visit. Reload
+retains health 265, seed 123, nine tiles, 33,792 preview bytes and 170 edits.
+The health run reports 154 world calls over 17 input frames, and the vendor run
+117 calls over 17 frames, with maximum 20 ms pieces. These are diagnostic samples,
+not a performance certification. Bright ground, negative XP display, physical
+controller and original-client acceptance remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

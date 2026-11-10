@@ -5,6 +5,7 @@
 // bag slot or an equipment box does.
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
@@ -67,6 +68,9 @@ bool classMayUse(const ItemRecord &item, int32_t characterClass);
 bool canUse(const ItemRecord &item, int32_t level, int32_t characterClass);
 // 0x4c76e0: the price in copper.
 int32_t price(const ItemRecord &item);
+// Supplied scalar makes the two evaluation boundaries independently testable.
+// The default uses platform pow; original imported-math accuracy stays bounded.
+int32_t price(const ItemRecord &item, const std::function<float(float, uint32_t)> &scalar);
 // 0x4c7d20: the colour of an item's name.
 glm::vec3 nameColour(const ItemRecord &item);
 

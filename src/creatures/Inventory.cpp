@@ -147,21 +147,6 @@ bool canUse(const ItemRecord &item, int32_t level, int32_t cls) {
     return powerOf(level) >= powerOf(itemLevel(item)) && classMayUse(item, cls);
 }
 
-int32_t price(const ItemRecord &item) {
-    float k = 0.2f;
-    switch (itemType(item)) {
-    case 3: case 4: k = 2; break;
-    case 5: case 6: case 9: k = 1; break;
-    case 7: case 8: k = 1.5f; break;
-    case 23: k = 100; break;
-    default: break;
-    }
-    if (twoHanded(item))
-        k *= 2;
-    const float v = itemLevelFactor((float)itemLevel(item), itemRarity(item)) * 10.f * k;
-    return std::max(1, (int32_t)v);
-}
-
 glm::vec3 nameColour(const ItemRecord &item) {
     switch (itemType(item)) {
     case 21: return {0.5f, 0.5f, 0.5f};
@@ -257,18 +242,15 @@ bool Inventory::canCarry(const ItemRecord &item) const {
     const uint8_t t = itemType(item);
     if (t != 1 && t != 11 && t != 20)
         return true;
-    // Compared as it would be stored (the quantity field becomes 1).
-    ItemRecord stored = item;
-    if (quantityType(item))
-        setItemLevel(stored, 1);
-    int64_t n = 0;
+    uint32_t total = 0;
+    if (sameItem(hand.item, item))
+        total += uint32_t(hand.count);
     for (const auto &bag : bags)
         for (const Stack &s : bag)
-            if (!s.empty() && sameItem(s.item, stored))
-                n += s.count;
-    if (!hand.empty() && sameItem(hand.item, stored))
-        n += hand.count;
-    return !(t == 20 && n > 0) && n <= 49;
+            if (sameItem(s.item, item))
+                total += uint32_t(s.count);
+    const int32_t n = std::bit_cast<int32_t>(total);
+    return !(t == 20 && n >= 1) && n < 50;
 }
 
 int32_t Inventory::pressSlot(int b, size_t index) {

@@ -12,6 +12,7 @@
 #include "creatures/Spirits.h"
 #include "ui/Painter.h"
 #include "ui/ControllerKeyboard.h"
+#include "ui/Vendor.h"
 #include <functional>
 #include <map>
 #include <optional>
@@ -178,10 +179,13 @@ class Interface {
     // Talk §3: the vendor window beside the inventory: the stock of the vendor talked to
     // (tab 0) and the buy-back list (tab 1, newest first, shared by all vendors, at most 10).
     bool vendorOpen = false;
-    int vendorTab = 0;
-    std::vector<creatures::ItemRecord> vendorStock;
-    creatures::InventoryValue vendorInventory; // complete owned export; current widget list is a value-only view
-    std::vector<creatures::Stack> buyBack; // oldest first
+    vendor::Grid vendorGrid;
+    creatures::InventoryValue vendorInventory;
+    vendor::Buyback buyBack;
+    // Engine lifetime adapter: Main resolves the selected actor at each explicit
+    // refresh. This does not certify the original cached-pointer lifetime.
+    std::function<void(creatures::InventoryValue &)> vendorExport;
+    void refreshVendor();
     // Character and world screens (alpha-character-screens.md), after "Start Game". The game
     // fills the lists from the saves, answers `frontRequest` and rebuilds the player's looks
     // when `creationChanged` is set.
@@ -423,10 +427,10 @@ class Interface {
     bool vendorPress(glm::vec2 window, glm::vec2 mouse, int button);
     std::optional<plasma::Document> vendorPanel;
     std::vector<plasma::Document> vendorTabs;
-    int32_t vendorRow = 0;
     std::optional<creatures::ItemRecord> vendorHovered;
     // Talk §3.4: one unit sold from a stack (the money, the sound, the buy-back list).
     void sell(creatures::Stack &stack);
+    vendor::Services vendorServices();
     // Talk §1, in SpeechBubbles.cpp.
     struct Bubble {
         uint64_t creature = 0; // 0: free
