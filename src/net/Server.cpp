@@ -622,6 +622,7 @@ void Server::stepWorld(float dtMs) {
         b.intent = c->creature.intent();
         b.push = c->creature.response();
         b.size = c->creature.appearance().box;
+        b.mode = f.mode;
         fighters.push_back(std::move(f));
         bodies.push_back(b);
         who.push_back(c);

@@ -786,6 +786,46 @@ int main() {
                   "the actual server saves its fatal regional mutation in the synthetic world");
         }
     }
+    {
+        auto state = ra.fighter();
+        state.mode = 0xa610;
+        state.equipment[12].type = 19;
+        state.equipment[12].subtype = 19;
+        state.equipment[12].level = 1;
+        ra.setFighter(state);
+        a.setOwn(ra);
+        check(waitFor([&] {
+            const auto peers = b.others();
+            return peers.contains(a.id()) && peers.at(a.id()).fighter().mode == 0xa610;
+        }), "the second peer receives the owner's full gliding mode word");
+        const auto petKey = [&]() -> uint64_t {
+            for (const auto &[key, record] : a.others()) {
+                const auto actor = record.fighter();
+                if (actor.controller == 5 && actor.ownerId == a.id())
+                    return key;
+            }
+            return 0;
+        };
+        bool glidingPet = petKey() != 0;
+        uint32_t initialDay = 0, initialMs = 0;
+        check(a.clock(initialDay, initialMs), "the glider fixture has a server clock baseline");
+        check(waitFor([&] {
+            glidingPet |= petKey() != 0;
+            uint32_t currentDay = 0, currentMs = 0;
+            return a.clock(currentDay, currentMs) &&
+                (currentDay != initialDay || uint32_t(currentMs - initialMs) >= 5000);
+        }), "the real server advances while the owner remains gliding");
+        check(!glidingPet, "decoded glider mode prevents actual server pet construction");
+        state.mode &= ~0x10u;
+        ra.setFighter(state);
+        a.setOwn(ra);
+        check(waitFor([&] { return petKey() != 0; }),
+              "clearing only glider admits the same equipped pet on the actual server");
+        check(waitFor([&] {
+            const auto peers = b.others();
+            return peers.contains(a.id()) && peers.at(a.id()).fighter().mode == 0xa600;
+        }), "the nonmovement high-byte flags remain unchanged after pet admission");
+    }
     a.disconnect();
     check(waitFor([&] { return !b.others().count(1); }), "b sees Alice leave");
     check(waitFor([&] { return server.players() == 1; }), "server is down to one player");

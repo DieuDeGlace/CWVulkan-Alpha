@@ -67,9 +67,15 @@ Differences from the Steam engine that shape the plan:
 - [x] Bounded mode-word preservation: local input, NPC behavior, physics and
   charge/stun phases transfer the complete word without losing unrelated bits.
   Pet reconstruction clears both views; quest captive creation/free publishes
-  its intended sitting change immediately. The held producer audit supplies
+  its intended sitting change immediately. Dedicated-world player bodies receive
+  the decoded word before linked maintenance. The held producer audit supplies
   raw word/copy/reset boundaries. First native bit-0x20 behavior production,
   complete descriptor generation and world transition/lifetime remain open.
+- [ ] Action-92 actor creation: the new held original-only contract establishes
+  selector/admission, live key/link scans, direct new-actor state, copy defaults,
+  draw counts and setup publication. Future setup behavior, other candidate
+  appearance outputs and lifetime remain bounded; this is research closure,
+  not a claim that the production actor-creation path is implemented.
 - [ ] Full synchronous fatal/world-loot processing from the held contracts,
   remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later

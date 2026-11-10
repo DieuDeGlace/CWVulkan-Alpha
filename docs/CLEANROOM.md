@@ -769,3 +769,16 @@ writer, complete generator/caller coverage, world mode/designated-pointer
 transitions and native acceptance remain separate gates. The constructor's raw
 role/kind defaults do not redefine the engine's semantic controlled-player view.
 No implementation, diagnostic or runtime result was supplied to the source author.
+
+The later original-only world actor-creation contract was FINAL/STABLE/HELD and
+read completely. It establishes action 92's creation branch, its live count/key
+scan, source identities, direct fields, semantic copy/default boundaries, direct
+appearance draw counts and ordered setup publication. Other appearance outputs,
+future virtual behavior and exceptional lifetime remain bounded. Its presence
+does not claim production implementation of that creation branch. No engine,
+verification or runtime material was supplied to its source-side author.
+
+The dedicated engine world now supplies the decoded complete mode word to its
+temporary player body before linked maintenance. This repairs an engine binding
+using the already held raw-word and linked-admission boundaries; the real peer
+regression does not establish an original-server counterpart.

@@ -143,6 +143,17 @@ Coins, injured health remained binary32 50, and reload retained seed 123, nine
 map tiles, the preview and 170 edits. Known bright ground and broader native
 visual/gameplay acceptance remain open.
 
+An additional real two-client NetTests regression equips a pet while the owner
+publishes a full gliding mode word. It acknowledges that word through the second
+peer and observes advancing server clock publications without a pet appearing.
+Clearing only glider must then create that same pet while retaining unrelated
+high-byte flags. This failed before the decoded mode was copied into the server's
+body view, establishing that the fixture reaches the actual admission path.
+The fixed focused checks and all 44 CTests passed. A fresh actual client connected
+to the dedicated server, rendered its reviewed capture and exited successfully;
+the test server shut down normally. Native server/gameplay equivalence remains
+separate from this bounded engine check.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
