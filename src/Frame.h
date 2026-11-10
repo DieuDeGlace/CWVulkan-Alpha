@@ -21,8 +21,8 @@ struct Camera {
     glm::vec3 forward() const;
     glm::mat4 view() const;
     glm::mat4 projection(float nearPlane, float farPlane, float lens) const;
-    // Raw native extraction applied to the engine camera matrices. Native FOV,
-    // projection inputs, following and reference generation remain separate.
+    // Raw extraction applied to the adapted engine camera matrices. Production
+    // angle/near/far selection, native following and references remain separate.
     std::array<glm::vec4, 6> lightAdmissionPlanes() const;
 };
 

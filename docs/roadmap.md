@@ -77,6 +77,11 @@ Differences from the Steam engine that shape the plan:
   fields and changed resident identity have regressions. Strict malformed/missing
   rejection and player-controller admission remain explicit engine policies.
   First autonomous mode selection and broader native server acceptance stay open.
+- [x] Projection numerical core: supplied native angle/aspect inputs, rounded
+  half-angle/tangent/reciprocal and depth construction, exact component layout,
+  and ordered matrix sums. Camera construction uses this kernel through an
+  explicit RH/Vulkan coordinate adapter. Native main-camera input selection,
+  view production, imported tangent accuracy and vertex/pixel acceptance stay open.
 - [x] Bounded action-92 creation: production owned NPC and designated offline
   player dispatch retain the two anticipation queries, live link/minimum-key
   scan, full copy routes, fresh defaults and predecessor publication before

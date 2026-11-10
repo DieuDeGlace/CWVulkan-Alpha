@@ -1,4 +1,5 @@
 #include "Frame.h"
+#include "Projection.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 
@@ -14,9 +15,8 @@ glm::vec3 Camera::forward() const {
 glm::mat4 Camera::view() const { return glm::lookAt(eye, eye + forward(), glm::vec3(0, 0, 1)); }
 
 glm::mat4 Camera::projection(float nearPlane, float farPlane, float lens) const {
-    glm::mat4 p = glm::perspective(glm::radians(lens), aspect, nearPlane, farPlane);
-    p[1][1] *= -1; // Vulkan's clip space has y pointing down
-    return p;
+    const projection::Inputs inputs{glm::radians(lens), projection::flipSign(aspect), nearPlane, farPlane};
+    return projection::rightHandedVulkan(projection::perspective(inputs));
 }
 
 std::array<glm::vec4, 6> Camera::lightAdmissionPlanes() const {
@@ -32,11 +32,11 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
 
     FrameConstants c{};
     constexpr float NEAR_PLANE = Camera::NEAR_PLANE, FAR_PLANE = Camera::FAR_PLANE;
-    c.viewProjection = camera.projection(NEAR_PLANE, FAR_PLANE, camera.lensDegrees) * view;
+    c.viewProjection = projection::multiply(camera.projection(NEAR_PLANE, FAR_PLANE, camera.lensDegrees), view);
     // §8.4: the sky camera keeps the view's rotation, sits at the origin, and has its own lens.
     glm::mat4 rotation = view;
     rotation[3] = glm::vec4(0, 0, 0, 1);
-    c.skyViewProjection = camera.projection(0.1f, 2000.f, alpha::SKY_LENS_DEGREES) * rotation;
+    c.skyViewProjection = projection::multiply(camera.projection(0.1f, 2000.f, alpha::SKY_LENS_DEGREES), rotation);
     c.camera = glm::vec4(camera.eye, 1);
     c.lightDirection = glm::vec4(alpha::sunDirection(scene.timeOfDayMs), 0);
     c.front = glm::vec4(palette.front, 1);

@@ -501,6 +501,29 @@ Save/reload retains health 265, seed 123, nine tiles, 33,792 preview bytes and
 maximum 20 ms pieces. Bright ground, negative XP display, physical-controller
 and original-client acceptance remain open.
 
+ProjectionTests checks exact main-angle/near/far constants, separate signed
+dimension conversions before aspect division, sign-bit inversion including
+signed zero, one supplied tangent call, narrowing before reciprocal, the complete
+physical component layout and all unused positive zeros. Exact finite depth
+anchors check the positive-view-Z denominator and zero-to-one relation. Matrix
+fixtures distinguish successive sums from reassociation and separately rounded
+products from fused cancellation. A public Camera call verifies the RH/Vulkan
+adapter and supplied constructor path. Native main-camera input selection,
+imported tangent accuracy, original view production and pixel acceptance remain
+open; these tests do not turn the engine's existing input policy into parity.
+
+All 56 CTests and the procedural GPU routing checks pass for this projection
+checkpoint. The GPU probe checks source routing, growth, clearing, ten-slot
+prefixes, timed/cached/sector lifecycle, body/equipment/yaw/action sources and
+fallback; representative current/pending frames were reviewed. The production
+Player/controller diagnostic and fresh reward, health, network and save/reload
+runs also pass, with all five client captures reviewed. Rewards retain level 2/
+-33 XP/7 Platinum Coins, injured health remains binary32 50 with one visit and
+reload retains health 265, seed 123, nine tiles, 33,792 preview bytes and 170 edits.
+The health sample reports 151 world calls over 17 input frames, with maximum
+20 ms pieces. Bright ground, negative XP display, physical-controller and native
+visual acceptance remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

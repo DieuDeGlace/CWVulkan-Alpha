@@ -1114,3 +1114,22 @@ establish those guarantees or that controller write. No new autonomous mode-0x20
 producer or spatial association is inferred. Full framing/decompression,
 connection admission, map lifetime, shutdown and native server equivalence remain
 separate boundaries.
+
+The original-only projection-input contract was HELD, read completely and
+hash-verified before implementation: `alpha-projection-input-production.md`,
+SHA-256 `bce52cffb167fcb2887b4901d5afa4c83518670f0eb629af0fcbab196e073a07`.
+Its author received no implementation, tests, captures, logs or runtime feedback.
+An independent scalar constructor preserves native input widths, exact angle
+constants, the half-angle binary32 store before a binary64 tangent call, the
+narrowed tangent reciprocal and separate depth product/divisions. A separate
+matrix product uses four rounded products and successive additions.
+
+Production Camera uses this constructor with the existing engine's supplied
+angle/aspect/near/far choices and an explicit coordinate adapter for its RH view
+and Vulkan clip Y. Frame and sky compositions use the ordered matrix product.
+The native main-input API exposes the two established fixed radian inputs
+and signed dimension ratio, but upstream receiver/camera selection is still a
+separate gate. In particular, the current engine camera's 45-degree/4000-far
+policy is not certified by that native main-input contract. Platform tangent
+accuracy, full control state, camera/view/origin production, every render pass,
+original device publication and shader/rasterizer precision remain unresolved.
