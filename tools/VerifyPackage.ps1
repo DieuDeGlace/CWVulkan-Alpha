@@ -26,7 +26,7 @@ try {
     } finally { $reader.Dispose() }
     foreach ($required in @('AlphaVulkan.exe', 'AlphaServer.exe', 'AlphaSetup.exe', 'AlphaVulkan.ini.example',
                             'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'sdk/alphavulkan_mod.h',
-                            'sdk/alphavulkan_engine_module.h', 'docs/owner-content.md', 'docs/modding.md')) {
+                            'sdk/alphavulkan_engine_module.h', 'docs/owner-content.md', 'docs/modding.md', 'docs/controller-support.md')) {
         if (-not $hashes.ContainsKey($required)) { throw "Missing required package file: $required" }
     }
     if ($files.Count -ne $hashes.Count + 1) { throw 'Archive and manifest file counts differ.' }

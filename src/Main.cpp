@@ -1007,6 +1007,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         bool dragging = false;
         double lastX = 0, lastY = 0;
         bool dropOne = false; // screens §8.1.8: a left press over nothing with an item in hand
+        Gamepad::PointerButtons pointerButtons;
+        std::function<void(int, int, Gamepad::PointerButtons::Source)> mouseDispatch;
     } input{&view, &scene, &interface, &renderer, player ? &*player : nullptr};
     glfwSetWindowUserPointer(window, &input);
     glfwSetKeyCallback(window, [](GLFWwindow *w, int key, int, int action, int) {
@@ -1090,8 +1092,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         else if (in->interface->front != ui::Interface::Front::None && ch >= 32 && ch < 0x10000)
             in->interface->frontType((char16_t)ch, false);
     });
-    glfwSetMouseButtonCallback(window, [](GLFWwindow *w, int button, int action, int) {
+    for (size_t button = 0; button < 3; button++)
+        input.pointerButtons.update(button, glfwGetMouseButton(window, int(button)) == GLFW_PRESS,
+                                    Gamepad::PointerButtons::Source::Mouse);
+    input.mouseDispatch = [window](int button, int action, Gamepad::PointerButtons::Source source) {
+        GLFWwindow *w = window;
         auto *in = (Input *)glfwGetWindowUserPointer(w);
+        if (button >= 0 && button < 3) {
+            const auto transition = in->pointerButtons.update(size_t(button), action == GLFW_PRESS, source);
+            if (!transition)
+                return;
+            action = *transition ? GLFW_PRESS : GLFW_RELEASE;
+        }
         ui::Interface &menu = *in->interface;
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE && menu.mapOpen && !menu.startScreen &&
             !menu.systemMenu && !menu.optionsOpen) {
@@ -1196,6 +1208,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (button == GLFW_MOUSE_BUTTON_LEFT)
             in->dragging = action == GLFW_PRESS;
         glfwGetCursorPos(w, &in->lastX, &in->lastY);
+    };
+    glfwSetMouseButtonCallback(window, [](GLFWwindow *w, int button, int action, int) {
+        auto *in = (Input *)glfwGetWindowUserPointer(w);
+        in->mouseDispatch(button, action, Gamepad::PointerButtons::Source::Mouse);
     });
     glfwSetCursorPosCallback(window, [](GLFWwindow *w, double x, double y) {
         auto *in = (Input *)glfwGetWindowUserPointer(w);
@@ -1231,10 +1247,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     }
     const GLFWkeyfun keyHandler = glfwSetKeyCallback(window, nullptr);
     glfwSetKeyCallback(window, keyHandler);
-    const GLFWmousebuttonfun clickHandler = glfwSetMouseButtonCallback(window, nullptr);
-    glfwSetMouseButtonCallback(window, clickHandler);
     const GLFWscrollfun wheelHandler = glfwSetScrollCallback(window, nullptr);
     glfwSetScrollCallback(window, wheelHandler);
+    std::array<bool, 3> controllerMouse{}; // left/right/middle virtual UI buttons
 
     int status = 0;
     int framesUntilCapture = options.capture.empty() ? -1 : 16;
@@ -1423,51 +1438,86 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         mods.frame(seconds);
         auto held = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS ? 1.f : 0.f; };
-        const bool menus = interface.wantsMouse();
         if (player) {
-            // In look mode the cursor is hidden and the mouse turns the camera (§7.2).
-            const int cursor = menus ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED;
-            if (glfwGetInputMode(window, GLFW_CURSOR) != cursor)
-                glfwSetInputMode(window, GLFW_CURSOR, cursor);
-            // The pad: Start is Esc, Back the map, A while dead revives, the D-pad zooms; on a
-            // menu a stick moves the cursor and A clicks; on the map the left stick pans and the
-            // triggers zoom (Gamepad.h).
-            pad.poll();
-            if (pad.connected && !interface.typing()) {
+            const bool focused = glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
+            if (focused)
+                pad.poll();
+            else
+                pad.clear();
+            const auto syncControllerContext = [&] {
+                pad.setContext(interface.typing() ? Gamepad::Context::Text : interface.mapOpen ? Gamepad::Context::Map :
+                               interface.wantsMouse() ? Gamepad::Context::Menu : Gamepad::Context::Gameplay);
+                const int cursor = interface.wantsMouse() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED;
+                if (glfwGetInputMode(window, GLFW_CURSOR) != cursor)
+                    glfwSetInputMode(window, GLFW_CURSOR, cursor);
+            };
+            syncControllerContext();
+            if (pad.connected) {
                 auto key = [&](int k) { keyHandler(window, k, 0, GLFW_PRESS, 0); };
-                if (pad.pressed(Gamepad::START))
-                    key(GLFW_KEY_ESCAPE);
-                if (pad.pressed(Gamepad::BACK))
+                if (pad.pressed(Gamepad::START)) {
+                    if (!interface.controllerBack() && !interface.startScreen)
+                        key(GLFW_KEY_ESCAPE);
+                    syncControllerContext();
+                }
+                if (pad.pressed(Gamepad::BACK) && !interface.typing()) {
                     key(GLFW_KEY_M);
-                if (pad.pressed(Gamepad::A) && player->combat().health <= 0)
+                    syncControllerContext();
+                }
+                if (pad.pressed(Gamepad::B) && pad.context() != Gamepad::Context::Gameplay) {
+                    interface.controllerBack();
+                    syncControllerContext();
+                }
+                if (pad.pressed(Gamepad::A) && pad.context() == Gamepad::Context::Gameplay && player->combat().health <= 0) {
                     key(GLFW_KEY_R);
-                if (pad.pressed(Gamepad::UP))
+                    pad.suppressHeld();
+                }
+                if (pad.pressed(Gamepad::UP) && !interface.typing())
                     wheelHandler(window, 0, 1);
-                if (pad.pressed(Gamepad::DOWN))
+                if (pad.pressed(Gamepad::DOWN) && !interface.typing())
                     wheelHandler(window, 0, -1);
                 const float dt = seconds;
-                if (interface.mapOpen) {
+                const auto moveCursor = [&](glm::vec2 stick) {
+                    if (glm::dot(stick, stick) == 0)
+                        return;
+                    double x, y;
+                    int width, height;
+                    glfwGetCursorPos(window, &x, &y);
+                    glfwGetWindowSize(window, &width, &height);
+                    glfwSetCursorPos(window, std::clamp(x + stick.x * pad.cursorSpeed * dt, 0.0, double(std::max(0, width - 1))),
+                                     std::clamp(y - stick.y * pad.cursorSpeed * dt, 0.0, double(std::max(0, height - 1))));
+                };
+                if (pad.context() == Gamepad::Context::Map) {
                     const float psi = glm::radians(180.f - view.camera(renderer.size()).yawDegrees);
                     const glm::vec2 v = pad.move * (600.f * dt / interface.mapZoom); // blocks
                     interface.mapPan += glm::dvec3(v.x * std::cos(psi) - v.y * std::sin(psi),
                                                    v.x * std::sin(psi) + v.y * std::cos(psi), 0);
                     const float zoom = std::pow(0.9f, (pad.leftTrigger - pad.rightTrigger) * dt * 10.f);
                     interface.mapZoomTarget = std::clamp(interface.mapZoomTarget * zoom, 0.01f, 10.f);
-                    if (glm::dot(pad.look, pad.look) > 0)
-                        player->look(pad.look.x * pad.lookSpeed * dt, -pad.look.y * pad.lookSpeed * dt);
-                } else if (menus) {
+                    moveCursor(pad.look);
+                    const float turn = float(pad.held(Gamepad::RIGHT)) - float(pad.held(Gamepad::LEFT));
+                    if (turn != 0)
+                        player->look(turn * pad.lookSpeed * dt, 0);
+                } else if (pad.context() == Gamepad::Context::Menu) {
                     const glm::vec2 stick = glm::length(pad.move) > glm::length(pad.look) ? pad.move : pad.look;
-                    if (glm::dot(stick, stick) > 0) {
-                        double cx, cy;
-                        glfwGetCursorPos(window, &cx, &cy);
-                        glfwSetCursorPos(window, cx + stick.x * pad.cursorSpeed * dt, cy - stick.y * pad.cursorSpeed * dt);
-                    }
-                    if (pad.pressed(Gamepad::A)) {
-                        clickHandler(window, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
-                        clickHandler(window, GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
-                    }
-                    if (pad.pressed(Gamepad::B)) // B backs out of a menu, as Esc
-                        key(GLFW_KEY_ESCAPE);
+                    moveCursor(stick);
+                }
+            }
+            const Gamepad::Button uiButtons[] = {Gamepad::A, Gamepad::X, Gamepad::Y};
+            const int mouseButtons[] = {GLFW_MOUSE_BUTTON_LEFT, GLFW_MOUSE_BUTTON_RIGHT, GLFW_MOUSE_BUTTON_MIDDLE};
+            for (size_t button = 0; button < controllerMouse.size(); button++) {
+                // Focus/device loss cancels a drag without activating a release action.
+                if (!pad.connected) {
+                    controllerMouse[button] = false;
+                    input.pointerButtons.cancelController();
+                    continue;
+                }
+                const bool ui = pad.context() == Gamepad::Context::Menu || pad.context() == Gamepad::Context::Map;
+                const bool down = ui && pad.held(uiButtons[button]);
+                if (down != controllerMouse[button]) {
+                    controllerMouse[button] = down;
+                    input.mouseDispatch(mouseButtons[button], down ? GLFW_PRESS : GLFW_RELEASE,
+                                        Gamepad::PointerButtons::Source::Controller);
+                    syncControllerContext();
                 }
             }
             const auto updatePlayerInterface = [&] {
@@ -1523,7 +1573,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     }
                         return false;
                     };
-                    interface.stepCraft(seconds * 1000.f, glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+                    interface.stepCraft(seconds * 1000.f, input.pointerButtons.held(0));
                     if (const auto recipe = std::exchange(interface.finishedCraft, std::nullopt)) {
                         const creatures::CraftOutcome made =
                             creatures::craft(inventory, *recipe, [&] { return worldRandom.draw(); });
@@ -2183,7 +2233,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 [&](creatures::NpcFrame &) {
                     applyReceivedRelationships();
                     simulationInputFrames++;
-                    player->readInput(window, frameElapsedMs, !menus && !interface.typing() && player->combat().health > 0,
+                    player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
                                       interface.mapOpen ? nullptr : &pad);
                     updatePlayerInterface();
                     publishPlayerEffects();
@@ -3069,12 +3119,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     slot.cooldown = length > 0 && left != c.cooldowns.end() ? std::max(0.f, left->second / (float)length) : 0.f;
                 }
                 const bool free = !interface.wantsMouse() && !interface.typing() && c.health > 0;
-                hud.abilities[0].held = free && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS || pad.triggerHeld(true));
-                hud.abilities[1].held = free && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS || pad.triggerHeld(false));
-                for (int k = 0; k < 3; k++)
+                const auto gamepadInput = pad.gameplay();
+                hud.abilities[0].held = free && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS || gamepadInput.abilities[0]);
+                hud.abilities[1].held = free && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS || gamepadInput.abilities[1]);
+                for (int k = 0; k < 4; k++)
                     hud.abilities[2 + k].held = free && (glfwGetKey(window, GLFW_KEY_1 + k) == GLFW_PRESS ||
-                                                         pad.held(k == 0 ? Gamepad::X : k == 1 ? Gamepad::Y : Gamepad::RB));
-                hud.quickHeld = free && (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || pad.held(Gamepad::RIGHT));
+                                                         gamepadInput.abilities[k + 2]);
+                hud.quickHeld = free && (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || gamepadInput.quick);
                 // §5.4, §5.4.1: bars over creatures within 200 blocks that the camera sees: the
                 // one under the crosshair (focus), players, and with V every one.
                 const glm::dvec3 me = player->body().blocks();
@@ -3288,7 +3339,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         if ((*itemTarget)[2] < (int32_t)list->size())
                             targetedItem = &(*list)[(*itemTarget)[2]];
                 interface.targetItem = targetedItem ? std::optional<creatures::ItemRecord>(targetedItem->item) : std::nullopt;
-                const bool eDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS && !interface.typing();
+                const bool padInteract = !interface.wantsMouse() && pad.gameplay().interact;
+                const bool padPickup = padInteract && targetedItem;
+                const bool eDown = (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || padPickup) && !interface.typing();
                 if (eDown && !eWasDown && targetedItem && c.health > 0) {
                     if (!inventory.canCarry(targetedItem->item)) {
                         interface.chatAdd("You can't carry more of these items.\n", {255, 51, 51});
@@ -3342,7 +3395,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 // §5.3: R at a runestone opens the map in teleport mode. (Talk, doors, seats and
                 // stations wait for their windows and the static states.)
-                const bool rDown = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !interface.typing();
+                const bool rDown = (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS || (padInteract && !padPickup)) && !interface.typing();
                 if (rDown && !rWasDown && hud.prompt == u"[R] Ride") {
                     player->combat().action = 106; // travel §5.2: mounted
                     player->combat().actionMs = 0;
@@ -3615,12 +3668,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 const ui::LandText land = ui::landText(view.terrainWorld(), (int32_t)me.x, (int32_t)me.y, dictionary);
                 interface.showLandName(land.name, land.detail);
             }
-            interface.leftHeld = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+            interface.leftHeld = input.pointerButtons.held(0);
             // Item services §3.2: the middle button turns the bench's weapon.
             {
                 double cx, cy;
                 glfwGetCursorPos(window, &cx, &cy);
-                if (interface.benchOpen && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS)
+                if (interface.benchOpen && input.pointerButtons.held(2))
                     interface.benchRotate({(float)(cx - benchMouse.x), (float)(cy - benchMouse.y)});
                 benchMouse = {cx, cy};
                 interface.cubeMeshId = creatureView.cubeMesh();

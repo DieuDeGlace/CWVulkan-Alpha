@@ -740,3 +740,9 @@ designed engine features. They use project source declarations, public filesyste
 operations and the operating system's SHA-256 API, without original-game source
 facts. Their bounded compatibility checks do not establish full dependency,
 cross-peer, migration or native gameplay equivalence.
+
+Controller state, context routing, combined pointer buttons and controller-only
+back navigation are independently designed owner-requested engine extensions.
+They use project-owned input/UI code and the pinned GLFW public interface, with
+no new original-game source handoff. Supplied-state tests and device discovery
+remain separate from physical-controller acceptance and original input/UI parity.

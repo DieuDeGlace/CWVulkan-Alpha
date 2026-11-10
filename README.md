@@ -23,6 +23,9 @@ comparison commands are in [verification.md](docs/verification.md).
 Adaptation price fixes and engine quests are built-in core features, enabled
 automatically. These and the requested water changes are intentional extensions
 alongside the native behavior reference.
+Controller gameplay and menu mappings are documented in
+[controller support](docs/controller-support.md), with physical acceptance limits
+kept separate from supplied-state tests.
 
 ## Build
 

@@ -78,6 +78,27 @@ exactly binary32 50. Reload retained the character, seed, nine map tiles, previe
 and 170 block edits. The package passed 35 hashes and 36 entry checks. Known bright
 ground and broader native UI/gameplay/visual acceptance remain unresolved.
 
+GamepadTests uses the same provided-state reader path as the GLFW adapter. It
+checks stable device selection, attach/replacement held-input suppression,
+disconnect/disable/focus neutrality, radial/trigger dead zones, malformed axes,
+the shared gameplay mapping and release rearming across menu/map/text contexts.
+Actual Interface back navigation cancels chat, drafts and pending front requests;
+map back preserves an underlying inventory. Mixed mouse/controller tests check
+both release orders, one logical press/release and cancellation without a click.
+The client uses the shared gameplay mapping for input and all six HUD slots,
+combined UI holds for dragging/crafting and fresh context after callbacks.
+These are engine extensions. `GamepadTests --devices` exercises real GLFW device
+discovery; the local run found zero mapped pads. Physical controller, reconnect,
+focus and complete gameplay/menu acceptance remain open, alongside controller
+text entry and per-action rebinding.
+All 43 CTests passed for this controller integration. Fresh actual-client reward,
+injured-health, loopback and both save/reload checks passed; all five captures were
+reviewed. Reward state retained level 2, -33 XP and 7 Platinum Coins; injured health
+retained exactly binary32 50. Reload retained the character, seed, nine map tiles,
+preview and 170 edits. These runs had no mapped controller and therefore establish
+client regression evidence, not physical controller acceptance. Known bright
+ground and broader native UI/gameplay/visual gates remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

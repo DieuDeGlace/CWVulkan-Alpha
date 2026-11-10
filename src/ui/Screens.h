@@ -101,6 +101,9 @@ class Interface {
     std::u16string chatInput;
     std::vector<std::string> chatSubmitted; // taken by the game
     bool typing() const { return chatOpen; }
+    // Engine controller extension: back cancels a draft/panel, never applies it
+    // or submits chat. Returns false when no open screen can be left.
+    bool controllerBack();
 
     // §5.9, §5.9.1: called every frame with the current texts; shows the banner when they
     // differ from the last shown and no banner is running.

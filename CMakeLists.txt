@@ -131,6 +131,7 @@ add_library(engine STATIC
     src/Moon.cpp
     src/Mods.cpp
     src/ModFingerprint.cpp
+    src/ui/GamepadNavigation.cpp
     src/EngineModules.cpp
     src/worldgen/Random.cpp
     src/worldgen/NoiseMath.cpp
@@ -285,8 +286,10 @@ add_dependencies(renderer shaders)
 target_include_directories(renderer PRIVATE ${SHADER_OUT})
 target_link_libraries(renderer PUBLIC engine glfw)
 
-add_executable(AlphaVulkan src/Main.cpp src/Gamepad.cpp src/WorldView.cpp src/CreatureView.cpp src/Player.cpp)
-target_link_libraries(AlphaVulkan PRIVATE renderer)
+add_library(gamepad STATIC src/Gamepad.cpp)
+target_link_libraries(gamepad PUBLIC engine glfw)
+add_executable(AlphaVulkan src/Main.cpp src/WorldView.cpp src/CreatureView.cpp src/Player.cpp)
+target_link_libraries(AlphaVulkan PRIVATE renderer gamepad)
 
 # Explicit GPU diagnostic, using only procedural geometry and synthetic lights.
 # Kept out of automatic CTest and player packages (requires a Vulkan window).
@@ -367,6 +370,7 @@ if(MSVC)
     target_compile_options(engine PRIVATE /W4 /permissive-)
     target_compile_options(renderer PRIVATE /W4 /permissive-)
     target_compile_options(AlphaVulkan PRIVATE /W4 /permissive-)
+    target_compile_options(gamepad PRIVATE /W4 /permissive-)
 endif()
 add_executable(DictDump tools/DictDump.cpp)
 target_link_libraries(DictDump PRIVATE engine)
@@ -380,6 +384,8 @@ add_executable(EngineModuleTests tests/EngineModuleTests.cpp)
 target_link_libraries(EngineModuleTests PRIVATE engine)
 add_executable(GenerationProfileTests tests/GenerationProfileTests.cpp)
 target_link_libraries(GenerationProfileTests PRIVATE engine)
+add_executable(GamepadTests tests/GamepadTests.cpp)
+target_link_libraries(GamepadTests PRIVATE gamepad)
 add_executable(NoiseMathTests tests/NoiseMathTests.cpp)
 target_link_libraries(NoiseMathTests PRIVATE engine)
 add_executable(ActionPhaseTests tests/ActionPhaseTests.cpp)
@@ -432,7 +438,7 @@ target_link_libraries(RangedSchedulingTests PRIVATE engine)
 include(CTest)
 set(ALPHAVULKAN_TEST_GAME_PATH "" CACHE PATH "Owned Alpha installation used by content/save/UI checks")
 if(BUILD_TESTING)
-    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests PeriodicHitTests SimulationFrameTests ActorOrderTests WorldHitDeliveryTests RelationshipTests FatalContextTests FatalLootTests FatalObjectTests CreditTests RegionProgressTests ItemIdentityTests LinkedItemTests FatalRecipientTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests RemoteFighterTests)
+    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests GamepadTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests PeriodicHitTests SimulationFrameTests ActorOrderTests WorldHitDeliveryTests RelationshipTests FatalContextTests FatalLootTests FatalObjectTests CreditTests RegionProgressTests ItemIdentityTests LinkedItemTests FatalRecipientTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests RemoteFighterTests)
         set(testArguments)
         if(ALPHAVULKAN_TEST_GAME_PATH AND testTarget MATCHES "^(Store|Save|Content|Ui|OwnerContent)Tests$")
             list(APPEND testArguments "${ALPHAVULKAN_TEST_GAME_PATH}")

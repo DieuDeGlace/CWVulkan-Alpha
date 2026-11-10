@@ -38,18 +38,24 @@ void Player::revive() {
 void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, const Gamepad *pad) {
     using namespace creatures;
     const float dtMs = (float)milliseconds;
-    const bool usePad = controls && pad && pad->connected;
-    auto padHeld = [&](Gamepad::Button b) { return usePad && pad->held(b); };
+    const bool usePad = controls && pad && pad->connected && pad->context() == Gamepad::Context::Gameplay;
+    const auto controller = usePad ? pad->gameplay() : Gamepad::GameplayInput{};
     // A key, or the pad button that stands for it (Gamepad.h).
     auto held = [&](int key) {
         if (controls && glfwGetKey(window, key) == GLFW_PRESS)
             return true;
-        return key == GLFW_KEY_SPACE ? padHeld(Gamepad::A) : key == GLFW_KEY_LEFT_SHIFT ? padHeld(Gamepad::B) : false;
+        switch (key) {
+        case GLFW_KEY_SPACE: return controller.jump;
+        case GLFW_KEY_LEFT_SHIFT: return controller.dodge;
+        case GLFW_KEY_LEFT_CONTROL: return controller.climb;
+        case GLFW_KEY_G: return controller.special;
+        default: return false;
+        }
     };
     // The right stick turns the camera as the mouse does.
-    if (usePad && glm::dot(pad->look, pad->look) > 0) {
+    if (usePad && glm::dot(controller.look, controller.look) > 0) {
         const float k = pad->lookSpeed * dtMs * 0.001f;
-        camera.look(pad->look.x * k, (pad->invertY ? 1.f : -1.f) * pad->look.y * k);
+        camera.look(controller.look.x * k, (pad->invertY ? 1.f : -1.f) * controller.look.y * k);
     }
     const bool onGround = state.contact & ON_GROUND, inWater = state.contact & IN_WATER;
     state.stunMs = fighter.hitStun;
@@ -71,7 +77,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         state.mode = held(GLFW_KEY_LEFT_SHIFT) ? state.mode & ~RUN : state.mode | RUN;
     state.mode = held(GLFW_KEY_LEFT_CONTROL) ? state.mode | CLIMB : state.mode & ~CLIMB;
     // Travel §3.1, §4.1: G opens or folds the glider, or boards or leaves the boat.
-    const bool gDown = controls && glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS;
+    const bool gDown = held(GLFW_KEY_G);
     if (gDown && !gWasDown) {
         const Item &special = fighter.equipment[11];
         if (special.type == 0) {
@@ -98,7 +104,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     float ahead = (float)held(GLFW_KEY_W) - (float)held(GLFW_KEY_S);
     float aside = (float)held(GLFW_KEY_D) - (float)held(GLFW_KEY_A);
     if (usePad) // the left stick, as far as it is pushed
-        ahead += pad->move.y, aside += pad->move.x;
+        ahead += controller.move.y, aside += controller.move.x;
     wish = ahead * f + aside * r;
     const bool climbing = (state.mode & CLIMB) && (state.contact & ON_WALL);
     if (climbing) {
@@ -127,7 +133,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         if (held(GLFW_KEY_A))
             swim -= r;
         if (usePad)
-            swim += pad->move.y * F + pad->move.x * r;
+            swim += controller.move.y * F + controller.move.x * r;
         state.intent += A * swim;
     } else {
         state.intent += A * wish; // rule 5: walking
@@ -156,12 +162,11 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     fighter.dodgeMs = state.dodgeMs;
     actionMsBefore = fighter.actionMs;
     const bool mouse = controls && glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
-    const bool rt = usePad && pad->triggerHeld(true), lt = usePad && pad->triggerHeld(false);
     const std::array<bool, 6> slotsHeld = {
-        (mouse && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) || rt,
-        (mouse && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) || lt,
-        held(GLFW_KEY_1) || padHeld(Gamepad::X), held(GLFW_KEY_2) || padHeld(Gamepad::Y),
-        held(GLFW_KEY_3) || padHeld(Gamepad::RB), held(GLFW_KEY_4) || padHeld(Gamepad::LB)};
+        (mouse && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) || controller.abilities[0],
+        (mouse && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) || controller.abilities[1],
+        held(GLFW_KEY_1) || controller.abilities[2], held(GLFW_KEY_2) || controller.abilities[3],
+        held(GLFW_KEY_3) || controller.abilities[4], held(GLFW_KEY_4) || controller.abilities[5]};
     // §16.1: the aim, from the player to the first solid block under the crosshair (or 100
     // blocks out), in half-block steps.
     const glm::dvec3 eye = camera.position(), me = state.blocks();

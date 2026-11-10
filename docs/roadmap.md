@@ -201,6 +201,12 @@ Differences from the Steam engine that shape the plan:
     and menu input paths, document mappings and verify device/reconnection and
     keyboard/mouse coexistence. The inherited implementation above does not
     establish a tested controller system or original Alpha parity.
+  - [x] Bounded controller input integration: stable mapped-device selection,
+    neutral focus/disable/disconnect, held-input suppression across contexts,
+    shared gameplay/HUD mapping, interaction/climb/special-item controls and
+    combined mouse/controller UI holds. Back/cancel and supplied-device tests
+    cover this engine extension. Physical device/reconnection, complete menu
+    workflows, text entry and broader controller acceptance remain open.
 - [x] Alpha extractor mod (32-bit, `tools/alpha-extractor`, spec `alpha-extractor.md`): on F9 or a
   trigger file it records, under Alpha's world lock, the loaded zones round the player block for
   block, their regions' location records and zone tables, and every creature record.

@@ -25,7 +25,7 @@ foreach ($file in @('TimeLapse.dll', 'mod.ini')) {
 foreach ($file in @('alphavulkan_mod.h', 'alphavulkan_engine_module.h')) {
     $files["sdk\$file"] = Join-Path $projectRoot "sdk\$file"
 }
-foreach ($file in @('modding.md', 'owner-content.md', 'water-extension.md', 'verification.md', 'roadmap.md',
+foreach ($file in @('modding.md', 'owner-content.md', 'water-extension.md', 'controller-support.md', 'verification.md', 'roadmap.md',
                    'CLEANROOM.md', 'CLEANROOM_AUTHOR.md', 'beta-release.md')) {
     $files["docs\$file"] = Join-Path $projectRoot "docs\$file"
 }
