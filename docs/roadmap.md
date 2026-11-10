@@ -71,6 +71,12 @@ Differences from the Steam engine that shape the plan:
   the decoded word before linked maintenance. The held producer audit supplies
   raw word/copy/reset boundaries. First native bit-0x20 behavior production,
   complete descriptor generation and world transition/lifetime remain open.
+- [x] Bounded server creature publication: context-key lookup and snapshot run
+  under the world lock, decoding uses a private temporary outside it, and a
+  second locked lookup receives the complete result. Raw mode words, absent
+  fields and changed resident identity have regressions. Strict malformed/missing
+  rejection and player-controller admission remain explicit engine policies.
+  First autonomous mode selection and broader native server acceptance stay open.
 - [x] Bounded action-92 creation: production owned NPC and designated offline
   player dispatch retain the two anticipation queries, live link/minimum-key
   scan, full copy routes, fresh defaults and predecessor publication before

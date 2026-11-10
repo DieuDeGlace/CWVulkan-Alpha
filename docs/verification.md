@@ -480,6 +480,27 @@ The health run reports 154 world calls over 17 input frames, and the vendor run
 not a performance certification. Bright ground, negative XP display, physical
 controller and original-client acceptance remain open.
 
+CreaturePublicationTests uses the real delta codec with supplied resident lookup
+and decoder boundaries. Independent mutex probes check both locked lookups,
+unlocked decoding and locked post-assignment admission. A decoder-time resident
+replacement verifies that final publication resolves the context key again,
+copies the complete snapshot and retains fields absent from the payload. A
+different wire identity does not redirect it. Zero/high context keys, all sixteen
+mode bits, absent mode retention, strict malformed rejection, missing storage at
+either lookup and released failure-path locks have bounded checks. Real loopback
+NetTests also sets mode 0xA620, sends a name-only update retaining that word and
+then publishes a zero word. These checks do not establish an autonomous native
+mode producer, full receive/shutdown timing or original-server equivalence.
+
+All 55 CTests pass for this server-publication checkpoint. The fresh production
+Player/controller diagnostic and reward, injured-health, dedicated-server and
+save/reload runs pass; all five captures were reviewed. Rewards retain level 2/
+-33 XP/7 Platinum Coins and injured health remains binary32 50 with one visit.
+Save/reload retains health 265, seed 123, nine tiles, 33,792 preview bytes and
+170 edits. The health sample reports 137 world calls over 17 input frames with
+maximum 20 ms pieces. Bright ground, negative XP display, physical-controller
+and original-client acceptance remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

@@ -1,4 +1,5 @@
 #include "net/Server.h"
+#include "net/CreaturePublication.h"
 #include "GenerationProfile.h"
 #include "Loot.h"
 #include "Bytes.h"
@@ -356,10 +357,17 @@ void Server::receiveLoop(Connection &c) {
             std::vector<uint8_t> packed(ok ? length : 0);
             ok = ok && c.socket.readExact(packed.data(), length);
             const auto plain = ok ? zlibInflate(packed, 1u << 20) : std::nullopt;
-            std::lock_guard guard(lock);
-            ok = plain && applyDelta(*plain, c.creature).has_value();
-            if (ok)
-                put(c.creature, 0x050, (uint8_t)0); // a connection's creature is a player
+            const CreaturePublication publication{
+                lock,
+                [&](uint64_t key) -> CreatureRecord * {
+                    const auto found = connections.find(key);
+                    return found == connections.end() ? nullptr : &found->second->creature;
+                },
+                // Existing engine connection admission is separate from the
+                // held raw assignment; it does not mask the resident mode word.
+                [](CreatureRecord &record) { put(record, 0x050, uint8_t(0)); }
+            };
+            ok = plain && publishCreatureUpdate(c.id, *plain, publication);
             break;
         }
         case ITEM_RECORD: { // server simulation §8: handled by the next step

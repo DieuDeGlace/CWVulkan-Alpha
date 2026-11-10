@@ -612,6 +612,31 @@ int main() {
     check(waitFor([&] { auto o = b.others(); return o.count(1) && o[1].name() == "Alice" && o[1].position(0) == ((int64_t)8396928 << 16); }),
           "b sees Alice where she is");
     {
+        auto state = ra.fighter();
+        state.mode = 0xa620;
+        ra.setFighter(state);
+        a.setOwn(ra);
+        check(waitFor([&] {
+            const auto peers = b.others();
+            return peers.contains(a.id()) && peers.at(a.id()).fighter().mode == 0xa620;
+        }), "actual server publishes incoming mode 0x20 with all other word bits intact");
+        ra.setName("Alice partial");
+        a.setOwn(ra);
+        check(waitFor([&] {
+            const auto peers = b.others();
+            return peers.contains(a.id()) && peers.at(a.id()).name() == "Alice partial" &&
+                   peers.at(a.id()).fighter().mode == 0xa620;
+        }), "a subsequent name-only delta keeps the server's snapshotted mode word");
+        state.mode = 0;
+        ra.setFighter(state);
+        ra.setName("Alice");
+        a.setOwn(ra);
+        check(waitFor([&] {
+            const auto peers = b.others();
+            return peers.contains(a.id()) && peers.at(a.id()).name() == "Alice" && peers.at(a.id()).fighter().mode == 0;
+        }), "a present zero word clears all mode bits through the actual server");
+    }
+    {
         const Hit self = Hit::make(a.id(), a.id(), -.1f, 0, {}, 0);
         a.sendHit(self);
         a.sendHit(self);

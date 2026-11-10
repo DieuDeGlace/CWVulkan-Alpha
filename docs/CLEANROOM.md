@@ -1102,3 +1102,15 @@ It independently establishes server receiver identity, raw mode publication and
 spatial default/copy boundaries. It still does not establish the upstream first
 mode-0x20 selection or a first nonnegative spatial association. Its presence is
 not certification of the engine's receive-lock sequence or whole server.
+
+The later server publication implementation uses that completely read origins
+contract for separate snapshot/decode/assignment intervals. A supplied lookup
+resolves the context key during each locked interval; the wire identity does not
+select the resident. Production binds this to the engine's connection map.
+The decoder works only on an owned temporary. Strict malformed-payload rejection,
+safe missing-key rejection and the inherited post-assignment player-controller
+admission are identified as engine policies; the native local sequence does not
+establish those guarantees or that controller write. No new autonomous mode-0x20
+producer or spatial association is inferred. Full framing/decompression,
+connection admission, map lifetime, shutdown and native server equivalence remain
+separate boundaries.
