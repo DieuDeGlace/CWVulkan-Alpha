@@ -1,4 +1,5 @@
 #pragma once
+#include "creatures/ItemRecord.h"
 // A player's belongings and the rules that move them (docs/specs/alpha-ui-screens.md §8.1):
 // the bags, the item on the mouse cursor, the equipment slots, money, and what a click on a
 // bag slot or an equipment box does.
@@ -14,9 +15,6 @@ struct ItemRecord;
 }
 
 namespace creatures {
-
-// alpha-net-packets.md §1.1: an item record, 280 bytes; type 0 is no item.
-using ItemRecord = std::array<uint8_t, 280>;
 
 // A bag slot or the hand: a count and an item. Empty when the count is 0.
 struct Stack {

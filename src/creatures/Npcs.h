@@ -13,6 +13,7 @@
 #include "creatures/Combat.h"
 #include "creatures/Credits.h"
 #include "creatures/Inventory.h"
+#include "creatures/InventoryValue.h"
 #include "creatures/Paths.h"
 #include "creatures/Projectiles.h"
 #include "creatures/Physics.h"
@@ -60,6 +61,7 @@ struct Npc {
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
+    InventoryValue activationInventory; // full activation value; legacy consumers remain separate adapters
     uint8_t boss = 0; // raw descriptor +0x10e8 byte; the regional gate tests nonzero
     // RandomInteraction §4.2: its timer and the seat it is bound for (index -1: none).
     float interactMs = 0;
@@ -309,7 +311,6 @@ class Npcs {
     route::RecordLookup routeRecords;
     route::ColumnLookup routeColumns;
     std::function<void(const route::Record &)> routeActivate;
-    // Path search §6.5: opens the closed doors overlapping a box (left empty: none).
     // RandomInteraction §4.4: the seats round a block (in a house, its lists; outdoors, the
     // stools, benches and beach towels of the 3 x 3 cells of 8 blocks round it); whether one is
     // free; and sitting on one (packet 6 kind 3, interaction §6.1). Left empty, nobody sits.

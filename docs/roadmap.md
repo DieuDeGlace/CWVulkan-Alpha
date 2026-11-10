@@ -99,6 +99,12 @@ Differences from the Steam engine that shape the plan:
   The full numeric table uses low-byte option admission and the reached hand
   predicate. Production actor/descriptor adapters share this kernel. Compact
   generator item storage, wider callers and native acceptance remain open.
+- [x] Grouped inventory value and activation transfer: independent ordered
+  groups/entries retain signed counts, full item fields, the separate scalar/item
+  and accumulators. Semantic assignment preserves destination gaps. Constructor,
+  insertion and bounded ten-entry replacement have regressions. Owned full
+  descriptor input refreshes before transfer and the amount query. Legacy flat
+  generation and later selection/vendor/loot consumers remain separate adapters.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

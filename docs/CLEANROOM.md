@@ -1024,3 +1024,24 @@ generator still stores compact item headers; its adapter preserves all represent
 fields without claiming original descriptor payload storage or constructor values.
 Completed adapter publication does not certify native pointer-visible mutation
 timing, arbitrary producer coverage, imported RNG, concurrency or server behavior.
+
+The original-only descriptor-inventory transfer contract was FINAL/STABLE/HELD,
+read completely and hash-verified before the grouped-value implementation.
+`alpha-descriptor-inventory-transfer.md` has SHA-256
+`f95f7e64dc225a94b782ba61beed0533dc1f48612a1f89d987d345d4c00e4e23`.
+Its author received no engine, tests, captures, logs or runtime observations.
+
+InventoryValue owns ordinary C++ groups and counted full item values. Semantic
+assignment retains destination gaps while transferring every entry count and
+payload, then the separate scalar/item/accumulators. Constructor gaps are engine
+zero, distinct from the native unspecified bytes. Insertion retains explicit
+routing, counted-type normalization, accumulator-only returns, identity priority
+and wrapping arithmetic. The bounded collection replacement exposes ten ordered
+generator calls after each count-one write without adding generator semantics.
+
+Full descriptor input uses cold immutable ownership; refresh publishes a new
+owned descriptor value without changing a generated source. Actor assignment
+occurs after equipment/configuration and before the amount query. Legacy compact
+generation remains a one-unit bridge, and later flat NPC consumers remain open.
+This is supplied-value/transfer evidence, not complete native inventory storage,
+generation, UI, allocation, concurrent publication or server acceptance.

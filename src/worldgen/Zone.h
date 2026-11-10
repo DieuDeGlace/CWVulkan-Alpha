@@ -1,9 +1,11 @@
 #pragma once
+#include "creatures/InventoryValue.h"
 // A generated zone: 256 x 256 block columns (docs/specs/alpha-worldgen-terrain.md §1), and the
 // things the generator places on it (plants, tree spots, ground items).
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace worldgen {
@@ -151,6 +153,9 @@ struct Spawn {
     uint8_t bossLoot = 0;        // raw +0x10e8 byte, retained through activation
     ItemRecord equipment[13];   // +0x120
     std::vector<ItemRecord> inventory; // +0xf6c
+    // Full owned descriptor input when available. Legacy generator records
+    // remain a separate one-unit bridge, not a native grouped-storage claim.
+    std::shared_ptr<const creatures::InventoryValue> inventoryValue;
     int32_t field42 = 0;        // +0x5c, copied to record field 42 (4: visits `field41`, 3: …; open)
     int32_t field41[3] = {};    // +0x60, copied to record field 41 (a place, blocks)
     std::vector<ScheduleStop> schedule; // +0x10a0

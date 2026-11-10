@@ -143,8 +143,22 @@ void refreshDescriptor(worldgen::Spawn &s, uint64_t identifier, const activation
     };
     services.equipmentLevel = [&](size_t slot) -> int16_t & { return s.equipment[slot].level; };
     services.inventory = [&](const activation::InventoryVisitor &visit) {
-        // The existing generator stores one unit per flat entry. Native grouped
-        // counts/payload production remains separate from this caller kernel.
+        if (s.inventoryValue) {
+            // Generated snapshots stay immutable. Publish the refreshed owned
+            // descriptor value after the ordered synchronous visitor ends.
+            auto refreshed = std::make_shared<InventoryValue>(*s.inventoryValue);
+            for (auto &group : refreshed->groups)
+                for (auto &entry : group) {
+                    int16_t level = itemLevel(entry.item);
+                    uint8_t rarity = itemRarity(entry.item);
+                    visit({entry.count, itemType(entry.item), itemSubtype(entry.item), level, rarity});
+                    setItemLevel(entry.item, level);
+                    entry.item[0x0c] = rarity;
+                }
+            s.inventoryValue = std::move(refreshed);
+            return;
+        }
+        // Legacy generator rows remain an explicit one-unit compact adapter.
         for (auto &item : s.inventory)
             visit({1, item.type, item.subtype, item.level, item.rarity});
     };
@@ -278,6 +292,18 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     c.equipment[12] = Item::parse(c.linkedItem.source.data());
     if (!s.finished)
         equip(c, npc.looks, [&] { return draw(); }, false, s.controller, npc.creationConfig);
+    if (s.inventoryValue) {
+        npc.activationInventory.copyFrom(*s.inventoryValue);
+    } else if (!s.inventory.empty()) {
+        // Direct one-unit rows do not run automatic counted-type normalization.
+        auto &entries = npc.activationInventory.groups.emplace_back();
+        entries.resize(s.inventory.size());
+        for (size_t index = 0; index < entries.size(); index++) {
+            entries[index].count = 1;
+            const auto item = toRecord(s.inventory[index]);
+            copyItemFields(item, entries[index].item);
+        }
+    }
     c.health = maxHealth(c);
     c.actionMs = 1000000;
     if (npc.looks.flags & 0x200) // (the recorded bosses are all twice the size of their kind)

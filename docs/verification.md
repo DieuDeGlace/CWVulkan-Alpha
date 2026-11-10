@@ -401,6 +401,30 @@ this build; all five captures were reviewed. The reward retained level 2/-33 XP/
 calls over 17 frames. Reload retained health 265, seed 123, nine map tiles, 33,792
 preview bytes and 170 edits. Bright ground and negative XP display persist.
 
+InventoryValueTests checks fresh empty groups and level-one item defaults,
+ordered deep assignment with zero/negative/minimum counts, retained destination
+gaps and all inactive payload bytes, self-assignment and empty-source reset.
+Insertion cases distinguish explicit/automatic group routing, internal item word
+from entry quantity, zero/negative increments, identity before vacancies, negative
+matching counts, first-zero reuse and wrapping count/accumulator arithmetic.
+The collection-only replacement test observes count one before each of ten
+ordered callbacks while other inventory members survive.
+
+An actual actor activation fixture observes the full transferred value during
+the following health stat query. Another fixture refreshes a grouped
+descriptor, retaining negative counts, skipping zero/rejected entries and keeping
+the generated source immutable before copying the actor value. Legacy compact
+rows remain explicit one-unit inputs rather than running automatic normalization.
+These tests do not certify later legacy selection/vendor/loot adapters, complete
+inventory generation, native allocation/publication timing or server equivalence.
+All 53 CTests and the production Player/controller diagnostic passed. Fresh
+reward, injured-health, dedicated-server and save/reload flows passed; all five
+captures were reviewed. Reward state retained level 2/-33 XP/7 Platinum Coins,
+injured health remained binary32 50 with one visit, and reload retained health
+265, seed 123, nine map tiles, 33,792 preview bytes and 170 edits. The health run
+reported 138 world calls over 17 input frames with maximum 20 ms pieces. Bright
+ground, negative XP display and physical-controller acceptance remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
