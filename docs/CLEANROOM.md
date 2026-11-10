@@ -791,6 +791,18 @@ first-child continuation, second-child terrain path, reference-coordinate
 producers and visibility geometry remain bounded. These research artifacts do
 not certify production implementation of the complete created-actor behavior.
 
+The later original-only visibility-ray contract was FINAL/STABLE/HELD and read
+completely before implementation. An independently structured scalar query
+retains its fixed-coordinate conversions, binary32 quantization, one-axis tie
+order, category bytes, traversal cap and optional four-side-face pass. The
+bounded visibility caller uses the held distance/normalization relation.
+Production NPC callers use the existing engine position adapter; static metadata
+comes from held zones with the current live state byte in original record order.
+This does not close raw caller-position producers, original spatial-record
+ownership, replacement/concurrency, every collision caller or native acceptance.
+No implementation, tests or runtime observations were supplied to the source-side
+author.
+
 Complete equipment backing now extends the earlier slot-twelve storage to all
 thirteen slots. Twelve additional owned records reuse the existing last-slot
 source without duplicating it. Raw imports retain received bytes; semantic item

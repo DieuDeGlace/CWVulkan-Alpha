@@ -809,6 +809,10 @@ void Server::stepWorld(float dtMs) {
         npcs.onActivate = [this](creatures::Npc &n) { missions.wake(n, npcs); };
     if (!npcs.openDoors)
         npcs.openDoors = [this](glm::dvec3 lo, glm::dvec3 hi) { statics.openDoors(zones, lo, hi); };
+    if (!npcs.sightRecords)
+        npcs.sightRecords = [this](int32_t zx, int32_t zy, const creatures::visibility::RecordVisitor &visit) {
+            statics.visibilityRecords(zones, zx, zy, visit);
+        };
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };

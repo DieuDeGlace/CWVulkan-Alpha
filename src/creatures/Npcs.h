@@ -12,6 +12,7 @@
 #include "creatures/Paths.h"
 #include "creatures/Projectiles.h"
 #include "creatures/Physics.h"
+#include "creatures/Visibility.h"
 #include "creatures/Pose.h"
 #include "worldgen/Random.h"
 #include "worldgen/WorldMap.h"
@@ -291,6 +292,9 @@ class Npcs {
     void setNamedWorld(bool named) { namedWorld = named; }
     // Physics §4.5: the static objects creatures collide with (left empty: none).
     ObjectTest objects;
+    // Current spatial records for visibility's four side-face tests. Terrain
+    // classification uses the step's existing block reader.
+    visibility::RecordLookup sightRecords;
     // Path search §6.5: opens the closed doors overlapping a box (left empty: none).
     std::function<void(glm::dvec3 lo, glm::dvec3 hi)> openDoors;
     // RandomInteraction §4.4: the seats round a block (in a house, its lists; outdoors, the

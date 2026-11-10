@@ -60,6 +60,9 @@ class StaticStates {
     // as the path search sees them.
     void searchStatics(const worldgen::WorldMap &map, int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
                        const std::function<void(const creatures::SearchStatic &)> &visit) const;
+    // Current state byte plus the retained spatial metadata, in source order.
+    void visibilityRecords(const worldgen::WorldMap &map, int32_t zx, int32_t zy,
+                           const creatures::visibility::RecordVisitor &visit) const;
     // Packets §3.6: a static's 88-byte section-6 record, and applying one received.
     std::array<uint8_t, 88> record(const worldgen::Zone &zone, int32_t index) const;
     void apply(const uint8_t *record);

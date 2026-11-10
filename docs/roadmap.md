@@ -83,7 +83,12 @@ Differences from the Steam engine that shape the plan:
   provenance and complete native actor creation remain open.
 - [ ] Created-actor behavior: held source contracts establish ordered child
   processing and a target-selection prefix. Later action/navigation, reference
-  producers, visibility geometry and complete production integration remain open.
+  producers and complete production integration remain open.
+- [x] Bounded visibility ray: fixed-coordinate voxel traversal retains category,
+  conversion, tie, endpoint and step-limit rules. Optional spatial side faces
+  consume current static state in source order. Client and dedicated NPC sight
+  use this query; raw caller-position producers, spatial record lifetime and
+  complete native collision/gameplay acceptance remain open.
 - [ ] Full synchronous fatal/world-loot processing from the held contracts,
   remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later

@@ -57,21 +57,15 @@ bool hostile(const Combatant &a, const Combatant &b) {
 
 namespace {
 
-// Line of sight between two points (the original's test, 0x59ee90, is limited to 200 blocks;
-// stepping half a block through the cells is ours).
-bool sight(glm::dvec3 a, glm::dvec3 b, const BlockType &block) {
-    const glm::dvec3 d = b - a;
-    const double length = glm::length(d);
-    if (length > 200)
-        return false;
-    const int steps = (int)(length * 2);
-    for (int i = 1; i < steps; i++) {
-        const glm::dvec3 p = a + d * ((double)i / steps);
-        const uint8_t t = block((int32_t)std::floor(p.x), (int32_t)std::floor(p.y), (int32_t)std::floor(p.z)) & 31;
-        if (t != 0 && t != 2)
-            return false;
+// Legacy caller positions are engine block coordinates. The query itself keeps
+// raw fixed positions and the held visibility/ray numeric boundaries.
+bool sight(glm::dvec3 a, glm::dvec3 b, const BlockType &block, const visibility::RecordLookup &records) {
+    visibility::Position start, end;
+    for (size_t axis = 0; axis < 3; axis++) {
+        start[axis] = int64_t(a[axis] * 65536.0);
+        end[axis] = int64_t(b[axis] * 65536.0);
     }
-    return true;
+    return visibility::visible(start, end, {block, records});
 }
 
 // (open points 4 §5, §7: strictly past its end; only the dodge accepts the exact moment)
@@ -714,7 +708,7 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
         std::vector<Seat> candidates;
         if (n.interactMs == 0)
             for (const Seat &s : near.pick)
-                if (near.house || sight(centre, s.at, block)) // outdoors only those in sight
+                if (near.house || sight(centre, s.at, block, sightRecords)) // outdoors only those in sight
                     candidates.push_back(s);
         const Seat *picked = candidates.empty() ? nullptr : &candidates[(uint32_t)draw() % candidates.size()];
         if (!picked || !seatFree(*picked)) {
@@ -953,7 +947,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             double d2 = glm::dot(d, d);
             const float hide = std::max(0.1f, 1.f - (float)std::pow(1.5, f.level - c.level) * f.stealth);
             d2 /= (double)hide * hide;
-            if (d2 < best && sight(self, b.blocks(), block)) {
+            if (d2 < best && sight(self, b.blocks(), block, sightRecords)) {
                 best = d2;
                 npc.target = f.id;
                 target = Seen{&f, &b};
@@ -978,7 +972,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
 
     const glm::dvec3 there = target->body->blocks();
     const glm::dvec3 toTarget = there - self;
-    const bool seen = sight(self, there, block);
+    const bool seen = sight(self, there, block, sightRecords);
     // Open points 4 §2: the range, each rule over the last. A special is rolled afresh on every
     // update while its timer is out; it is kept only if the creature is in range for that roll.
     const float own = npc.looks.box.x, theirs = target->body->size.x;
@@ -1608,7 +1602,7 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
             return;
         glm::dvec3 sightFrom;
         if (!reachesTarget(attacker, from, yaw, box, body.blocks(), body.size, &sightFrom) ||
-            !sight(sightFrom, body.blocks(), block) || target.dodgeMs > 0)
+            !sight(sightFrom, body.blocks(), block, sightRecords) || target.dodgeMs > 0)
             return;
         const bool first = attacker.struck.empty();
         attacker.struck.push_back(target.id);

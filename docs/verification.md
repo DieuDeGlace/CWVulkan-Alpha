@@ -173,6 +173,22 @@ injured health remained binary32 50. Reload retained seed 123, nine map tiles,
 the preview and 170 edits. Known bright ground and broader native visual and
 gameplay gates remain open.
 
+VisibilityTests checks low-five-bit categories and raw option bytes, exact
+negative fixed coordinates, tied crossings, integer-quantized parameters,
+endpoint equality, default-axis behavior and the 501-advance limit. Spatial
+fixtures cover ordered side faces, current state admission, odd extent swaps,
+half-open boundaries, vertical/inside starts and the retained overshoot rectangle.
+An actual NPC acquisition test binds StaticStates: the active window blocks
+sight, and changing only its current state admits the target.
+
+All 45 CTests passed. Fresh reward, injured-health, dedicated-server connection
+and save/reload flows also passed; all five client captures were reviewed.
+Reward state retained level 2, -33 XP and 7 Platinum Coins, injured health stayed
+binary32 50, and reload retained seed 123, nine map tiles, the preview and 170
+edits. These checks establish bounded engine behavior. Raw caller-position
+producers, spatial-record lifetime, broader native collision/gameplay and the
+known bright-ground rendering issue remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

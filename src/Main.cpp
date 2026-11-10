@@ -612,6 +612,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     npcs.openDoors = [&](glm::dvec3 lo, glm::dvec3 hi) { statics.openDoors(view.held(), lo, hi); };
     npcs.seats = [&](glm::ivec3 block, double ms) { return statics.seats(view.held(), block, ms); };
     npcs.seatFree = [&](const creatures::Seat &s) { return statics.free(s); };
+    npcs.sightRecords = [&](int32_t zx, int32_t zy, const creatures::visibility::RecordVisitor &visit) {
+        statics.visibilityRecords(view.held(), zx, zy, visit);
+    };
     npcs.pathStatics = [&](int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
                            const std::function<void(const creatures::SearchStatic &)> &visit) {
         statics.searchStatics(view.held(), ix0, ix1, iy0, iy1, visit);

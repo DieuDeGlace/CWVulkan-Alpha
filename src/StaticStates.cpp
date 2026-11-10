@@ -42,6 +42,23 @@ const std::vector<StaticState> *StaticStates::zone(int32_t zx, int32_t zy) const
     return it == zones.end() ? nullptr : &it->second;
 }
 
+void StaticStates::visibilityRecords(const worldgen::WorldMap &map, int32_t zx, int32_t zy,
+                                    const creatures::visibility::RecordVisitor &visit) const {
+    const auto *source = map.zone(zx, zy);
+    if (!source)
+        return;
+    const auto *states = zone(zx, zy);
+    size_t index = 0;
+    for (const auto &object : source->statics) {
+        const uint8_t state = states && index < states->size() ? (*states)[index].state : object.state;
+        const creatures::visibility::Record record{
+            object.kind, {object.x, object.y, object.z}, {object.scale[0], object.scale[1], object.scale[2]},
+            object.rotation, state};
+        visit(record);
+        index++;
+    }
+}
+
 std::vector<uint8_t> StaticStates::stateBytes(int32_t zx, int32_t zy) const {
     std::vector<uint8_t> out;
     if (const auto *list = zone(zx, zy))
