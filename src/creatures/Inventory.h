@@ -47,8 +47,12 @@ uint8_t itemMaterial(const ItemRecord &item);
 int16_t itemLevel(const ItemRecord &item); // also the quantity of the quantity types
 void setItemLevel(ItemRecord &item, int16_t value);
 
-// The item equality test of packets §1.1 (0x42f4a0).
+// Held alpha-inventory-equality-consumers.md: fields and active entry prefixes.
+// Positive body counts above owned capacity compare unequal as engine policy.
 bool sameItem(const ItemRecord &a, const ItemRecord &b);
+// Selected-field assignment retains the destination's five alignment bytes and
+// copies every body entry regardless of the signed body count. Self-copy is valid.
+void copyItemFields(const ItemRecord &source, ItemRecord &destination);
 // 0x47fa30: the bag an item goes to (0 Equipment, 1 Items, 2 Ingredients, 3 Pets).
 int bagOf(const ItemRecord &item);
 // 0x47f9f0: items that pile up in one slot.

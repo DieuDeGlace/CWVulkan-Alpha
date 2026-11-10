@@ -116,6 +116,13 @@ Differences from the Steam engine that shape the plan:
   corpse outputs cannot repeat admission. Actual server kill, both-peer snapshot,
   save and reward-adapter checks complement supplied-state regressions. Full
   recipient/grant/XP/backing ordering and native acceptance remain open.
+- [x] Bounded item identity and inventory transfers: compare raw body-count bits
+  and active entry prefixes, preserve destination padding on field copies, admit
+  matching zero/negative stack rows and retain wrapped quantities. Hand and
+  linked-equipment routes keep their distinct equality/count gates and store
+  old equipment before decrementing the selected row. Malformed positive body
+  counts use an explicit engine rejection policy. Full pet-cache production,
+  remaining UI/carry gates and native interactive acceptance remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

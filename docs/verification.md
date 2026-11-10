@@ -338,6 +338,34 @@ Coins; the injured character retained exactly binary32 50. Reload preserved the
 character, seed 123 despite conflicting inputs, nine map tiles, preview and 170
 block edits. The known bright-ground and native gameplay/UI/visual gates remain.
 
+ItemIdentityTests exercises each item byte in both operand directions, separating
+compared header/count fields and active four-byte entry prefixes from padding,
+entry trailing bytes and inactive entries. It checks unequal negative/raw counts,
+the full 32-entry boundary and the engine's explicit rejection of larger positive
+counts. Assignment checks all 275 selected bytes, all five preserved destination
+bytes, inactive-body copying, source immutability and self-copy.
+
+Inventory fixtures cover an immediately matching empty row, a later negative
+match winning over a remembered empty row, local-only quantity normalization,
+zero/negative quantities, signed wrap and subtype fourteen's level exemption.
+Unknown material coins use ordinary stacking while known materials and Platinum
+retain separate counters. Hand fixtures check raw comparison, zero-row merging,
+wrapped counts and field-wise fallback swaps. Linked-equipment fixtures check
+the no-consumption equality case, distinct signed count gates, old-item storage
+before decrement and correct index reuse after bag growth. CreditTests retains
+its existing linked-credit snapshot checks through the shared assignment service.
+These fixtures establish engine behavior under the held contracts; complete UI
+admission, pet-cache production and native interactive acceptance remain open.
+
+All 40 CTests passed for the item-identity checkpoint. Fresh actual-client
+reward, injured-health, multiplayer and both save/reload phases passed, and all
+five captures were reviewed. The reward character retained level 2, -33 XP and
+7 Platinum Coins; idle injured health retained exactly binary32 50. Save/reload
+retained seed 123 despite conflicting reload arguments, nine map tiles, the
+33,792-byte preview and 170 block edits. The verified player package contains
+35 hashed files in 36 archive entries and excludes owner/private content. These
+checks leave the documented native UI, gameplay, visual and provenance gates open.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

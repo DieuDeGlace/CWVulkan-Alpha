@@ -57,13 +57,7 @@ CreditResult receiveCredit(const KillRecord &record, const CreditWorld &world) {
             setItemLevel(source, level);
             credited->equipment[12].seed = uint32_t(linked->experience);
             credited->equipment[12].level = level;
-            // Field-wise copy: the five alignment bytes retain destination state.
-            snapshot[0] = source[0];
-            snapshot[1] = source[1];
-            std::memmove(snapshot.data() + 4, source.data() + 4, 8);
-            std::memmove(snapshot.data() + 0x0c, source.data() + 0x0c, 3);
-            std::memmove(snapshot.data() + 0x10, source.data() + 0x10, 2);
-            std::memmove(snapshot.data() + 0x14, source.data() + 0x14, 0x104);
+            copyItemFields(source, snapshot);
         }
     return result;
 }

@@ -629,3 +629,22 @@ does not certify an original-server counterpart. Presentation, completion reward
 eligibility/generation, corpse XP, recipient cleanup/credit and final backing
 stores retain their explicit integration limits. Source authors received no
 engine, test or runtime material.
+
+The additional original-only linked-item-storage and inventory-equality-consumer
+contracts were FINAL/STABLE/HELD and read completely before the inventory changes.
+The common equality now compares supplied header/count bits and only the first
+four bytes of active body entries. Equal nonpositive counts skip the body;
+different signed counts remain different. Positive counts beyond owned capacity
+compare unequal as an explicit engine malformed-input policy, rather than a
+claim that the original predicate validates its storage boundary.
+
+Selected-field assignment copies every body entry while retaining five
+destination alignment bytes. Ordinary receipt preserves local-only quantity
+normalization, category permission, zero/negative candidate counts and low32
+arithmetic. Unknown category-twelve materials retain ordinary storage handling.
+The examined hand and linked-equipment routes retain their distinct comparison
+gates and old-item storage order. Existing sound/UI admission, other equipment
+routes, carry limits, raw pet-cache production and native interactive acceptance
+remain bounded separately. The shared credit snapshot uses the same assignment
+service. These changes do not certify the full linked-item maintenance lifecycle;
+source authors received no implementation or runtime findings.

@@ -2,6 +2,7 @@
 #include "creatures/Combat.h"
 #include "worldgen/Zone.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 
@@ -33,24 +34,43 @@ int16_t itemLevel(const ItemRecord &item) {
 
 void setItemLevel(ItemRecord &item, int16_t value) { std::memcpy(item.data() + 0x10, &value, 2); }
 
-static int32_t spiritCount(const ItemRecord &item) {
+static int32_t bodyCount(const ItemRecord &item) {
     int32_t n;
     std::memcpy(&n, item.data() + 0x114, 4);
-    return n < 0 ? 0 : n > 32 ? 32 : n;
+    return n;
 }
 
 bool sameItem(const ItemRecord &a, const ItemRecord &b) {
-    // Type, subtype, the two words at +0x04 and +0x08, rarity, material, flags, level.
     if (a[0x00] != b[0x00] || a[0x01] != b[0x01])
         return false;
-    if (std::memcmp(a.data() + 0x04, b.data() + 0x04, 0x0b) != 0)
+    if (std::memcmp(a.data() + 0x04, b.data() + 0x04, 4) != 0 || a[0x0e] != b[0x0e] ||
+        std::memcmp(a.data() + 0x08, b.data() + 0x08, 4) != 0 || a[0x0c] != b[0x0c] ||
+        itemLevel(a) != itemLevel(b) || a[0x0d] != b[0x0d])
         return false;
-    if (std::memcmp(a.data() + 0x10, b.data() + 0x10, 2) != 0)
+    const int32_t n = bodyCount(a);
+    if (n != bodyCount(b) || n > 32)
         return false;
-    const int32_t n = spiritCount(a);
-    if (n != spiritCount(b))
-        return false;
-    return std::memcmp(a.data() + 0x14, b.data() + 0x14, 8 * (size_t)n) == 0;
+    for (int32_t i = 0; i < n; i++) {
+        const size_t entry = 0x14 + size_t(i) * 8;
+        if (a[entry + 3] != b[entry + 3] || std::memcmp(a.data() + entry, b.data() + entry, 3) != 0)
+            return false;
+    }
+    return true;
+}
+
+void copyItemFields(const ItemRecord &source, ItemRecord &destination) {
+    destination[0] = source[0];
+    destination[1] = source[1];
+    std::memmove(destination.data() + 4, source.data() + 4, 8);
+    std::memmove(destination.data() + 0x0c, source.data() + 0x0c, 3);
+    std::memmove(destination.data() + 0x10, source.data() + 0x10, 2);
+    std::memmove(destination.data() + 0x14, source.data() + 0x14, 0x104);
+}
+
+static void swapItemFields(ItemRecord &first, ItemRecord &second) {
+    const ItemRecord saved = first;
+    copyItemFields(second, first);
+    copyItemFields(saved, second);
 }
 
 int bagOf(const ItemRecord &item) {
@@ -172,7 +192,8 @@ const std::array<EquipmentBox, 12> equipmentBoxes = {{
 static void clearItem(ItemRecord &item) { item[0x00] = item[0x01] = 0; }
 
 static void takeOne(Stack &s) {
-    if (--s.count < 1) {
+    s.count = std::bit_cast<int32_t>(uint32_t(s.count) - 1u);
+    if (s.count < 1) {
         s.count = 0;
         clearItem(s.item);
     }
@@ -199,8 +220,11 @@ void Inventory::add(const ItemRecord &item) {
     }
     if (t == 12) { // coins: the kind is the material (world items spec, correcting screens §8.1.1)
         const uint8_t kind = itemMaterial(item);
-        money += kind == 10 ? q : kind == 11 ? 10000 * q : kind == 12 ? 100 * q : 0;
-        return;
+        if (kind == 10 || kind == 11 || kind == 12) {
+            const uint32_t unit = kind == 10 ? 1u : kind == 11 ? 10000u : 100u;
+            money += uint32_t(q) * unit;
+            return;
+        }
     }
     if (t == 13) {
         platinum += q;
@@ -212,17 +236,16 @@ void Inventory::add(const ItemRecord &item) {
         if (s.empty()) {
             if (!firstEmpty)
                 firstEmpty = &s;
-            continue;
         }
         if (stackable(t) && sameItem(s.item, stored)) {
-            s.count += q;
+            s.count = std::bit_cast<int32_t>(uint32_t(s.count) + uint32_t(q));
             return;
         }
     }
     if (!firstEmpty)
         firstEmpty = &bag.emplace_back();
     firstEmpty->count = q;
-    firstEmpty->item = stored;
+    copyItemFields(stored, firstEmpty->item);
 }
 
 void Inventory::store(const ItemRecord &item) {
@@ -254,12 +277,14 @@ int32_t Inventory::pressSlot(int b, size_t index) {
     Stack &slot = bags[b][index];
     if (!hand.empty() && bagOf(hand.item) != b)
         return SOUND_REFUSED;
-    if (!hand.empty() && !slot.empty() && stackable(itemType(hand.item)) && sameItem(slot.item, hand.item)) {
-        slot.count += hand.count;
-        hand = {};
+    if (!hand.empty() && stackable(itemType(hand.item)) && sameItem(hand.item, slot.item)) {
+        slot.count = std::bit_cast<int32_t>(uint32_t(slot.count) + uint32_t(hand.count));
+        hand.count = 0;
+        clearItem(hand.item);
         return 0;
     }
-    std::swap(slot, hand);
+    std::swap(slot.count, hand.count);
+    swapItemFields(slot.item, hand.item);
     return hand.empty() ? SOUND_PUT_DOWN : SOUND_GRAB;
 }
 
@@ -285,14 +310,17 @@ int32_t Inventory::pressBox(int box, int32_t level, int32_t cls) {
         clearItem(equipment[MAIN_HAND]);
     }
     if (e.slot == 12 && t == 20 && hand.count >= 2) { // one piece of pet food from the stack
-        if (!sameItem(slot, hand.item)) {
+        if (!sameItem(hand.item, slot)) {
             store(slot);
-            slot = hand.item;
+            copyItemFields(hand.item, slot);
+            takeOne(hand);
         }
-        takeOne(hand);
         return SOUND_GRAB;
     }
-    std::swap(slot, hand.item);
+    if (e.slot == 12)
+        swapItemFields(slot, hand.item);
+    else
+        std::swap(slot, hand.item);
     hand.count = itemType(hand.item) ? 1 : 0;
     return hand.empty() ? SOUND_PUT_DOWN : SOUND_GRAB;
 }
@@ -306,12 +334,19 @@ UseOutcome Inventory::useSlot(int b, size_t index, bool middle, int32_t level, i
         out.sound = SOUND_REFUSED;
         return out;
     }
-    const auto take = [&] { takeOne(bags[b][index]); }; // before anything is added to the bags
+    const auto take = [&] { takeOne(bags[b][index]); }; // reacquire after a possible bag allocation
     const auto equip = [&](int slot) {
         take();
         const ItemRecord old = equipment[slot];
         equipment[slot] = item;
         store(old);
+        out.sound = SOUND_PUT_DOWN;
+    };
+    const auto equipLinked = [&] {
+        const ItemRecord old = equipment[12];
+        store(old);
+        copyItemFields(item, equipment[12]);
+        take();
         out.sound = SOUND_PUT_DOWN;
     };
     const auto remove = [&](int slot) {
@@ -338,11 +373,11 @@ UseOutcome Inventory::useSlot(int b, size_t index, bool middle, int32_t level, i
         }
         break;
     case 19:
-        equip(12);
+        equipLinked();
         break;
     case 20:
-        if (!sameItem(equipment[12], item))
-            equip(12);
+        if (!sameItem(item, equipment[12]))
+            equipLinked();
         break;
     case 4: equip(CHEST_SLOT); break;
     case 5: equip(GLOVES_SLOT); break;
