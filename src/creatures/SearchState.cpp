@@ -148,4 +148,58 @@ void State::rebuild() {
     std::reverse(path.begin(), path.end());
 }
 
+void State::reroot(const Cell &nearest) {
+    anchor = nearest;
+    for (size_t axis = 0; axis < 3; axis++)
+        start[axis] = int64_t(nearest[axis]) * 65536;
+    std::set<Cell> retained;
+    const size_t attempts = std::min(pending.size(), size_t(70));
+    for (size_t i = 0; i < attempts; i++) {
+        int32_t score = -1;
+        auto choice = pending.end();
+        for (auto it = pending.begin(); it != pending.end(); ++it) {
+            const auto found = records.find(*it);
+            if (found != records.end() && (score < 0 || found->second.destination < score)) {
+                score = found->second.destination;
+                choice = it;
+            }
+        }
+        if (score >= 0) {
+            retained.insert(*choice);
+            pending.erase(choice);
+        }
+    }
+    pending = std::move(retained);
+    std::map<Cell, Node> replacement;
+    const auto referenceRecord = records.find(nearest);
+    for (auto it = pending.begin(); it != pending.end();) {
+        std::vector<std::pair<Cell, Node>> chain;
+        auto at = records.find(*it);
+        while (at != records.end() && at != referenceRecord) {
+            chain.push_back(*at);
+            const Cell parent = at->second.parent;
+            if (parent == at->first) {
+                at = records.end();
+                break;
+            }
+            at = records.find(parent);
+        }
+        if (at == records.end()) {
+            it = pending.erase(it);
+            continue;
+        }
+        for (const auto &[key, value] : chain)
+            replacement.insert_or_assign(key, value);
+        ++it;
+    }
+    Node root = records.at(nearest);
+    root.parent = nearest;
+    replacement.insert_or_assign(nearest, root);
+    records = std::move(replacement);
+    remembered.reset();
+    for (const auto &[key, value] : records)
+        if (!remembered || value.destination < records.at(*remembered).destination)
+            remembered = key;
+}
+
 } // namespace creatures::search

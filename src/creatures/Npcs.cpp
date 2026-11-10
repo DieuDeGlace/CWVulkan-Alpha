@@ -416,7 +416,9 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     npc.yaw = s.yaw;
     npc.quest = s.quest;
     npc.questRole = s.questRole;
-    npc.path.statics = pathStatics;
+    npc.path.records = routeRecords;
+    npc.path.columns = routeColumns;
+    npc.path.activate = routeActivate;
     if (s.questRole == 2) { // a quest's prisoner sits tied up until freed
         c.action = 83;
         c.mode |= 0x400;
@@ -787,7 +789,7 @@ bool Npcs::spawnLocation(Npc &n, const BlockType &block) {
         }
         if (!ground)
             return false;
-        n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), G, 4);
+        n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), G, 4, n.body.size);
         n.path.round(n.body.size, block);
         n.body.intent = glm::vec3(0);
         return true;
@@ -796,7 +798,7 @@ bool Npcs::spawnLocation(Npc &n, const BlockType &block) {
         return false;
     if (n.path.searching())
         n.path.rounds(n.body.size, 4, block);
-    const bool arrived = n.path.empty() || (n.path.path.back() == n.path.goal && n.path.path.size() <= 2);
+    const bool arrived = n.path.empty() || (n.path.state.path.back() == search::coordinate(n.path.state.goal) && n.path.state.path.size() <= 2);
     if (!arrived)
         return true; // walking (the follower moves it)
     n.path.clear();
@@ -846,7 +848,7 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
         }
         n.interactMs = 20000;
         n.seat = *picked;
-        n.path.seatTarget = {picked->zx, picked->zy, picked->index}; // (it never blocks the way to it)
+        n.path.state.reference = {picked->zx, picked->zy, picked->index}; // (it never blocks the way to it)
         // The goal: in a house the seat's own position; outdoors fitted to the ground block by
         // block.
         glm::dvec3 goal = picked->at;
@@ -858,7 +860,7 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
             goal.z += 1;
         for (int k = 0; !near.house && k < 64 && !solid(goal - glm::dvec3(0, 0, 1)); k++)
             goal.z -= 1;
-        n.path.start(centre + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), goal, 2);
+        n.path.start(centre + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), goal, 2, n.body.size);
     }
     // Steps 6-7: walk, and take the seat within 3 blocks of the creature's centre.
     if (n.path.searching())
@@ -917,7 +919,7 @@ bool Npcs::walkPath(Npc &n, float dtMs, const BlockType &block) {
         return false;
     }
     if (!n.path.searching()) {
-        n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.1 - h * 0.5), T, n.routeRadius);
+        n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.1 - h * 0.5), T, n.routeRadius, n.body.size);
         n.path.round(n.body.size, block);
     }
     n.path.rounds(n.body.size, n.routeRadius, block);
@@ -1017,7 +1019,7 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
     services.directRoute = [&](const Body &from, const Body &to, float width) {
         const route::Dimensions size{from.size.x, from.size.y, from.size.z};
         const route::Subject subject{from.position, size, npc.fighter.appearanceFlags,
-            [&](uintptr_t identity) { return npc.spatialExclusions.contains(identity); }};
+            [&](uintptr_t identity) { return npc.path.state.exclusions.contains(identity); }};
         route::Scene scene;
         scene.column = [&](int32_t x, int32_t y) -> std::optional<route::Column> {
             const auto *zone = map.zoneAt(x, y);
@@ -1045,34 +1047,22 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
             return uint8_t(1);
         return block(x, y, z);
     };
-    services.clearPath = [&] { npc.path.clear(); npc.spatialExclusions.clear(); };
+    services.clearPath = [&] { npc.path.clear(); };
     services.cellPresent = [&](int32_t x, int32_t y) {
         return x >= 0 && y >= 0 && x < 65536 && y < 65536 && map.zone(x, y) != nullptr;
     };
-    services.initializePath = [&] {
-        const auto blocks = [](const created::Position &position) {
-            return glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
-        };
-        npc.path.start(blocks(npc.createdPath.start), blocks(npc.createdPath.goal), npc.createdPath.radius);
-        npc.spatialExclusions.clear();
-        const route::Dimensions size{npc.body.size.x, npc.body.size.y, npc.body.size.z};
-        const route::Subject subject{npc.body.position, size, npc.fighter.appearanceFlags, {}};
-        const auto insert = [&](uintptr_t identity) { npc.spatialExclusions.insert(identity); };
-        route::endpointExclusions(subject, npc.createdPath.start, routeRecords, insert);
-        route::endpointExclusions(subject, npc.createdPath.goal, routeRecords, insert);
-    };
+    services.initializePath = [&] { npc.path.setup(npc.body.size); };
     services.pathStep = [&] {
-        npc.path.radius = npc.createdPath.radius;
         npc.path.round(npc.body.size, block);
     };
     services.pathStatus = [&] {
-        created::PathStatus status{npc.path.nodeCount(), int32_t(npc.path.path.size()), {}};
+        created::PathStatus status{npc.path.nodeCount(), int32_t(npc.path.state.path.size()), {}};
         if (!npc.path.empty())
-            status.tail = npc.path.path.back();
+            status.tail = npc.path.state.path.back();
         return status;
     };
     npc.fighter.mode = npc.body.mode;
-    const bool handled = created::companion(npc.fighter, npc.body, npc.follows, step, npc.createdPath, services);
+    const bool handled = created::companion(npc.fighter, npc.body, npc.follows, step, npc.path.state, services);
     npc.body.mode = npc.fighter.mode;
     return handled;
 }
@@ -1199,7 +1189,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             const glm::dvec3 feet = self - glm::dvec3(0, 0, npc.body.size.z * 0.5 - 0.1);
             const glm::dvec3 goal = there - glm::dvec3(0, 0, target.body->size.z * 0.5 - 0.1);
             if (npc.path.empty() && !npc.path.searching() && (target.body->contact & 7))
-                npc.path.start(feet, goal, npc.body.size.x + target.body->size.x);
+                npc.path.start(feet, goal, npc.body.size.x + target.body->size.x, npc.body.size);
             if (feet != goal)
                 npc.path.rounds(npc.body.size, npc.body.size.x, block);
             npc.threat *= 0.9f;
@@ -1957,6 +1947,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         if (!actor.npc)
             continue;
         Npc &npc = *actor.npc;
+        npc.path.records = routeRecords;
+        npc.path.columns = routeColumns;
+        npc.path.activate = routeActivate;
         Combatant &c = npc.fighter;
         if (!admitCreatureUpdate(c))
             continue;
@@ -1987,13 +1980,17 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         if (c.type == 144 && c.controller == 6)
             c.health = std::max(0.f, c.health - 0.025f * dtMs);
         if (!npc.path.empty() && c.hitStun <= 0) {
-            npc.path.follow(npc.body, milliseconds, block);
-            if ((npc.body.contact & ON_OBJECT) && openDoors) {
-                const glm::dvec3 h = glm::dvec3(npc.body.size) * 0.5 + glm::dvec3(1, 1, 0);
-                openDoors(npc.body.blocks() - h, npc.body.blocks() + h);
+            npc.body.mode &= ~4u;
+            if (npc.path.follow(npc.body, milliseconds, block)) {
+                npc.path.state.rebuild();
+            } else {
+                if (!npc.path.empty()) {
+                    npc.body.mode |= 4;
+                    npc.pathFallback = npc.path.fallback(npc.body);
+                }
+                npc.body.mode |= 0x80;
             }
         }
-        npc.path.timerMs += dtMs;
         c.mode = npc.body.mode;
         c.dodgeMs = (float)npc.body.dodgeMs;
         beginActionUpdate(c, milliseconds, &frame.buffs);
@@ -2087,6 +2084,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.ignoredStatics = npc.path.searching() ? &npc.path.ignored : nullptr; // (path search §4.1 step 3)
         npc.body.pathActive = !npc.path.empty();
         worldStep(npc.body, (int32_t)dtMs, block, objects);
+        npc.path.state.counter = std::bit_cast<int32_t>(uint32_t(npc.path.state.counter) + uint32_t(milliseconds));
         c.mode = npc.body.mode;
         advanceCharge(c, dtMs);
         npc.body.mode = c.mode;

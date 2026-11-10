@@ -356,6 +356,32 @@ checkpoint, so earlier client captures are not presented as new runtime evidence
 Follower binding, imported math, resident lifetime, native gameplay and server
 equivalence remain open.
 
+RouteFollowingTests checks arrival versus empty-list/timeout order, exact timer
+threshold, nearest-node tie order, partial and far output, sub-unit directions,
+ground-plane/lookahead query order, independent velocity regimes and binary32
+recurrence anchors through the four-iteration grouping boundary. Zero, negative
+and minimum signed elapsed retain the specified no-blend behavior. Reroot cases
+cover the current reference before predecessor lookup, accepted-chain union,
+rejected branches, unchanged scores/list and the seventy-key score/tie limit.
+
+Object cases retain forced vertical output, inflated asymmetric overlap,
+independence from search exclusions/tags, duplicate live-state observation and
+actual resident byte/timer/change publication. Fallback checks distinguish the
+three fixed half-unit offsets from actor height. An actual NPC world fixture
+checks false/nonempty and false/emptied flags, stun bypass, output retention and
+counter wrap after integration with no active path. Existing flat searches,
+route-around-wall and companion fixtures now use the production core. Linked
+reconstruction also restores the specified raw reference triplet.
+All 51 CTests passed for this production binding. The actual Player/controller
+diagnostic passed; hardware/controller and original-client acceptance stay open.
+Fresh reward, injured-health, dedicated-server and save/reload flows also passed;
+all five captures were reviewed. Reward state retained level 2/-33 XP/7 Platinum
+Coins, injured health remained binary32 50, and reload retained health 265, seed
+123, nine map tiles, 33,792 preview bytes and 170 edits. The health run reported
+138 world calls over 17 input frames with maximum 20 ms pieces. Bright ground
+and negative XP display remain open; these engine regressions do not certify
+original Alpha route behavior or physical controller operation.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

@@ -1,14 +1,12 @@
 #pragma once
 #include "creatures/Combat.h"
 #include "creatures/Physics.h"
+#include "creatures/RouteGeometry.h"
 
 namespace creatures::created {
 
 using Position = std::array<int64_t, 3>;
-struct PathState {
-    Position start{}, goal{};
-    float radius = 0;
-};
+using PathState = route::Endpoints;
 struct PathStatus {
     int32_t nodes = 0, coordinates = 0;
     std::array<int32_t, 3> tail{};

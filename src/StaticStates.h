@@ -48,9 +48,8 @@ class StaticStates {
     // centre on x and y, their base on z; open points 2 §2.2).
     bool blocks(const worldgen::WorldMap &map, glm::dvec3 lo, glm::dvec3 hi, int axis = -1, double move = 0,
                 const creatures::IgnoredStatics *ignored = nullptr) const;
-    // Path search §6.5: a creature pressing against closed doors and big doors (kinds 1, 2)
-    // whose boxes overlap `lo`..`hi` opens them (state 0, timer 0).
-    void openDoors(const worldgen::WorldMap &map, glm::dvec3 lo, glm::dvec3 hi);
+    // Held follower store, after its ordered selector/state/overlap admission.
+    void activateRouteRecord(const worldgen::WorldMap &map, const creatures::route::Record &record);
     // Trails spec §4.4: the stools, benches and beach towels (kinds 16, 18, 68) in the 3 x 3
     // cells of 8 x 8 blocks round `block`, in cell order (x outer, y inner); and whether one
     // has nobody on it.
@@ -58,10 +57,6 @@ class StaticStates {
     // 22:59, beds otherwise.
     creatures::Npcs::Seats seats(const worldgen::WorldMap &map, glm::ivec3 block, double timeOfDayMs) const;
     bool free(const creatures::Seat &seat) const;
-    // Open points 2 §1.1: the statics listed in the 8 x 8-block index cells ix0..ix1 x iy0..iy1,
-    // as the path search sees them.
-    void searchStatics(const worldgen::WorldMap &map, int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
-                       const std::function<void(const creatures::SearchStatic &)> &visit) const;
     // Current state byte plus the retained spatial metadata, in source order.
     void visibilityRecords(const worldgen::WorldMap &map, int32_t zx, int32_t zy,
                            const creatures::visibility::RecordVisitor &visit) const;

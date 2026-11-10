@@ -476,22 +476,17 @@ int main() {
         auto flat = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
         const auto route = [&](double height) {
             PathSearch search;
-            search.statics = [height](int32_t, int32_t, int32_t, int32_t, const std::function<void(const SearchStatic &)> &visit) {
-                SearchStatic s;
-                s.at = {5.5, 0.5, 1};
-                s.half = {0.5, 3};
-                s.height = height;
-                s.kind = 12;
-                s.ref = {0, 0, 0};
-                visit(s);
+            search.records = [height](int32_t x, int32_t y, const route::RecordVisitor &visit) {
+                if (x == 0 && y == 0)
+                    visit({123, 12, {5 * 65536 + 32768, 32768, 65536}, 0, {1, 6, float(height)}, 1, {0, 0, 0}});
             };
-            search.start({0.5, 0.5, 1}, {10.5, 0.5, 1}, 1);
+            search.start({0.5, 0.5, 1}, {10.5, 0.5, 1}, 1, {0.96f, 0.96f, 2.16f});
             for (int i = 0; i < 40 && search.searching(); i++)
                 search.rounds({0.96f, 0.96f, 2.16f}, 1, flat);
             bool through = false;
-            for (const auto &c : search.path)
+            for (const auto &c : search.state.path)
                 through = through || (c[0] == 5 && c[1] > -3 && c[1] < 3);
-            same(!search.path.empty() && search.path.back()[0] >= 9, 1, "the search gets there");
+            same(!search.state.path.empty() && search.state.path.back()[0] >= 9, 1, "the search gets there");
             return through;
         };
         same(route(1), 0, "round a table on flat ground (as read)");
@@ -991,24 +986,24 @@ int main() {
         same(clearRoute(box, false, {100.5, 100.5, 11.08}, {106.5, 100.5, 13.08}, 2.88f, wall), 0, "a two-block wall is not");
         // §5: the search on flat ground from (0, 0, 10) to (3, 2, 10).
         PathSearch search;
-        search.start({0.5, 0.5, 10.1}, {3.5, 2.5, 10.1}, 2);
+        search.start({0.5, 0.5, 10.1}, {3.5, 2.5, 10.1}, 2, box);
         search.round(box, flat);
-        same(search.path.size() == 2 && search.path[1] == PathSearch::Cell{1, 1, 10}, 1, "round 1: best (1, 1)");
+        same(search.state.path.size() == 2 && search.state.path[1] == PathSearch::Cell{1, 1, 10}, 1, "round 1: best (1, 1)");
         search.round(box, flat);
-        same(search.path.back() == PathSearch::Cell{2, 2, 10}, 1, "round 2: best (2, 2)");
+        same(search.state.path.back() == PathSearch::Cell{2, 2, 10}, 1, "round 2: best (2, 2)");
         search.round(box, flat);
-        same(search.path.back() == PathSearch::Cell{3, 2, 10}, 1, "round 3: the goal");
+        same(search.state.path.back() == PathSearch::Cell{3, 2, 10}, 1, "round 3: the goal");
         // §6: a creature follows a search around a wall to its goal.
         auto blocked = [](int32_t x, int32_t y, int32_t z) -> uint8_t { return z <= 9 || (x == 3 && y >= -4 && y <= 4 && z <= 12) ? 1 : 0; };
         Body walker;
         walker.place({0.5, 0.5, 10 + 1.08 + 0.01});
         PathSearch route;
-        route.start({0.5, 0.5, 10.1}, {6.5, 0.5, 10.1}, 1);
+        route.start({0.5, 0.5, 10.1}, {6.5, 0.5, 10.1}, 1, walker.size);
         bool arrived = false;
         for (int i = 0; i < 1000 && !arrived; i++) {
             route.rounds(walker.size, 1, blocked);
-            route.follow(walker, 16, blocked);
-            route.timerMs += 16;
+            if (route.follow(walker, 16, blocked)) route.state.rebuild();
+            route.state.counter += 16;
             worldStep(walker, 16, blocked);
             arrived = std::abs(walker.blocks().x - 6.5) < 1.5 && std::abs(walker.blocks().y - 0.5) < 1.5;
         }

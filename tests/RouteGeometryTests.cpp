@@ -325,10 +325,10 @@ void engineCompanion() {
             continue;
         const auto &after = world.all()[0];
         if (state == 0)
-            check(after.createdPath.radius == 0 && after.path.nodeCount() == 0 && after.body.intent.x == 30,
+            check(after.path.state.radius == 0 && after.path.nodeCount() == 0 && after.body.intent.x == 30,
                   "an open spatial record permits real direct steering and clears search state");
         else
-            check(after.createdPath.radius == 2 && after.path.nodeCount() > 0,
+            check(after.path.state.radius == 2 && after.path.nodeCount() > 0,
                   "a closed record sends real companion behavior into the separate terrain/path continuation");
     }
 }

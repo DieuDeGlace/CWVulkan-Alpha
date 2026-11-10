@@ -33,10 +33,8 @@ struct Node {
 
 // Independently owned supplied-input search state. No native allocation layout,
 // pointer lifetime, whole-frame schedule or server equivalence is implied.
-struct State {
-    route::Position start{}, goal{};
+struct State : route::Endpoints {
     Cell anchor{}, reference{-1, -1, 0};
-    float radius = 0;
     int32_t counter = 0;
     std::map<Cell, Node> records;
     std::set<Cell> pending;
@@ -52,6 +50,8 @@ struct State {
     bool step(const ClassificationLookup &classify);
     // Retains partial chains and the specified count guard, including repeats.
     void rebuild();
+    // Ordinary terminating parent chains; retains scores and the current list.
+    void reroot(const Cell &nearest);
 
   private:
     void publish(const Cell &key, const Node &value);

@@ -609,7 +609,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     npcs.objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {
         return statics.blocks(view.held(), lo, hi, axis, move, ignored);
     };
-    npcs.openDoors = [&](glm::dvec3 lo, glm::dvec3 hi) { statics.openDoors(view.held(), lo, hi); };
+    npcs.routeActivate = [&](const creatures::route::Record &record) { statics.activateRouteRecord(view.held(), record); };
     npcs.seats = [&](glm::ivec3 block, double ms) { return statics.seats(view.held(), block, ms); };
     npcs.seatFree = [&](const creatures::Seat &s) { return statics.free(s); };
     npcs.sightRecords = [&](int32_t zx, int32_t zy, const creatures::visibility::RecordVisitor &visit) {
@@ -618,9 +618,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     npcs.routeRecords = [&](int32_t x, int32_t y, const creatures::route::RecordVisitor &visit) {
         statics.routeRecords(view.held(), x, y, visit);
     };
-    npcs.pathStatics = [&](int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
-                           const std::function<void(const creatures::SearchStatic &)> &visit) {
-        statics.searchStatics(view.held(), ix0, ix1, iy0, iy1, visit);
+    npcs.routeColumns = [&](int32_t x, int32_t y) -> std::optional<creatures::route::Column> {
+        const auto *zone = view.held().zoneAt(x, y);
+        if (!zone) return std::nullopt;
+        const auto &column = zone->column(x, y);
+        return creatures::route::Column{column.bottom, int32_t(column.blocks.size()), std::as_bytes(std::span(column.blocks))};
     };
     npcs.sit = [&](creatures::Npc &n, const creatures::Seat &s) {
         if (const worldgen::Zone *zone = view.held().zone(s.zx, s.zy)) {

@@ -53,10 +53,10 @@ bool overlap(const Subject &subject, const Position &center, const Record &recor
     return subtract(center[2], actorHalf) < add(record.position[2], recordHeight);
 }
 
-uint8_t cell(const Scene &scene, int32_t x, int32_t y, int32_t z) {
+uint8_t readCell(const ColumnLookup &lookup, int32_t x, int32_t y, int32_t z) {
     if (x < 0 || y < 0 || x >= 0x1000000 || y >= 0x1000000)
         return 1;
-    const auto column = scene.column(x, y);
+    const auto column = lookup ? lookup(x, y) : std::nullopt;
     if (!column || z < column->base)
         return 1;
     if (z >= column->base + column->count)
@@ -104,7 +104,7 @@ bool terrainBlocked(const Subject &subject, const Position &center, bool raised,
                 if (!raised && x != box.lower[0] && x != box.upper[0] &&
                     y != box.lower[1] && y != box.upper[1] && z != box.lower[2] && z != box.upper[2])
                     continue;
-                if (blocking(cell(scene, x, y, z))) {
+                if (blocking(residentCell(scene.column, x, y, z))) {
                     if (!raised)
                         return true;
                     blocked = true; // raised scans retain the rest of this Z run
@@ -139,6 +139,10 @@ void raisePosition(const Subject &subject, Position &position) {
     position[2] = add(add(subtract(base, -66191), half), 66191);
 }
 } // namespace
+
+uint8_t residentCell(const ColumnLookup &lookup, int32_t x, int32_t y, int32_t z) {
+    return readCell(lookup, x, y, z);
+}
 
 bool endpointOverlap(const Subject &subject, const Position &center, const Record &record) {
     return !skippedSelector(record.selector) && activeState(record) && overlap(subject, center, record, dimensions(record));

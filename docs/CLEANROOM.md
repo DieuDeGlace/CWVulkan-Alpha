@@ -977,3 +977,32 @@ flag, early record-below probe and pointer/tag distinctions. Synthetic isolated
 and combined cases establish these supplied-input relations. Production route
 consumer integration is a separate next step; no native gameplay, performance,
 concurrency, imported runtime or server equivalence is certified by these tests.
+
+Three further original-only contracts were FINAL/STABLE/HELD, read completely
+and hash-verified before the production route checkpoint:
+`alpha-path-following-update.md` has SHA-256
+`2a4159bfb75c18802d99ffd3dfabd701b54370ad688379dd03ed93f6c443b1f5`,
+`alpha-path-world-fallback.md` has
+`1406c39173ba493dd2bb7e03e4ee1c6f7b708a3de80f403b637751d021d79b21`, and
+`alpha-path-reroot-reference.md` has
+`4659e668fc4e7e943810e29b2fcff8207bc30d55ca95d2ba9152287a72fc7395`.
+The short last contract also persists an original-evidence prose clarification
+received before implementation of the reference acceptance test. The author
+received no engine, tests, captures, logs, runtime or implementation history.
+
+The independently structured route consumer retains integer distance decisions,
+lookahead query order, binary32 normalization and exact elapsed recurrences.
+Rerooting owns replacement coordinate values while preserving scores and the
+separate list. Shared endpoint storage removes the prior companion/search
+duplication. Production NPCs use resident columns and ordered record identities;
+selector-1/2 stores update current state and timer synchronously. Engine change
+tracking additionally publishes those mutations through existing save/network
+mechanisms; it is not a claimed native event produced by the helper.
+
+The world adapter rebuilds after true and retains the specified false-result
+flags and distinct tail-derived triplet. Fresh storage for that new output is
+engine zero; its unspecified native initialization and wider consumers are not
+inferred. Integer counter addition follows physical integration. The existing
+authoritative client/server ownership policy and older block-coordinate endpoint
+callers remain adapters. Imported math, broader native scheduling, object
+ownership/concurrency, native gameplay and server equivalence remain open.

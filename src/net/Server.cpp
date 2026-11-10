@@ -811,8 +811,8 @@ void Server::stepWorld(float dtMs) {
                 return world && world->region(rx, ry) != nullptr;
             });
         };
-    if (!npcs.openDoors)
-        npcs.openDoors = [this](glm::dvec3 lo, glm::dvec3 hi) { statics.openDoors(zones, lo, hi); };
+    if (!npcs.routeActivate)
+        npcs.routeActivate = [this](const creatures::route::Record &record) { statics.activateRouteRecord(zones, record); };
     if (!npcs.sightRecords)
         npcs.sightRecords = [this](int32_t zx, int32_t zy, const creatures::visibility::RecordVisitor &visit) {
             statics.visibilityRecords(zones, zx, zy, visit);
@@ -821,13 +821,16 @@ void Server::stepWorld(float dtMs) {
         npcs.routeRecords = [this](int32_t x, int32_t y, const creatures::route::RecordVisitor &visit) {
             statics.routeRecords(zones, x, y, visit);
         };
+    if (!npcs.routeColumns)
+        npcs.routeColumns = [this](int32_t x, int32_t y) -> std::optional<creatures::route::Column> {
+            const auto *zone = zones.zoneAt(x, y);
+            if (!zone) return std::nullopt;
+            const auto &column = zone->column(x, y);
+            return creatures::route::Column{column.bottom, int32_t(column.blocks.size()), std::as_bytes(std::span(column.blocks))};
+        };
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };
-        npcs.pathStatics = [this](int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
-                                  const std::function<void(const creatures::SearchStatic &)> &visit) {
-            statics.searchStatics(zones, ix0, ix1, iy0, iy1, visit);
-        };
         npcs.sit = [this](creatures::Npc &n, const creatures::Seat &s) {
             if (const worldgen::Zone *zone = zones.zone(s.zx, s.zy)) {
                 std::vector<creatures::SoundEvent> ignored;

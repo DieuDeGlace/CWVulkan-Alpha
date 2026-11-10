@@ -104,8 +104,8 @@ Differences from the Steam engine that shape the plan:
   native target-selection and wider consumable acceptance remain open.
 - [ ] Complete created-actor behavior: production roots now retry combat,
   companion and wander in order. The bounded selection, companion caller and
-  third-child counter/draw relations are implemented; full search classification,
-  expansion, later combat, universal reference initialization and complete
+  third-child counter/draw relations are implemented; later combat, wider endpoint
+  producers, universal reference initialization and complete
   native scheduling/gameplay acceptance remain open.
 - [x] Bounded companion direct-route geometry: private raw-coordinate simulation
   retains proximity, budget, terrain/raised-box query order, directional record
@@ -113,15 +113,18 @@ Differences from the Steam engine that shape the plan:
   reference per source record with ordered live-state lookup. Endpoint setup
   records a unique spatial-identity exclusion union; path/body reset clears it.
   The production created-companion caller uses this query. Imported math,
-  relocation/concurrency, complete path search and native acceptance remain open.
+  relocation/concurrency, wider route callers and native acceptance remain open.
 - [x] Supplied-input search core and classifier: independent coordinate records,
   pending selection, remembered destination scores, asymmetric costs, actual
   cardinal-update admission and partial predecessor lists. Ordered terrain and
   record probes preserve distinct conversion boundaries and raw reference gates.
-  Synthetic end-to-end flat-ground search passes. This kernel is not yet bound
-  to the production route consumer; native gameplay acceptance remains open.
-- [ ] Bind the held route-list consumer and rerooting to the new search core,
-  including velocity recurrence, resident-object effects and caller decisions.
+  Synthetic end-to-end flat-ground search passes. Production NPC searches now
+  use this core; wider callers and native gameplay acceptance remain open.
+- [x] Bounded route-list consumer and production binding: shared raw endpoint
+  state, destination-score pruning and rerooting, nearest/lookahead selection,
+  exact elapsed recurrences, resident state/timer stores and world true/false
+  decisions. Counter addition follows integration. Wider behavior scheduling,
+  fallback consumers, concurrency and original-client acceptance remain open.
 - [x] Raw reference core state: existing field 40 retains all 24 bytes through
   wire/core refresh and the inspected linked reset. Descriptor activation copies
   its effective raw coordinates. Fresh engine storage is deterministic zero,

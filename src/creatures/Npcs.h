@@ -87,8 +87,7 @@ struct Npc {
     uint8_t behaviour = 0;
     creation::Configuration creationConfig; // resident, independently initialized for a new actor
     int32_t createdWalkMs = 0;
-    created::PathState createdPath;
-    std::set<uintptr_t> spatialExclusions; // endpoint-overlapping spatial identities, independently owned
+    glm::vec3 pathFallback{0}; // bounded actor +0x160 output, wider consumers unclosed
     std::vector<glm::dvec3> route;
     size_t routeIndex = 0;
     float waitMs = 0;
@@ -308,8 +307,9 @@ class Npcs {
     // classification uses the step's existing block reader.
     visibility::RecordLookup sightRecords;
     route::RecordLookup routeRecords;
+    route::ColumnLookup routeColumns;
+    std::function<void(const route::Record &)> routeActivate;
     // Path search §6.5: opens the closed doors overlapping a box (left empty: none).
-    std::function<void(glm::dvec3 lo, glm::dvec3 hi)> openDoors;
     // RandomInteraction §4.4: the seats round a block (in a house, its lists; outdoors, the
     // stools, benches and beach towels of the 3 x 3 cells of 8 blocks round it); whether one is
     // free; and sitting on one (packet 6 kind 3, interaction §6.1). Left empty, nobody sits.
@@ -319,7 +319,6 @@ class Npcs {
         std::vector<Seat> pick; // the candidates (the house's seats by day, beds by night)
     };
     // Open points 2 §1: the statics the path search sees (left empty: none).
-    StaticLookup pathStatics;
     std::function<Seats(glm::ivec3 block, double timeOfDayMs)> seats;
     std::function<bool(const Seat &)> seatFree;
     std::function<void(Npc &, const Seat &)> sit;

@@ -401,36 +401,6 @@ creatures::Npcs::Seats StaticStates::seats(const worldgen::WorldMap &map, glm::i
     return out;
 }
 
-void StaticStates::searchStatics(const worldgen::WorldMap &map, int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
-                                 const std::function<void(const creatures::SearchStatic &)> &visit) const {
-    const int32_t zx0 = worldgen::floorDiv(ix0 * 8, worldgen::ZONE), zx1 = worldgen::floorDiv(ix1 * 8, worldgen::ZONE);
-    const int32_t zy0 = worldgen::floorDiv(iy0 * 8, worldgen::ZONE), zy1 = worldgen::floorDiv(iy1 * 8, worldgen::ZONE);
-    for (int32_t zx = zx0; zx <= zx1; zx++)
-        for (int32_t zy = zy0; zy <= zy1; zy++) {
-            const worldgen::Zone *zone = map.zone(zx, zy);
-            if (!zone)
-                continue;
-            for (int32_t k = 0; k < (int32_t)zone->statics.size(); k++) {
-                const worldgen::StaticObject &o = zone->statics[(size_t)k];
-                const glm::dvec3 at = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
-                const int32_t ix = worldgen::floorDiv((int32_t)std::floor(at.x), 8), iy = worldgen::floorDiv((int32_t)std::floor(at.y), 8);
-                if (ix < ix0 || ix > ix1 || iy < iy0 || iy > iy1)
-                    continue;
-                const bool turned = ((o.rotation % 2) + 2) % 2 == 1;
-                creatures::SearchStatic s;
-                s.at = at;
-                s.half = 0.5 * glm::dvec2(turned ? o.scale[1] : o.scale[0], turned ? o.scale[0] : o.scale[1]);
-                s.height = o.scale[2];
-                s.kind = o.kind;
-                s.ref = {zx, zy, k};
-                const std::vector<StaticState> *live = zone ? this->zone(zx, zy) : nullptr;
-                const uint8_t state = live && (size_t)k < live->size() ? (*live)[(size_t)k].state : o.state;
-                s.passable = o.kind == 6 || o.kind == 7 || o.kind == 9 ||
-                             ((o.kind == 1 || o.kind == 2 || o.kind == 3 || o.kind == 5 || o.kind == 8) && state == 0);
-                visit(s);
-            }
-        }
-}
 
 bool StaticStates::free(const creatures::Seat &seat) const {
     const auto *list = zone(seat.zx, seat.zy);
@@ -472,31 +442,17 @@ bool StaticStates::blocks(const worldgen::WorldMap &map, glm::dvec3 lo, glm::dve
     return false;
 }
 
-void StaticStates::openDoors(const worldgen::WorldMap &map, glm::dvec3 lo, glm::dvec3 hi) {
-    const int32_t zx0 = worldgen::floorDiv((int32_t)std::floor(lo.x) - 16, worldgen::ZONE);
-    const int32_t zx1 = worldgen::floorDiv((int32_t)std::floor(hi.x) + 16, worldgen::ZONE);
-    const int32_t zy0 = worldgen::floorDiv((int32_t)std::floor(lo.y) - 16, worldgen::ZONE);
-    const int32_t zy1 = worldgen::floorDiv((int32_t)std::floor(hi.y) + 16, worldgen::ZONE);
-    for (int32_t zx = zx0; zx <= zx1; zx++)
-        for (int32_t zy = zy0; zy <= zy1; zy++) {
-            const worldgen::Zone *zone = map.zone(zx, zy);
-            const auto live = zones.find({zx, zy});
-            if (!zone || live == zones.end())
-                continue;
-            for (size_t k = 0; k < zone->statics.size() && k < live->second.size(); k++) {
-                const worldgen::StaticObject &o = zone->statics[k];
-                StaticState &s = live->second[k];
-                if ((o.kind != 1 && o.kind != 2) || s.state == 0)
-                    continue;
-                const bool turned = ((o.rotation % 2) + 2) % 2 == 1;
-                const double sx = turned ? o.scale[1] : o.scale[0], sy = turned ? o.scale[0] : o.scale[1];
-                const glm::dvec3 c = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
-                if (lo.x < c.x + sx / 2 && hi.x > c.x - sx / 2 && lo.y < c.y + sy / 2 && hi.y > c.y - sy / 2 &&
-                    lo.z < c.z + o.scale[2] && hi.z > c.z) {
-                    s.state = 0;
-                    s.timerMs = 0;
-                    changed.insert({zx, zy});
-                }
-            }
-        }
+
+void StaticStates::activateRouteRecord(const worldgen::WorldMap &map, const creatures::route::Record &record) {
+    const auto &reference = record.reference;
+    const auto *source = map.zone(reference[0], reference[1]);
+    const auto found = zones.find({reference[0], reference[1]});
+    if (!source || reference[2] < 0 || size_t(reference[2]) >= source->statics.size() || found == zones.end() ||
+        size_t(reference[2]) >= found->second.size() ||
+        uintptr_t(&source->statics[size_t(reference[2])]) != record.identity)
+        return; // engine ownership guard for a replaced/unloaded snapshot
+    StaticState &state = found->second[size_t(reference[2])];
+    state.state = 0;
+    state.timerMs = 0;
+    changed.insert({reference[0], reference[1]});
 }

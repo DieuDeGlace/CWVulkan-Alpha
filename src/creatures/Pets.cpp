@@ -56,7 +56,7 @@ uint64_t Npcs::freeId() const {
 // §9.2 steps 1-5 and §9.4: the creature becomes the pet of `owner` as the Pet slot item says.
 void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     pet.path.clear();
-    pet.spatialExclusions.clear();
+    pet.path.state.reference = {-1, -1, 0};
     Combatant c;
     c.id = pet.fighter.id;
     c.health = pet.fighter.health;
@@ -230,7 +230,7 @@ bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &playe
             return false;
         }
         if (pet.path.empty() && !pet.path.searching())
-            pet.path.start(pet.body.blocks() - glm::dvec3(0, 0, pet.body.size.z * 0.5 - 0.1), G, 2);
+            pet.path.start(pet.body.blocks() - glm::dvec3(0, 0, pet.body.size.z * 0.5 - 0.1), G, 2, pet.body.size);
         pet.path.rounds(pet.body.size, 2, block);
         return true;
     }

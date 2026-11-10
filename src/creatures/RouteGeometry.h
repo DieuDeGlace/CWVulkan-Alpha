@@ -10,6 +10,10 @@ namespace creatures::route {
 
 using Position = std::array<int64_t, 3>;
 using Dimensions = std::array<float, 3>;
+struct Endpoints {
+    Position start{}, goal{};
+    float radius = 0;
+};
 struct Record {
     uintptr_t identity = 0; // spatial-record identity, never a creature ID
     int32_t selector = 0;
@@ -33,8 +37,10 @@ struct Column {
     // Storage remains readable for the query; no loading or allocation here.
     std::span<const std::byte> cells;
 };
+using ColumnLookup = std::function<std::optional<Column>(int32_t x, int32_t y)>;
+uint8_t residentCell(const ColumnLookup &lookup, int32_t x, int32_t y, int32_t z);
 struct Scene {
-    std::function<std::optional<Column>(int32_t x, int32_t y)> column;
+    ColumnLookup column;
     // Ordered resident spatial pass after a tentative axis movement. The last
     // argument retains earlier terrain blockage for the third-axis traversal.
     std::function<bool(const Position &, int axis, const Dimensions &direction, bool terrainBlocked)> spatial;
