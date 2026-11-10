@@ -84,6 +84,7 @@ int main() {
         spawn.y = int64_t(522) * 65536;
         spawn.z = 2 * 65536;
         spawn.type = 19;
+        spawn.bossLoot = 0xff;
         spawn.radius = 1000;
         zone->spawns.push_back(spawn);
         worldgen::WorldMap map;
@@ -107,7 +108,7 @@ int main() {
             return found == world.npcs().end() ? nullptr : &*found;
         };
         const auto quest = std::find_if(world.all().begin(), world.all().end(), [](const Npc &npc) { return npc.quest == 7; });
-        check(ordinary() && ordinary()->fighter.backing.x == 1 && ordinary()->fighter.backing.y == 2 &&
+        check(ordinary() && ordinary()->boss == 0xff && ordinary()->fighter.backing.x == 1 && ordinary()->fighter.backing.y == 2 &&
               ordinary()->fighter.backing.index == 0 && quest != world.all().end() &&
               defaultBacking(quest->fighter.backing) && quest->spawn == Npc::NO_SPAWN,
               "ordinary descriptors publish their cached coordinates/ordinal while engine quests keep independent origin");

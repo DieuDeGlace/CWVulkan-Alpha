@@ -109,6 +109,13 @@ Differences from the Steam engine that shape the plan:
   alias/zero keys, signed amounts, frame publication and remote health retention
   have regressions. Synchronous fatal/regional/grant integration and full caller,
   mode, raw-cache and native gameplay acceptance remain open.
+- [x] Bounded synchronous regional progress: cached/truncated spatial admission,
+  current contributor lookup, raw marker bytes and supported selector/count
+  rules now publish an immediate snapshot before descriptor-tail disposal.
+  Fatal disposal retains live actors and descriptor-vector capacity; later
+  corpse outputs cannot repeat admission. Actual server kill, both-peer snapshot,
+  save and reward-adapter checks complement supplied-state regressions. Full
+  recipient/grant/XP/backing ordering and native acceptance remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

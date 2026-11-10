@@ -15,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -76,8 +77,24 @@ float locationBump(const worldgen::World &world, const worldgen::Location &L, do
 
 namespace creatures {
 struct Npc;
+struct Combatant;
 class Npcs;
 } // namespace creatures
+
+// Engine metadata beside the immediate native-format regional snapshot. The
+// contributor and victim role support the retained later reward adapter.
+struct MissionProgress {
+    int32_t x = 0, y = 0;
+    MissionArea mission;
+    uint64_t contributor = 0;
+    uint8_t victimRole = 0;
+    bool completed() const { return mission.state == 2; }
+    std::array<uint8_t, 56> record() const { return mission.record(x, y); }
+};
+
+// Re-read cached coordinates at row/continuation boundaries. The supplied cell
+// service owns descriptor disposal; this does not certify its native lifetime.
+void visitMissionCells(const creatures::Combatant &target, const std::function<void(int32_t, int32_t)> &visit);
 
 class Missions {
   public:
@@ -115,6 +132,15 @@ class Missions {
     // flags, `boss` whether it came from a boss spawn. Returns the cell when the death
     // completed its mission (the caller removes the cell's extra spawns and gives rewards).
     std::optional<Key> kill(std::pair<int32_t, int32_t> homeZone, uint16_t flags, bool boss);
+    // Held fatal regional stage: supplied mode, allocated-region availability
+    // and current actor lookup. No record/cell is created to satisfy admission.
+    std::optional<MissionProgress> fatal(const creatures::Combatant &target, uint8_t marker, uint8_t mode,
+        const std::function<bool(int32_t, int32_t)> &regionAvailable,
+        const std::function<creatures::Combatant *(uint64_t)> &lookup);
+    // Engine publication adapter: ordered immediate snapshots before final
+    // changed/requested state; explicit requests retain their complete response.
+    void appendUpdates(std::span<const MissionProgress> immediate, const std::set<Key> &changedCells,
+        const std::set<Key> &requestedCells, std::vector<std::vector<uint8_t>> &output) const;
 
     // Behaviour §9.2 step 6: a creature of a defeat-the-place mission (kind 5) wakes at the
     // mission's level and tier with gear made again from the mission's seed and its id.

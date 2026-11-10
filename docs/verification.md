@@ -306,6 +306,38 @@ five captures were reviewed. The injured character retained exactly binary32 50,
 and reload retained the character, seed, nine map tiles, preview and 170 edits.
 These checks do not establish full native fatal, menu or visual acceptance.
 
+RegionProgressTests checks truncation before regional coordinate bounds, allocated
+block/record admission, signed contributor traversal, repeated lookup, key-zero
+and dead contributors, marker/flag independence and all supported/default
+selectors. Counting examples retain negative goals, signed wrap, incomplete
+state-one events and immutable earlier snapshots. Cell traversal retains X/Y
+order, both world edges and fresh coordinate reads after a supplied callback.
+Frame views drain once and retain capacity. Publication keeps intermediate
+snapshots and later changes, including a return to an earlier value; explicit
+cell requests keep their final response.
+
+An actual world-hit fixture observes fatal presentation/loot, linked health and
+regional state before return, then checks the corpse's no-replay marker. Actual
+descriptor activation retains the raw marker byte. A separate disposal fixture
+retains prefix and tail actors with no draws. Rebuilding an already disposed tail
+retains those actors; rebuilding existing descriptors matches their IDs even
+after taming, while retaining independent actors and the prefix. These are independent engine storage/lifecycle checks,
+not a claim about arbitrary native descriptor writers or allocator reentry.
+
+NetTests carries two actual regional progress snapshots through section thirteen
+and the frame gate, retaining order and all received opaque bytes for one drain.
+Its real-server fixture restores a synthetic mission/monster, activates the
+descriptor, kills its mapped actor through the real client hit route, observes
+the same completed snapshot at both peers and reads the saved completed state.
+The retained reward adapter emits Platinum Coins followed by gear once. That
+adapter's broader recipient and random timing still require fatal integration.
+All 39 CTests passed after the descriptor-ownership correction. Fresh actual
+client reward, injured-health, multiplayer and both save/reload phases passed;
+all five captures were reviewed. Rewards retained level 2, -33 XP and 7 Platinum
+Coins; the injured character retained exactly binary32 50. Reload preserved the
+character, seed 123 despite conflicting inputs, nine map tiles, preview and 170
+block edits. The known bright-ground and native gameplay/UI/visual gates remain.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

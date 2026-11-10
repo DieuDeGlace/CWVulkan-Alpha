@@ -15,6 +15,7 @@
 #include "creatures/Pose.h"
 #include "worldgen/Random.h"
 #include "worldgen/WorldMap.h"
+#include "Missions.h"
 #include <functional>
 #include <deque>
 #include <map>
@@ -46,10 +47,11 @@ struct Npc {
     float deadMs = 0;          // time since death; the body goes after 1000 ms (server §6.2)
     bool fatalPresented = false; // engine bookkeeping: the world applier already emitted the death sound
     bool fatalLootApplied = false; // the synchronous world loot service already ran
+    bool fatalRegionApplied = false; // regional service already admitted or rejected this invocation
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
-    bool boss = false; // came from a boss spawn (spawn +0x10e8; missions §5.1)
+    uint8_t boss = 0; // raw descriptor +0x10e8 byte; the regional gate tests nonzero
     // §9.2 step 6: set by onActivate for a mission creature, whose gear is made again at its
     // mission level (activation mode) instead of taken from its spawn.
     bool regear = false;
@@ -119,13 +121,15 @@ struct NpcFrame {
         int64_t position[3] = {0, 0, 0};
         std::vector<ItemRecord> inventory;
         std::pair<int32_t, int32_t> zone{0, 0}; // its home zone
-        bool boss = false;
+        uint8_t boss = 0;
         uint64_t credited = 0; // missions §5.1: the first player in its threat map, or 0
         uint32_t quest = 0;    // a quest creature's quest and role (docs/design/quests.md)
         uint8_t questRole = 0;
         bool lootApplied = false; // caller must not replay an already completed world loot call
+        bool regionApplied = false; // caller must not replay regional admission/progress
     };
     std::vector<Death> deaths;
+    std::vector<MissionProgress> missions; // immediate snapshots with engine reward metadata
     // Block edits §9: the blows of creatures wider than 4 blocks, which dig craters where the
     // world is not online (centre in blocks).
     struct Impact {
@@ -165,6 +169,7 @@ struct NpcFrame {
         size_t deaths = 0, craters = 0, explosions = 0, tamed = 0, petItems = 0, seen = 0;
         size_t relationships = 0;
         size_t staticStates = 0;
+        size_t missions = 0;
         int32_t experience = 0;
     };
     struct Added {
@@ -184,6 +189,7 @@ struct NpcFrame {
         std::span<const std::pair<HitRecord, glm::dvec3>> seen;
         std::span<const RelationshipRecord> relationships;
         std::span<const std::array<uint8_t, 88>> staticStates;
+        std::span<const MissionProgress> missions;
     };
     Added addedSince(Cursor &cursor) const;
     void reset(); // clear values while retaining engine buffer capacity
@@ -224,6 +230,12 @@ class Npcs {
     // World-owned service, called synchronously after first fatal presentation.
     // It may update drop storage, but must not structurally mutate the actor table.
     std::function<void(const Combatant &, const Body &, std::span<const ItemRecord>)> onFatalLoot;
+    // After linked-health stores: append progress before completion-cell work.
+    // The supplied service must retain actor storage throughout this call.
+    std::function<void(Combatant &, uint8_t, const std::function<Combatant *(uint64_t)> &, NpcFrame &)> onFatalRegion;
+    // Existing engine descriptor-tail adapter; retains live actors. Native
+    // virtual destruction and descriptor lifetime remain separate contracts.
+    void trimMissionSpawns(const Combatant &target, const worldgen::WorldMap &map);
     // Server §5.3: a spawn's creature id, (zy * 65536 + zx) * 256 + index.
     static uint64_t spawnId(int32_t zx, int32_t zy, size_t index) {
         return (((uint64_t)(uint32_t)zy << 16) + (uint32_t)zx) * 256 + index;

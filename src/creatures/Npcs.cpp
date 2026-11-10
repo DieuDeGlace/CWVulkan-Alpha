@@ -467,11 +467,35 @@ bool Npcs::guarded(uint32_t quest, glm::dvec3 at, double radius) const {
 void Npcs::setExtraSpawns(int32_t zx, int32_t zy, size_t base, std::vector<worldgen::Spawn> extra,
                           bool removeCreatures) {
     if (removeCreatures)
-        std::erase_if(list, [&](const Npc &n) { return n.zone == std::make_pair(zx, zy) && n.spawn >= base; });
+        if (const auto previous = extras.find({zx, zy}); previous != extras.end()) {
+            const uint64_t first = spawnId(zx, zy, previous->second.first);
+            const uint64_t count = previous->second.second.size();
+            // Current engine descriptor IDs form this wrapped range. Match
+            // those keys, including a tamed actor, rather than its current role
+            // or descriptor association. An already empty tail removes nobody.
+            std::erase_if(list, [&](const Npc &n) { return uint64_t(n.fighter.id - first) < count; });
+        }
     for (auto it = spawns.lower_bound({zx, zy, base}); it != spawns.end() && std::get<0>(it->first) == zx &&
                                                         std::get<1>(it->first) == zy;)
         it = spawns.erase(it);
     extras[{zx, zy}] = {base, std::move(extra)};
+}
+
+void Npcs::trimMissionSpawns(const Combatant &target, const worldgen::WorldMap &map) {
+    visitMissionCells(target, [&](int32_t x, int32_t y) {
+        const auto *zone = map.zone(x, y);
+        if (!zone)
+            return;
+        const auto extra = extras.find({x, y});
+        const size_t base = extra == extras.end() ? zone->spawns.size() : extra->second.first;
+        if (base != zone->spawns.size())
+            return; // mismatched engine prefix storage is outside the valid tail contract
+        for (auto state = spawns.lower_bound({x, y, base}); state != spawns.end() &&
+                std::get<0>(state->first) == x && std::get<1>(state->first) == y;)
+            state = spawns.erase(state);
+        if (extra != extras.end())
+            extra->second.second.clear(); // destroy owned tail values, retain vector capacity and prefix boundary
+    });
 }
 
 uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
@@ -1372,8 +1396,8 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
                 propagateThreat(*by, actor, frame);
             }
         }
-    // First presentation, object state, loot and linked health are synchronous.
-    // Regional progress, relationship cleanup and credit remain separate work.
+    // Regional snapshots follow linked health. The remaining relationship and
+    // recipient-credit continuation is separate from this bounded stage.
     if (target->health <= 0) {
         target->health = 0;
         glm::vec3 position;
@@ -1394,9 +1418,15 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
         }
         // Zero is a sentinel at this specific fatal link boundary. This is a
         // direct store, without recursively generating another fatal sequence.
-        if (target->linkedId)
+        if (target->linkedId && lookupActor(target->linkedId, players).combat())
             if (Combatant *linked = lookupActor(target->linkedId, players).combat())
                 linked->health = 0;
+        if (onFatalRegion) {
+            onFatalRegion(*target, recipient.npc ? recipient.npc->boss : 0,
+                [&](uint64_t key) { return lookupActor(key, players).combat(); }, frame);
+            if (recipient.npc)
+                recipient.npc->fatalRegionApplied = true;
+        }
     }
 }
 
@@ -1681,6 +1711,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             continue;
         npc.fatalPresented = false;
         npc.fatalLootApplied = false;
+        npc.fatalRegionApplied = false;
         npc.tameMs = std::max(0.f, npc.tameMs - dtMs); // pets §7.3: the taming progress lasts 5 s
         // §13.1: decide every 32 ms of accumulated time while not stunned.
         npc.thinkMs += dtMs;
@@ -1871,6 +1902,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory, n.zone, n.boss};
             death.quest = n.quest, death.questRole = n.questRole;
             death.lootApplied = n.fatalLootApplied;
+            death.regionApplied = n.fatalRegionApplied;
             if (n.quest)
                 questGone.insert(n.fighter.id); // a quest creature is not made again
             std::copy(n.body.position, n.body.position + 3, death.position);
@@ -1914,7 +1946,8 @@ NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {
                 take(shots, cursor.shots), take(bursts, cursor.bursts), take(deaths, cursor.deaths),
                 take(craters, cursor.craters), take(explosions, cursor.explosions), take(tamed, cursor.tamed),
                 take(petItems, cursor.petItems), std::bit_cast<int32_t>(uint32_t(experience) - uint32_t(cursor.experience)),
-                take(seen, cursor.seen), take(relationships, cursor.relationships), take(staticStates, cursor.staticStates)};
+                take(seen, cursor.seen), take(relationships, cursor.relationships), take(staticStates, cursor.staticStates),
+                take(missions, cursor.missions)};
     cursor.experience = experience;
     return added;
 }
@@ -1926,6 +1959,7 @@ void NpcFrame::reset() {
     buffs.clear();
     relationships.clear();
     staticStates.clear();
+    missions.clear();
     kills.clear();
     shots.clear();
     bursts.clear();

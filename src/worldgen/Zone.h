@@ -148,7 +148,7 @@ struct Spawn {
     uint8_t characterClass = 0; // +0x30
     float yaw = 0;              // +0x54, degrees
     uint16_t appearanceFlags = 0; // +0x7a: 0x1000 takes the map cell's level, 0x200 boss, 0x40 keeps its gear
-    bool bossLoot = false;      // +0x10e8
+    uint8_t bossLoot = 0;        // raw +0x10e8 byte, retained through activation
     ItemRecord equipment[13];   // +0x120
     std::vector<ItemRecord> inventory; // +0xf6c
     int32_t field42 = 0;        // +0x5c, copied to record field 42 (4: visits `field41`, 3: …; open)

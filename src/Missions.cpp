@@ -425,7 +425,7 @@ std::optional<Missions::Key> Missions::kill(std::pair<int32_t, int32_t> homeZone
         m.state = 2;
         break;
     case 7: case 8: case 9: case 10: case 11: case 12:
-        m.count++;
+        m.count = std::bit_cast<int32_t>(uint32_t(m.count) + 1u);
         m.state = m.count >= m.required ? 2 : 1;
         break;
     default:
@@ -433,6 +433,77 @@ std::optional<Missions::Key> Missions::kill(std::pair<int32_t, int32_t> homeZone
     }
     changed.insert(key);
     return m.state == 2 ? std::optional<Key>(key) : std::nullopt;
+}
+
+std::optional<MissionProgress> Missions::fatal(const creatures::Combatant &target, uint8_t marker, uint8_t mode,
+    const std::function<bool(int32_t, int32_t)> &regionAvailable,
+    const std::function<creatures::Combatant *(uint64_t)> &lookup) {
+    if (mode != 0)
+        return std::nullopt;
+    const int32_t x = target.backing.x / 8, y = target.backing.y / 8;
+    if (x < 0 || y < 0 || x >= 8192 || y >= 8192 || !regionAvailable(x / 8, y / 8))
+        return std::nullopt;
+    const auto found = cells.find({x, y});
+    if (found == cells.end())
+        return std::nullopt; // absent engine storage is not an allocated native record
+    auto &mission = found->second.mission;
+    if (mission.state == 2 || (!(target.appearanceFlags & 0x2000) && !(mission.kind == 5 && marker != 0)))
+        return std::nullopt;
+    for (const auto &[key, value] : target.relations.threats) {
+        if (!(value > 0) || !lookup(key))
+            continue;
+        const auto *contributor = lookup(key);
+        if (!contributor || contributor->controller != 0)
+            continue;
+        switch (mission.kind) {
+        case 1: case 2: case 3: case 4: case 5: case 13:
+            mission.state = 2;
+            break;
+        case 7: case 8: case 9: case 10: case 11: case 12:
+            mission.count = std::bit_cast<int32_t>(uint32_t(mission.count) + 1u);
+            mission.state = 1;
+            if (mission.count >= mission.required)
+                mission.state = 2;
+            break;
+        default:
+            return std::nullopt;
+        }
+        changed.insert({x, y});
+        return MissionProgress{x, y, mission, key, target.controller};
+    }
+    return std::nullopt;
+}
+
+void visitMissionCells(const creatures::Combatant &target, const std::function<void(int32_t, int32_t)> &visit) {
+    const auto upper = [](int32_t coordinate) {
+        return std::bit_cast<int32_t>(uint32_t((coordinate / 8) * 8) + 8u);
+    };
+    for (int32_t x = (target.backing.x / 8) * 8; x < upper(target.backing.x); x++)
+        for (int32_t y = (target.backing.y / 8) * 8; y < upper(target.backing.y); y++)
+            if (x >= 0 && x < 65536 && y >= 0 && y < 65536)
+                visit(x, y);
+}
+
+void Missions::appendUpdates(std::span<const MissionProgress> immediate, const std::set<Key> &changedCells,
+    const std::set<Key> &requestedCells, std::vector<std::vector<uint8_t>> &output) const {
+    std::map<Key, const MissionProgress *> latest;
+    for (const auto &event : immediate) {
+        const auto record = event.record();
+        output.emplace_back(record.begin(), record.end());
+        latest[{event.x, event.y}] = &event;
+    }
+    auto finalCells = changedCells;
+    finalCells.insert(requestedCells.begin(), requestedCells.end());
+    for (const auto &[x, y] : finalCells) {
+        const auto *entry = cell(x, y);
+        const auto record = (entry ? entry->mission : MissionArea{}).record(x, y);
+        if (!requestedCells.contains({x, y})) {
+            const auto previous = latest.find({x, y});
+            if (previous != latest.end() && previous->second->record() == record)
+                continue;
+        }
+        output.emplace_back(record.begin(), record.end());
+    }
 }
 
 void Missions::wake(creatures::Npc &n, creatures::Npcs &npcs) const {

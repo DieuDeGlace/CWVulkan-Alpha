@@ -95,6 +95,15 @@ Server::Server(ServerOptions o) : options(std::move(o)) {
         dropLoot(lootVictim(fighter, body, inventory), items, (int32_t)clockDay,
                  [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); }, worldRandom);
     };
+    npcs.onFatalRegion = [this](creatures::Combatant &fighter, uint8_t marker,
+                               const std::function<creatures::Combatant *(uint64_t)> &lookup, creatures::NpcFrame &frame) {
+        if (const auto progress = missions.fatal(fighter, marker, 0,
+                [this](int32_t x, int32_t y) { return world && world->region(x, y); }, lookup)) {
+            frame.missions.push_back(*progress);
+            if (progress->completed())
+                npcs.trimMissionSpawns(fighter, zones);
+        }
+    };
 }
 
 Server::~Server() { stop(); }
@@ -913,26 +922,35 @@ void Server::stepWorld(float dtMs) {
                         tell(who, "Quest done! Return to " + quests::giverName(*book.find(death.quest)) + ".");
                 }
 
-    // Missions §5: a target's death completes its mission; the cell's extra spawns go and a
-    // hostile target's players get their rewards as gifts (section 9).
-    for (const creatures::NpcFrame::Death &death : frame.deaths)
+    // Gift generation retains the later engine adapter; hit-driven regional
+    // admission, snapshots and extra-spawn disposal have already run.
+    const auto rewardMission = [&](const MissionProgress &progress) {
+        if (!progress.completed() || progress.victimRole != 1 || !connections.count(progress.contributor))
+            return;
+        const auto who = connections.at(progress.contributor);
+        for (const auto &item : missionRewards(progress.mission, who->creature.fighter().characterClass, worldRandom)) {
+            const auto record = creatures::toRecord(item);
+            std::array<uint8_t, 288> gift{};
+            std::memcpy(gift.data(), &progress.contributor, 8);
+            std::memcpy(gift.data() + 8, record.data(), 280);
+            gifts.push_back(gift);
+        }
+    };
+    for (const auto &progress : frame.missions)
+        rewardMission(progress);
+    // Separate legacy adapter for non-hit corpse deaths.
+    for (const creatures::NpcFrame::Death &death : frame.deaths) {
+        if (death.regionApplied)
+            continue;
         if (const auto done = missions.kill(death.zone, death.appearanceFlags, death.boss)) {
             for (int32_t zx = 8 * done->first; zx < 8 * done->first + 8; zx++)
                 for (int32_t zy = 8 * done->second; zy < 8 * done->second + 8; zy++)
                     if (const worldgen::Zone *zone = zones.zone(zx, zy))
                         npcs.setExtraSpawns(zx, zy, zone->spawns.size(), {}, false);
-            if (death.fighter.controller != 1 || !connections.count(death.credited))
-                continue;
-            const auto who = connections.at(death.credited);
-            const MissionArea &m = missions.cell(done->first, done->second)->mission;
-            for (const worldgen::ItemRecord &item : missionRewards(m, who->creature.fighter().characterClass, worldRandom)) {
-                const creatures::ItemRecord record = creatures::toRecord(item);
-                std::array<uint8_t, 288> gift{};
-                std::memcpy(gift.data(), &death.credited, 8);
-                std::memcpy(gift.data() + 8, record.data(), 280);
-                gifts.push_back(gift);
-            }
+            rewardMission({done->first, done->second, missions.cell(done->first, done->second)->mission,
+                           death.credited, death.fighter.controller});
         }
+    }
     const std::set<std::pair<int32_t, int32_t>> missionCells = missions.takeChanged();
     {
         std::set<std::pair<int32_t, int32_t>> saved = missionCells;
@@ -1086,17 +1104,13 @@ void Server::stepWorld(float dtMs) {
         }
         c->wantedZones.clear();
         // Missions §6.2: changed cells to everyone; a requested region's 64 to whoever asked.
-        std::set<std::pair<int32_t, int32_t>> cells = missionCells;
+        std::set<std::pair<int32_t, int32_t>> requestedCells;
         for (const auto &[rx, ry] : c->wantedRegions)
             if (world->region(rx, ry))
                 for (int32_t k = 0; k < 64; k++)
-                    cells.insert({8 * rx + k / 8, 8 * ry + k % 8});
+                    requestedCells.insert({8 * rx + k / 8, 8 * ry + k % 8});
         c->wantedRegions.clear();
-        for (const auto &[cx, cy] : cells) {
-            const Missions::Cell *cell = missions.cell(cx, cy);
-            const auto record = (cell ? cell->mission : MissionArea{}).record(cx, cy);
-            out.sections[12].emplace_back(record.begin(), record.end());
-        }
+        missions.appendUpdates(frame.missions, missionCells, requestedCells, out.sections[12]);
         for (const auto &[zx, zy] : listed) {
             WorldUpdate::KeyedList list;
             list.key = (uint64_t)(uint32_t)zx | (uint64_t)(uint32_t)zy << 32;

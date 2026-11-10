@@ -599,3 +599,33 @@ presentation/SDK notifications and core-refresh policy remain engine adapters.
 Mode-zero linked effects have supplied-state coverage; the synchronous fatal
 producer and its raw item-cache, regional, recipient/grant and final descriptor
 integration remain open. No new native source or runtime observation was used.
+
+The complete held fatal-region/credit-order contract was reread before moving
+regional state into fatal application. Cached coordinates use signed truncation
+before the regional bounds and allocated-block checks. Contributor selection
+uses signed key order, ordered-positive values and repeated role-zero lookup;
+zero keys and dead contributors remain eligible. Supported selections retain
+wrapped counts and immediate snapshots, while the default selection emits none.
+The descriptor marker retains its raw byte through activation. Engine metadata
+beside the 56-byte snapshot supports the still separate later reward adapter;
+fresh snapshot padding remains deterministic engine initialization.
+
+The additional original-only descriptor-tail lifecycle contract was held and
+read completely before refining disposal. It identifies the ordinary concrete
+Spawn descriptor, its retained-prefix boundary and descriptor-owned destruction.
+That fatal route does not delete its separately instantiated creature or draw
+gameplay randomness. The engine clears owned extra descriptor values, retains
+the prefix boundary/vector capacity and keeps live actors. Explicit rebuilding
+removes engine actors matched by its still-retained descriptor IDs, without a
+role or association filter; an already empty tail removes nobody. Native
+pointer-layout bytes, complete actor destruction, uninspected
+writers, behavior-child ownership and wider lifetime/unload remain bounded.
+
+Client and dedicated-world bindings append snapshots before completion disposal,
+and corpse outputs mark already completed regional admission to prevent replay.
+The server's engine publication policy preserves immediate order before final
+changed/requested values, comparing only the last snapshot of each cell. This
+does not certify an original-server counterpart. Presentation, completion reward
+eligibility/generation, corpse XP, recipient cleanup/credit and final backing
+stores retain their explicit integration limits. Source authors received no
+engine, test or runtime material.

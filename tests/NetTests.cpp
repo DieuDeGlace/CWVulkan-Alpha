@@ -3,6 +3,7 @@
 // each other leave. Uses only the loopback interface.
 #include "Bytes.h"
 #include "ZlibStream.h"
+#include "Saves.h"
 #include "net/Client.h"
 #include "net/Server.h"
 #include <chrono>
@@ -71,6 +72,24 @@ static void checkCombatTransport() {
     const std::array<creatures::KillRecord, 5> expectedCredits{{
         {1, 19, 999, 17}, {0, 1, INT32_MIN, -7}, {19, 0, -1, 0},
         {1, 1, INT32_MAX, 50}, {1, 19, 999, -17}}};
+    Missions regional;
+    auto &mission = regional.edit(0, 0).mission;
+    mission.kind = 7; mission.required = 3;
+    creatures::Combatant regionTarget, contributor;
+    regionTarget.backing = {0, 0, 0};
+    regionTarget.appearanceFlags = 0x2000;
+    regionTarget.relations.threats[0] = 1;
+    std::vector<MissionProgress> progress;
+    for (int i = 0; i < 2; i++)
+        if (const auto event = regional.fatal(regionTarget, 0, 0,
+                [](int32_t, int32_t) { return true; },
+                [&](uint64_t key) { return key == 0 ? &contributor : nullptr; }))
+            progress.push_back(*event);
+    std::vector<std::vector<uint8_t>> expectedMissionPayloads;
+    regional.appendUpdates(progress, regional.takeChanged(), {}, expectedMissionPayloads);
+    check(expectedMissionPayloads.size() == 2, "regional transport fixture retains both immediate counts");
+    if (expectedMissionPayloads.size() == 2)
+        expectedMissionPayloads[0][38] = 0xa1, expectedMissionPayloads[1][39] = 0xb2;
     std::vector<creatures::ItemRecord> expectedGifts;
     for (int16_t quantity : {9, 0, -7}) {
         creatures::ItemRecord platinum{};
@@ -149,6 +168,7 @@ static void checkCombatTransport() {
             update.sections[10].emplace_back(bytes.begin(), bytes.end());
         }
         update.sections[5] = expectedStaticPayloads;
+        update.sections[12] = expectedMissionPayloads;
         for (const auto &item : expectedGifts) {
             ByteWriter grant;
             grant.u64(1);
@@ -239,6 +259,7 @@ static void checkCombatTransport() {
         check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
               client.takeStaticStates().empty() &&
               client.takeGifts().empty() && client.takeCredits().empty() &&
+              client.takeMissionRecords().empty() &&
               client.others().empty() && !client.takeClock(),
               "incoming queue mutation and creature insertion wait until the current frame completes");
         creatures::Combatant actor;
@@ -250,6 +271,7 @@ static void checkCombatTransport() {
         std::vector<creatures::BuffEvent> events;
         std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<std::vector<uint8_t>> receivedStatics;
+        std::vector<std::array<uint8_t, 56>> receivedMissions;
         std::vector<creatures::ItemRecord> receivedGifts;
         std::vector<creatures::KillRecord> receivedCredits;
         std::vector<Hit> hits;
@@ -257,12 +279,14 @@ static void checkCombatTransport() {
             for (const auto &event : client.takeBuffs()) events.push_back(event);
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
+            for (const auto &event : client.takeMissionRecords()) receivedMissions.push_back(event);
             for (const auto &item : client.takeGifts()) receivedGifts.push_back(item);
             for (const auto &credit : client.takeCredits()) receivedCredits.push_back(credit);
             for (const auto &hit : client.takeHits()) hits.push_back(hit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
                    receivedStatics.size() >= expectedStaticPayloads.size() && receivedGifts.size() >= expectedGifts.size() &&
                    receivedCredits.size() >= expectedCredits.size() &&
+                   receivedMissions.size() >= expectedMissionPayloads.size() &&
                    !hits.empty() && received && receivedHit;
         }), "actual client exchanges packet-8 and section-12 buff records");
         check(coherentHit && packetOrder,
@@ -277,6 +301,11 @@ static void checkCombatTransport() {
               "section-eleven relationships retain order, zero/self IDs, float bits and all opaque bytes before one frame drain");
         check(receivedStatics == expectedStaticPayloads && client.takeStaticStates().empty(),
               "ordered section-six snapshots preserve all 88 bytes through frame-protected publication and one drain");
+        bool sameMissions = receivedMissions.size() == expectedMissionPayloads.size();
+        for (size_t i = 0; sameMissions && i < receivedMissions.size(); i++)
+            sameMissions = std::equal(receivedMissions[i].begin(), receivedMissions[i].end(), expectedMissionPayloads[i].begin());
+        check(sameMissions && client.takeMissionRecords().empty(),
+              "section-thirteen retains intermediate regional snapshots, opaque received bytes and order through one frame drain");
         check(receivedGifts == expectedGifts && client.takeGifts().empty(),
               "positive, zero and negative Platinum Coins grants retain item bytes without becoming or consuming kill experience");
         bool sameCredits = receivedCredits.size() == expectedCredits.size();
@@ -469,6 +498,20 @@ int main() {
     };
     std::filesystem::remove_all(options.folder);
     std::filesystem::create_directories(options.folder);
+    {
+        std::filesystem::create_directories(options.folder / "Save");
+        SaveDb db;
+        MissionArea mission;
+        mission.kind = 1;
+        mission.seed = 0x31415926;
+        mission.level = 5;
+        mission.targetType = 19;
+        mission.targetZoneX = mission.targetZoneY = 32800;
+        MonsterArea monster{19, 1, 0, 32800, 32800};
+        check(db.open(options.folder / "Save" / "world_server_2412123.db", SaveDb::Mode::ReadWrite) &&
+              db.put("mission4100_4100", mission.save()) && db.put("monster4100_4100", monster.save()),
+              "real server fixture stores a synthetic regional target without owner saves");
+    }
     options.bindAddress = "127.0.0.1";
     Server server(options);
     std::string error;
@@ -675,7 +718,50 @@ int main() {
         int32_t missionCount = 0;
         for (const auto &r : cells)
             missionCount += r[24] != 0;
-        check(missionCount > 0, "the daily pass gave Alice's region missions");
+        check(missionCount > 0, "the region response contains its restored or generated missions");
+    }
+    {
+        uint64_t target = 0;
+        check(waitFor([&] {
+            for (const auto &[id, record] : a.others()) {
+                const auto actor = record.fighter();
+                if (actor.controller == 1 && actor.health > 0 && (actor.appearanceFlags & 0x2000) &&
+                    actor.backing.x == 32800 && actor.backing.y == 32800)
+                    target = id;
+            }
+            return target != 0;
+        }, 10000), "the real server activates the stored regional descriptor with its cached origin");
+        if (target) {
+            a.takeMissionRecords(); b.takeMissionRecords(); a.takeGifts();
+            a.sendHit(Hit::make(a.id(), target, 1000000, 0, {}, 0));
+            std::optional<std::array<uint8_t, 56>> first, second;
+            const auto collect = [&](Client &client, auto &result) {
+                for (const auto &record : client.takeMissionRecords()) {
+                    int32_t x = 0, y = 0;
+                    const auto mission = MissionArea::fromRecord(record.data(), x, y);
+                    if (x == 4100 && y == 4100 && mission.seed == 0x31415926 && mission.state == 2)
+                        result = record;
+                }
+            };
+            check(waitFor([&] {
+                collect(a, first); collect(b, second);
+                return first.has_value() && second.has_value();
+            }) && first == second, "actual fatal application publishes the same completed regional snapshot to both peers");
+            std::vector<creatures::ItemRecord> rewards;
+            check(waitFor([&] {
+                for (const auto &item : a.takeGifts()) rewards.push_back(item);
+                return rewards.size() >= 2;
+            }) && rewards.size() == 2 && rewards[0][0] == 13 && creatures::itemLevel(rewards[0]) == 9 &&
+                  rewards[1][0] >= 3 && rewards[1][0] <= 9,
+                  "the retained reward adapter emits Platinum Coins then gear once without replaying corpse progress");
+            SaveDb saved;
+            check(saved.open(options.folder / "Save" / "world_server_2412123.db", SaveDb::Mode::ReadOnly),
+                  "completed synthetic server state opens read-only");
+            const auto value = saved.get("mission4100_4100");
+            const auto mission = value ? MissionArea::parse(*value) : std::nullopt;
+            check(mission && mission->state == 2 && mission->seed == 0x31415926,
+                  "the actual server saves its fatal regional mutation in the synthetic world");
+        }
     }
     a.disconnect();
     check(waitFor([&] { return !b.others().count(1); }), "b sees Alice leave");

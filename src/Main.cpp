@@ -796,6 +796,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             dropLoot(lootVictim(fighter, body, items), worldItems, scene.day,
                      [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, worldRandom);
     };
+    npcs.onFatalRegion = [&](creatures::Combatant &fighter, uint8_t marker,
+                            const std::function<creatures::Combatant *(uint64_t)> &lookup, creatures::NpcFrame &frame) {
+        if (client.connected())
+            return;
+        if (const auto progress = missions.fatal(fighter, marker, 0,
+                [&](int32_t x, int32_t y) { return view.terrainWorld().region(x, y) != nullptr; }, lookup)) {
+            frame.missions.push_back(*progress);
+            if (progress->completed())
+                npcs.trimMissionSpawns(fighter, view.held());
+        }
+    };
 
     // The interface (alpha-ui-screens.md): the start screen and the system menu.
     // The dictionary the interface reads names from (dict_en.xml, data4.db).
@@ -1935,27 +1946,36 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                         audio.play(key);
                                 }
                             }
-                        // Missions §5: a target's death completes its mission; the cell's extra spawns go
-                        // and a hostile target pays the player who fought it.
-                        for (const creatures::NpcFrame::Death &death : happened.deaths)
+                        // Presentation and rewards retain this later engine adapter;
+                        // fatal regional state/snapshots already changed synchronously.
+                        const auto showMission = [&](const MissionProgress &progress) {
+                            if (!progress.completed())
+                                return;
+                            mods.missionComplete(progress.x, progress.y);
+                            if (const auto *location = cellLocation(view.terrainWorld(), progress.x, progress.y)) {
+                                interface.questComplete(ui::objectiveText(progress.mission, *location, dictionary));
+                                if (const char *key = creatures::soundKey(30))
+                                    audio.play(key);
+                            }
+                            if (progress.victimRole == 1 && progress.contributor == c.id)
+                                for (const auto &item : missionRewards(progress.mission, c.characterClass, worldRandom))
+                                    receive(creatures::toRecord(item));
+                        };
+                        for (const auto &progress : happened.missions)
+                            showMission(progress);
+                        // Non-hit corpse deaths retain their separate legacy admission.
+                        for (const creatures::NpcFrame::Death &death : happened.deaths) {
+                            if (death.regionApplied)
+                                continue;
                             if (const auto done = missions.kill(death.zone, death.appearanceFlags, death.boss)) {
-                                mods.missionComplete(done->first, done->second);
-                                // Open points 1 §2: the QUEST COMPLETE banner with the mission's objective, sound 30.
-                                if (const worldgen::Location *L = cellLocation(view.terrainWorld(), done->first, done->second)) {
-                                    interface.questComplete(ui::objectiveText(missions.cell(done->first, done->second)->mission, *L, dictionary));
-                                    if (const char *key = creatures::soundKey(30))
-                                        audio.play(key);
-                                }
                                 for (int32_t zx = 8 * done->first; zx < 8 * done->first + 8; zx++)
                                     for (int32_t zy = 8 * done->second; zy < 8 * done->second + 8; zy++)
                                         if (const worldgen::Zone *zone = view.held().zone(zx, zy))
                                             npcs.setExtraSpawns(zx, zy, zone->spawns.size(), {}, false);
-                                if (death.fighter.controller == 1 && death.credited == c.id)
-                                    for (const worldgen::ItemRecord &item :
-                                         missionRewards(missions.cell(done->first, done->second)->mission, c.characterClass, worldRandom)) {
-                                        receive(creatures::toRecord(item));
-                                    }
+                                showMission({done->first, done->second, missions.cell(done->first, done->second)->mission,
+                                             death.credited, death.fighter.controller});
                             }
+                        }
                         // Travel §5.5: a pet standing on wet lake-bed ground (type 3) refills its
                         // owner's riding energy by 0.05 a second.
                         if (const creatures::Npc *pet = npcs.petOf(c); pet && !(pet->body.contact & creatures::IN_WATER)) {
