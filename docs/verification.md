@@ -189,6 +189,15 @@ edits. These checks establish bounded engine behavior. Raw caller-position
 producers, spatial-record lifetime, broader native collision/gameplay and the
 known bright-ground rendering issue remain open.
 
+Standalone held-item regressions cover full raw import/output, negative and
+oversized component counts, inactive entries, selected-field assignment,
+self-copy and the five destination gaps during actual core refresh. A held-only
+edit changes existing wire field 43; later health-only decoding retains that
+item. The production Player diagnostic also carries a complete held record
+through real input, physics and outgoing serialization. All 45 CTests passed,
+along with a fresh dedicated-server connection and reviewed client capture.
+Complete native consumable behavior and target selection remain separate gates.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

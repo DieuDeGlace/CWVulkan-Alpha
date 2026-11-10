@@ -15,6 +15,9 @@ void RemoteFighter::refresh(creatures::Combatant snapshot, int32_t elapsedMs) {
     const auto itemSnapshot = fighter.linkedItem.retained;
     constexpr std::array<size_t, 5> gaps{2, 3, 15, 18, 19};
     std::array<std::array<uint8_t, gaps.size()>, creatures::SLOT_COUNT> padding;
+    std::array<uint8_t, gaps.size()> heldPadding;
+    for (size_t gap = 0; gap < gaps.size(); gap++)
+        heldPadding[gap] = fighter.heldSource[gaps[gap]];
     for (size_t slot = 0; slot < padding.size(); slot++)
         for (size_t gap = 0; gap < gaps.size(); gap++)
             padding[slot][gap] = fighter.equipmentSource(slot)[gaps[gap]];
@@ -23,6 +26,8 @@ void RemoteFighter::refresh(creatures::Combatant snapshot, int32_t elapsedMs) {
     fighter.relations = std::move(relations);
     fighter.linkedId = linkedId; // This identifier is outside the native core state copy.
     fighter.linkedItem.retained = itemSnapshot;
+    for (size_t gap = 0; gap < gaps.size(); gap++)
+        fighter.heldSource[gaps[gap]] = heldPadding[gap];
     for (size_t slot = 0; slot < padding.size(); slot++)
         for (size_t gap = 0; gap < gaps.size(); gap++)
             fighter.equipmentSource(slot)[gaps[gap]] = padding[slot][gap];

@@ -167,10 +167,80 @@ static void equipmentStorage() {
           "a direct semantic item edit overlays its represented field without losing inactive backing");
 }
 
+static void heldStorage() {
+    constexpr size_t offset = 0x1d8;
+    constexpr std::array<size_t, 5> gaps{2, 3, 15, 18, 19};
+    Combatant fresh;
+    check(itemLevel(fresh.heldRecord()) == 1 && fresh.held.type == 0,
+          "fresh held storage retains the specified level-one default with deterministic engine gaps");
+    for (const int32_t count : {-7, 0, 2, 32, 33}) {
+        ItemRecord original;
+        for (size_t byte = 0; byte < original.size(); byte++)
+            original[byte] = uint8_t(byte * 37 + 19);
+        original[0] = original[1] = 1;
+        setItemLevel(original, -17);
+        std::memcpy(original.data() + 0x114, &count, 4);
+        net::CreatureRecord wire;
+        std::copy(original.begin(), original.end(), wire.bytes.begin() + offset);
+        auto snapshot = wire.fighter();
+        net::CreatureRecord encoded;
+        encoded.setFighter(snapshot);
+        check(snapshot.heldSource == original && snapshot.heldRecord() == original &&
+              snapshot.held.spirits == count && snapshot.held.cubes.size() == size_t(std::clamp(count, 0, 32)) &&
+              std::equal(original.begin(), original.end(), encoded.bytes.begin() + offset),
+              "held imports and real wire output retain all bytes across signed/full/oversized body counts");
+
+        Combatant copied;
+        copied.heldSource.fill(0xa5);
+        copied.health = 19;
+        copied.copyHeld(original);
+        auto expected = original;
+        for (const size_t gap : gaps)
+            expected[gap] = 0xa5;
+        check(copied.heldRecord() == expected && copied.health == 19,
+              "consumable assignment transfers all selected fields without replacing destination gaps or other actor state");
+        copied.copyHeld(copied.heldSource);
+        check(copied.heldRecord() == expected, "held selected-field self-copy is valid");
+
+        net::RemoteFighter remote;
+        remote.fighter.heldSource.fill(0x5a);
+        remote.fighter.linkedItem.retained.word = 37;
+        remote.refresh(snapshot, 0);
+        for (const size_t gap : gaps)
+            expected[gap] = 0x5a;
+        check(remote.fighter.heldRecord() == expected && remote.fighter.linkedItem.retained.word == 37,
+              "actual core refresh retains held destination gaps and independent resident comparison state");
+        if (count != 0)
+            continue;
+        snapshot.heldSource[0x113] ^= 0x7f;
+        net::CreatureRecord changed = encoded;
+        changed.setFighter(snapshot);
+        const auto mask = net::changedFields(changed, &encoded);
+        check(mask == (uint64_t(1) << 43), "an inactive held byte changes only existing wire field43");
+        check(net::applyDelta(net::encodeDelta(88, changed, mask), encoded) == 88,
+              "the actual partial-delta reader accepts held field43");
+        remote.refresh(encoded.fighter(), 20);
+        const auto retained = remote.fighter.heldRecord();
+        changed = encoded;
+        snapshot = changed.fighter();
+        snapshot.health = 7;
+        changed.setFighter(snapshot);
+        check(net::applyDelta(net::encodeDelta(88, changed, uint64_t(1) << 27), encoded) == 88,
+              "a health-only delta omits held storage");
+        remote.refresh(encoded.fighter(), 20);
+        check(remote.fighter.heldRecord() == retained && retained[0x113] == snapshot.heldSource[0x113],
+              "omitted held state survives later health-only decoding and current-state refresh");
+        snapshot.held.level = 123;
+        check(itemLevel(snapshot.heldRecord()) == 123 && snapshot.heldRecord()[0x113] == retained[0x113],
+              "semantic held edits overlay represented fields while preserving inactive backing");
+    }
+}
+
 int main() {
     currentState();
     wireMode();
     equipmentStorage();
+    heldStorage();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

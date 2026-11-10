@@ -141,6 +141,11 @@ struct Combatant {
     std::map<int32_t, float> cooldowns; // §16.1: ability id -> remaining ms (entries stay at 0)
     Relations relations;
     EquipmentSources equipmentSources;
+    ItemRecord heldSource = [] {
+        ItemRecord record{};
+        setItemLevel(record, 1);
+        return record;
+    }();
 
     ItemRecord &equipmentSource(size_t slot) {
         return slot == SLOT_COUNT - 1 ? linkedItem.source : equipmentSources.records[slot];
@@ -152,6 +157,9 @@ struct Combatant {
     void setEquipment(size_t slot, const ItemRecord &record);
     // Semantic field assignment retains each destination record's five gaps.
     void copyEquipmentFrom(const Combatant &source);
+    ItemRecord heldRecord() const;
+    void setHeld(const ItemRecord &record); // complete imported storage
+    void copyHeld(const ItemRecord &record); // selected fields, retaining destination gaps
 
     const Item &mainHand() const { return equipment[MAIN_HAND]; }
     const Item &offHand() const { return equipment[OFF_HAND]; }

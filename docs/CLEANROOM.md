@@ -818,3 +818,11 @@ The loot input adapter now carries complete current equipment instead of a
 limited header reconstruction. Nested generation, loot admission and broader
 native gameplay remain separate gates. No implementation or runtime findings
 were supplied to any source-side author.
+
+The standalone held item now uses the same complete backing and selected-field
+copy distinction as equipment. The previously held constructor/default and item
+copy contracts were fully reread. Imports and the existing raw wire group retain
+all 280 bytes; local consumable assignment and remote core refresh retain the
+destination's five omitted-copy bytes. Fresh engine storage uses the specified
+level-one properties with deterministic zero gaps. This storage bridge does not
+close the behavior-selection prefix or full native consumable/input acceptance.

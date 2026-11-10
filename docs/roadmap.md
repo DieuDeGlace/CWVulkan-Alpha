@@ -81,6 +81,10 @@ Differences from the Steam engine that shape the plan:
   Equipment assignment preserves destination gaps and resident comparison state;
   loot receives complete current records. Existing NPC gear-view/generation
   provenance and complete native actor creation remain open.
+- [x] Held-item core backing: the standalone record retains all bytes through
+  import, existing wire field 43 and core refresh. Consumable assignment retains
+  destination gaps and inactive entries. This closes a storage prerequisite;
+  native target-selection and wider consumable acceptance remain open.
 - [ ] Created-actor behavior: held source contracts establish ordered child
   processing and a target-selection prefix. Later action/navigation, reference
   producers and complete production integration remain open.

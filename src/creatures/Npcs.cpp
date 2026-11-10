@@ -887,7 +887,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     if (c.health < 0.25f * maxHealth(c) && actionDone)
         for (auto it = npc.inventory.begin(); it != npc.inventory.end(); ++it)
             if (itemType(*it) == 1 && itemSubtype(*it) == 1) {
-                c.held = Item::parse(it->data());
+                c.copyHeld(*it);
                 npc.inventory.erase(it);
                 c.action = 80;
                 c.actionMs = 0;

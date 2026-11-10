@@ -123,6 +123,9 @@ creatures::Combatant CreatureRecord::fighter() const {
     c.ownerId = get<uint64_t>(bytes, 0x188);
     c.powerTier = bytes[0x198];
     c.backing = {get<int32_t>(bytes, 0x1a0), get<int32_t>(bytes, 0x1a4), get<int32_t>(bytes, 0x1a8)};
+    creatures::ItemRecord held;
+    std::memcpy(held.data(), bytes.data() + 0x1d8, ITEM_SIZE);
+    c.setHeld(held);
     for (size_t slot = 0; slot < c.equipment.size(); slot++) {
         creatures::ItemRecord record;
         std::memcpy(record.data(), bytes.data() + EQUIPMENT + ITEM_SIZE * slot, ITEM_SIZE);
@@ -166,6 +169,8 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     put<int32_t>(bytes, 0x1a0, c.backing.x);
     put<int32_t>(bytes, 0x1a4, c.backing.y);
     put<int32_t>(bytes, 0x1a8, c.backing.index);
+    const auto held = c.heldRecord();
+    std::memcpy(bytes.data() + 0x1d8, held.data(), ITEM_SIZE);
     for (size_t slot = 0; slot < c.equipment.size(); slot++) {
         uint8_t *r = &bytes[EQUIPMENT + ITEM_SIZE * slot];
         const auto record = c.equipmentRecord(slot);

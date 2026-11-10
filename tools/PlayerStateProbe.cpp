@@ -81,10 +81,18 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
         item[0x113] = uint8_t(0xc0 + slot);
         actor.setEquipment(slot, item);
     }
+    creatures::ItemRecord held{};
+    held[0] = held[1] = 1;
+    held[2] = 0x9a;
+    held[0x113] = 0x7b;
+    creatures::setItemLevel(held, 1);
+    actor.setHeld(held);
     player.readInput(window, 20, false, nullptr, &noMouse);
     player.advance(20);
     net::CreatureRecord outgoing;
     outgoing.setFighter(actor);
+    require(std::equal(held.begin(), held.end(), outgoing.bytes.begin() + 0x1d8),
+            "Production Player input/physics or outgoing codec lost held-item backing");
     for (size_t slot = 0; slot < ownedEquipment.size(); slot++)
         require(std::equal(ownedEquipment[slot].begin(), ownedEquipment[slot].end(),
                            outgoing.bytes.begin() + 0x2f0 + slot * ownedEquipment[slot].size()),
@@ -94,7 +102,7 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
     body.mode = 0x1200;
     player.advance(20);
     require(actor.mode == 0xf020 && body.mode == 0x1200, "A rejected dead update replaced state");
-    std::cout << "PlayerStateProbe passed: actual input, supplied controller, physics, stun, replacement, complete equipment and dead admission\n";
+    std::cout << "PlayerStateProbe passed: actual input, supplied controller, physics, stun, replacement, complete equipment/held item and dead admission\n";
 }
 }
 

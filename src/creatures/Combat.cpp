@@ -87,6 +87,22 @@ void Combatant::copyEquipmentFrom(const Combatant &source) {
     }
 }
 
+ItemRecord Combatant::heldRecord() const {
+    auto record = heldSource;
+    held.write(record);
+    return record;
+}
+
+void Combatant::setHeld(const ItemRecord &record) {
+    heldSource = record;
+    held = Item::parse(record.data());
+}
+
+void Combatant::copyHeld(const ItemRecord &record) {
+    copyItemFields(record, heldSource);
+    held = Item::parse(heldSource.data());
+}
+
 ItemBonuses &itemBonuses() {
     static ItemBonuses bonuses{itemHealth, itemDamage, itemArmour, itemResistance, itemSpeed, itemCritical};
     return bonuses;

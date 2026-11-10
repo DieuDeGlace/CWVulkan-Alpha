@@ -1705,7 +1705,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             const uint8_t sub = creatures::itemSubtype(item);
                             c.action = sub == 1 || sub == 2 ? 80 : 81;
                             c.actionMs = 0;
-                            c.held = creatures::Item::parse(item.data());
+                            c.copyHeld(item);
                         }
                     interface.itemsToUse.clear();
                 }
