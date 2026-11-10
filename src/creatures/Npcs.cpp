@@ -11,6 +11,7 @@
 #include "worldgen/Regions.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <optional>
 #include <set>
 #include <utility>
@@ -178,8 +179,7 @@ void equip(Combatant &c, const Appearance &looks, const std::function<int()> &dr
     }
     }
     for (int slot : {MAIN_HAND, OFF_HAND})
-        if (generating || c.equipment[slot].type == 3) // (mode 0: both hands, armed or not)
-            c.equipment[slot].level = c.level;
+        c.equipment[slot].level = std::bit_cast<int16_t>(uint16_t(c.level));
     if (generating) {
         // Mode 0: the per-type stat multipliers (health, attack speed, damage, armour,
         // resistance; < 0 leaves one unchanged) and specials.
@@ -220,14 +220,11 @@ void equip(Combatant &c, const Appearance &looks, const std::function<int()> &dr
         c.equipment[slot].seed = (uint32_t)draw();
 }
 
-void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
-    const auto draw = [&random] { return random.draw(); };
-    // Step 2: the appearance, its flags OR-ed into what the creators set.
-    Appearance looks;
-    int32_t type = s.type;
-    generate(type, looks, nullptr, draw);
-    looks.flags |= s.appearanceFlags;
-    // Step 3: mode-0 equipment, on a working creature made from the spawn.
+namespace {
+// Existing owned equipment projection shared by descriptor setup routes.
+// Full native equipment/stat generation remains a separate provenance gate.
+void equipDescriptor(worldgen::Spawn &s, const Appearance &looks, const std::function<int()> &draw,
+                     bool generating) {
     Combatant c;
     c.type = s.type;
     c.controller = (uint8_t)s.controller;
@@ -239,10 +236,11 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
     c.specials = s.specials;
     for (int slot = 0; slot < 13; slot++) {
         const worldgen::ItemRecord &r = s.equipment[slot];
-        c.equipment[slot] = Item{r.type, r.subtype, r.material, r.rarity, r.level ? r.level : 1, r.seed};
+        const int32_t level = s.finished ? r.level : r.level ? r.level : 1;
+        c.equipment[slot] = Item{r.type, r.subtype, r.material, r.rarity, level, r.seed};
     }
     creation::Configuration configuration{s.creationChoice, std::move(s.creationKinds)};
-    equip(c, looks, draw, true, s.controller, configuration);
+    equip(c, looks, draw, generating, s.controller, configuration);
     for (int slot = 0; slot < 13; slot++) {
         const Item &i = c.equipment[slot];
         worldgen::ItemRecord &r = s.equipment[slot];
@@ -255,6 +253,49 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
     s.specials = c.specials;
     s.creationChoice = configuration.choice;
     s.creationKinds = std::move(configuration.kinds);
+}
+
+void refreshDescriptor(worldgen::Spawn &s, uint64_t identifier, const activation::Context &context,
+                       worldgen::Random &random) {
+    Appearance looks;
+    if (s.finished)
+        looks = Appearance::parse(s.appearance.data());
+    looks.flags |= s.appearanceFlags;
+    activation::Services services;
+    services.seed = [&](uint32_t seed) { random.seed(seed); };
+    services.setup = [&](int32_t argument) {
+        assert(argument == 1);
+        equipDescriptor(s, looks, [&] { return random.draw(); }, false);
+    };
+    services.equipmentLevel = [&](size_t slot) -> int16_t & { return s.equipment[slot].level; };
+    services.inventory = [&](const activation::InventoryVisitor &visit) {
+        // The existing generator stores one unit per flat entry. Native grouped
+        // counts/payload production remains separate from this caller kernel.
+        for (auto &item : s.inventory)
+            visit({1, item.type, item.subtype, item.level, item.rarity});
+    };
+    services.draw = [&] { return random.draw(); };
+    activation::refresh({identifier, s.controller, s.level, s.powerTier, s.appearanceFlags, s.bossLoot},
+                        &context, services);
+    if (!s.finished) {
+        looks.flags = s.appearanceFlags;
+        looks.serialize(s.appearance.data());
+        s.finished = true;
+    } else {
+        std::memcpy(s.appearance.data() + 6, &s.appearanceFlags, 2);
+    }
+}
+} // namespace
+
+void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
+    const auto draw = [&random] { return random.draw(); };
+    // Step 2: the appearance, its flags OR-ed into what the creators set.
+    Appearance looks;
+    int32_t type = s.type;
+    generate(type, looks, nullptr, draw);
+    looks.flags |= s.appearanceFlags;
+    // Step 3: mode-0 equipment, on a working creature made from the spawn.
+    equipDescriptor(s, looks, draw, true);
     s.appearanceFlags = looks.flags;
     looks.serialize(s.appearance.data());
     s.finished = true;
@@ -344,6 +385,10 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
         onActivate(npc);
     for (int slot = 0; slot < SLOT_COUNT - 1; slot++) {
         const worldgen::ItemRecord &r = s.equipment[slot];
+        if (s.finished) {
+            c.setEquipment(slot, toRecord(r));
+            continue;
+        }
         c.equipmentSource(slot) = toRecord(r);
         if (r.type) {
             c.equipment[slot].type = r.type;
@@ -357,7 +402,7 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     c.appearanceFlags = npc.looks.flags;
     c.linkedItem.source = toRecord(s.equipment[12]);
     c.equipment[12] = Item::parse(c.linkedItem.source.data());
-    if (!s.finished || npc.regear)
+    if (!s.finished)
         equip(c, npc.looks, [&] { return draw(); }, false, s.controller, npc.creationConfig);
     c.health = maxHealth(c);
     c.actionMs = 1000000;
@@ -382,6 +427,9 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
 
 void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs,
                     int32_t day, float dtMs) {
+    // The production engine clock supplies an in-range integer millisecond
+    // value. Keep the native two-query caller relation explicit in the kernel.
+    const std::function<int32_t()> readClock = [&] { return int32_t(timeOfDayMs); };
     std::set<std::pair<int32_t, int32_t>> active;
     for (const PlayerView &p : players) {
         const glm::dvec3 at = p.body.blocks();
@@ -397,11 +445,18 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
         const auto extra = extras.find(key);
         const size_t base = zone->spawns.size();
         const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
+        const auto context = descriptorContext ? descriptorContext(key.first, key.second) :
+                                                std::optional<activation::Context>{};
         for (size_t i = 0; i < total; i++) {
-            const worldgen::Spawn &s = i < base ? zone->spawns[i] : extra->second.second[i - base];
             SpawnState &state = spawns[{key.first, key.second, i}];
+            if (state.sourceZone.lock() != zone) {
+                state.refreshed.reset();
+                state.sourceZone = zone;
+            }
+            const worldgen::Spawn &s = state.refreshed ? *state.refreshed :
+                i < base ? zone->spawns[i] : extra->second.second[i - base];
             state.countdownMs -= dtMs;
-            if (s.windowStart != s.windowEnd && (timeOfDayMs < s.windowStart || timeOfDayMs > s.windowEnd))
+            if (!activation::inWindow(s.windowStart, s.windowEnd, readClock))
                 continue;
             const uint64_t id = spawnId(key.first, key.second, i);
             if (lookupActor(id, {}).combat())
@@ -415,14 +470,17 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
             for (const worldgen::ScheduleStop &stop : s.schedule)
                 if (timeOfDayMs >= stop.timeMs)
                     position = {stop.x, stop.y, stop.z};
-            const glm::dvec3 p = glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
             const bool near = std::any_of(players.begin(), players.end(), [&](const PlayerView &v) {
-                const glm::dvec3 d = p - v.body.blocks();
-                return glm::dot(d, d) < (double)s.radius * s.radius;
+                return activation::inRange(v.body.position, position, s.radius);
             });
             if (!near)
                 continue;
-            spawnCreature(s, key, i, base, id, position);
+            if (context && context->selector == 5 && (s.appearanceFlags & 0x1000)) {
+                if (!state.refreshed)
+                    state.refreshed = std::make_unique<worldgen::Spawn>(s);
+                refreshDescriptor(*state.refreshed, id, *context, random());
+            }
+            spawnCreature(state.refreshed ? *state.refreshed : s, key, i, base, id, position);
         }
     }
     // Quests: their creatures, near any player, until dead or gone.

@@ -82,8 +82,17 @@ Differences from the Steam engine that shape the plan:
   transfer independently of fresh actor one/empty defaults. Candidate kinds stay
   separate from action entries, retain duplicates and survive the inspected body
   reset. Kind-117 and boss setup retain full-width role gates and ordered draws.
-  Activation refresh before actor construction, complete upstream distribution,
-  indirect writers and exceptional lifetime remain open.
+  Complete upstream distribution, indirect writers and exceptional lifetime
+  remain open.
+- [x] Bounded descriptor activation refresh: the containing cell supplies one
+  borrowed context per descriptor loop. Exact role 6 preserves level/tier while
+  still seeding and running setup, ordered item adjustment and inventory work.
+  World-owned overlays retain changes before construction and across reactivation
+  without mutating shared generated zones. Window queries, raw binary32 distance
+  admission, hand-level width and retained flag precedence follow the held caller.
+  Full grouped inventory production, general equipment setup, time/identity
+  producers, native pointer publication, parent/descriptor lifetime and complete
+  native activation remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

@@ -509,17 +509,18 @@ void Missions::appendUpdates(std::span<const MissionProgress> immediate, const s
     }
 }
 
-void Missions::wake(creatures::Npc &n, creatures::Npcs &npcs) const {
-    const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
+std::optional<creatures::activation::Context> Missions::descriptorContext(int32_t zx, int32_t zy,
+    const std::function<bool(int32_t, int32_t)> &parentPresent) const {
+    const auto coordinates = creatures::activation::contextCoordinates(zx, zy);
+    if (!coordinates)
+        return std::nullopt;
+    const auto [cx, cy] = *coordinates;
+    if (!parentPresent(cx / 8, cy / 8))
+        return std::nullopt;
     const Cell *c = cell(cx, cy);
-    if (!c || c->mission.kind != 5 || !(n.looks.flags & 0x1000) || n.fighter.controller == 6)
-        return;
-    n.fighter.level = c->mission.level;
-    n.fighter.powerTier = c->mission.tier;
-    npcs.reseed(c->mission.seed + (uint32_t)n.fighter.id);
-    n.regear = true;
-    if ((n.looks.flags & 0x200) && n.boss)
-        n.looks.flags |= 0x2000;
+    if (!c)
+        return std::nullopt;
+    return creatures::activation::Context{c->mission.seed, c->mission.kind, c->mission.level, c->mission.tier};
 }
 
 const Missions::Cell *Missions::cell(int32_t cx, int32_t cy) const {

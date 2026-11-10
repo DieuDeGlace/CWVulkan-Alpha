@@ -10,6 +10,7 @@
 #include "worldgen/Random.h"
 #include "worldgen/Regions.h"
 #include "worldgen/Zone.h"
+#include "creatures/DescriptorRefresh.h"
 #include <array>
 #include <functional>
 #include <map>
@@ -145,9 +146,10 @@ class Missions {
     void appendUpdates(std::span<const MissionProgress> immediate, const std::set<Key> &changedCells,
         const std::set<Key> &requestedCells, std::vector<std::vector<uint8_t>> &output) const;
 
-    // Behaviour §9.2 step 6: a creature of a defeat-the-place mission (kind 5) wakes at the
-    // mission's level and tier with gear made again from the mission's seed and its id.
-    void wake(creatures::Npc &npc, creatures::Npcs &npcs) const;
+    // Held containing-cell lookup: truncating zone/8 conversion, domain check,
+    // resident parent and current payload only. Never allocate/load missing data.
+    std::optional<creatures::activation::Context> descriptorContext(int32_t zx, int32_t zy,
+        const std::function<bool(int32_t, int32_t)> &parentPresent) const;
 
     const Cell *cell(int32_t cx, int32_t cy) const;
     Cell &edit(int32_t cx, int32_t cy) { return cells[{cx, cy}]; }

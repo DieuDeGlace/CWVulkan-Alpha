@@ -281,6 +281,30 @@ retained level 2/-33 XP/7 Platinum Coins, injured health remained binary32 50,
 and reload retained seed 123, nine map tiles, the preview and 170 edits. Bright
 ground and broader native visual/gameplay acceptance remain unresolved.
 
+DescriptorRefreshTests exercises optional refresh gates, exact role 6 versus
+full values with the same low byte, wrapping seed input, setup/flag order and
+preservation of existing target flags. Item fixtures cover the nine-slot order,
+signed level anchors, zero/one draw boundaries, grouped zero/negative counts,
+predicate rejection, low-word copies, byte wrapping and the final rarity clamp.
+Lookup checks include negative truncation, both domain ends, missing parents and
+borrowed field rereads. Activation checks distinguish equal-window bypass from
+two clock queries and expose fixed-to-binary32 radius-boundary quantization.
+
+Actual NPC activation observes refreshed level, inventory and flags before its
+extension hook, preserves zero hand words, reuses descriptor mutations on a later
+activation and drops the overlay when its shared generation snapshot is replaced.
+The containing cell supplies context even when the descriptor position belongs
+to another cell. Original snapshots remain unchanged. Full native grouped
+production, general gear setup, timing/identity sources and pointer lifetime stay
+open; these supplied-state checks do not certify original-client gameplay.
+
+All 48 CTests and the production Player/controller diagnostic passed for this
+refresh checkpoint. Fresh reward, injured-health, dedicated-server and save/reload
+flows passed; all five captures were reviewed. Rewards retained level 2/-33 XP/
+7 Platinum Coins, injured health stayed binary32 50, and reload retained seed
+123, nine map tiles, the preview and 170 edits. Known bright ground, the negative
+XP display and broader native visual/gameplay acceptance remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

@@ -805,8 +805,12 @@ void Server::stepWorld(float dtMs) {
         npcs.objects = [this](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {
             return statics.blocks(zones, lo, hi, axis, move, ignored);
         };
-    if (!npcs.onActivate) // (behaviour §9.2 step 6: a mission's creatures wake at its level)
-        npcs.onActivate = [this](creatures::Npc &n) { missions.wake(n, npcs); };
+    if (!npcs.descriptorContext)
+        npcs.descriptorContext = [this](int32_t zx, int32_t zy) {
+            return missions.descriptorContext(zx, zy, [this](int32_t rx, int32_t ry) {
+                return world && world->region(rx, ry) != nullptr;
+            });
+        };
     if (!npcs.openDoors)
         npcs.openDoors = [this](glm::dvec3 lo, glm::dvec3 hi) { statics.openDoors(zones, lo, hi); };
     if (!npcs.sightRecords)

@@ -642,7 +642,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             add(id, other.fighter(), glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
         return out;
     };
-    npcs.onActivate = [&](creatures::Npc &n) { missions.wake(n, npcs); };
+    npcs.descriptorContext = [&](int32_t zx, int32_t zy) {
+        return missions.descriptorContext(zx, zy, [&](int32_t rx, int32_t ry) {
+            return view.terrainWorld().region(rx, ry) != nullptr;
+        });
+    };
     // Projectiles (alpha-projectiles.md): everything in flight, and their hits on NPCs for the
     // next offline step.
     creatures::Projectiles projectiles;

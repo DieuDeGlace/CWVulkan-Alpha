@@ -903,3 +903,27 @@ publication. Independent full-extent fixtures exclude byte 5, whose native value
 is unspecified. This closes those supplied generation paths, without claiming
 arbitrary reused-buffer initialization, other kinds, rendering interpretation,
 upstream generator distribution or a native server counterpart.
+
+The subsequent original-only descriptor activation refresh contract was HELD,
+read completely and hash-verified before implementation:
+`b08ee5ac970969d3b561248d3abe22c644abfd5a3e9d3791e6506eb264b4558f`.
+No engine, tests, runtime observations or implementation history were supplied to
+its author. A separate caller kernel borrows the context fields, retains full
+role/selector widths, seed and setup order, post-setup flag reads, nine signed
+item-level adjustments and ordered count/predicate/rarity work.
+
+The containing zone's integer pair supplies a truncating context lookup, with
+resident-parent admission and no allocation. The existing regional payload
+provides the corresponding raw fields. The engine caches that reference per
+descriptor loop and stores refreshed descriptors in world-owned overlays;
+generated snapshots remain immutable. Snapshot replacement drops the overlay as
+an explicit engine ownership policy, without certifying native unload lifetime.
+The old post-construction mission regear path has been removed.
+
+Window and distance kernels retain distinct clock queries, fixed subtraction,
+binary32 conversion/squaring and strict radius admission. Production clock and
+identifier sources remain existing engine adapters. Finished descriptor imports
+retain zero hand-level words rather than substituting the actor level. General
+equipment/stat setup, flat one-unit inventory generation, full native grouped
+transfer, pointer publication and complete activation/concurrency remain gates.
+The engine's dedicated-server binding is not a native server equivalence claim.

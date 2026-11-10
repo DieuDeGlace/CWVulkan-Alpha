@@ -7,6 +7,7 @@
 #include "creatures/Appearance.h"
 #include "creatures/ActorMap.h"
 #include "creatures/ActorCreation.h"
+#include "creatures/DescriptorRefresh.h"
 #include "creatures/CreatedBehavior.h"
 #include "creatures/Combat.h"
 #include "creatures/Credits.h"
@@ -22,6 +23,7 @@
 #include <functional>
 #include <deque>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <span>
@@ -58,9 +60,6 @@ struct Npc {
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
     uint8_t boss = 0; // raw descriptor +0x10e8 byte; the regional gate tests nonzero
-    // §9.2 step 6: set by onActivate for a mission creature, whose gear is made again at its
-    // mission level (activation mode) instead of taken from its spawn.
-    bool regear = false;
     // RandomInteraction §4.2: its timer and the seat it is bound for (index -1: none).
     float interactMs = 0;
     Seat seat;
@@ -294,6 +293,9 @@ class Npcs {
     // Called for each creature as it comes alive, before its equipment is made (behaviour
     // §9.2 step 6: a dungeon's creatures take the mission level).
     std::function<void(Npc &)> onActivate;
+    // Acquire once per containing zone, before its descriptor loop. Returned
+    // references stay valid for that loop; this must not load a missing parent.
+    std::function<std::optional<activation::Context>(int32_t, int32_t)> descriptorContext;
     // A seed affects the supplied world stream too; no caller-side restoration.
     void reseed(uint32_t s) { random().seed(s); }
     // Engine admission adapter for the nonempty world-context maintenance gate.
@@ -339,6 +341,10 @@ class Npcs {
     struct SpawnState {
         float countdownMs = 0;
         int32_t deathDay = -1;
+        // Mutable activation state belongs to this world. Generated Zone
+        // snapshots remain shared and immutable; replacement drops this overlay.
+        std::weak_ptr<const worldgen::Zone> sourceZone;
+        std::unique_ptr<worldgen::Spawn> refreshed;
     };
     // §9.2 step 7: one creature of spawn `s` (zone `key`, index `index` among `base` zone
     // spawns) at `p`, added to the list.
