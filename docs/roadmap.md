@@ -136,6 +136,14 @@ Differences from the Steam engine that shape the plan:
   default credit consumer now has real owned source/snapshot storage. Full
   selection/reset/configuration/name producers, synchronous fatal integration,
   original-server equivalence and native acceptance remain open.
+- [x] Bounded synchronous fatal recipient continuation: live signed-key cleanup,
+  current membership, immediate per-record credit consumption and completion
+  grants finish before the next entry. First local Platinum receipt precedes
+  gear generation. Current backing admission/write follows all recipients;
+  corpse/UI paths do not repeat applied awards, grants or backing work. Aliases,
+  zero keys, typed transport and actual client/server bindings have regressions.
+  Full descriptor/key producers, nested gear/loot provenance, non-hit corpse
+  behavior, broader modes and native gameplay acceptance remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

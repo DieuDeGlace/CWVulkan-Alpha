@@ -6,6 +6,7 @@
 #include "ZlibStream.h"
 #include "worldgen/Regions.h"
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <set>
 
@@ -104,6 +105,12 @@ Server::Server(ServerOptions o) : options(std::move(o)) {
             if (progress->completed())
                 npcs.trimMissionSpawns(fighter, zones);
         }
+    };
+    npcs.onFatalBacking = [this](const creatures::Combatant &fighter) {
+        const auto &backing = fighter.backing;
+        if (backing.x >= 0 && backing.y >= 0 && backing.x < 65536 && backing.y < 65536 && world &&
+            world->region(backing.x / 64, backing.y / 64))
+            npcs.markFatalBacking(fighter, zones, std::bit_cast<int32_t>(uint32_t(clockDay.load())));
     };
 }
 
@@ -915,6 +922,8 @@ void Server::stepWorld(float dtMs) {
     }
     const creatures::NpcFrame frame = npcs.step(dtMs, zones, std::move(players), clockMs, (int32_t)clockDay,
                                                block, onNpcs, {}, buffInput);
+    for (const auto &grant : frame.grants)
+        gifts.push_back(grant.serialize());
     for (const creatures::NpcFrame::Death &death : frame.deaths) // quests: hunts and battles
         if (death.quest)
             for (auto &[who, book] : questBooks)
@@ -927,7 +936,7 @@ void Server::stepWorld(float dtMs) {
     // Gift generation retains the later engine adapter; hit-driven regional
     // admission, snapshots and extra-spawn disposal have already run.
     const auto rewardMission = [&](const MissionProgress &progress) {
-        if (!progress.completed() || progress.victimRole != 1 || !connections.count(progress.contributor))
+        if (progress.rewardsApplied || !progress.completed() || progress.victimRole != 1 || !connections.count(progress.contributor))
             return;
         const auto who = connections.at(progress.contributor);
         for (const auto &item : missionRewards(progress.mission, who->creature.fighter().characterClass, worldRandom)) {

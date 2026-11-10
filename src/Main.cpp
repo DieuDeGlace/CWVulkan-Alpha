@@ -598,6 +598,15 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         player->combat().linkedItem.source = inventory.equipment[12];
     };
     creatures::Npcs npcs{worldRandom};
+    npcs.creditItems = [&](creatures::Combatant &actor) -> creatures::CreditItems {
+        const auto storage = creatures::actorCreditItems(actor);
+        if (player && &actor == &player->combat()) {
+            creatures::copyItemFields(storage.source, inventory.equipment[12]);
+            return {inventory.equipment[12], storage.snapshot};
+        }
+        return storage;
+    };
+    npcs.onFatalItem = [&](const creatures::ItemRecord &item) { inventory.add(item); };
     npcs.objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {
         return statics.blocks(view.held(), lo, hi, axis, move, ignored);
     };
@@ -808,6 +817,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 npcs.trimMissionSpawns(fighter, view.held());
         }
     };
+    npcs.onFatalBacking = [&](const creatures::Combatant &fighter) {
+        const auto &backing = fighter.backing;
+        if (!client.connected() && backing.x >= 0 && backing.y >= 0 && backing.x < 65536 && backing.y < 65536 &&
+            view.terrainWorld().region(backing.x / 64, backing.y / 64))
+            npcs.markFatalBacking(fighter, view.held(), scene.day);
+    };
 
     // The interface (alpha-ui-screens.md): the start screen and the system menu.
     // The dictionary the interface reads names from (dict_en.xml, data4.db).
@@ -860,7 +875,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     };
     interface.itemName = [&](const creatures::ItemRecord &record) { return ui::utf16(itemName(record, dictionary)); };
     // Screens §8.1.9: an item the player received, into the bags and announced in the chat.
-    const auto receive = [&](const creatures::ItemRecord &got) {
+    const auto receive = [&](const creatures::ItemRecord &got, bool store = true) {
         const uint8_t type = creatures::itemType(got);
         mods.itemReceived(type, creatures::itemSubtype(got), creatures::itemLevel(got));
         if (type == 25) {
@@ -874,7 +889,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
             return;
         }
-        inventory.add(got);
+        if (store)
+            inventory.add(got);
         interface.chatAdd("You receive ", {255, 255, 255});
         interface.chatAdd(receivedText(got, dictionary), type == 12 ? glm::vec3(255) : creatures::nameColour(got) * 255.f);
         interface.chatAdd(".\n", {255, 255, 255});
@@ -1958,12 +1974,15 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 if (const char *key = creatures::soundKey(30))
                                     audio.play(key);
                             }
-                            if (progress.victimRole == 1 && progress.contributor == c.id)
+                            if (!progress.rewardsApplied && progress.victimRole == 1 && progress.contributor == c.id)
                                 for (const auto &item : missionRewards(progress.mission, c.characterClass, worldRandom))
                                     receive(creatures::toRecord(item));
                         };
                         for (const auto &progress : happened.missions)
                             showMission(progress);
+                        for (const auto &grant : happened.grants)
+                            if (grant.recipient == c.id)
+                                receive(grant.item, false); // inventory already changed before the next reward draw
                         // Non-hit corpse deaths retain their separate legacy admission.
                         for (const creatures::NpcFrame::Death &death : happened.deaths) {
                             if (death.regionApplied)
@@ -2064,7 +2083,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 blockEdits.add(e);
                             playAt(2, impact.centre, 1, 0.5f + 0.4f * (float)worldRandom.draw() / 32767.f);
                         }
-                        if (happened.experience > 0) {
+                        for (const auto &credit : happened.appliedCredits)
+                            if (credit.direct && credit.record.experience != 0) {
+                                interface.floating.push_back(ui::experienceText(credit.record.experience, player->body().blocks()));
+                                interface.chatAdd("You gain " + std::to_string(credit.record.experience) + " XP.\n", {150, 128, 255});
+                            }
+                        if (happened.experience > 0) { // separate retained non-hit corpse adapter
                             creatures::addExperience(c, happened.experience);
                             interface.floating.push_back(ui::experienceText(happened.experience, player->body().blocks()));
                             interface.chatAdd("You gain " + std::to_string(happened.experience) + " XP.\n", {150, 128, 255});

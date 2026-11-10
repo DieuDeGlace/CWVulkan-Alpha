@@ -1311,19 +1311,23 @@ int main() {
         body.place(it.body.blocks() + glm::dvec3(1.2, 0, 0));
         const glm::dvec3 to = it.body.blocks() - body.blocks();
         const float yaw = (float)(std::atan2(-to.x, to.y) * 180.0 / 3.141592653589793);
-        int32_t experience = 0;
+        int32_t experience = 0, deferredExperience = 0;
         size_t deaths = 0;
         for (int i = 0; i < 200 && !npcs.all().empty(); i++) {
             const int32_t before = me.actionMs;
             startPrimaryAttack(me);
             stepAction(me, 16);
-            const NpcFrame f = npcs.step(16, map, {{me, body, yaw, before}}, 43200000, 0, floor);
-            experience += f.experience;
+            const NpcFrame f = npcs.step(16, map, {{me, body, yaw, before, true, false, true}}, 43200000, 0, floor);
+            for (const auto &credit : f.kills)
+                if (credit.player == me.id)
+                    experience += credit.experience;
+            deferredExperience += f.experience;
             deaths += f.deaths.size();
         }
         same(npcs.all().empty(), 1, "killed");
         same(deaths, 1, "its death is reported once, for its loot");
         same(experience, 1, "a level 1 kill is worth 1");
+        same(me.experience == 1 && deferredExperience == 0, 1, "the controlled recipient receives the credit immediately without a deferred duplicate");
         step(60000);
         same(npcs.all().empty(), 1, "not back the same day within 20 minutes");
         step(1200000);

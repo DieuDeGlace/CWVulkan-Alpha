@@ -159,14 +159,17 @@ int32_t rewardPlatinumAmount(int32_t level, int32_t tier) {
     return (int32_t)(50.f * curve((float)combined) + 1.f);
 }
 
+ItemRecord missionRewardGear(const MissionArea &m, int32_t characterClass, Random &random) {
+    const bool armour = random.draw() % 2 == 0;
+    return armour ? armourItem(random, m.level, m.tier, characterClass)
+                  : weaponItem(random, m.level, m.tier, characterClass);
+}
+
 std::vector<ItemRecord> missionRewards(const MissionArea &m, int32_t characterClass, Random &random) {
     ItemRecord platinum;
     platinum.type = 13;
     platinum.level = std::bit_cast<int16_t>(uint16_t(rewardPlatinumAmount(m.level, m.tier)));
-    const bool armour = random.draw() % 2 == 0;
-    const ItemRecord gear = armour ? armourItem(random, m.level, m.tier, characterClass)
-                                   : weaponItem(random, m.level, m.tier, characterClass);
-    return {platinum, gear};
+    return {platinum, missionRewardGear(m, characterClass, random)};
 }
 
 const Location *cellLocation(const World &world, int32_t cx, int32_t cy) {

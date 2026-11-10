@@ -49,9 +49,8 @@ struct Npc {
     bool fatalPresented = false; // engine bookkeeping: the world applier already emitted the death sound
     bool fatalLootApplied = false; // the synchronous world loot service already ran
     bool fatalRegionApplied = false; // regional service already admitted or rejected this invocation
-    // Engine bridge to the remaining later-corpse adapter, not native storage.
-    // Preserve the pre-region binary32 amount until recipient record conversion.
-    std::optional<float> fatalCredit;
+    bool fatalRecipientsApplied = false; // synchronous cleanup/credit/grants must not replay in the corpse adapter
+    bool fatalBackingApplied = false; // backing update was attempted, including rejected indices
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
@@ -116,6 +115,8 @@ struct NpcFrame {
     std::vector<RelationshipRecord> relationships;
     std::vector<std::array<uint8_t, 88>> staticStates; // immediate section-six snapshots, in production order
     std::vector<KillRecord> kills;
+    std::vector<ItemGrant> grants;
+    std::vector<AppliedCredit> appliedCredits;
     std::vector<Projectile> shots; // projectiles the NPCs launched (projectiles §2)
     std::vector<Burst> bursts;     // particles §5 (section 3)
     // Server §6.2 step 3: the creatures that died this step, for their loot.
@@ -174,6 +175,7 @@ struct NpcFrame {
         size_t relationships = 0;
         size_t staticStates = 0;
         size_t missions = 0;
+        size_t grants = 0, appliedCredits = 0;
         int32_t experience = 0;
     };
     struct Added {
@@ -194,6 +196,8 @@ struct NpcFrame {
         std::span<const RelationshipRecord> relationships;
         std::span<const std::array<uint8_t, 88>> staticStates;
         std::span<const MissionProgress> missions;
+        std::span<const ItemGrant> grants;
+        std::span<const AppliedCredit> appliedCredits;
     };
     Added addedSince(Cursor &cursor) const;
     void reset(); // clear values while retaining engine buffer capacity
@@ -237,6 +241,13 @@ class Npcs {
     // After linked-health stores: append progress before completion-cell work.
     // The supplied service must retain actor storage throughout this call.
     std::function<void(Combatant &, uint8_t, const std::function<Combatant *(uint64_t)> &, NpcFrame &)> onFatalRegion;
+    // Canonical source storage bridge and immediate controlled inventory receipt.
+    // These services retain actor storage and do not draw gameplay randomness.
+    std::function<CreditItems(Combatant &)> creditItems;
+    std::function<void(const ItemRecord &)> onFatalItem;
+    // Final backing admission/write follows every recipient and completion grant.
+    std::function<void(const Combatant &)> onFatalBacking;
+    bool markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day);
     // Existing engine descriptor-tail adapter; retains live actors. Native
     // virtual destruction and descriptor lifetime remain separate contracts.
     void trimMissionSpawns(const Combatant &target, const worldgen::WorldMap &map);

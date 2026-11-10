@@ -722,17 +722,21 @@ int main() {
     }
     {
         uint64_t target = 0;
+        int32_t expectedCredit = 0, expectedType = 0;
         check(waitFor([&] {
             for (const auto &[id, record] : a.others()) {
                 const auto actor = record.fighter();
                 if (actor.controller == 1 && actor.health > 0 && (actor.appearanceFlags & 0x2000) &&
-                    actor.backing.x == 32800 && actor.backing.y == 32800)
+                    actor.backing.x == 32800 && actor.backing.y == 32800) {
                     target = id;
+                    expectedType = actor.type;
+                    expectedCredit = (int32_t)creatures::fatalCreditAmount(actor.level, actor.powerTier, actor.type, actor.appearanceFlags);
+                }
             }
             return target != 0;
         }, 10000), "the real server activates the stored regional descriptor with its cached origin");
         if (target) {
-            a.takeMissionRecords(); b.takeMissionRecords(); a.takeGifts();
+            a.takeMissionRecords(); b.takeMissionRecords(); a.takeGifts(); b.takeGifts(); a.takeCredits(); b.takeCredits();
             a.sendHit(Hit::make(a.id(), target, 1000000, 0, {}, 0));
             std::optional<std::array<uint8_t, 56>> first, second;
             const auto collect = [&](Client &client, auto &result) {
@@ -747,13 +751,32 @@ int main() {
                 collect(a, first); collect(b, second);
                 return first.has_value() && second.has_value();
             }) && first == second, "actual fatal application publishes the same completed regional snapshot to both peers");
-            std::vector<creatures::ItemRecord> rewards;
+            std::vector<creatures::ItemRecord> rewards, otherRewards;
             check(waitFor([&] {
                 for (const auto &item : a.takeGifts()) rewards.push_back(item);
-                return rewards.size() >= 2;
-            }) && rewards.size() == 2 && rewards[0][0] == 13 && creatures::itemLevel(rewards[0]) == 9 &&
-                  rewards[1][0] >= 3 && rewards[1][0] <= 9,
-                  "the retained reward adapter emits Platinum Coins then gear once without replaying corpse progress");
+                for (const auto &item : b.takeGifts()) otherRewards.push_back(item);
+                return rewards.size() >= 2 && otherRewards.size() >= 2;
+            }) && rewards.size() == 2 && otherRewards.size() == 2 &&
+                  rewards[0][0] == 13 && creatures::itemLevel(rewards[0]) == 9 && rewards[1][0] >= 3 && rewards[1][0] <= 9 &&
+                  otherRewards[0][0] == 13 && creatures::itemLevel(otherRewards[0]) == 9 && otherRewards[1][0] >= 3 && otherRewards[1][0] <= 9,
+                  "the synchronous recipient sequence emits Platinum then gear once for both peers, including the peer that did not send the kill hit");
+            std::vector<std::array<uint8_t, 24>> credits, otherCredits;
+            const auto collectCredits = [&](Client &client, auto &records) {
+                for (const auto &credit : client.takeCredits())
+                    if (credit.victim == target) records.push_back(credit.serialize());
+            };
+            check(waitFor([&] {
+                collectCredits(a, credits); collectCredits(b, otherCredits);
+                return !credits.empty() && credits == otherCredits;
+            }), "both peers receive identical ordered complete credit records from actual fatal application");
+            size_t ownCredits = 0;
+            for (const auto &bytes : credits) {
+                const auto credit = creatures::KillRecord::parse(bytes.data());
+                ownCredits += credit.player == a.id();
+                check(credit.victimType == expectedType && credit.experience == expectedCredit,
+                      "actual server credit retains the victim kind and prepared amount");
+            }
+            check(ownCredits == 1, "the later corpse adapter cannot duplicate the actual killer's synchronous credit");
             SaveDb saved;
             check(saved.open(options.folder / "Save" / "world_server_2412123.db", SaveDb::Mode::ReadOnly),
                   "completed synthetic server state opens read-only");

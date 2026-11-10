@@ -60,6 +60,8 @@ int32_t monsterForLevel(const worldgen::RegionCell *C, int32_t level, worldgen::
 int32_t missionCreature(worldgen::Random &random);
 // §5.3: the category-13 Platinum Coins quantity for a mission's level and tier.
 int32_t rewardPlatinumAmount(int32_t level, int32_t tier);
+// Generate only the second grant, after delivery of the first grant completes.
+worldgen::ItemRecord missionRewardGear(const MissionArea &mission, int32_t characterClass, worldgen::Random &random);
 
 // §5.3: a completed mission's rewards for a player of class `characterClass`: Platinum
 // Coins, then (one draw) armour when even or a weapon when odd, at the mission level with the
@@ -88,6 +90,7 @@ struct MissionProgress {
     MissionArea mission;
     uint64_t contributor = 0;
     uint8_t victimRole = 0;
+    bool rewardsApplied = false; // engine metadata: the synchronous recipient sequence owns completion grants
     bool completed() const { return mission.state == 2; }
     std::array<uint8_t, 56> record() const { return mission.record(x, y); }
 };

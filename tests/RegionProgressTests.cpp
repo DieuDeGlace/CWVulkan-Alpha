@@ -183,7 +183,8 @@ static void cellTraversalAndPublication() {
 }
 
 static void actualFatalBoundary() {
-    Npcs npcs;
+    worldgen::Random random{123};
+    Npcs npcs(random);
     Npc victim;
     victim.fighter.id = 72;
     victim.fighter.controller = 1;
@@ -206,10 +207,13 @@ static void actualFatalBoundary() {
     PlayerView view{player, body, 0, 0, false, false, true};
     Missions missions;
     missions.edit(1, 2).mission.kind = 5;
+    missions.edit(1, 2).mission.level = 5;
     NpcFrame frame;
     int callbacks = 0;
+    int items = 0, backingCalls = 0;
+    Inventory inventory = Inventory::fresh();
     npcs.onFatalLoot = [&](const Combatant &, const Body &, std::span<const ItemRecord>) {
-        check(npcs.all()[1].fighter.health == 17 && !npcs.all()[0].fatalCredit,
+        check(npcs.all()[1].fighter.health == 17 && !npcs.all()[0].fatalRecipientsApplied,
               "fatal loot precedes linked health and credit preparation");
         npcs.npcs()[0].fighter.level = 10;
     };
@@ -217,11 +221,27 @@ static void actualFatalBoundary() {
         callbacks++;
         check(marker == 0xff && npcs.all()[1].fighter.health == 0 && events.sounds[0].sound == 27 && target.actionMs == 0,
               "production fatal regional service follows linked health and retains the raw marker byte");
-        check(npcs.all()[0].fatalCredit && std::bit_cast<uint32_t>(*npcs.all()[0].fatalCredit) == 0x40c69ee8,
-              "credit uses post-loot state and retains its fractional binary32 value before regional callbacks");
+        check(target.level == 10, "regional callbacks observe post-loot state after common credit preparation");
         target.level = 100; // later state must not replace the already prepared common amount
         if (const auto progress = missions.fatal(target, marker, 0, [](int32_t, int32_t) { return true; }, lookup))
             events.missions.push_back(*progress);
+    };
+    npcs.onFatalItem = [&](const ItemRecord &item) {
+        items++;
+        check(frame.kills.size() == 1 && player.experience == 12 && frame.grants.size() == size_t(items),
+              "actual credit consumption and grant append precede each local inventory receipt");
+        if (items == 1)
+            check(itemType(item) == 13 && itemLevel(item) == 9 && random.count() == 0,
+                  "the first Platinum grant reaches inventory before the first reward selection draw");
+        else
+            check(itemType(item) >= 3 && itemType(item) <= 9 && random.count() > 0 && inventory.platinum == 9,
+                  "gear generation follows the completed first local grant");
+        inventory.add(item);
+    };
+    npcs.onFatalBacking = [&](const Combatant &) {
+        backingCalls++;
+        check(items == 2 && inventory.platinum == 9 && frame.appliedCredits.size() == 1,
+              "final backing work follows every recipient's consumed credit and local grants");
     };
     HitRecord hit;
     hit.attacker = 0; hit.target = 72; hit.amount = 1;
@@ -230,18 +250,23 @@ static void actualFatalBoundary() {
     check(callbacks == 1 && frame.missions.size() == 1 && frame.missions[0].completed() &&
           frame.missions[0].x == 1 && frame.missions[0].y == 2 && frame.missions[0].contributor == 0,
           "the actual world hit completes cached-origin regional state before returning, without dead-target replay");
+    check(frame.kills.size() == 1 && frame.kills[0].experience == 6 && frame.experience == 0 &&
+          player.experience == 12 && frame.grants.size() == 2 && items == 2 && backingCalls == 1 &&
+          frame.missions[0].rewardsApplied && npcs.all()[0].fatalRecipientsApplied && npcs.all()[0].fatalBackingApplied,
+          "the actual fatal call consumes the pre-region amount immediately, including the native key-zero linked alias, and owns its grants");
     worldgen::WorldMap map;
     map.add(std::make_shared<worldgen::Zone>(0, 0));
     const BlockType block = [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); };
     npcs.stepInto(0, map, {view}, 1000, 9, block, frame);
     check(!frame.deaths.empty() && frame.deaths[0].regionApplied && frame.missions.size() == 1 && callbacks == 1,
           "later corpse output marks completed regional admission so callers cannot replay it");
-    check(frame.kills.size() == 1 && frame.kills[0].experience == 6 && frame.experience == 6,
-          "the retained later adapter converts the prepared amount instead of recomputing changed target state");
+    check(frame.kills.size() == 1 && frame.experience == 0 && player.experience == 12 && items == 2 && backingCalls == 1,
+          "the later corpse adapter cannot repeat synchronous credit, linked XP, grants or backing work");
     npcs.npcs()[0].fighter.health = 20;
     npcs.npcs()[0].deadMs = 0;
     npcs.stepInto(0, map, {view}, 1000, 9, block, frame);
-    check(!npcs.all()[0].fatalCredit, "the next admitted live update clears the engine's prior-fatal amount bridge");
+    check(!npcs.all()[0].fatalRecipientsApplied && !npcs.all()[0].fatalBackingApplied,
+          "the next admitted live update clears prior-fatal bookkeeping for the next life");
 }
 
 static void descriptorDisposal() {

@@ -688,3 +688,41 @@ Complete native packet/callback lifetime, generation provenance and server
 equivalence are not inferred. The retained later-corpse sharing route uses the
 common stamp but retains its older eligibility until synchronous fatal migration.
 This storage checkpoint does not certify the remaining recipient/grant sequence.
+
+The already finalized fatal-effects, regional-order and credit-consumer contracts
+were fully reread before connecting the recipient continuation. A separately
+structured service walks the current signed-key actor map, performs contact and
+deferred threat erasure for every nonnull role, then tests current target-map
+membership for each role-zero credit. Incoming target keys remain separate from
+actor IDs. Appending each complete record precedes the actual shared consumer;
+its local mutations precede that recipient's completion grants and the next
+entry. Counts, health, contribution value sign and key zero add no producer gate.
+Aliases and later map insertions retain their live traversal effects.
+
+The first Platinum grant is appended and locally applied before the gear
+selection draw, generation, second append and local application. The existing
+engine gear generators remain separately bounded dependencies. Final backing
+admission uses current cached coordinates/index and retained descriptor storage,
+after every recipient, then writes the engine countdown/day state. Original
+producer identity, complete descriptor lifetime and timer consumers are not
+inferred from that engine binding.
+
+World hits now invoke this sequence synchronously. Dedicated-world publication
+retains ordered typed credit/grant records without claiming an original-server
+counterpart. Controlled inventory bridges keep raw/semantic item storage coherent;
+later UI/SDK notifications do not award again. Corpse bookkeeping suppresses hit
+credit/pet-sharing, progress rewards and backing replay, including rejected backing
+indices. Non-hit corpse behavior, broader actor selection/key lifetime, native
+reset/configuration and generator provenance retain their explicit limits. A new
+original-only backing-producer audit remains separate from this implementation;
+no engine, test or runtime findings were supplied to its author.
+
+That backing-producer audit was subsequently FINAL/STABLE/HELD and read in full.
+It confirms the activation triple's full-width cell coordinates and actual
+descriptor pointer-array ordinal, including skipped descriptors, and its default,
+reset and copy boundaries. The existing engine activation and provided backing
+binding agree with those scoped facts. Spatial-record member 0x178 remains
+separate: the audited constructors/builders initialize minus one and copies
+preserve it; its first nondefault producer is still unresolved. No ordinal is
+invented for that spatial member. Short-reader publication, descriptor editing
+and broader generation/lifetime stay open under the contract's explicit bounds.

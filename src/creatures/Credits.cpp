@@ -28,6 +28,20 @@ CreditItems actorCreditItems(Combatant &actor) {
     return {actor.linkedItem.source, actor.linkedItem.retained.item};
 }
 
+std::array<uint8_t, 288> ItemGrant::serialize() const {
+    std::array<uint8_t, 288> bytes;
+    std::memcpy(bytes.data(), &recipient, 8);
+    std::memcpy(bytes.data() + 8, item.data(), item.size());
+    return bytes;
+}
+
+ItemGrant ItemGrant::parse(const uint8_t *bytes) {
+    ItemGrant grant;
+    std::memcpy(&grant.recipient, bytes, 8);
+    std::memcpy(grant.item.data(), bytes + 8, grant.item.size());
+    return grant;
+}
+
 void stampLinkedCredit(Combatant &actor, const Combatant &linked, CreditItems items) {
     std::memcpy(items.source.data() + 4, &linked.experience, 4);
     const int16_t level = std::bit_cast<int16_t>(uint16_t(linked.level));
@@ -35,6 +49,8 @@ void stampLinkedCredit(Combatant &actor, const Combatant &linked, CreditItems it
     actor.equipment[12].seed = uint32_t(linked.experience);
     actor.equipment[12].level = level;
     copyItemFields(items.source, items.snapshot);
+    if (&items.source != &actor.linkedItem.source)
+        copyItemFields(items.source, actor.linkedItem.source); // coherence with an owner's canonical inventory bridge
 }
 
 CreditResult receiveCredit(const KillRecord &record, const CreditWorld &world) {

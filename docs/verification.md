@@ -415,6 +415,34 @@ the character, seed, nine map tiles, preview and 170 edits. The current player
 package passed all 35 hashes and 36 archive-entry checks. These checks do not
 close the known bright ground or native UI/gameplay/visual/provenance gates.
 
+FatalRecipientTests covers signed-key order, null entries and cleanup for all
+nonnull roles, with counts and unrelated threats retained. Supplied-state cases
+admit dead/key-zero recipients and zero/negative/unordered contribution values
+by membership alone. Actual credit consumption occurs between append and grant.
+Early aliases of the victim remove later membership; earlier consumers can change
+the current link/kind, add future entries and affect later eligibility. Repeated
+recipient pointers remain distinct visits, and zero credit still runs the actual
+level helper. The complete 288-byte grant codec preserves opaque bytes. New
+frame views drain grants/applied-credit metadata once and retain capacity.
+
+Actual retained-descriptor tests exercise immediate engine backing countdown/day
+effects, completion-tail disposal, invalid indices, missing cells and coordinate
+bounds. The world-hit regional fixture observes post-loot preparation, immediate
+credit and the key-zero linked alias, first local Platinum before reward RNG,
+gear after that receipt and final backing after all grants. Corpse and subsequent
+live-update checks exercise no replay and lifecycle reset. The real server
+fixture observes completion rewards at both peers, identical ordered credit
+payloads, one killer credit and saved regional state. These checks retain the
+documented generator/producer/lifetime and native acceptance limits.
+
+All 42 CTests passed for the synchronous-recipient checkpoint, including the
+expanded two-peer server fixture. Fresh actual-client reward, injured-health,
+multiplayer and both save/reload checks passed; all five captures were reviewed.
+The reward character retained level 2, -33 XP and 7 Platinum Coins. Injured health
+retained exactly binary32 50; reload preserved the character, seed, nine map tiles,
+preview and 170 edits. The player package passed all 35 hashes and 36 entry checks.
+The known bright ground and native UI/gameplay/visual/provenance gates remain open.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

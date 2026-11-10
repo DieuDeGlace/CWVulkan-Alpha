@@ -1,5 +1,6 @@
 #include "creatures/Strike.h"
 #include "creatures/Npcs.h"
+#include "creatures/FatalRecipients.h"
 #include <cassert>
 #include <bit>
 #include "BlockEdits.h"
@@ -498,6 +499,27 @@ void Npcs::trimMissionSpawns(const Combatant &target, const worldgen::WorldMap &
         if (extra != extras.end())
             extra->second.second.clear(); // destroy owned tail values, retain vector capacity and prefix boundary
     });
+}
+
+bool Npcs::markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day) {
+    const auto &backing = target.backing;
+    if (backing.x < 0 || backing.y < 0 || backing.x >= 65536 || backing.y >= 65536 || backing.index < 0)
+        return false;
+    const auto *zone = map.zone(backing.x, backing.y);
+    if (!zone)
+        return false;
+    size_t count = zone->spawns.size();
+    if (const auto extra = extras.find({backing.x, backing.y}); extra != extras.end()) {
+        if (extra->second.first != count)
+            return false; // invalid engine prefix ownership is outside the retained-vector contract
+        count += extra->second.second.size();
+    }
+    if (size_t(backing.index) >= count)
+        return false;
+    auto &state = spawns[{backing.x, backing.y, size_t(backing.index)}];
+    state.countdownMs = 1200000;
+    state.deathDay = day;
+    return true;
 }
 
 uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
@@ -1398,8 +1420,8 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
                 propagateThreat(*by, actor, frame);
             }
         }
-    // Prepared credit precedes regional callbacks. The remaining relationship
-    // and synchronous recipient continuation is separate from this bounded stage.
+    // Prepare once, update the region, then visit current recipients in signed
+    // key order. Later corpse processing must not repeat these effects.
     if (target->health <= 0) {
         target->health = 0;
         glm::vec3 position;
@@ -1424,13 +1446,58 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
             if (Combatant *linked = lookupActor(target->linkedId, players).combat())
                 linked->health = 0;
         const float credit = fatalCreditAmount(target->level, target->powerTier, target->type, target->appearanceFlags);
-        if (recipient.npc)
-            recipient.npc->fatalCredit = credit;
+        const size_t progressStart = frame.missions.size();
         if (onFatalRegion) {
             onFatalRegion(*target, recipient.npc ? recipient.npc->boss : 0,
                 [&](uint64_t key) { return lookupActor(key, players).combat(); }, frame);
             if (recipient.npc)
                 recipient.npc->fatalRegionApplied = true;
+        }
+        // The regional service emits at most one snapshot for this invocation.
+        std::optional<MissionArea> completedMission;
+        if (frame.missions.size() == progressStart + 1 && frame.missions.back().completed()) {
+            completedMission = frame.missions.back().mission;
+            frame.missions.back().rewardsApplied = true;
+        }
+        int32_t previousLevel = 0;
+        FatalRecipientWorld fatalWorld;
+        fatalWorld.visit = [&](const auto &visit) {
+            for (const auto &[key, actor] : actors)
+                visit(key, actor.combat());
+        };
+        fatalWorld.credit = {[&](uint64_t key) { return lookupActor(key, players).combat(); },
+                             [&] { return controlledActor; }, 0, creditItems};
+        fatalWorld.appendCredit = [&](const KillRecord &record) {
+            frame.kills.push_back(record);
+            previousLevel = controlledActor ? controlledActor->level : 0;
+        };
+        fatalWorld.consumed = [&](const KillRecord &record, const CreditResult &result) {
+            if (controlledActor && (result.directAward == controlledActor || controlledActor->level != previousLevel))
+                frame.appliedCredits.push_back({record, result.directAward == controlledActor,
+                                               previousLevel, controlledActor->level});
+        };
+        fatalWorld.completionReward = [&](uint64_t key, Combatant &candidate) {
+            const auto deliver = [&](const ItemRecord &item) {
+                frame.grants.push_back({key, item});
+                if (&candidate == controlledActor && onFatalItem)
+                    onFatalItem(item);
+            };
+            ItemRecord platinum{};
+            platinum[0] = 13;
+            setItemLevel(platinum, std::bit_cast<int16_t>(uint16_t(
+                rewardPlatinumAmount(completedMission->level, completedMission->tier))));
+            deliver(platinum);
+            // The first append/local inventory call completes before this draw.
+            deliver(toRecord(missionRewardGear(*completedMission, candidate.characterClass,
+                                               sharedRandom ? *sharedRandom : privateRandom)));
+        };
+        applyFatalRecipients(*target, applied.target, credit, completedMission.has_value(), fatalWorld);
+        if (recipient.npc)
+            recipient.npc->fatalRecipientsApplied = true;
+        if (onFatalBacking) {
+            onFatalBacking(*target);
+            if (recipient.npc)
+                recipient.npc->fatalBackingApplied = true;
         }
     }
 }
@@ -1717,7 +1784,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.fatalPresented = false;
         npc.fatalLootApplied = false;
         npc.fatalRegionApplied = false;
-        npc.fatalCredit.reset();
+        npc.fatalRecipientsApplied = false;
+        npc.fatalBackingApplied = false;
         npc.tameMs = std::max(0.f, npc.tameMs - dtMs); // pets §7.3: the taming progress lasts 5 s
         // §13.1: decide every 32 ms of accumulated time while not stunned.
         npc.thinkMs += dtMs;
@@ -1894,7 +1962,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         }
         if (n.deadMs == 0) {
             n.fighter.health = 0;
-            if (n.spawn != Npc::NO_SPAWN) {
+            if (!n.fatalBackingApplied && n.spawn != Npc::NO_SPAWN) {
                 SpawnState &state = spawns[{n.zone.first, n.zone.second, n.spawn}];
                 state.countdownMs = 1200000;
                 state.deathDay = day;
@@ -1919,17 +1987,17 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                             death.credited = who;
             if (n.fighter.controller != 6) // (a bomb leaves nothing)
                 frame.deaths.push_back(death);
-            const int32_t xp = n.fatalCredit ? (int32_t)*n.fatalCredit
-                : killExperience(n.fighter.level, n.fighter.powerTier, n.fighter.type,
-                                 (n.looks.flags & 0x200) != 0, n.looks.flags);
-            if (n.fighter.controller == 1)
+            if (!n.fatalRecipientsApplied && n.fighter.controller == 1) {
+                const int32_t xp = killExperience(n.fighter.level, n.fighter.powerTier, n.fighter.type,
+                                                 (n.looks.flags & 0x200) != 0, n.looks.flags);
                 for (size_t k = 0; k < players.size(); k++)
                     if (n.fighter.relations.threats.count(players[k].fighter.id) || n.target == players[k].fighter.id) {
                         frame.kills.push_back({players[k].fighter.id, n.fighter.id, n.fighter.type, xp});
                         if (k == 0)
-                            frame.experience += xp;
+                            frame.experience = std::bit_cast<int32_t>(uint32_t(frame.experience) + uint32_t(xp));
                         sharePetExperience(players[k].fighter, xp, frame); // pets §12
                     }
+            }
             for (Npc &o : list) // creatures that targeted it forget it
                 if (o.target == n.fighter.id)
                     o.target = 0, o.threat = 0;
@@ -1954,7 +2022,7 @@ NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {
                 take(craters, cursor.craters), take(explosions, cursor.explosions), take(tamed, cursor.tamed),
                 take(petItems, cursor.petItems), std::bit_cast<int32_t>(uint32_t(experience) - uint32_t(cursor.experience)),
                 take(seen, cursor.seen), take(relationships, cursor.relationships), take(staticStates, cursor.staticStates),
-                take(missions, cursor.missions)};
+                take(missions, cursor.missions), take(grants, cursor.grants), take(appliedCredits, cursor.appliedCredits)};
     cursor.experience = experience;
     return added;
 }
@@ -1967,6 +2035,8 @@ void NpcFrame::reset() {
     relationships.clear();
     staticStates.clear();
     missions.clear();
+    grants.clear();
+    appliedCredits.clear();
     kills.clear();
     shots.clear();
     bursts.clear();

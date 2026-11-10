@@ -14,6 +14,20 @@ struct KillRecord {
     static KillRecord parse(const uint8_t *bytes); // complete 24-byte payload required
 };
 
+struct ItemGrant {
+    uint64_t recipient = 0;
+    ItemRecord item{};
+    std::array<uint8_t, 288> serialize() const;
+    static ItemGrant parse(const uint8_t *bytes); // complete 288-byte payload required
+};
+
+// Engine presentation metadata for a credit already consumed synchronously.
+struct AppliedCredit {
+    KillRecord record;
+    bool direct = false;
+    int32_t levelBefore = 0, levelAfter = 0;
+};
+
 struct CreditItems {
     ItemRecord &source, &snapshot;
 };
