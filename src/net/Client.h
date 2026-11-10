@@ -107,7 +107,7 @@ class Client {
 
     Socket socket;
     std::atomic<bool> online{false};
-    uint64_t ownId = 0;
+    uint64_t ownId = 1; // native initial identity, retained when an adoption is bypassed
     uint32_t worldSeed = 0;
     std::thread receiver, sender;
 

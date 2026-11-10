@@ -97,6 +97,11 @@ Differences from the Steam engine that shape the plan:
   its effective raw coordinates. Fresh engine storage is deterministic zero,
   separate from unspecified native constructor storage; it is never inferred
   from the current or creation position.
+- [x] Bounded client identity adoption: initial ID 1 and reconnect retention
+  follow the held identity contract. Nonnegative replies, including zero, adopt
+  the exact ID; negative replies retain the prior ID for sending and remote
+  classification. Full actor replacement, aliases, saved-state restoration and
+  exceptional transport behavior remain open.
 - [x] Bounded target-selection prefix: entry/inventory precedence, preliminary
   and linked lookups, live signed candidate order, fixed-coordinate binary32
   scoring, visibility/classifier gates, fallback relationship publication and

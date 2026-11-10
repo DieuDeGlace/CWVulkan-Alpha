@@ -1,6 +1,7 @@
 #include "net/Client.h"
 #include "Bytes.h"
 #include "ZlibStream.h"
+#include <bit>
 #include <chrono>
 #include <cstring>
 #include <set>
@@ -45,7 +46,10 @@ bool Client::connect(const std::string &host, uint16_t port, std::string *error)
         return fail("Connection error.");
     if (!socket.readU32(packet) || packet != SEED || !socket.readU32(worldSeed))
         return fail("Connection error.");
-    ownId = id;
+    // The normal server supplies1..10; the native adoption boundary also admits
+    // zero and preserves the prior actor identity for a signed-negative reply.
+    if (std::bit_cast<int64_t>(id) >= 0)
+        ownId = id;
     online = true;
     receiver = std::thread([this] { receiveLoop(); });
     sender = std::thread([this] { sendLoop(); });

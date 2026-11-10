@@ -871,3 +871,11 @@ reference state remain separate. Configuration/kind producers, arbitrary generat
 appearances, network-client creation/authority, broader geometry and complete
 native lifetime/gameplay remain gates. No implementation or runtime findings
 were supplied to either source-side author task.
+
+The held identity contract also supplies the bounded connection-scalar fix.
+The engine starts its client identity at literal 1, adopts a complete received
+nonnegative ID and retains the prior value for a signed-negative ID. Disconnect
+does not restore literal 1. Real loopback regressions distinguish getter, sender
+and remote-key classification across reconnects, including adopted zero. This
+does not certify the complete native actor replacement, saved-state restoration,
+pointer alias lifetime or incomplete-message handling.

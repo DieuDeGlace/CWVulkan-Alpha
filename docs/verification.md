@@ -248,6 +248,15 @@ the preview and 170 edits. Configuration producers, remaining generated
 appearances, universal reference initialization, broad geometry and online/native
 acceptance remain open. Bright-ground rendering is still unresolved.
 
+NetTests also exercises real reconnects with replies 7, -1, 0, the minimum signed
+64-bit value and 5. It checks initial identity 1, nonnegative adoption, retained
+identity after negative replies and disconnect, actual outgoing IDs and distinct
+remote-key classification. Before the fix, nine new assertions failed while
+the existing checks passed; all pass after the fix. All 47 CTests and a fresh
+connected-client/server smoke passed. The rendered client frame was reviewed.
+Full native actor replacement, saved-state restoration, alias lifetime and
+incomplete transport behavior remain separate acceptance gates.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

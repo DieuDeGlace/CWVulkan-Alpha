@@ -56,6 +56,79 @@ static bool waitFor(const std::function<bool()> &condition, int ms = 3000) {
     return condition();
 }
 
+static void checkIdentityAdoption() {
+    Client client;
+    check(client.id() == 1, "a fresh client starts from the native literal identity1");
+    for (const auto [replyId, expected] : std::array<std::pair<uint64_t, uint64_t>, 5>{{
+            {7, 7}, {UINT64_MAX, 7}, {0, 0}, {uint64_t(INT64_MIN), 0}, {5, 5}}}) {
+        Socket listener;
+        if (!listener.listen(0, nullptr, "127.0.0.1")) {
+            check(false, "identity fixture listens");
+            return;
+        }
+        const uint64_t remoteKey = replyId & (uint64_t(1) << 63) ? replyId : 99;
+        std::atomic<bool> finish{false}, receivedOwn{false};
+        std::atomic<uint64_t> sentIdentity{0};
+        std::thread peer([&] {
+            Socket socket = listener.accept();
+            if (!socket.valid())
+                return;
+            socket.setReadTimeout(3000);
+            uint32_t packet = 0, version = 0;
+            if (!socket.readU32(packet) || packet != HELLO || !socket.readU32(version) || version != VERSION)
+                return;
+            const auto initial = CreatureRecord::nativeDefaults();
+            ByteWriter response;
+            response.u32(ACCEPTED);
+            response.u32(CREATURE);
+            response.u64(replyId);
+            response.write(initial.bytes.data(), initial.bytes.size());
+            response.u32(SEED);
+            response.u32(41);
+            CreatureRecord remote = initial;
+            const float health = 31;
+            std::memcpy(remote.bytes.data() + 0x15c, &health, 4);
+            response.u32(CREATURE);
+            response.bytes(compressed(encodeDelta(remoteKey, remote, uint64_t(1) << 27)));
+            if (!socket.send(response.data()))
+                return;
+            CreatureRecord own;
+            while (!finish && socket.readU32(packet)) {
+                if (packet != CREATURE)
+                    return;
+                uint32_t length = 0;
+                if (!socket.readU32(length) || length > (4u << 20))
+                    return;
+                std::vector<uint8_t> packed(length);
+                if (!socket.readExact(packed.data(), packed.size()))
+                    return;
+                const auto plain = zlibInflate(packed);
+                const auto id = plain ? applyDelta(*plain, own) : std::nullopt;
+                if (!id)
+                    return;
+                sentIdentity = *id;
+                receivedOwn = true;
+            }
+        });
+        const bool joined = client.connect("127.0.0.1", listener.boundPort());
+        check(joined, "a complete identity reply continues connection setup");
+        if (joined) {
+            check(client.id() == expected, "nonnegative replies adopt the exact ID, while negative replies retain the prior identity");
+            check(waitFor([&] { return receivedOwn.load(); }) && sentIdentity == expected,
+                  "the actual sender uses the adopted or retained identity");
+            check(waitFor([&] {
+                const auto actors = client.others();
+                return actors.contains(remoteKey) && actors.at(remoteKey).health() == 31;
+            }), "a negative handshake does not misclassify a later negative-key remote actor as controlled");
+        }
+        finish = true;
+        client.disconnect();
+        listener.close();
+        peer.join();
+        check(client.id() == expected, "disconnect preserves the last adopted identity");
+    }
+}
+
 static void checkCombatTransport() {
     Socket listener;
     std::string bindError;
@@ -392,6 +465,7 @@ static void checkCombatTransport() {
 }
 
 int main() {
+    checkIdentityAdoption();
     checkCombatTransport();
     // §6.2: position and health of entity 1. (The plain bytes printed in the spec are shifted
     // by one byte in the position; these are what its wire bytes inflate to.)
