@@ -1,5 +1,6 @@
 #include "Missions.h"
 #include "creatures/Npcs.h"
+#include <bit>
 #include <cstdio>
 #include <limits>
 
@@ -187,6 +188,7 @@ static void actualFatalBoundary() {
     victim.fighter.id = 72;
     victim.fighter.controller = 1;
     victim.fighter.health = 1;
+    victim.fighter.level = 5;
     victim.fighter.backing = {8, 16, 0};
     victim.fighter.linkedId = 73;
     victim.spawn = Npc::NO_SPAWN;
@@ -194,6 +196,7 @@ static void actualFatalBoundary() {
     victim.body.place({10, 10, 3});
     npcs.npcs().push_back(victim);
     victim.fighter.id = 73;
+    victim.fighter.controller = 2;
     victim.fighter.health = 17;
     npcs.npcs().push_back(victim);
     Combatant player;
@@ -206,12 +209,17 @@ static void actualFatalBoundary() {
     NpcFrame frame;
     int callbacks = 0;
     npcs.onFatalLoot = [&](const Combatant &, const Body &, std::span<const ItemRecord>) {
-        check(npcs.all()[1].fighter.health == 17, "fatal loot precedes linked health and regional admission");
+        check(npcs.all()[1].fighter.health == 17 && !npcs.all()[0].fatalCredit,
+              "fatal loot precedes linked health and credit preparation");
+        npcs.npcs()[0].fighter.level = 10;
     };
     npcs.onFatalRegion = [&](Combatant &target, uint8_t marker, const auto &lookup, NpcFrame &events) {
         callbacks++;
         check(marker == 0xff && npcs.all()[1].fighter.health == 0 && events.sounds[0].sound == 27 && target.actionMs == 0,
               "production fatal regional service follows linked health and retains the raw marker byte");
+        check(npcs.all()[0].fatalCredit && std::bit_cast<uint32_t>(*npcs.all()[0].fatalCredit) == 0x40c69ee8,
+              "credit uses post-loot state and retains its fractional binary32 value before regional callbacks");
+        target.level = 100; // later state must not replace the already prepared common amount
         if (const auto progress = missions.fatal(target, marker, 0, [](int32_t, int32_t) { return true; }, lookup))
             events.missions.push_back(*progress);
     };
@@ -228,6 +236,12 @@ static void actualFatalBoundary() {
     npcs.stepInto(0, map, {view}, 1000, 9, block, frame);
     check(!frame.deaths.empty() && frame.deaths[0].regionApplied && frame.missions.size() == 1 && callbacks == 1,
           "later corpse output marks completed regional admission so callers cannot replay it");
+    check(frame.kills.size() == 1 && frame.kills[0].experience == 6 && frame.experience == 6,
+          "the retained later adapter converts the prepared amount instead of recomputing changed target state");
+    npcs.npcs()[0].fighter.health = 20;
+    npcs.npcs()[0].deadMs = 0;
+    npcs.stepInto(0, map, {view}, 1000, 9, block, frame);
+    check(!npcs.all()[0].fatalCredit, "the next admitted live update clears the engine's prior-fatal amount bridge");
 }
 
 static void descriptorDisposal() {

@@ -426,19 +426,31 @@ int32_t experienceForLevel(int32_t level) {
     return (int32_t)(base + 50.f);
 }
 
-int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uint16_t appearanceFlags) {
-    if (appearanceFlags & 0x800)
-        return 0;
-    const float n = (float)(level + tier);
-    float e = std::max(1.f, 20.f * (1.f - 1.f / ((n - 1.f) * 0.05f + 1.f)));
+float fatalCreditAmount(int32_t level, uint8_t tier, int32_t type, uint16_t appearanceFlags) {
+    const int32_t rank = std::bit_cast<int32_t>(uint32_t(level) + uint32_t(tier));
+    const float previous = (float)rank - 1.f;
+    const float scaled = previous * .05f;
+    const float denominator = scaled + 1.f;
+    const float reciprocal = 1.f / denominator;
+    const float growth = 1.f - reciprocal;
+    float amount = growth * 20.f;
+    if (amount < 1.f)
+        amount = 1.f;
     switch (type) {
     case 101: case 107: case 108: case 109: case 114: case 115: case 116: case 117: case 118: case 119:
-        e *= 20;
+        amount *= 20.f;
         break;
     }
-    if (boss)
-        e *= 10;
-    return (int32_t)e;
+    if (appearanceFlags & 0x200)
+        amount *= 10.f;
+    if (appearanceFlags & 0x800)
+        amount = 0.f;
+    return amount;
+}
+
+int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uint16_t appearanceFlags) {
+    const uint16_t flags = uint16_t((appearanceFlags & ~0x200u) | (boss ? 0x200u : 0));
+    return (int32_t)fatalCreditAmount(level, uint8_t(tier), type, flags);
 }
 
 void addExperience(Combatant &c, int32_t amount) {

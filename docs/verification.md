@@ -366,6 +366,29 @@ retained seed 123 despite conflicting reload arguments, nine map tiles, the
 35 hashed files in 36 archive entries and excludes owner/private content. These
 checks leave the documented native UI, gameplay, visual and provenance gates open.
 
+Additional CreditTests anchors check exact prepared-credit bits for minimum,
+fractional, byte-tier, negative-rank and signed-wrap inputs, every specified
+kind multiplier and neighboring exclusions. Flag tests retain the independence
+of regional admission, multiply the fractional value before truncation and force
+zero without a second minimum. Under explicitly selected masked, nearest-rounding
+controls, forced-zero output still exposes the earlier division's status; those
+controls are restored after the check and are not inferred for the running game.
+
+The actual world-hit regional fixture changes the victim's level during loot,
+observes the prepared fractional float after linked health, then changes the
+level again during regional processing. The later adapter uses the earlier float
+for its integer record, retains no-replay behavior and clears the bridge on a
+subsequent live update. Full recipient cleanup/credit/reward timing, every native
+storage producer and native gameplay acceptance remain separate gates.
+
+The credit-preparation checkpoint passed all 40 CTests and fresh actual-client
+reward, injured-health, multiplayer and both save/reload checks. All five
+captures were reviewed. Rewards retained level 2, -33 XP and 7 Platinum Coins;
+injured health retained exactly binary32 50. Reload retained the character,
+seed, map tiles, preview and edits. Its current player package passed all 35
+hashes and 36 archive-entry checks. The known bright ground and broader native
+UI/gameplay/visual acceptance gates remain open.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

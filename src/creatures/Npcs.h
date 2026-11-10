@@ -19,6 +19,7 @@
 #include <functional>
 #include <deque>
 #include <map>
+#include <optional>
 #include <set>
 #include <span>
 #include <tuple>
@@ -48,6 +49,9 @@ struct Npc {
     bool fatalPresented = false; // engine bookkeeping: the world applier already emitted the death sound
     bool fatalLootApplied = false; // the synchronous world loot service already ran
     bool fatalRegionApplied = false; // regional service already admitted or rejected this invocation
+    // Engine bridge to the remaining later-corpse adapter, not native storage.
+    // Preserve the pre-region binary32 amount until recipient record conversion.
+    std::optional<float> fatalCredit;
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit

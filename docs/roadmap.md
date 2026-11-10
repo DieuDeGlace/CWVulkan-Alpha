@@ -123,6 +123,12 @@ Differences from the Steam engine that shape the plan:
   old equipment before decrementing the selected row. Malformed positive body
   counts use an explicit engine rejection policy. Full pet-cache production,
   remaining UI/carry gates and native interactive acceptance remain open.
+- [x] Bounded fatal credit preparation: retain wrapped level-plus-byte-tier input,
+  binary32 operation order, the first minimum and later kind/flag modifiers.
+  Prepare after linked health and before regional callbacks; the remaining late
+  corpse adapter converts the retained float instead of recomputing changed
+  target state. This engine bridge does not close synchronous recipient cleanup,
+  credit/grants, final backing writes or native gameplay acceptance.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

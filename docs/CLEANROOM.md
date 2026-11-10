@@ -648,3 +648,16 @@ routes, carry limits, raw pet-cache production and native interactive acceptance
 remain bounded separately. The shared credit snapshot uses the same assignment
 service. These changes do not certify the full linked-item maintenance lifecycle;
 source authors received no implementation or runtime findings.
+
+The already held fatal-effects and regional-order contracts were fully reread
+before correcting the common credit preparation boundary. The amount now retains
+wrapped level-plus-byte-tier input, separate binary32 steps, ordered minimum,
+kind/flag multipliers and final zero replacement. It is prepared after linked
+health and before regional callbacks. An optional engine-owned value carries
+that float to the still later corpse adapter, where integer conversion occurs;
+it is not an inferred native actor field. Live admission and pet reconstruction
+clear the bridge. The old helper delegates to the shared arithmetic while
+retaining its separate boss-argument adapter. Synchronous per-recipient cleanup,
+credit consumption, completion grants and final backing writes remain open.
+Selected-control numeric/status checks and synthetic callback mutations do not
+establish the original game's ambient controls or native gameplay acceptance.

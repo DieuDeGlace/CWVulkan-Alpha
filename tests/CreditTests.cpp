@@ -1,6 +1,8 @@
 #include "creatures/Credits.h"
 #include "creatures/Combat.h"
 #include "creatures/ActorMap.h"
+#include <bit>
+#include <cfenv>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -207,11 +209,49 @@ static void aliasesAndRecordOrder() {
           "repeated admitted records remain distinct and are not internally deduplicated");
 }
 
+static void preparedFatalAmount() {
+    std::fenv_t environment;
+    if (std::feholdexcept(&environment) != 0) {
+        check(false, "selected masked floating controls are available");
+        return;
+    }
+    std::fesetround(FE_TONEAREST);
+    struct Anchor { int32_t level; uint8_t tier; uint32_t bits; };
+    // Binary32 anchors from the held ordered arithmetic, before integer credit.
+    for (const Anchor anchor : {Anchor{1, 0, 0x3f800000}, {2, 0, 0x3f800000},
+             {3, 0, 0x3fe8ba34}, {5, 0, 0x40555557}, {10, 2, 0x40e318c4},
+             {-20, 0, 0x43d1ffed}, {-21, 0, 0x435bfffe}, {-19, 0, 0x3f800000},
+             {INT32_MAX, 255, 0x41a00000}, {INT32_MIN, 255, 0x41a00000}})
+        check(std::bit_cast<uint32_t>(fatalCreditAmount(anchor.level, anchor.tier, 4, 0)) == anchor.bits,
+              "prepared credit retains byte-tier addition, binary32 arithmetic and the ordered minimum");
+    check(std::bit_cast<uint32_t>(fatalCreditAmount(5, 0, 101, 0x200)) == 0x4426aaac &&
+          (int32_t)fatalCreditAmount(5, 0, 101, 0x200) == 666,
+          "kind and flag multipliers operate on fractional credit before recipient truncation");
+    for (int32_t kind : {101, 107, 108, 109, 114, 115, 116, 117, 118, 119})
+        check(fatalCreditAmount(1, 0, kind, 0) == 20.f && fatalCreditAmount(1, 0, kind, 0x200) == 200.f,
+              "each specified kind multiplies the already-minimum-bounded amount");
+    for (int32_t kind : {0, 89, 100, 102, 106, 110, 113, 120, -1, INT32_MIN, INT32_MAX})
+        check(fatalCreditAmount(1, 0, kind, 0) == 1.f,
+              "neighboring and unrelated kinds do not gain the twenty-fold multiplier");
+    check(fatalCreditAmount(5, 0, 4, 0x2000) == fatalCreditAmount(5, 0, 4, 0) &&
+          fatalCreditAmount(1, 0, 101, 0x2800) == 0.f && fatalCreditAmount(1, 0, 101, 0xffff) == 0.f,
+          "regional admission is independent of amount modifiers; flag800 finally forces zero without a second minimum");
+
+    // Selected masked controls only: even forced-zero output retains the earlier
+    // division's observable status. This is not a whole-game control claim.
+    std::feclearexcept(FE_ALL_EXCEPT);
+    const float zero = fatalCreditAmount(-19, 0, 4, 0x800);
+    const bool divided = (std::fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO) != 0;
+    std::fesetenv(&environment);
+    check(zero == 0.f && divided, "forced-zero credit does not bypass earlier numeric preparation");
+}
+
 int main() {
     codecAndAdmission();
     designatedCleanup();
     independentLinkedAward();
     aliasesAndRecordOrder();
+    preparedFatalAmount();
     std::puts(failures ? "FAILED" : "Credit checks passed");
     return failures ? 1 : 0;
 }

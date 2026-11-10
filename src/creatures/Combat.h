@@ -168,7 +168,10 @@ float weaponRating(const Combatant &c);
 float armorRating(const Combatant &c);
 int32_t experienceForLevel(int32_t level); // §4.6
 void addExperience(Combatant &c, int32_t amount);
-// §12.3: the experience a hostile NPC is worth when killed.
+// Held fatal-effects contract: prepare once before regional work; convert to an
+// integer only when producing each recipient record. The tier input is a byte.
+float fatalCreditAmount(int32_t level, uint8_t tier, int32_t type, uint16_t appearanceFlags);
+// Legacy later-corpse adapter. Its separate boss argument supplies flag 0x200.
 int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uint16_t appearanceFlags);
 
 // §3: actions.

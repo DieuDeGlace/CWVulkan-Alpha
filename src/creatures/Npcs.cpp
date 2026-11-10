@@ -1396,8 +1396,8 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
                 propagateThreat(*by, actor, frame);
             }
         }
-    // Regional snapshots follow linked health. The remaining relationship and
-    // recipient-credit continuation is separate from this bounded stage.
+    // Prepared credit precedes regional callbacks. The remaining relationship
+    // and synchronous recipient continuation is separate from this bounded stage.
     if (target->health <= 0) {
         target->health = 0;
         glm::vec3 position;
@@ -1421,6 +1421,9 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
         if (target->linkedId && lookupActor(target->linkedId, players).combat())
             if (Combatant *linked = lookupActor(target->linkedId, players).combat())
                 linked->health = 0;
+        const float credit = fatalCreditAmount(target->level, target->powerTier, target->type, target->appearanceFlags);
+        if (recipient.npc)
+            recipient.npc->fatalCredit = credit;
         if (onFatalRegion) {
             onFatalRegion(*target, recipient.npc ? recipient.npc->boss : 0,
                 [&](uint64_t key) { return lookupActor(key, players).combat(); }, frame);
@@ -1712,6 +1715,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.fatalPresented = false;
         npc.fatalLootApplied = false;
         npc.fatalRegionApplied = false;
+        npc.fatalCredit.reset();
         npc.tameMs = std::max(0.f, npc.tameMs - dtMs); // pets §7.3: the taming progress lasts 5 s
         // §13.1: decide every 32 ms of accumulated time while not stunned.
         npc.thinkMs += dtMs;
@@ -1913,8 +1917,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                             death.credited = who;
             if (n.fighter.controller != 6) // (a bomb leaves nothing)
                 frame.deaths.push_back(death);
-            const int32_t xp = killExperience(n.fighter.level, n.fighter.powerTier, n.fighter.type,
-                                              (n.looks.flags & 0x200) != 0, n.looks.flags);
+            const int32_t xp = n.fatalCredit ? (int32_t)*n.fatalCredit
+                : killExperience(n.fighter.level, n.fighter.powerTier, n.fighter.type,
+                                 (n.looks.flags & 0x200) != 0, n.looks.flags);
             if (n.fighter.controller == 1)
                 for (size_t k = 0; k < players.size(); k++)
                     if (n.fighter.relations.threats.count(players[k].fighter.id) || n.target == players[k].fighter.id) {
