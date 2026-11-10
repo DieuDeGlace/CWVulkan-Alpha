@@ -754,3 +754,18 @@ Chat uses the existing engine submission adapter. Its own overlay renders last
 through the engine's UI painter and owned fonts. Provided-state tests and local
 Vulkan captures establish bounded behavior/layout only; they supply no original
 keyboard/polling equivalence or physical-controller acceptance claim.
+
+The additional original-only protection-state producer contract was subsequently
+FINAL/STABLE/HELD and read completely. It distinguishes the raw appearance word
+from the separate two-byte mode field, supplies their scoped initialization,
+copy/reset/stream boundaries and identifies concrete descriptor flag producers.
+The engine now treats combat mode as canonical between its input, behavior and
+physics phases, transferring the complete word instead of letting a stale body
+replace copied flags. Pet reconstruction resets its body view alongside the
+fresh combat view. Required quest captive changes publish both views directly.
+This synchronization is independently structured engine state management; it
+does not reconstruct native object layout. The first gameplay-specific bit-0x20
+writer, complete generator/caller coverage, world mode/designated-pointer
+transitions and native acceptance remain separate gates. The constructor's raw
+role/kind defaults do not redefine the engine's semantic controlled-player view.
+No implementation, diagnostic or runtime result was supplied to the source author.

@@ -54,7 +54,7 @@ struct Body {
     float bob = 0;        // landing bob, blocks (alpha-creatures-models.md §7.3)
     float bank = 0, swimPitch = 0; // orientation y and x, degrees
     float stamina = 1;
-    uint32_t mode = 0;    // record field 14 (Mode)
+    uint32_t mode = 0;    // record field 14; actor phases refresh/commit the complete word
     int32_t dodgeMs = 0;
     bool swimmer = false; // appearance flag 0x0100: blocked by anything but water
     bool flyer = false;   // appearance flag 0x0002: falls at a tenth of gravity

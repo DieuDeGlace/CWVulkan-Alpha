@@ -41,6 +41,9 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     const float dtMs = (float)milliseconds;
     const bool usePad = controls && pad && pad->connected && pad->context() == Gamepad::Context::Gameplay;
     const auto controller = usePad ? pad->gameplay() : Gamepad::GameplayInput{};
+    // Combat owns the complete mode word between phases. Input edits a physics
+    // view and publishes it below, retaining flags unrelated to movement.
+    state.mode = fighter.mode;
     // A key, or the pad button that stands for it (Gamepad.h).
     auto held = [&](int key) {
         if (controls && glfwGetKey(window, key) == GLFW_PRESS)
@@ -208,6 +211,7 @@ void Player::advance(int32_t dt, bool replica) {
     const float dtMs = (float)dt;
     if (!admitCreatureUpdate(fighter))
         return;
+    state.mode = fighter.mode;
     beginActionUpdate(fighter, dt, &abilityEffects.buffs);
     state.dodgeMs = (int32_t)fighter.dodgeMs;
     actionMsBefore = fighter.actionMs;
@@ -216,6 +220,7 @@ void Player::advance(int32_t dt, bool replica) {
     endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit);
 
     // The physics on whole milliseconds.
+    state.mode = fighter.mode;
     state.local = true;
     state.flyer = (looks.flags & FLYER) != 0;
     state.skills = fighter.skills;
@@ -259,8 +264,7 @@ void Player::advance(int32_t dt, bool replica) {
     fighter.dodgeMs = (float)state.dodgeMs;
     fighter.mode = state.mode;
     advanceCharge(fighter, dtMs);
-    if (fighter.hitStun > 0)
-        state.mode &= ~0x11u;
+    state.mode = fighter.mode;
     if ((state.mode & CLIMB) && (state.contact & ON_WALL) && !gliding(state)) {
         // Travel §6.4: a climber turns to face the wall.
         glm::vec2 u = -glm::vec2(state.wallNormal);

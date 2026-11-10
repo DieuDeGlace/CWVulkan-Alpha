@@ -124,7 +124,7 @@ struct Combatant {
     bool criticalLatched = false; // consumed type-11 common-hit effect, independent of buff lifetime
     int32_t slowMs = 0, hasteMs = 0; // fields 18, 19, signed native counters
     float hitFlash = 0;
-    uint32_t mode = 0;    // mode flags (0x40 running, 0x80 immune…)
+    uint32_t mode = 0;    // raw wire word in low 16 bits; canonical between actor phases
     uint32_t contact = 0; // contact flags of the physics step
     std::vector<Buff> buffs;
     std::vector<int32_t> specials; // special actions an NPC may use (§9.3, §13.2)

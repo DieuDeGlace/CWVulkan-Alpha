@@ -63,7 +63,13 @@ Differences from the Steam engine that shape the plan:
   actors retain contact/count/threat state, ordered nearby and healing fanout
   use raw fixed coordinates, and typed relationship records reach both peers
   through section eleven. Frame assignment follows world calls and precedes
-  input. Original flag producers, map lifetime and all world modes remain open.
+  input. Complete flag producers, map lifetime and all world modes remain open.
+- [x] Bounded mode-word preservation: local input, NPC behavior, physics and
+  charge/stun phases transfer the complete word without losing unrelated bits.
+  Pet reconstruction clears both views; quest captive creation/free publishes
+  its intended sitting change immediately. The held producer audit supplies
+  raw word/copy/reset boundaries. First native bit-0x20 behavior production,
+  complete descriptor generation and world transition/lifetime remain open.
 - [ ] Full synchronous fatal/world-loot processing from the held contracts,
   remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later

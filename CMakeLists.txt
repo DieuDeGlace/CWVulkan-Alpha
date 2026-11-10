@@ -299,6 +299,10 @@ add_executable(TerrainLightRenderProbe tools/TerrainLightRenderProbe.cpp)
 add_executable(ControllerKeyboardRenderProbe tools/ControllerKeyboardRenderProbe.cpp)
 target_link_libraries(ControllerKeyboardRenderProbe PRIVATE renderer)
 target_link_libraries(TerrainLightRenderProbe PRIVATE renderer)
+# Actual client input/actor diagnostic; needs owned content and Vulkan, so it
+# stays outside automatic CTest and player packages.
+add_executable(PlayerStateProbe tools/PlayerStateProbe.cpp src/Player.cpp src/WorldView.cpp src/CreatureView.cpp)
+target_link_libraries(PlayerStateProbe PRIVATE renderer gamepad)
 
 add_executable(StoreTests tests/StoreTests.cpp)
 target_link_libraries(StoreTests PRIVATE engine)

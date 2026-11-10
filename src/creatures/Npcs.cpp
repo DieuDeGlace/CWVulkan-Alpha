@@ -362,8 +362,9 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     npc.path.statics = pathStatics;
     if (s.questRole == 2) { // a quest's prisoner sits tied up until freed
         c.action = 83;
-        npc.body.mode |= 0x400;
+        c.mode |= 0x400;
     }
+    npc.body.mode = c.mode;
     appendNpc(std::move(npc));
 }
 
@@ -446,7 +447,8 @@ uint32_t Npcs::free(uint64_t id, glm::dvec3 home) {
         if (n.fighter.id == id && n.questRole == 2 && n.fighter.controller == 6 && n.fighter.health > 0) {
             n.fighter.controller = 3;
             n.fighter.action = 0, n.fighter.actionMs = 0;
-            n.body.mode &= ~0x400u;
+            n.fighter.mode &= ~0x400u;
+            n.body.mode = n.fighter.mode;
             n.body.intent = {0, 0, 1}; // (stands up)
             n.behaviour = 2;           // walks off toward home along a one-point route
             n.route = {home};
@@ -1781,6 +1783,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         Combatant &c = npc.fighter;
         if (!admitCreatureUpdate(c))
             continue;
+        // The body is a phase-local view of the full actor mode word. Refresh
+        // before behavior so received/copied flags survive movement edits.
+        npc.body.mode = c.mode;
         npc.fatalPresented = false;
         npc.fatalLootApplied = false;
         npc.fatalRegionApplied = false;
@@ -1798,8 +1803,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         }
         // The authoritative path phase sees incoming stun, before lock/action
         // dispatch and the later common countdown.
-        c.mode &= ~0x80u;
         npc.body.mode &= ~0x80u;
+        c.mode = npc.body.mode;
         // The admitted bomb body can reach zero here and still completes this
         // pass. Its health gate has already run, before behavior/steering.
         if (c.type == 144 && c.controller == 6)
@@ -1812,6 +1817,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             }
         }
         npc.path.timerMs += dtMs;
+        c.mode = npc.body.mode;
         c.dodgeMs = (float)npc.body.dodgeMs;
         beginActionUpdate(c, milliseconds, &frame.buffs);
         npc.body.dodgeMs = (int32_t)c.dodgeMs;
@@ -1857,6 +1863,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         endActionUpdate(c, milliseconds, {false, false}, [&](const Buff &buff) {
             periodicHit(c, npc.body, buff, players, frame);
         });
+        npc.body.mode = c.mode;
         // Physics §4.4: overlapping creatures push each other apart (not bombs, nor creatures
         // in actions 83 and 84); boxes grow by (1, 1, 0) except inert ones.
         if (c.controller != 6 && c.action != 83 && c.action != 84) {
@@ -1904,8 +1911,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         worldStep(npc.body, (int32_t)dtMs, block, objects);
         c.mode = npc.body.mode;
         advanceCharge(c, dtMs);
-        if (c.hitStun > 0)
-            npc.body.mode &= ~0x11u;
+        npc.body.mode = c.mode;
         if (std::exchange(npc.body.splashed, false)) { // physics §5.3
             frame.bursts.push_back(splashBurst(npc.body.blocks()));
             frame.sounds.push_back({npc.body.blocks(), 31, 0.9f + (float)draw() / 32767.f, 1});

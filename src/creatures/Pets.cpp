@@ -82,6 +82,7 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     c.equipment[PET_SLOT].level = 0;
     c.linkedItem.retained = pet.fighter.linkedItem.retained;
     pet.fighter = c;
+    pet.body.mode = c.mode;
     pet.fighter.ownerId = owner.id;
     pet.spawn = Npc::NO_SPAWN;
     pet.fighter.relations.threats.clear();

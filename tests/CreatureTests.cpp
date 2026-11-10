@@ -382,7 +382,17 @@ int main() {
             if (n.questRole == quests::PRISONER)
                 prisoner = n.fighter.id;
         same(prisoner != 0 && camp.guarded(rescue.id, {40, 140, 10}, quests::FREE_CLEAR), 1, "a guarded prisoner");
+        for (Npc &n : camp.npcs())
+            if (n.fighter.id == prisoner) {
+                same(n.fighter.mode == n.body.mode && (n.fighter.mode & 0x400), 1,
+                     "quest activation publishes the captive's sitting flag to both state views");
+                n.fighter.mode |= 0xa020;
+            }
         same(camp.free(prisoner, {0, 0, 10}), rescue.id, "freed, it belongs to its quest");
+        for (const Npc &n : camp.all())
+            if (n.fighter.id == prisoner)
+                same(n.fighter.mode == n.body.mode && (n.fighter.mode & 0xa420) == 0xa020, 1,
+                     "freeing a captive clears only sitting and immediately publishes the full retained word");
         same(camp.free(prisoner, {0, 0, 10}), 0, "and is no captive any more");
 
         quests::Quest champion = a;

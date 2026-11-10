@@ -121,6 +121,28 @@ health retained exactly binary32 50. Reload retained the character, seed, nine m
 tiles, preview and 170 edits. These regression runs do not close physical
 controller, complete first-time workflows or broader native acceptance gates.
 
+Mode preservation regressions run a real NPC world update with copied raw flags,
+replace the core word, encode the updated actor and exercise consecutive stunned
+pieces. They retain both bytes while applying only the relevant movement changes;
+a dead rejected update changes neither view. Existing pet and quest tests also
+check reconstruction reset and immediate captive create/free publication.
+
+`PlayerStateProbe <owned Alpha folder>` runs the production Player input and
+actor code with an actual Vulkan-backed world and supplied controller samples.
+It checks raw flag preservation, a later core replacement, controller climbing,
+stun cleanup across pieces and dead admission. The local run passed. This explicit
+diagnostic reads owned content without saves, networking or an original process;
+it is excluded from CTest and player packages. A supplied pad establishes this
+engine input path, while physical controller and native behavior acceptance
+remain open. First native bit-0x20 production, complete reset/generator coverage
+and designated-pointer/world transition lifetime are still unresolved.
+All 44 CTests passed for this mode-preservation checkpoint. Fresh actual-client
+reward, injured-health, loopback and both save/reload phases passed; all five
+captures were reviewed. Reward state retained level 2, -33 XP and 7 Platinum
+Coins, injured health remained binary32 50, and reload retained seed 123, nine
+map tiles, the preview and 170 edits. Known bright ground and broader native
+visual/gameplay acceptance remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

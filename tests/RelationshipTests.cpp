@@ -1,4 +1,5 @@
 #include "creatures/Npcs.h"
+#include "net/Protocol.h"
 #include "net/RemoteFighter.h"
 #include <algorithm>
 #include <bit>
@@ -188,6 +189,48 @@ int main() {
               "independently rechecked kind 89 is admitted by its complete kind value, without truncation or an unrelated flag gate");
         for (const uint16_t flags : {uint16_t(0x0200), uint16_t(0x0800), uint16_t(0x1000), uint16_t(0x1a00)})
             check(!harmless(89, flags), "each native 0x1a00 bit rejects kind 89 before its kind admission");
+    }
+    {
+        worldgen::WorldMap map;
+        map.add(std::make_shared<worldgen::Zone>(0, 0));
+        Npcs world;
+        Npc npc = actor(9);
+        npc.fighter.mode = 0xa620;
+        npc.body.mode = CLIMB; // stale physics state must not replace the copied word
+        world.npcs().push_back(npc);
+        Combatant peer;
+        peer.id = 1;
+        peer.controller = 1;
+        Body body;
+        body.place({10, 0, 3});
+        const BlockType block = [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); };
+        NpcFrame frame;
+        world.stepInto(20, map, {{peer, body, 0, 0, false, false}}, 1000, 0, block, frame);
+        auto &updated = world.npcs().front();
+        check(updated.fighter.mode == 0xa620 && updated.body.mode == 0xa620 && hostile(updated.fighter, peer),
+              "an actual actor update preserves both bytes of a copied mode word and its relationship effect");
+        net::CreatureRecord record;
+        record.setFighter(updated.fighter);
+        check(record.fighter().mode == 0xa620, "updated opaque mode flags survive the real outgoing codec");
+        updated.fighter.mode = 0x5a00;
+        updated.thinkMs = 0;
+        world.stepInto(20, map, {{peer, body, 0, 0, false, false}}, 1000, 0, block, frame);
+        check(updated.fighter.mode == 0x5a00 && updated.body.mode == 0x5a00 && !hostile(updated.fighter, peer),
+              "a later core replacement clears a stale low-byte relationship bit while retaining the new high byte");
+        updated.fighter.mode = 0xa631;
+        updated.fighter.hitStun = 100;
+        world.stepInto(20, map, {{peer, body, 0, 0, false, false}}, 1000, 0, block, frame);
+        check(updated.fighter.mode == 0xa620 && updated.body.mode == 0xa620,
+              "post-physics stun clears climb/glider in both views without stripping unrelated bits");
+        world.stepInto(20, map, {{peer, body, 0, 0, false, false}}, 1000, 0, block, frame);
+        check(updated.fighter.mode == 0xa620 && updated.body.mode == 0xa620,
+              "the following world piece cannot reintroduce the cleared movement flags");
+        updated.fighter.health = 0;
+        updated.fighter.mode = 0xf020;
+        updated.body.mode = 0x1200;
+        world.stepInto(0, map, {{peer, body, 0, 0, false, false}}, 1000, 0, block, frame);
+        check(updated.fighter.mode == 0xf020 && updated.body.mode == 0x1200,
+              "a rejected dead update does not copy or normalize either state view");
     }
     {
         net::RemoteFighter remote;
