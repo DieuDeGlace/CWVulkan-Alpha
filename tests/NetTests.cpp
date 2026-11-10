@@ -68,6 +68,9 @@ static void checkCombatTransport() {
     const auto expectedSend = sent.serialize();
     const std::array<creatures::RelationshipRecord, 3> relationships{{
         {19, 0, -3.25f, {1, 2, 3, 4}}, {19, 1, -0.f, {5, 6, 7, 8}}, {1, 1, 17, {9, 10, 11, 12}}}};
+    const std::array<creatures::KillRecord, 5> expectedCredits{{
+        {1, 19, 999, 17}, {0, 1, INT32_MIN, -7}, {19, 0, -1, 0},
+        {1, 1, INT32_MAX, 50}, {1, 19, 999, -17}}};
     std::vector<creatures::ItemRecord> expectedGifts;
     for (int16_t quantity : {9, 0, -7}) {
         creatures::ItemRecord platinum{};
@@ -152,9 +155,10 @@ static void checkCombatTransport() {
             grant.write(item.data(), item.size());
             update.sections[8].push_back(grant.data());
         }
-        ByteWriter credit;
-        credit.u64(1), credit.u64(19), credit.i32(999), credit.i32(17);
-        update.sections[9].push_back(credit.data());
+        for (const auto &credit : expectedCredits) {
+            const auto bytes = credit.serialize();
+            update.sections[9].emplace_back(bytes.begin(), bytes.end());
+        }
         ByteWriter response;
         response.u32(CLOCK);
         response.u32(clockDay);
@@ -234,7 +238,7 @@ static void checkCombatTransport() {
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
         check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
               client.takeStaticStates().empty() &&
-              client.takeGifts().empty() && client.takeExperience() == 0 &&
+              client.takeGifts().empty() && client.takeCredits().empty() &&
               client.others().empty() && !client.takeClock(),
               "incoming queue mutation and creature insertion wait until the current frame completes");
         creatures::Combatant actor;
@@ -247,15 +251,18 @@ static void checkCombatTransport() {
         std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<std::vector<uint8_t>> receivedStatics;
         std::vector<creatures::ItemRecord> receivedGifts;
+        std::vector<creatures::KillRecord> receivedCredits;
         std::vector<Hit> hits;
         check(waitFor([&] {
             for (const auto &event : client.takeBuffs()) events.push_back(event);
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
             for (const auto &item : client.takeGifts()) receivedGifts.push_back(item);
+            for (const auto &credit : client.takeCredits()) receivedCredits.push_back(credit);
             for (const auto &hit : client.takeHits()) hits.push_back(hit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
                    receivedStatics.size() >= expectedStaticPayloads.size() && receivedGifts.size() >= expectedGifts.size() &&
+                   receivedCredits.size() >= expectedCredits.size() &&
                    !hits.empty() && received && receivedHit;
         }), "actual client exchanges packet-8 and section-12 buff records");
         check(coherentHit && packetOrder,
@@ -270,8 +277,13 @@ static void checkCombatTransport() {
               "section-eleven relationships retain order, zero/self IDs, float bits and all opaque bytes before one frame drain");
         check(receivedStatics == expectedStaticPayloads && client.takeStaticStates().empty(),
               "ordered section-six snapshots preserve all 88 bytes through frame-protected publication and one drain");
-        check(receivedGifts == expectedGifts && client.takeGifts().empty() && client.takeExperience() == 17 && client.takeExperience() == 0,
+        check(receivedGifts == expectedGifts && client.takeGifts().empty(),
               "positive, zero and negative Platinum Coins grants retain item bytes without becoming or consuming kill experience");
+        bool sameCredits = receivedCredits.size() == expectedCredits.size();
+        for (size_t i = 0; sameCredits && i < expectedCredits.size(); i++)
+            sameCredits = receivedCredits[i].serialize() == expectedCredits[i].serialize();
+        check(sameCredits && client.takeCredits().empty(),
+              "complete credit records retain foreign, zero and self IDs, signed amounts, unused type bits and order without aggregation");
         auto wallet = creatures::Inventory::fresh();
         wallet.platinum = 5;
         for (const auto &item : receivedGifts)
@@ -304,6 +316,14 @@ static void checkCombatTransport() {
             check(fractionBits == 0x3f8147ae && negativeBits == 0xc1280000 &&
                       remote->second.bytes[0x68 + 2] == 0xff && remote->second.bytes[0x68 + 0x14] == 0xff,
                   "absent appearance keeps exact fixed fractions, negative offsets and selector defaults");
+            auto frame = client.lockFrame();
+            auto expected = remote->second;
+            expected.setHealth(0);
+            client.setReceivedHealth(19, 0);
+            client.setReceivedHealth(777, 0);
+            const auto changed = client.others();
+            check(changed.at(19).bytes == expected.bytes && !changed.contains(777),
+                  "frame credit cleanup changes only received health and never creates a missing actor");
         }
         followupRequested = true;
         check(waitFor([&] {
@@ -311,6 +331,10 @@ static void checkCombatTransport() {
             const auto it = peers.find(19);
             return it != peers.end() && it->second.health() == 123.25f;
         }), "existing creature accepts a health-only update with explicit opaque storage");
+        {
+            auto frame = client.lockFrame();
+            client.setReceivedHealth(19, 0);
+        }
         finalDeltaRequested = true;
         check(waitFor([&] {
             const auto peers = client.others();
@@ -323,9 +347,9 @@ static void checkCombatTransport() {
             const auto &record = finalRemote->second;
             bool opaquePreserved = true;
             for (size_t i = 0; i < 24; ++i) opaquePreserved &= record.bytes[0x1b0 + i] == uint8_t(0xa0 + i);
-            check(record.health() == 123.25f && record.controller() == 3 &&
+            check(record.health() == 0 && record.controller() == 3 &&
                       record.position(0) == 123456789 && opaquePreserved,
-                  "later partial delta preserves prior semantic and opaque fields without reapplying defaults");
+                  "position-only delta retains frame credit health and prior opaque fields; a fresh health delta can replace it");
         }
         repeatClock = true;
         std::optional<std::pair<uint32_t, uint32_t>> repeated;

@@ -29,6 +29,7 @@
 #include "Player.h"
 #include "creatures/Strike.h"
 #include "creatures/Inventory.h"
+#include "creatures/Credits.h"
 #include "creatures/Spirits.h"
 #include "creatures/Names.h"
 #include "creatures/Npcs.h"
@@ -1355,6 +1356,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const auto &[key, remote] : otherFighters)
             creatures::refreshForwardLink(remote.fighter, frameActor);
     };
+    // Online mode is an engine caller adapter, independent of the consumer's
+    // supplied mode-zero rules. Reuse this world view across incoming frames.
+    const creatures::CreditWorld creditWorld{frameActor,
+        [&]() -> creatures::Combatant * { return player ? &player->combat() : nullptr; }, 1, {}};
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
         if (interface.optionsToApply) {
@@ -2595,15 +2600,31 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 for (const auto &event : incomingHitUpdates)
                     sendBuff(event);
-                const int32_t level = c.level;
-                if (const int32_t xp = client.takeExperience()) {
-                    creatures::addExperience(c, xp);
-                    interface.floating.push_back(ui::experienceText(xp, player->body().blocks()));
-                    interface.chatAdd("You gain " + std::to_string(xp) + " XP.\n", {150, 128, 255});
+            }
+            // Incoming credits retain their later caller phase, after hits.
+            // Mode one is this engine's online-world adapter; the independent
+            // mode-zero consumer is also used by supplied-state checks.
+            for (const auto &credit : client.takeCredits()) {
+                const int32_t previousLevel = player ? player->combat().level : 0;
+                const auto result = creatures::receiveCredit(credit, creditWorld);
+                if (result.healthZeroed)
+                    for (const auto &[key, remote] : otherFighters)
+                        if (&remote.fighter == result.healthZeroed) {
+                            client.setReceivedHealth(key, remote.fighter.health);
+                            if (const auto record = receivedActors.find(key); record != receivedActors.end())
+                                record->second.setHealth(remote.fighter.health);
+                            break;
+                        }
+                if (!player)
+                    continue;
+                const auto &c = player->combat();
+                if (result.directAward == &c && credit.experience != 0) {
+                    interface.floating.push_back(ui::experienceText(credit.experience, player->body().blocks()));
+                    interface.chatAdd("You gain " + std::to_string(credit.experience) + " XP.\n", {150, 128, 255});
                 }
-                for (int32_t l = level + 1; l <= c.level; l++)
-                    mods.levelUp(l);
-                if (c.level > level) {
+                for (int64_t level = int64_t(previousLevel) + 1; level <= c.level; level++)
+                    mods.levelUp(int32_t(level));
+                if (c.level > previousLevel) {
                     audio.play("levelup2.wav");
                     interface.floating.push_back(ui::levelUpText(player->body().blocks()));
                 }

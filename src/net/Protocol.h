@@ -69,6 +69,7 @@ struct CreatureRecord {
     creatures::Appearance appearance() const { return creatures::Appearance::parse(&bytes[0x68]); }
     void setAppearance(const creatures::Appearance &a) { a.serialize(&bytes[0x68]); }
     float health() const;
+    void setHealth(float value) { std::memcpy(bytes.data() + 0x15c, &value, 4); }
     // The fighting state other clients draw and the server relays (behaviour spec §1): type,
     // controller, action and its time, combo, class, charge, health, mana, level, experience,
     // the stat multipliers and the equipment (models spec §6.4).

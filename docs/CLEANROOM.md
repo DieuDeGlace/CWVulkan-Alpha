@@ -576,9 +576,26 @@ always-on engine extension, rather than the native exponential price curve.
 
 The separately bounded level helper now retains binary32 conversion before
 subtraction, low-four-byte XP/debit/level arithmetic, the positive-level entry
-gate and one fresh health maximum after each level increment. This implements
-only the held consumer's level-helper portion. The complete typed credit
-consumer, repeated actor lookups, independent linked award, item-cache copy,
-incoming caller timing and synchronous regional fatal continuation remain open.
+gate and one fresh health maximum after each level increment. Imported stat/math
+precision, ambient controls and exceptional later level wrap remain separate
+acceptance limits. The synchronous regional fatal continuation is still open.
 Safe selection invalidation and received opaque-byte retention remain identified
 engine policies. No source author received engine, runtime or test findings.
+
+The same fully read credit-consumer contract subsequently supplied a shared
+typed record and provided-state consumer. It performs both initial lookups before
+admission, designated-victim cleanup with repeated current lookups, then separate
+direct and linked awards. Supplied raw item storage receives the post-level XP
+and low level word; the snapshot copy preserves its five unassigned alignment
+bytes. Engine semantic item views update those same two fields without an extra
+parse, allocation or random draw. Actor/item storage must remain valid throughout
+the call; null relookup handling is an engine guard, not a native lifetime claim.
+
+The network worker now retains complete ordered records, including foreign
+recipients, rather than summing own-player XP. The client invokes the consumer
+after its incoming hits and persists remote cleanup health without replacing
+other core bytes. Its existing online mode/key production, receive protection,
+presentation/SDK notifications and core-refresh policy remain engine adapters.
+Mode-zero linked effects have supplied-state coverage; the synchronous fatal
+producer and its raw item-cache, regional, recipient/grant and final descriptor
+integration remain open. No new native source or runtime observation was used.

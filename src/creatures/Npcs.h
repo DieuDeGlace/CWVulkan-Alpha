@@ -7,6 +7,7 @@
 #include "creatures/Appearance.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Combat.h"
+#include "creatures/Credits.h"
 #include "creatures/Inventory.h"
 #include "creatures/Paths.h"
 #include "creatures/Projectiles.h"
@@ -98,12 +99,6 @@ struct PlayerView {
     bool strikes = true;
     bool advanceBuffs = false; // server view; local clients already ran their own countdown
     bool local = false; // distinguished controlled creature; absent in a dedicated world
-};
-
-// Server §6.2 step 7: a kill credited to a player (world-update section 10).
-struct KillRecord {
-    uint64_t player = 0, victim = 0;
-    int32_t victimType = 0, experience = 0;
 };
 
 // What a step of creatures did.

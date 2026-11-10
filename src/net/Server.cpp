@@ -1127,9 +1127,8 @@ void Server::stepWorld(float dtMs) {
             out.sections[3].push_back(w.data());
         }
         for (const creatures::KillRecord &k : frame.kills) { // §6.2 step 7: section 10
-            ByteWriter w;
-            w.u64(k.player), w.u64(k.victim), w.i32(k.victimType), w.i32(k.experience);
-            out.sections[9].push_back(w.data());
+            const auto bytes = k.serialize();
+            out.sections[9].emplace_back(bytes.begin(), bytes.end());
         }
     }
     stepEdits.clear();

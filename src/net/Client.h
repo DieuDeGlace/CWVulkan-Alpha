@@ -6,6 +6,7 @@
 // the server sends about it are ignored (packets §2.3).
 #include "net/Protocol.h"
 #include "net/Socket.h"
+#include "creatures/Credits.h"
 #include <atomic>
 #include <array>
 #include <deque>
@@ -54,6 +55,9 @@ class Client {
 
     // What the server last listed: other creatures by id.
     std::map<uint64_t, CreatureRecord> others() const;
+    // Frame-side credit cleanup, under lockFrame. Later network deltas may
+    // replace this field; unrelated received core bytes remain untouched.
+    void setReceivedHealth(uint64_t key, float health);
     // The server's clock (packet 5), and whether one has arrived.
     bool clock(uint32_t &day, uint32_t &timeOfDayMs) const;
     // New packet publication only, so a frame does not replay a cached clock.
@@ -70,9 +74,9 @@ class Client {
     std::vector<::creatures::BuffEvent> takeBuffs();
     // Section 11; frame applies the drained queue after world calls, before input.
     std::vector<::creatures::RelationshipRecord> takeRelationships();
-    // Experience from the server's section-ten kill records since the last call
-    // (behaviour spec §4.6).
-    int32_t takeExperience();
+    // Complete ordered section-ten records; identity/award admission belongs to
+    // the frame consumer, including records addressed to other actors.
+    std::vector<::creatures::KillRecord> takeCredits();
     // Sounds the server relayed (world-update section 4, behaviour spec §6).
     struct Sound {
         glm::vec3 position;
@@ -88,7 +92,7 @@ class Client {
     // 328-byte records.
     using ZoneItems = std::pair<std::pair<int32_t, int32_t>, std::vector<std::array<uint8_t, 328>>>;
     std::vector<ZoneItems> takeZoneItems();
-    // Items given to the local player in section 9 (pick-ups, rewards), except experience.
+    // Inventory grants to the local player in section 9 (pick-ups and rewards).
     std::vector<std::array<uint8_t, 280>> takeGifts();
     // Static-object states received in section 6 (88-byte records, interaction §4.5).
     std::vector<std::array<uint8_t, 88>> takeStaticStates();
@@ -131,7 +135,7 @@ class Client {
     std::vector<Hit> hits;
     std::vector<::creatures::BuffEvent> buffEvents;
     std::vector<::creatures::RelationshipRecord> relationshipEvents;
-    int32_t experience = 0;
+    std::vector<::creatures::KillRecord> credits;
     std::vector<Sound> sounds;
     std::vector<std::array<uint8_t, 72>> bursts;
 };

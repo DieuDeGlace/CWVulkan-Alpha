@@ -100,8 +100,15 @@ Differences from the Steam engine that shape the plan:
   payment/update order with the required corrected price always enabled.
 - [x] Bounded experience-level helper: binary32 level arithmetic, wrapped XP and
   level stores, the entry-only positive-level gate and per-increment maximum
-  health query have regressions. Full typed fatal-credit consumption, linked
-  awards, item-cache copying and regional/caller ordering remain open.
+  health query have regressions. Full synchronous fatal production and regional/
+  caller integration remain open; bounded credit consumption is covered below.
+- [x] Bounded typed credit consumer and incoming client route: preserve complete
+  ordered records, resolve both actors, perform designated cleanup before awards,
+  and process each level boundary immediately. Supplied mode-zero linked awards
+  retain independent admission and field-wise item snapshots. Repeated lookups,
+  alias/zero keys, signed amounts, frame publication and remote health retention
+  have regressions. Synchronous fatal/regional/grant integration and full caller,
+  mode, raw-cache and native gameplay acceptance remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

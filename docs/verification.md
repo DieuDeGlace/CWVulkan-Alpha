@@ -266,8 +266,8 @@ follow admitted payment. These checks retain the owner's always-on price
 extension; they do not certify the original imported price-library arithmetic.
 CreatureTests separately observes the level helper's debit/increment/health-query
 order, equality and zero-amount entry, positive-level entry gate and defined
-four-byte addition wrap. Full credit-record consumption, linked awards and
-native incoming/fatal caller timing remain separate acceptance gates.
+four-byte addition wrap. Synchronous fatal production and complete native incoming/
+fatal caller timing remain separate acceptance gates.
 All 37 CTests passed for this reward checkpoint. An isolated actual client
 received the three Platinum grants and independent kill credit, displayed
 7 Platinum Coins and 17/50 XP, and saved exactly those separate values with
@@ -276,6 +276,35 @@ client/server loopback and both save/reload phases also passed; all five capture
 were reviewed. Reload retained seed 123 despite conflicting arguments, character
 data, nine map tiles, preview data and 170 block edits. These engine checks retain
 the known bright-ground observation and native gameplay/UI/visual gates.
+
+CreditTests checks all 24 record bytes, unconditional first/second lookup order,
+missing/null/zero/equal/alias keys and pointer-based admission independently of
+actor own IDs and the unused type member. Designated cleanup retains repeated
+lookups, health-before-map-clear ordering, a fresh forward key, contact clearing
+on a missing link and unchanged count/forward-link state. Direct and mode-zero
+linked awards remain independent, with ordered-positive linked health, signed
+wrapped additions, post-level item stamps and five retained snapshot alignment
+bytes. Zero awards still process level/item boundaries; repeated calls are not
+deduplicated. A `+50, -50` sequence levels before the debit instead of behaving
+like an accumulated zero.
+
+NetTests sends foreign, zero and self credit IDs, signed amounts and unused type
+bits through an actual compressed update. The frame gate blocks publication;
+the queue then retains record order and drains once. Credit cleanup changes only
+the received health bytes and does not create an absent actor. A later position
+delta retains that health, while an explicit health delta can replace it. These
+checks retain the engine's existing key, online-mode and core-publication
+adapters; the full synchronous fatal producer and native caller acceptance stay
+separate.
+All 38 CTests passed for this typed-credit checkpoint. An isolated actual client
+rejected XP awards with a missing victim, a role-zero victim and a foreign
+recipient, then processed `+50, -50, +17` against the retained role-one victim.
+It saved level 2, -33 XP and 7 Platinum Coins, with health refilled by the admitted
+level increment. The reviewed inventory/HUD capture shows those separate values.
+Fresh injured-health, multiplayer and both save/reload phases also passed; all
+five captures were reviewed. The injured character retained exactly binary32 50,
+and reload retained the character, seed, nine map tiles, preview and 170 edits.
+These checks do not establish full native fatal, menu or visual acceptance.
 
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured

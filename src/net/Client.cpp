@@ -64,6 +64,7 @@ void Client::disconnect() {
     creatures.clear();
     buffEvents.clear();
     relationshipEvents.clear();
+    credits.clear();
     outgoingEvents.clear();
     haveClock = false;
     pendingClock.reset();
@@ -177,9 +178,15 @@ std::vector<Client::Sound> Client::takeSounds() {
     return std::exchange(sounds, {});
 }
 
-int32_t Client::takeExperience() {
+std::vector<::creatures::KillRecord> Client::takeCredits() {
     std::lock_guard guard(lock);
-    return std::exchange(experience, 0);
+    return std::exchange(credits, {});
+}
+
+void Client::setReceivedHealth(uint64_t key, float health) {
+    std::lock_guard guard(lock);
+    if (const auto actor = creatures.find(key); actor != creatures.end())
+        actor->second.setHealth(health);
 }
 
 std::vector<Hit> Client::takeHits() {
@@ -444,17 +451,11 @@ void Client::receiveLoop() {
                     gifts.push_back(item);
                 }
             }
-            // Server simulation §6.2 step 7: kill records (player, victim, type, experience).
-            for (const auto &bytes : update->sections[9]) {
-                if (bytes.size() < 24)
-                    continue;
-                uint64_t who;
-                int32_t xp;
-                std::memcpy(&who, bytes.data(), 8);
-                std::memcpy(&xp, &bytes[20], 4);
-                if (who == ownId)
-                    experience += xp;
-            }
+            // Preserve each complete record. Even a foreign recipient can have
+            // designated-victim cleanup at the later frame consumer.
+            for (const auto &bytes : update->sections[9])
+                if (bytes.size() >= 24)
+                    credits.push_back(::creatures::KillRecord::parse(bytes.data()));
             break;
         }
         case CHAT: {
