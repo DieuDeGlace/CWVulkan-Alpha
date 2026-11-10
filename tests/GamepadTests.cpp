@@ -175,6 +175,12 @@ void mixedPointer() {
     buttons.cancelController();
     check(!buttons.held(0) && buttons.held(2) && !buttons.update(0, false, Source::Controller),
           "controller cancellation clears its hold without fabricating a release or losing mouse state");
+    buttons.update(0, true, Source::Mouse);
+    buttons.update(0, true, Source::Controller);
+    buttons.clear();
+    check(!buttons.held(0) && !buttons.held(2) && !buttons.update(0, false, Source::Mouse) &&
+          !buttons.update(0, false, Source::Controller), "modal handoff cannot deliver either old release to a new screen");
+    check(buttons.update(0, true, Source::Mouse) == true, "fresh physical press rearms after modal consumption");
 }
 }
 

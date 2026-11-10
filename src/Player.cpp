@@ -35,7 +35,8 @@ void Player::revive() {
     fighter.health = creatures::maxHealth(fighter);
 }
 
-void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, const Gamepad *pad) {
+void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, const Gamepad *pad,
+                       const std::array<bool, 2> *mouseButtons) {
     using namespace creatures;
     const float dtMs = (float)milliseconds;
     const bool usePad = controls && pad && pad->connected && pad->context() == Gamepad::Context::Gameplay;
@@ -162,9 +163,11 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     fighter.dodgeMs = state.dodgeMs;
     actionMsBefore = fighter.actionMs;
     const bool mouse = controls && glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
+    const bool primary = mouseButtons ? (*mouseButtons)[0] : glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    const bool secondary = mouseButtons ? (*mouseButtons)[1] : glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
     const std::array<bool, 6> slotsHeld = {
-        (mouse && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) || controller.abilities[0],
-        (mouse && glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) || controller.abilities[1],
+        (mouse && primary) || controller.abilities[0],
+        (mouse && secondary) || controller.abilities[1],
         held(GLFW_KEY_1) || controller.abilities[2], held(GLFW_KEY_2) || controller.abilities[3],
         held(GLFW_KEY_3) || controller.abilities[4], held(GLFW_KEY_4) || controller.abilities[5]};
     // §16.1: the aim, from the player to the first solid block under the crosshair (or 100

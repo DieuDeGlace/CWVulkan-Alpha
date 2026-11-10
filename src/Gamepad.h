@@ -27,7 +27,7 @@ struct Gamepad {
     };
     // Alternative input backends and tests use the same state/selection path.
     using Reader = std::function<bool(int device, Sample &)>;
-    enum class Context { Gameplay, Menu, Map, Text };
+    enum class Context { Gameplay, Menu, Map, Text, Keyboard };
     struct GameplayInput {
         glm::vec2 move{0}, look{0};
         bool jump = false, dodge = false, climb = false, special = false;
@@ -42,6 +42,7 @@ struct Gamepad {
         std::optional<bool> update(size_t button, bool down, Source source);
         bool held(size_t button) const;
         void cancelController(); // focus/device loss is cancellation, not a click
+        void clear(); // modal handoff consumes both sources until a fresh press
       private:
         std::array<bool, 3> mouse{}, controller{};
     };

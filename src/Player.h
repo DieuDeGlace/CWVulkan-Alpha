@@ -26,7 +26,8 @@ class Player {
     void refreshAbilityBindings() { bindings.refresh(fighter); }
     std::span<const int32_t> abilityBindings() const { return bindings.values(); }
     // Called once after all world pieces; leaves intent/actions for the next call.
-    void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr);
+    void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr,
+                   const std::array<bool, 2> *mouseButtons = nullptr);
     void finishFrame(int32_t dtMs); // engine camera adapter, once per rendered frame
     // Adds the player's creature to the draw list.
     // Also the player's footsteps (models §7.3), into the ability effects' sounds.

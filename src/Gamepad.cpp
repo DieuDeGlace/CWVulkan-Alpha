@@ -156,3 +156,8 @@ bool Gamepad::PointerButtons::held(size_t button) const {
 void Gamepad::PointerButtons::cancelController() {
     controller.fill(false);
 }
+
+void Gamepad::PointerButtons::clear() {
+    mouse.fill(false);
+    controller.fill(false);
+}

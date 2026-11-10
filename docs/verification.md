@@ -89,8 +89,8 @@ The client uses the shared gameplay mapping for input and all six HUD slots,
 combined UI holds for dragging/crafting and fresh context after callbacks.
 These are engine extensions. `GamepadTests --devices` exercises real GLFW device
 discovery; the local run found zero mapped pads. Physical controller, reconnect,
-focus and complete gameplay/menu acceptance remain open, alongside controller
-text entry and per-action rebinding.
+focus and complete gameplay/menu acceptance remain open. The later text-entry
+checkpoint below does not close hardware or per-action rebinding gates.
 All 43 CTests passed for this controller integration. Fresh actual-client reward,
 injured-health, loopback and both save/reload checks passed; all five captures were
 reviewed. Reward state retained level 2, -33 XP and 7 Platinum Coins; injured health
@@ -98,6 +98,28 @@ retained exactly binary32 50. Reload retained the character, seed, nine map tile
 preview and 170 edits. These runs had no mapped controller and therefore establish
 client regression evidence, not physical controller acceptance. Known bright
 ground and broader native UI/gameplay/visual gates remain open.
+
+ControllerKeyboardTests checks draft editing/commands, shifted symbols, bounded
+focus navigation and key hit regions at three sizes. Actual Interface checks
+cover name/seed/server commits, cancel, stale-target invalidation and no automatic
+create/connect request. Chat sends once through the existing local queue and
+cancel sends nothing. The old non-ASCII transport adapter remains explicit.
+Pointer tests also consume both sources at a modal handoff so an old release
+cannot activate a new layer. Main routes keyboard/controller edits to the draft,
+masks underlying held UI input and supplies the combined mouse state to gameplay.
+
+`ControllerKeyboardRenderProbe <owned Alpha folder> <new output folder>` explicitly
+renders the keyboard using owned fonts/interfaces through the real Vulkan UI
+pipeline. It refuses an existing output folder and is excluded from CTest and
+player packages. Six reviewed captures cover character input, shifted symbols,
+seed, server, chat and a smaller window. These establish bounded engine layout
+evidence, not physical-controller or original Alpha pixel acceptance.
+All 44 CTests passed for this text-entry checkpoint. Fresh actual-client reward,
+injured-health, loopback and both save/reload flows passed, and their five captures
+were reviewed. Reward state retained level 2, -33 XP and 7 Platinum Coins; injured
+health retained exactly binary32 50. Reload retained the character, seed, nine map
+tiles, preview and 170 edits. These regression runs do not close physical
+controller, complete first-time workflows or broader native acceptance gates.
 
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.

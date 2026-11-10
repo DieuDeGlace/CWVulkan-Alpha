@@ -207,6 +207,12 @@ Differences from the Steam engine that shape the plan:
     combined mouse/controller UI holds. Back/cancel and supplied-device tests
     cover this engine extension. Physical device/reconnection, complete menu
     workflows, text entry and broader controller acceptance remain open.
+  - [x] Controller text-entry foundation: a resizable on-screen keyboard edits
+    character/world names, seed, server address and chat drafts. Commit/cancel,
+    stale-target rejection, shared submission, modal pointer consumption and
+    actual GPU layouts have bounded checks. Creating/saving/connecting still
+    uses the existing screen action. Physical and complete workflow acceptance,
+    action rebinding, pet-recall mapping and rumble remain open.
 - [x] Alpha extractor mod (32-bit, `tools/alpha-extractor`, spec `alpha-extractor.md`): on F9 or a
   trigger file it records, under Alpha's world lock, the loaded zones round the player block for
   block, their regions' location records and zone tables, and every creature record.

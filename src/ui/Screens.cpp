@@ -982,6 +982,8 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
     }
     if (optionsOpen)
         drawOptions(painter, size, mouse);
+    if (controllerKeyboardOpen())
+        drawControllerKeyboard(painter, size, mouse);
     return painter.take();
 }
 

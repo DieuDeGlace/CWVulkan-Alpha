@@ -746,3 +746,11 @@ back navigation are independently designed owner-requested engine extensions.
 They use project-owned input/UI code and the pinned GLFW public interface, with
 no new original-game source handoff. Supplied-state tests and device discovery
 remain separate from physical-controller acceptance and original input/UI parity.
+
+The on-screen keyboard is another independently designed engine extension. Its
+draft, field binding and modal pointer lifetime use project-owned interfaces;
+accepting a name does not create or save a character/world or connect a server.
+Chat uses the existing engine submission adapter. Its own overlay renders last
+through the engine's UI painter and owned fonts. Provided-state tests and local
+Vulkan captures establish bounded behavior/layout only; they supply no original
+keyboard/polling equivalence or physical-controller acceptance claim.

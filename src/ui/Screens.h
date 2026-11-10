@@ -10,6 +10,7 @@
 #include "creatures/Skills.h"
 #include "creatures/Spirits.h"
 #include "ui/Painter.h"
+#include "ui/ControllerKeyboard.h"
 #include <functional>
 #include <map>
 #include <optional>
@@ -104,6 +105,16 @@ class Interface {
     // Engine controller extension: back cancels a draft/panel, never applies it
     // or submits chat. Returns false when no open screen can be left.
     bool controllerBack();
+    void submitChat(); // shared keyboard/controller queue; no transport here
+    bool canOpenControllerKeyboard() const;
+    bool openControllerKeyboard();
+    bool controllerKeyboardOpen() const;
+    bool finishControllerKeyboard(bool accept);
+    void controllerKeyboardType(char16_t character, bool backspace = false);
+    void controllerKeyboardMove(int x, int y);
+    glm::vec2 controllerKeyboardFocus(glm::vec2 window) const;
+    bool controllerKeyboardPress(glm::vec2 window, glm::vec2 mouse, int button);
+    const ControllerKeyboard &controllerKeyboardState() const { return keyboard; }
 
     // §5.9, §5.9.1: called every frame with the current texts; shows the banner when they
     // differ from the last shown and no banner is running.
@@ -131,7 +142,7 @@ class Interface {
     std::function<std::optional<glm::vec2>(glm::dvec3)> project;
     // Whether the mouse belongs to the interface (a menu is open) rather than the camera.
     bool wantsMouse() const {
-        return startScreen || systemMenu || menuRow || optionsOpen || mapOpen || inventoryOpen || craftingOpen ||
+        return controllerKeyboardOpen() || startScreen || systemMenu || menuRow || optionsOpen || mapOpen || inventoryOpen || craftingOpen ||
                skillsOpen || front != Front::None;
     }
 
@@ -304,6 +315,12 @@ class Interface {
     void drawQuestIcon(Painter &painter, QuestIcon icon, glm::vec2 foot, float scale);
 
   private:
+    enum class ControllerEdit { None, CharacterName, WorldName, WorldSeed, Server, Chat };
+    ControllerEdit keyboardTarget = ControllerEdit::None;
+    ControllerKeyboard keyboard;
+    ControllerEdit controllerEdit() const;
+    bool controllerKeyboardValid() const;
+    void drawControllerKeyboard(Painter &painter, glm::vec2 window, glm::vec2 mouse);
     struct MenuItem {
         const char *label;
         float baseline;

@@ -1016,17 +1016,19 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (action == GLFW_RELEASE)
             return;
         ui::Interface &ui = *in->interface;
+        if (ui.controllerKeyboardOpen()) {
+            if (key == GLFW_KEY_ESCAPE)
+                ui.finishControllerKeyboard(false);
+            else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER)
+                ui.finishControllerKeyboard(true);
+            else if (key == GLFW_KEY_BACKSPACE)
+                ui.controllerKeyboardType(0, true);
+            return;
+        }
         // Screens §9: while the chat input is open, keys go to it.
         if (ui.chatOpen) {
             if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-                if (!ui.chatInput.empty()) {
-                    std::string line;
-                    for (char16_t ch : ui.chatInput)
-                        line += ch < 0x80 ? (char)ch : '?';
-                    ui.chatSubmitted.push_back(line);
-                }
-                ui.chatInput.clear();
-                ui.chatOpen = false;
+                ui.submitChat();
             } else if (key == GLFW_KEY_BACKSPACE && !ui.chatInput.empty()) {
                 ui.chatInput.pop_back();
             } else if (key == GLFW_KEY_ESCAPE) {
@@ -1087,7 +1089,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     });
     glfwSetCharCallback(window, [](GLFWwindow *w, unsigned int ch) {
         auto *in = (Input *)glfwGetWindowUserPointer(w);
-        if (in->interface->chatOpen && ch >= 32 && ch < 0x10000)
+        if (in->interface->controllerKeyboardOpen() && ch >= 32 && ch < 0x10000)
+            in->interface->controllerKeyboardType((char16_t)ch);
+        else if (in->interface->chatOpen && ch >= 32 && ch < 0x10000)
             in->interface->chatInput += (char16_t)ch;
         else if (in->interface->front != ui::Interface::Front::None && ch >= 32 && ch < 0x10000)
             in->interface->frontType((char16_t)ch, false);
@@ -1105,6 +1109,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             action = *transition ? GLFW_PRESS : GLFW_RELEASE;
         }
         ui::Interface &menu = *in->interface;
+        if (menu.controllerKeyboardOpen()) {
+            if (action == GLFW_PRESS) {
+                double x, y;
+                glfwGetCursorPos(w, &x, &y);
+                const auto size = in->renderer->size();
+                int width, height;
+                glfwGetWindowSize(w, &width, &height);
+                if (width > 0 && height > 0) {
+                    x *= double(size.width) / width;
+                    y *= double(size.height) / height;
+                }
+                menu.controllerKeyboardPress({float(size.width), float(size.height)}, {float(x), float(y)}, button);
+            }
+            return;
+        }
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE && menu.mapOpen && !menu.startScreen &&
             !menu.systemMenu && !menu.optionsOpen) {
             menu.mapRelease(); // screens §5.2.6
@@ -1445,8 +1464,20 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             else
                 pad.clear();
             const auto syncControllerContext = [&] {
-                pad.setContext(interface.typing() ? Gamepad::Context::Text : interface.mapOpen ? Gamepad::Context::Map :
-                               interface.wantsMouse() ? Gamepad::Context::Menu : Gamepad::Context::Gameplay);
+                const auto previousContext = pad.context();
+                const auto currentContext = interface.controllerKeyboardOpen() ? Gamepad::Context::Keyboard :
+                               interface.typing() ? Gamepad::Context::Text : interface.mapOpen ? Gamepad::Context::Map :
+                               interface.wantsMouse() ? Gamepad::Context::Menu : Gamepad::Context::Gameplay;
+                pad.setContext(currentContext);
+                if (previousContext != currentContext) {
+                    // A release belongs to the layer that received its press.
+                    // A modal keyboard handoff also consumes a physical click.
+                    if (previousContext == Gamepad::Context::Keyboard || currentContext == Gamepad::Context::Keyboard)
+                        input.pointerButtons.clear();
+                    else
+                        input.pointerButtons.cancelController();
+                    controllerMouse.fill(false);
+                }
                 const int cursor = interface.wantsMouse() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED;
                 if (glfwGetInputMode(window, GLFW_CURSOR) != cursor)
                     glfwSetInputMode(window, GLFW_CURSOR, cursor);
@@ -1457,24 +1488,52 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (pad.pressed(Gamepad::START)) {
                     if (!interface.controllerBack() && !interface.startScreen)
                         key(GLFW_KEY_ESCAPE);
+                    pad.suppressHeld();
                     syncControllerContext();
                 }
-                if (pad.pressed(Gamepad::BACK) && !interface.typing()) {
-                    key(GLFW_KEY_M);
+                if (pad.pressed(Gamepad::BACK) && (interface.controllerKeyboardOpen() || !interface.typing())) {
+                    if (interface.controllerKeyboardOpen()) {
+                        interface.finishControllerKeyboard(false);
+                        pad.suppressHeld();
+                    } else
+                        key(GLFW_KEY_M);
                     syncControllerContext();
                 }
                 if (pad.pressed(Gamepad::B) && pad.context() != Gamepad::Context::Gameplay) {
-                    interface.controllerBack();
+                    if (interface.controllerBack())
+                        pad.suppressHeld();
+                    syncControllerContext();
+                }
+                if (pad.pressed(Gamepad::RIGHT_THUMB) && pad.context() != Gamepad::Context::Gameplay) {
+                    if (interface.controllerKeyboardOpen())
+                        interface.finishControllerKeyboard(true);
+                    else
+                        interface.openControllerKeyboard();
+                    pad.suppressHeld();
                     syncControllerContext();
                 }
                 if (pad.pressed(Gamepad::A) && pad.context() == Gamepad::Context::Gameplay && player->combat().health <= 0) {
                     key(GLFW_KEY_R);
                     pad.suppressHeld();
                 }
-                if (pad.pressed(Gamepad::UP) && !interface.typing())
-                    wheelHandler(window, 0, 1);
-                if (pad.pressed(Gamepad::DOWN) && !interface.typing())
-                    wheelHandler(window, 0, -1);
+                if (interface.controllerKeyboardOpen()) {
+                    const int x = int(pad.pressed(Gamepad::RIGHT)) - int(pad.pressed(Gamepad::LEFT));
+                    const int y = int(pad.pressed(Gamepad::DOWN)) - int(pad.pressed(Gamepad::UP));
+                    if (x || y) {
+                        interface.controllerKeyboardMove(x, y);
+                        const auto size = renderer.size();
+                        const auto point = interface.controllerKeyboardFocus({float(size.width), float(size.height)});
+                        int width, height;
+                        glfwGetWindowSize(window, &width, &height);
+                        if (size.width && size.height)
+                            glfwSetCursorPos(window, double(point.x) * width / size.width, double(point.y) * height / size.height);
+                    }
+                } else {
+                    if (pad.pressed(Gamepad::UP) && !interface.typing())
+                        wheelHandler(window, 0, 1);
+                    if (pad.pressed(Gamepad::DOWN) && !interface.typing())
+                        wheelHandler(window, 0, -1);
+                }
                 const float dt = seconds;
                 const auto moveCursor = [&](glm::vec2 stick) {
                     if (glm::dot(stick, stick) == 0)
@@ -1497,7 +1556,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     const float turn = float(pad.held(Gamepad::RIGHT)) - float(pad.held(Gamepad::LEFT));
                     if (turn != 0)
                         player->look(turn * pad.lookSpeed * dt, 0);
-                } else if (pad.context() == Gamepad::Context::Menu) {
+                } else if (pad.context() == Gamepad::Context::Menu || pad.context() == Gamepad::Context::Keyboard) {
                     const glm::vec2 stick = glm::length(pad.move) > glm::length(pad.look) ? pad.move : pad.look;
                     moveCursor(stick);
                 }
@@ -1511,7 +1570,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     input.pointerButtons.cancelController();
                     continue;
                 }
-                const bool ui = pad.context() == Gamepad::Context::Menu || pad.context() == Gamepad::Context::Map;
+                const bool ui = pad.context() == Gamepad::Context::Menu || pad.context() == Gamepad::Context::Map ||
+                                pad.context() == Gamepad::Context::Keyboard;
                 const bool down = ui && pad.held(uiButtons[button]);
                 if (down != controllerMouse[button]) {
                     controllerMouse[button] = down;
@@ -1573,7 +1633,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     }
                         return false;
                     };
-                    interface.stepCraft(seconds * 1000.f, input.pointerButtons.held(0));
+                    interface.stepCraft(seconds * 1000.f, !interface.controllerKeyboardOpen() && input.pointerButtons.held(0));
                     if (const auto recipe = std::exchange(interface.finishedCraft, std::nullopt)) {
                         const creatures::CraftOutcome made =
                             creatures::craft(inventory, *recipe, [&] { return worldRandom.draw(); });
@@ -2233,8 +2293,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 [&](creatures::NpcFrame &) {
                     applyReceivedRelationships();
                     simulationInputFrames++;
+                    const std::array<bool, 2> mouseButtons{input.pointerButtons.held(0), input.pointerButtons.held(1)};
                     player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
-                                      interface.mapOpen ? nullptr : &pad);
+                                      interface.mapOpen ? nullptr : &pad, &mouseButtons);
                     updatePlayerInterface();
                     publishPlayerEffects();
                     player->finishFrame(frameElapsedMs);
@@ -3120,8 +3181,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 const bool free = !interface.wantsMouse() && !interface.typing() && c.health > 0;
                 const auto gamepadInput = pad.gameplay();
-                hud.abilities[0].held = free && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS || gamepadInput.abilities[0]);
-                hud.abilities[1].held = free && (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS || gamepadInput.abilities[1]);
+                hud.abilities[0].held = free && (input.pointerButtons.held(0) || gamepadInput.abilities[0]);
+                hud.abilities[1].held = free && (input.pointerButtons.held(1) || gamepadInput.abilities[1]);
                 for (int k = 0; k < 4; k++)
                     hud.abilities[2 + k].held = free && (glfwGetKey(window, GLFW_KEY_1 + k) == GLFW_PRESS ||
                                                          gamepadInput.abilities[k + 2]);
@@ -3668,12 +3729,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 const ui::LandText land = ui::landText(view.terrainWorld(), (int32_t)me.x, (int32_t)me.y, dictionary);
                 interface.showLandName(land.name, land.detail);
             }
-            interface.leftHeld = input.pointerButtons.held(0);
+            interface.leftHeld = !interface.controllerKeyboardOpen() && input.pointerButtons.held(0);
             // Item services §3.2: the middle button turns the bench's weapon.
             {
                 double cx, cy;
                 glfwGetCursorPos(window, &cx, &cy);
-                if (interface.benchOpen && input.pointerButtons.held(2))
+                if (interface.benchOpen && !interface.controllerKeyboardOpen() && input.pointerButtons.held(2))
                     interface.benchRotate({(float)(cx - benchMouse.x), (float)(cy - benchMouse.y)});
                 benchMouse = {cx, cy};
                 interface.cubeMeshId = creatureView.cubeMesh();
@@ -3851,8 +3912,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             interface.stepBubbles(seconds * 1000.f);
             // Screens §8.1.6: every interface item turns 30 degrees a second about z.
             interface.itemTurn.z += seconds * 1000.f * 0.03f;
-            renderer.setInterface(
-                interface.draw({(float)size.width, (float)size.height}, {(float)mx, (float)my}, now - start));
+            glm::vec2 uiMouse{float(mx), float(my)};
+            if (interface.controllerKeyboardOpen()) {
+                int width, height;
+                glfwGetWindowSize(window, &width, &height);
+                if (width > 0 && height > 0)
+                    uiMouse *= glm::vec2(float(size.width) / width, float(size.height) / height);
+            }
+            renderer.setInterface(interface.draw({float(size.width), float(size.height)}, uiMouse, now - start));
             if (interface.atlas.takeChanged())
                 renderer.setInterfaceAtlas(interface.atlas.size(), interface.atlas.size(), interface.atlas.pixels());
         }

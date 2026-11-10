@@ -3,7 +3,9 @@
 namespace ui {
 
 bool Interface::controllerBack() {
-    if (chatOpen) {
+    if (controllerKeyboardOpen()) {
+        finishControllerKeyboard(false);
+    } else if (chatOpen) {
         chatOpen = false;
         chatInput.clear();
     } else if (optionsOpen) {

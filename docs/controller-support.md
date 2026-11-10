@@ -33,9 +33,22 @@ buttons/triggers until release, so closing a panel cannot also dodge or attack.
 
 Back cancels chat without sending it, leaves options/skills without applying a
 draft, returns through character/world screens and closes inventory panels.
-It does not quit from the main menu; select Exit explicitly. Text entry for names,
-seeds, server addresses and chat still uses the keyboard. Pet recall uses T.
-Per-action rebinding, an on-screen keyboard and rumble are not implemented.
+It does not quit from the main menu; select Exit explicitly. Pet recall uses T.
+Per-action rebinding and rumble are not implemented.
+
+For character/world names, a world seed or a server address, select the field and
+press the right stick to open the on-screen keyboard. D-pad moves between keys;
+either stick moves the cursor. A selects, X erases, Y changes case/symbols, and B
+cancels the draft. Press the right stick again or select Done to accept the text.
+Creating a character/world or connecting still requires the existing screen's
+button. To chat, open the menu with Start, then press the right stick. Send queues
+the message through the normal chat path. Cancel never submits it.
+
+The physical keyboard can also edit this draft: Enter accepts/sends, Escape
+cancels and Backspace erases. Opening/closing the overlay consumes its pointer
+holds, so a release cannot select a portal or start an attack underneath. The
+overlay is an engine extension; the original screens remain behind it. Physical
+controller and complete first-time menu workflows still need acceptance testing.
 
 Configure these optional input settings in `AlphaVulkan.ini`:
 
