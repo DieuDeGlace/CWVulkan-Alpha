@@ -57,11 +57,11 @@ const char *objectiveKey(int32_t kind);
 int32_t monsterForLevel(const worldgen::RegionCell *C, int32_t level, worldgen::Random &random);
 // §2.5 step 5: the nine-entry list of mission creatures.
 int32_t missionCreature(worldgen::Random &random);
-// §5.3: the experience item's level for a mission of `level` and `tier`.
-int32_t rewardExperienceLevel(int32_t level, int32_t tier);
+// §5.3: the category-13 Platinum Coins quantity for a mission's level and tier.
+int32_t rewardPlatinumAmount(int32_t level, int32_t tier);
 
-// §5.3: a completed mission's rewards for a player of class `characterClass`: the experience
-// item, then (one draw) armour when even or a weapon when odd, at the mission level with the
+// §5.3: a completed mission's rewards for a player of class `characterClass`: Platinum
+// Coins, then (one draw) armour when even or a weapon when odd, at the mission level with the
 // tier as rarity.
 std::vector<worldgen::ItemRecord> missionRewards(const MissionArea &mission, int32_t characterClass,
                                                  worldgen::Random &random);

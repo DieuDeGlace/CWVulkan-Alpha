@@ -32,7 +32,7 @@ at the level of the giver's land.
 * The place is 120-300 blocks from the giver, in a direction told in words ("north-east").
   Its creatures are made when the zone there is loaded and are found on the ground there.
 * Coming back to the giver with the job done hands the quest in: the reward is the mission
-  reward of Alpha (experience item and a piece of armour or a weapon at the quest's level,
+  reward of Alpha (Platinum Coins and a piece of armour or a weapon at the quest's level,
   `missionRewards`) plus coins.
 
 ## Icons

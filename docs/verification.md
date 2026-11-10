@@ -249,6 +249,34 @@ conflicting inputs, character data, nine map tiles, preview data and 170 edits.
 The loopback server shut down cleanly. The known bright-ground observation and
 broader native gameplay/UI/visual acceptance remain open.
 
+Platinum reward checks distinguish category-thirteen inventory grants from
+section-ten kill experience. CreatureTests covers raw signed two-byte positive,
+zero and negative quantities, four-byte balance wrap, unusual item metadata,
+unchanged input and automatic group admission before currency credit. NetTests
+sends complete grants through an actual loopback peer, blocks publication with
+the frame gate, then checks retained bytes, order and a single drain. Applying
+quantities 9, 0 and -7 to a balance of 5 produces 7 Platinum; the independent
+kill record contributes exactly 17 XP, with no item-to-XP conversion.
+
+UiTests exercises the public inventory input route with a selected adaptation
+item: exact payment at the required corrected price, insufficient funds,
+signed-negative balance, already-adapted rejection and zero-price adaptation.
+Copper stays separate, while level/flag changes, sound and equipment notification
+follow admitted payment. These checks retain the owner's always-on price
+extension; they do not certify the original imported price-library arithmetic.
+CreatureTests separately observes the level helper's debit/increment/health-query
+order, equality and zero-amount entry, positive-level entry gate and defined
+four-byte addition wrap. Full credit-record consumption, linked awards and
+native incoming/fatal caller timing remain separate acceptance gates.
+All 37 CTests passed for this reward checkpoint. An isolated actual client
+received the three Platinum grants and independent kill credit, displayed
+7 Platinum Coins and 17/50 XP, and saved exactly those separate values with
+health still binary32 50. The capture was reviewed. Fresh injured-health,
+client/server loopback and both save/reload phases also passed; all five captures
+were reviewed. Reload retained seed 123 despite conflicting arguments, character
+data, nine map tiles, preview data and 170 block edits. These engine checks retain
+the known bright-ground observation and native gameplay/UI/visual gates.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

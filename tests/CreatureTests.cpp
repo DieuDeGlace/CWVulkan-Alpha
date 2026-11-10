@@ -696,6 +696,65 @@ int main() {
         same(c.experience, 160 - 50 - 97, "experience left");
         same(c.health, maxHealth(c), "health refilled");
     }
+    {
+        // Held level-consumer boundaries: one health query per admitted level,
+        // after debit/increment; nonpositive entry levels skip threshold work.
+        const auto previousHealth = itemBonuses().health;
+        Combatant c;
+        c.health = .5f;
+        c.equipment[CHEST_SLOT] = {4, 0, 1, 0, 1, 0};
+        std::vector<std::pair<int32_t, int32_t>> queries;
+        std::vector<float> previousValues;
+        itemBonuses().health = [&](const Item &) {
+            queries.emplace_back(c.level, c.experience);
+            previousValues.push_back(c.health);
+            return 0.f;
+        };
+        addExperience(c, 160);
+        same(queries == std::vector<std::pair<int32_t, int32_t>>{{2, 110}, {3, 13}}, 1,
+             "each level queries maximum health once after its current threshold debit and level store");
+        same(previousValues.size() == 2 && previousValues[0] == .5f && previousValues[1] > .5f && c.health > previousValues[1], 1,
+             "health is replaced between repeated increments without an extra maximum query");
+        queries.clear();
+        c.level = 1, c.experience = 49, c.health = 17;
+        addExperience(c, 0);
+        same(c.level == 1 && c.experience == 49 && c.health == 17 && queries.empty(), 1,
+             "below-threshold zero credit makes no health query or write");
+        c.experience = 50;
+        addExperience(c, 0);
+        same(c.level == 2 && c.experience == 0 && queries.size() == 1, 1,
+             "threshold equality can level immediately even for zero added credit");
+        queries.clear();
+        c.level = 0, c.experience = INT32_MAX, c.health = 17;
+        addExperience(c, 1);
+        same(c.experience == INT32_MIN && c.level == 0 && c.health == 17 && queries.empty(), 1,
+             "experience addition wraps all 32 bits before nonpositive-level entry rejection");
+        addExperience(c, -1);
+        same(c.experience == INT32_MAX && c.health == 17 && queries.empty(), 1,
+             "negative credit is not clamped and entry rejection makes no maximum query");
+        itemBonuses().health = previousHealth;
+    }
+    {
+        Inventory wallet;
+        ItemRecord platinum{};
+        platinum[0] = 13, platinum[1] = 0xff, platinum[0x0c] = 0xff, platinum[0x0d] = 0xff, platinum[0x0e] = 0xff;
+        setItemLevel(platinum, 9);
+        const auto original = platinum;
+        wallet.add(platinum);
+        same(wallet.platinum == 9 && wallet.money == 0 && wallet.bags.size() == 2 &&
+             wallet.bags[0].empty() && wallet.bags[1].empty() && platinum == original, 1,
+             "category thirteen credits signed quantity directly after group growth without an item entry or input mutation");
+        setItemLevel(platinum, -7);
+        wallet.add(platinum);
+        same(wallet.platinum, 2, "a negative signed Platinum Coins quantity reduces the same balance");
+        setItemLevel(platinum, 0);
+        wallet.add(platinum);
+        same(wallet.platinum, 2, "zero Platinum Coins quantity is accepted without changing the balance");
+        wallet.platinum = UINT32_MAX;
+        setItemLevel(platinum, 1);
+        wallet.add(platinum);
+        same(wallet.platinum, 0, "Platinum Coins credit retains low thirty-two bits on wrap");
+    }
 
     // Behaviour §3: a bare-handed player punches 6, then 7 when pressed again in time.
     {

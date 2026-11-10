@@ -331,6 +331,7 @@ if(MSVC)
         src/CachedLights.cpp
         src/creatures/Spirits.cpp
         src/Frame.cpp
+        src/Missions.cpp
         tests/SpatialScalarTests.cpp
         PROPERTIES COMPILE_OPTIONS /fp:strict)
     target_compile_options(engine PRIVATE /W4 /permissive-)

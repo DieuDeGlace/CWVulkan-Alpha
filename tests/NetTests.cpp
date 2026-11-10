@@ -68,6 +68,13 @@ static void checkCombatTransport() {
     const auto expectedSend = sent.serialize();
     const std::array<creatures::RelationshipRecord, 3> relationships{{
         {19, 0, -3.25f, {1, 2, 3, 4}}, {19, 1, -0.f, {5, 6, 7, 8}}, {1, 1, 17, {9, 10, 11, 12}}}};
+    std::vector<creatures::ItemRecord> expectedGifts;
+    for (int16_t quantity : {9, 0, -7}) {
+        creatures::ItemRecord platinum{};
+        platinum[0] = 13, platinum[1] = 0xff, platinum[0x0c] = 0xff, platinum[0x0d] = 0xff, platinum[0x0e] = 0xff;
+        creatures::setItemLevel(platinum, quantity);
+        expectedGifts.push_back(platinum);
+    }
     auto objectZone = std::make_shared<worldgen::Zone>(4, 6);
     for (int32_t association : {7, 8}) {
         worldgen::StaticObject object;
@@ -139,6 +146,15 @@ static void checkCombatTransport() {
             update.sections[10].emplace_back(bytes.begin(), bytes.end());
         }
         update.sections[5] = expectedStaticPayloads;
+        for (const auto &item : expectedGifts) {
+            ByteWriter grant;
+            grant.u64(1);
+            grant.write(item.data(), item.size());
+            update.sections[8].push_back(grant.data());
+        }
+        ByteWriter credit;
+        credit.u64(1), credit.u64(19), credit.i32(999), credit.i32(17);
+        update.sections[9].push_back(credit.data());
         ByteWriter response;
         response.u32(CLOCK);
         response.u32(clockDay);
@@ -218,6 +234,7 @@ static void checkCombatTransport() {
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
         check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
               client.takeStaticStates().empty() &&
+              client.takeGifts().empty() && client.takeExperience() == 0 &&
               client.others().empty() && !client.takeClock(),
               "incoming queue mutation and creature insertion wait until the current frame completes");
         creatures::Combatant actor;
@@ -229,14 +246,17 @@ static void checkCombatTransport() {
         std::vector<creatures::BuffEvent> events;
         std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<std::vector<uint8_t>> receivedStatics;
+        std::vector<creatures::ItemRecord> receivedGifts;
         std::vector<Hit> hits;
         check(waitFor([&] {
             for (const auto &event : client.takeBuffs()) events.push_back(event);
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
+            for (const auto &item : client.takeGifts()) receivedGifts.push_back(item);
             for (const auto &hit : client.takeHits()) hits.push_back(hit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
-                   receivedStatics.size() >= expectedStaticPayloads.size() && !hits.empty() && received && receivedHit;
+                   receivedStatics.size() >= expectedStaticPayloads.size() && receivedGifts.size() >= expectedGifts.size() &&
+                   !hits.empty() && received && receivedHit;
         }), "actual client exchanges packet-8 and section-12 buff records");
         check(coherentHit && packetOrder,
               "sender captures completed frame state before hit records and sends hits before buff events");
@@ -250,6 +270,14 @@ static void checkCombatTransport() {
               "section-eleven relationships retain order, zero/self IDs, float bits and all opaque bytes before one frame drain");
         check(receivedStatics == expectedStaticPayloads && client.takeStaticStates().empty(),
               "ordered section-six snapshots preserve all 88 bytes through frame-protected publication and one drain");
+        check(receivedGifts == expectedGifts && client.takeGifts().empty() && client.takeExperience() == 17 && client.takeExperience() == 0,
+              "positive, zero and negative Platinum Coins grants retain item bytes without becoming or consuming kill experience");
+        auto wallet = creatures::Inventory::fresh();
+        wallet.platinum = 5;
+        for (const auto &item : receivedGifts)
+            wallet.add(item);
+        check(wallet.platinum == 7 && wallet.money == 0,
+              "actual loopback category-thirteen grants credit their signed quantities to the inventory balance");
         const auto clock = client.takeClock();
         uint32_t observedDay = 0, observedTime = 0;
         check(clock && clock->first == clockDay && clock->second == clockTime && !client.takeClock() &&

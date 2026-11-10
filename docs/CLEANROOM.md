@@ -561,3 +561,24 @@ engine raw snapshot queue deliberately retains received padding; that is an
 engine storage policy, not evidence that native queue padding is identical.
 Complete native geometry replacement, malformed-record behavior and lifecycle
 publication remain separate from this bounded state/word implementation.
+
+The later original-only category-thirteen inventory/counter and fatal-credit
+consumer contracts were each held and read completely. Category 13 decimal is
+Platinum Coins, with a signed two-byte quantity credited to a separate four-byte
+balance. It is not experience. This corrects the inherited mission, quest,
+pickup and online-grant interpretation; older held artifacts remain unchanged.
+Those engine routes now use the common inventory receipt path. Automatic group
+admission precedes the currency credit, including zero and negative quantities.
+The displayed Platinum balance and adaptation payment comparison use its signed
+interpretation. Adaptation retains separate comparison/debit price queries and
+post-debit item updates. The owner's required rebalanced price remains an
+always-on engine extension, rather than the native exponential price curve.
+
+The separately bounded level helper now retains binary32 conversion before
+subtraction, low-four-byte XP/debit/level arithmetic, the positive-level entry
+gate and one fresh health maximum after each level increment. This implements
+only the held consumer's level-helper portion. The complete typed credit
+consumer, repeated actor lookups, independent linked award, item-cache copy,
+incoming caller timing and synchronous regional fatal continuation remain open.
+Safe selection invalidation and received opaque-byte retention remain identified
+engine policies. No source author received engine, runtime or test findings.

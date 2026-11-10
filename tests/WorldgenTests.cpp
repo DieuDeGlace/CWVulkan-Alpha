@@ -582,14 +582,14 @@ int main() {
         MonsterArea monster{119, 2, 0, 32778, 32804};
         const std::vector<uint8_t> wantMonster = {1, 0, 0, 0, 0x77, 0, 0, 0, 2, 0, 0, 0, 0, 0x0a, 0x80, 0, 0, 0x24, 0x80, 0, 0};
         same(monster.save() == wantMonster, 1, "monster save bytes");
-        // §10.6: the kill completes it; the experience item is level 9.
+        // §10.6: the kill completes it; its Platinum Coins quantity is 9.
         Missions missions;
         missions.edit(4097, 4100).mission = m;
         missions.edit(4097, 4100).mission.state = 1;
         same(missions.kill({32778, 32804}, 0, false).has_value(), 0, "an unflagged creature does not count");
         same(missions.kill({32778, 32804}, 0x2000, false).has_value(), 1, "the flagged monster completes the hunt");
         same(missions.cell(4097, 4100)->mission.state, 2, "state complete");
-        same(rewardExperienceLevel(5, 0), 9, "experience item level");
+        same(rewardPlatinumAmount(5, 0), 9, "Platinum Coins quantity");
         // §10.7: the counting rule.
         Missions town;
         MissionArea &v = town.edit(4100, 4100).mission;

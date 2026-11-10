@@ -6,6 +6,7 @@
 #include "ui/Plasma.h"
 #include "ui/LandNames.h"
 #include "ui/Screens.h"
+#include "Loot.h"
 #include <cmath>
 #include <cstdio>
 
@@ -88,7 +89,52 @@ static void checkMenuRequests() {
           "Apply, OK and Cancel dispatch distinct option actions");
 }
 
+static void checkPlatinumAdaption() {
+    const glm::vec2 window{1280, 720}, adaptButton{930, 460};
+    for (uint32_t balance : {68u, 69u, UINT32_MAX}) {
+        auto wallet = creatures::Inventory::fresh();
+        wallet.money = 1234;
+        creatures::ItemRecord grant{};
+        grant[0] = 13;
+        creatures::setItemLevel(grant, 69);
+        wallet.add(grant);
+        wallet.platinum = balance;
+        auto &weapon = wallet.equipment[creatures::MAIN_HAND];
+        weapon[0] = 3;
+        creatures::setItemLevel(weapon, 10);
+        Interface service;
+        service.inventory = &wallet;
+        service.adaptOpen = true;
+        service.adaptBox = creatures::MAIN_HAND;
+        service.sheet.level = 20;
+        check(service.inventoryPress(window, adaptButton, 0), "the public inventory input reaches adaptation");
+        const bool paid = balance == 69;
+        check(wallet.platinum == (paid ? 0u : balance) && wallet.money == 1234 &&
+              creatures::itemLevel(weapon) == (paid ? 20 : 10) && bool(weapon[0x0e] & 1) == paid &&
+              service.equipmentChanged == paid && service.inventorySounds.size() == size_t(paid),
+              "required corrected adaptation price spends Platinum Coins at equality and rejects insufficient or signed-negative balances");
+        if (paid) {
+            service.inventoryPress(window, adaptButton, 0);
+            check(wallet.platinum == 0 && service.inventorySounds.size() == 1,
+                  "an already adapted selection cannot charge or emit the success sound again");
+        }
+    }
+    auto wallet = creatures::Inventory::fresh();
+    auto &weapon = wallet.equipment[creatures::MAIN_HAND];
+    weapon[0] = 3;
+    creatures::setItemLevel(weapon, 30);
+    Interface service;
+    service.inventory = &wallet;
+    service.adaptOpen = true;
+    service.adaptBox = creatures::MAIN_HAND;
+    service.sheet.level = 20;
+    service.inventoryPress(window, adaptButton, 0);
+    check(wallet.platinum == 0 && creatures::itemLevel(weapon) == 20 && (weapon[0x0e] & 1),
+          "a zero-price selection still receives the player's low level word and adapted flag");
+}
+
 int main(int argc, char **argv) {
+    checkPlatinumAdaption();
     checkMenuRequests();
     // §8.2
     check(plasma::unscramble({0x78, 0x87, 0x81, 0x6D, 0xBD, 0x3D, 0x2F, 0xC7, 0x6E, 0x99, 0xAC, 0x39, 0x28, 0xD1}) ==

@@ -417,7 +417,13 @@ float criticalChance(const Combatant &c) {
 }
 
 int32_t experienceForLevel(int32_t level) {
-    return (int32_t)((1.f - 1.f / ((float)(level - 1) * 0.05f + 1.f)) * 1000.f + 50.f);
+    const float previous = (float)level - 1.f;
+    const float scaled = previous * .05f;
+    const float denominator = scaled + 1.f;
+    const float reciprocal = 1.f / denominator;
+    const float growth = 1.f - reciprocal;
+    const float base = growth * 1000.f;
+    return (int32_t)(base + 50.f);
 }
 
 int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uint16_t appearanceFlags) {
@@ -436,10 +442,12 @@ int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uin
 }
 
 void addExperience(Combatant &c, int32_t amount) {
-    c.experience += amount;
-    while (c.level > 0 && c.experience >= experienceForLevel(c.level)) {
-        c.experience -= experienceForLevel(c.level);
-        c.level++;
+    c.experience = std::bit_cast<int32_t>(uint32_t(c.experience) + uint32_t(amount));
+    if (c.level <= 0)
+        return;
+    while (c.experience >= experienceForLevel(c.level)) {
+        c.experience = std::bit_cast<int32_t>(uint32_t(c.experience) - uint32_t(experienceForLevel(c.level)));
+        c.level = std::bit_cast<int32_t>(uint32_t(c.level) + 1u);
         c.health = maxHealth(c);
     }
 }

@@ -188,6 +188,9 @@ void Inventory::add(const ItemRecord &item) {
     const uint8_t t = itemType(item);
     if (t == 0)
         return;
+    const int b = bagOf(item);
+    if ((int)bags.size() <= b)
+        bags.resize(b + 1); // automatic group admission precedes currency credit too
     ItemRecord stored = item;
     int32_t q = 1;
     if (quantityType(item)) {
@@ -203,9 +206,6 @@ void Inventory::add(const ItemRecord &item) {
         platinum += q;
         return;
     }
-    const int b = bagOf(item);
-    if ((int)bags.size() <= b)
-        bags.resize(b + 1);
     std::vector<Stack> &bag = bags[b];
     Stack *firstEmpty = nullptr;
     for (Stack &s : bag) {

@@ -392,7 +392,7 @@ class Interface {
     bool servicesPress(glm::vec2 window, glm::vec2 mouse, int button);
     creatures::ItemRecord *identifySource();
     creatures::ItemRecord *adaptSource();
-    int32_t adaptPrice(const creatures::ItemRecord &item) const;
+    int32_t adaptPrice();
     std::optional<plasma::Document> identifyPanel, adaptPanel, itemFrame, adaptArrow;
     worldgen::Random serviceRandom{12345};
     // Talk §3, in VendorScreen.cpp.

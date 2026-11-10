@@ -4,6 +4,7 @@
 #include "Loot.h"
 #include "ui/Screens.h"
 #include "ui/Widgets.h"
+#include <bit>
 
 namespace ui {
 namespace {
@@ -58,9 +59,12 @@ ItemRecord *Interface::adaptSource() {
     return item && type >= 3 && type <= 9 && !((*item)[0x0e] & 1) ? item : nullptr;
 }
 
-int32_t Interface::adaptPrice(const ItemRecord &item) const {
-    const int16_t level = creatures::itemLevel(item);
-    const uint8_t rarity = creatures::itemRarity(item);
+int32_t Interface::adaptPrice() {
+    const ItemRecord *item = adaptSource();
+    if (!item)
+        return 0;
+    const int16_t level = creatures::itemLevel(*item);
+    const uint8_t rarity = creatures::itemRarity(*item);
     return rebalancedAdaptionCost(level, rarity, sheet.level);
 }
 
@@ -120,7 +124,7 @@ void Interface::drawServices(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
         }
         outlined(painter, u"Adaption", O + glm::vec2(15, 25), 12, 3, glm::vec4(1));
         buttons(ADAPT, u"Adapt", s != nullptr);
-        outlined(painter, number(s ? adaptPrice(*s) : 0) + u" Platinum Coins ", O + glm::vec2(220, 350), 10, 2.5f,
+        outlined(painter, number(adaptPrice()) + u" Platinum Coins ", O + glm::vec2(220, 350), 10, 2.5f,
                  {0.5f, 0.2f, 1, 1}, plasma::RIGHT);
         outlined(painter, u"COST:", O + glm::vec2(15, 350), 10, 2, glm::vec4(1));
     }
@@ -165,15 +169,21 @@ bool Interface::servicesPress(glm::vec2 W, glm::vec2 mouse, int button) {
         chatAdd(".\n", {255, 255, 255});
     } else {
         // §2.5: pay in platinum, set the player's level in place and mark it adapted.
-        ItemRecord *s = adaptSource();
-        if (!s)
+        if (!adaptSource())
             return true;
-        const uint32_t cost = (uint32_t)adaptPrice(*s);
-        if (cost > inventory->platinum)
+        const int32_t comparisonPrice = adaptPrice();
+        if (std::bit_cast<int32_t>(inventory->platinum) < comparisonPrice)
             return true;
-        inventory->platinum -= cost;
-        creatures::setItemLevel(*s, (int16_t)sheet.level);
-        (*s)[0x0e] |= 1;
+        inventory->platinum -= uint32_t(adaptPrice());
+        const int16_t level = std::bit_cast<int16_t>(uint16_t(sheet.level));
+        ItemRecord *levelItem = adaptSource();
+        if (!levelItem)
+            return true; // retained debit; invalidated selection has no rollback policy
+        creatures::setItemLevel(*levelItem, level);
+        ItemRecord *flagItem = adaptSource();
+        if (!flagItem)
+            return true;
+        (*flagItem)[0x0e] |= 1;
         inventorySounds.push_back(0x2e);
         equipmentChanged = true;
     }

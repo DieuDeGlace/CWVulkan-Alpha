@@ -70,7 +70,7 @@ class Client {
     std::vector<::creatures::BuffEvent> takeBuffs();
     // Section 11; frame applies the drained queue after world calls, before input.
     std::vector<::creatures::RelationshipRecord> takeRelationships();
-    // Experience the server's reward records gave the local player since the last call
+    // Experience from the server's section-ten kill records since the last call
     // (behaviour spec §4.6).
     int32_t takeExperience();
     // Sounds the server relayed (world-update section 4, behaviour spec §6).

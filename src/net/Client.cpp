@@ -431,18 +431,14 @@ void Client::receiveLoop() {
                 relationshipEvents.push_back(::creatures::RelationshipRecord::parse(bytes.data()));
             for (const auto &bytes : update->sections[11])
                 buffEvents.push_back(::creatures::BuffEvent::parse(bytes.data()));
-            // Behaviour §4.6 (b), §12.3: a player id and an item; an item of type 13 is a mission's
-            // experience, worth 10 x its level. Section 9 is inferred (P-9).
+            // Section 9 grants inventory items. Category 13 credits Platinum
+            // Coins through the same item route; kill experience is section 10.
             for (const auto &bytes : update->sections[8]) {
                 if (bytes.size() < 0x1a)
                     continue;
                 uint64_t who;
                 std::memcpy(&who, bytes.data(), 8);
-                int16_t level;
-                std::memcpy(&level, &bytes[0x18], 2);
-                if (bytes[8] == 13 && who == ownId)
-                    experience += 10 * level;
-                else if (who == ownId && bytes.size() >= 288) {
+                if (who == ownId && bytes.size() >= 288) {
                     std::array<uint8_t, 280> item;
                     std::memcpy(item.data(), &bytes[8], 280);
                     gifts.push_back(item);

@@ -849,8 +849,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Screens §8.1.9: an item the player received, into the bags and announced in the chat.
     const auto receive = [&](const creatures::ItemRecord &got) {
         const uint8_t type = creatures::itemType(got);
-        if (type == 13)
-            return; // (experience is counted with the kill records)
         mods.itemReceived(type, creatures::itemSubtype(got), creatures::itemLevel(got));
         if (type == 25) {
             // §8.1.9: a mana cube; every fourth is a skill point (skills §3.1).
@@ -1950,12 +1948,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 if (death.fighter.controller == 1 && death.credited == c.id)
                                     for (const worldgen::ItemRecord &item :
                                          missionRewards(missions.cell(done->first, done->second)->mission, c.characterClass, worldRandom)) {
-                                        if (item.type == 13) {
-                                            creatures::addExperience(c, 10 * item.level);
-                                            interface.floating.push_back(ui::experienceText(10 * item.level, player->body().blocks()));
-                                        } else {
-                                            receive(creatures::toRecord(item));
-                                        }
+                                        receive(creatures::toRecord(item));
                                     }
                             }
                         // Travel §5.5: a pet standing on wet lake-bed ground (type 3) refills its
@@ -3240,10 +3233,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     } else if (const auto got = worldItems.pickUp((*itemTarget)[0], (*itemTarget)[1], (*itemTarget)[2], me)) {
                         // World items §3.3 kind 5: into the bags, announced in the chat, with the
                         // pick-up sound.
-                        if (creatures::itemType(*got) == 13)
-                            creatures::addExperience(player->combat(), 10 * creatures::itemLevel(*got));
-                        else
-                            receive(*got);
+                        receive(*got);
                         audio.play("pickup.wav", 1, 1 + 0.1f * (float)worldRandom.draw() / 32767.f);
                         interface.targetItem.reset();
                     }
@@ -3422,12 +3412,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                         const quests::Quest done = *q;
                                         interface.talk(who, [&] { return saying(quests::thanksText(done)); });
                                         for (const worldgen::ItemRecord &item : quests::rewards(done, c.characterClass, questRandom)) {
-                                            if (item.type == 13) {
-                                                creatures::addExperience(player->combat(), 10 * item.level);
-                                                interface.floating.push_back(ui::experienceText(10 * item.level, player->body().blocks()));
-                                            } else {
-                                                receive(creatures::toRecord(item));
-                                            }
+                                            receive(creatures::toRecord(item));
                                         }
                                         mods.questComplete(done.id);
                                         npcs.removeQuest(done.id);

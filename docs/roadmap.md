@@ -93,6 +93,15 @@ Differences from the Steam engine that shape the plan:
   production hit ordering have regressions. Positive association generation,
   complete received geometry/prefix publication and broader native acceptance
   remain open.
+- [x] Bounded Platinum reward correction: category-thirteen mission, required
+  engine quest, pickup and online grants reach the separate inventory balance.
+  Signed quantities, zero/negative grants, wrapped credit and automatic group
+  admission have regressions. Adaptation uses the signed balance and retains
+  payment/update order with the required corrected price always enabled.
+- [x] Bounded experience-level helper: binary32 level arithmetic, wrapped XP and
+  level stores, the entry-only positive-level gate and per-increment maximum
+  health query have regressions. Full typed fatal-credit consumption, linked
+  awards, item-cache copying and regional/caller ordering remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish
@@ -671,7 +680,7 @@ Differences from the Steam engine that shape the plan:
 - [x] Missions (`alpha-missions.md`, `src/Missions.*`): the mission and monster areas of each map cell,
   the daily pass (cell monsters, two location missions and two hunts per region, cleared at
   midnight and by inn rests), the zone pass (a cell's monster with its weapon and armour, or a
-  wandering group), discovery, kills and completion with the experience item and armour or
+  wandering group), discovery, kills and completion with Platinum Coins and armour or
   weapon reward, leftover targets, kind-5 creatures taking the mission level, the 56-byte
   section-13 record (server broadcast, packet 12 answers, client apply) and the `mission` /
   `monster` saves. The map's spinning mission markers and undimmed target zones, the small quest

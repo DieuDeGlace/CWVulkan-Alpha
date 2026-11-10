@@ -2,6 +2,7 @@
 #include "Missions.h"
 #include "worldgen/Items.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 
@@ -21,7 +22,7 @@ template <class T> T get(const uint8_t *p, size_t at) {
 }
 
 // §0: the level curve c(x).
-float curve(int32_t x) { return 1.f - 1.f / ((float)(x - 1) * 0.05f + 1.f); }
+float curve(float x) { return 1.f - 1.f / ((x - 1.f) * 0.05f + 1.f); }
 
 // §2.4: "take a random entry": one draw, and the entry leaves the list.
 void take(std::vector<std::pair<int32_t, int32_t>> &list, Random &random, std::pair<int32_t, int32_t> &out) {
@@ -153,16 +154,19 @@ int32_t missionCreature(Random &random) {
     return types[random.draw() % 9];
 }
 
-int32_t rewardExperienceLevel(int32_t level, int32_t tier) { return (int32_t)(50.f * curve(level + tier) + 1.f); }
+int32_t rewardPlatinumAmount(int32_t level, int32_t tier) {
+    const int32_t combined = std::bit_cast<int32_t>(uint32_t(level) + uint32_t(tier));
+    return (int32_t)(50.f * curve((float)combined) + 1.f);
+}
 
 std::vector<ItemRecord> missionRewards(const MissionArea &m, int32_t characterClass, Random &random) {
-    ItemRecord xp;
-    xp.type = 13;
-    xp.level = (int16_t)rewardExperienceLevel(m.level, m.tier);
+    ItemRecord platinum;
+    platinum.type = 13;
+    platinum.level = std::bit_cast<int16_t>(uint16_t(rewardPlatinumAmount(m.level, m.tier)));
     const bool armour = random.draw() % 2 == 0;
     const ItemRecord gear = armour ? armourItem(random, m.level, m.tier, characterClass)
                                    : weaponItem(random, m.level, m.tier, characterClass);
-    return {xp, gear};
+    return {platinum, gear};
 }
 
 const Location *cellLocation(const World &world, int32_t cx, int32_t cy) {

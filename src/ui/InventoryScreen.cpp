@@ -8,6 +8,7 @@
 #include "creatures/Spirits.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace ui {
@@ -168,7 +169,7 @@ void Interface::drawInventory(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
     outlined(painter, number(M % 100) + u" C ", O + glm::vec2(PANEL.x - 30, baseline), 10, 2, COPPER, plasma::RIGHT);
     outlined(painter, number(M / 100 % 100) + u" S ", O + glm::vec2(PANEL.x - 70, baseline), 10, 2, SILVER, plasma::RIGHT);
     outlined(painter, number(M / 10000) + u" G ", O + glm::vec2(PANEL.x - 110, baseline), 10, 2, GOLD, plasma::RIGHT);
-    outlined(painter, number(inventory->platinum) + u"  Platinum Coins ", O + glm::vec2(15, baseline), 10, 2, PLATINUM);
+    outlined(painter, number(std::bit_cast<int32_t>(inventory->platinum)) + u"  Platinum Coins ", O + glm::vec2(15, baseline), 10, 2, PLATINUM);
     // Scroll buttons and the thumb, cyan under the cursor.
     for (auto [doc, at] : {std::pair{&upButton, upCorner()}, std::pair{&downButton, downCorner()}}) {
         if (!*doc)

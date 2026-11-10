@@ -67,7 +67,7 @@ std::u16string objectiveText(const Quest &q, glm::dvec3 playerAt, const std::str
 std::string thanksText(const Quest &q);
 
 // The reward of a handed-in quest for a player of `characterClass`: Alpha's mission reward at
-// the quest's level (experience item first, then a piece of gear), then the coins.
+// the quest's level (Platinum Coins first, then a piece of gear), then the coins.
 std::vector<worldgen::ItemRecord> rewards(const Quest &q, int32_t characterClass, worldgen::Random &random);
 
 // One player's quests.
