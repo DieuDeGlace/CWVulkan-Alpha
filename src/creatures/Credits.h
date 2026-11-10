@@ -17,13 +17,17 @@ struct KillRecord {
 struct CreditItems {
     ItemRecord &source, &snapshot;
 };
+// Default actor-owned records; keep the semantic source view current without
+// changing opaque backing bytes or the resident snapshot.
+CreditItems actorCreditItems(Combatant &actor);
+void stampLinkedCredit(Combatant &actor, const Combatant &linked, CreditItems items);
 
 struct CreditWorld {
     std::function<Combatant *(uint64_t)> lookup;
     std::function<Combatant *()> controlled;
     uint8_t mode = 0;
-    // Required for an admitted mode-zero linked award; both records belong to
-    // the credited actor. Storage and actor pointers stay valid during the call.
+    // Optional override for supplied storage; otherwise use actorCreditItems.
+    // Both records belong to the credited actor and stay valid during the call.
     std::function<CreditItems(Combatant &)> linkedItems;
 };
 

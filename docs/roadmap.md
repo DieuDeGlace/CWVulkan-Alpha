@@ -129,6 +129,13 @@ Differences from the Steam engine that shape the plan:
   corpse adapter converts the retained float instead of recomputing changed
   target state. This engine bridge does not close synchronous recipient cleanup,
   credit/grants, final backing writes or native gameplay acceptance.
+- [x] Bounded linked-item storage: retain a complete current slot-twelve record
+  and separate actor-resident snapshot/word. Core refresh preserves resident
+  state; selected maintenance uses field equality and publishes before creation.
+  Other categories and later mirroring do not clear/refresh the snapshot. The
+  default credit consumer now has real owned source/snapshot storage. Full
+  selection/reset/configuration/name producers, synchronous fatal integration,
+  original-server equivalence and native acceptance remain open.
 - [x] Bounded client world-call cadence: actors, buffs, world items/statics,
   projectiles and clock use the same integer pieces, with retained output
   collectors and one later control/action input phase. Exact multiples finish

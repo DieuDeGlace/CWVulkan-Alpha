@@ -389,6 +389,32 @@ seed, map tiles, preview and edits. Its current player package passed all 35
 hashes and 36 archive-entry checks. The known bright ground and broader native
 UI/gameplay/visual acceptance gates remain open.
 
+LinkedItemTests checks source/snapshot construction, raw-word comparison,
+selected-field publication and ignored/compared body bytes. Actual codec examples
+round-trip all 280 current-item bytes across zero, negative, ordinary, full and
+oversized signed counts. Received actor assignment copies every selected source
+byte, retains its five existing alignment bytes and preserves that actor's
+separate snapshot/word. A real mode-zero credit uses the default
+actor storage, stamps post-level XP/level and preserves all selected/inactive
+bytes without requiring a pet item category or updating the comparison word.
+
+Actual Npcs maintenance fixtures cover publication and missing-child construction
+for a dead role-zero owner, source reset versus retained
+snapshot, ignored changes without reconstruction, compared coordinates and raw
+word changes that reconstruct, non-pet state retention, creation rejection and
+non-role-zero exclusion. A controlled late-mirror fixture skips maintenance but
+still updates the source, leaving the snapshot/word unchanged. These fixtures
+exercise engine-owned storage and the held bounded rules; the documented
+selection/configuration/name, full fatal and native acceptance gates remain open.
+
+After the actor-assignment alignment correction, all 41 CTests passed. Fresh
+actual-client rewards, injured health, multiplayer and both save/reload phases
+passed, with all five captures reviewed. Rewards retained level 2, -33 XP and
+7 Platinum Coins; injured health retained exactly binary32 50. Reload preserved
+the character, seed, nine map tiles, preview and 170 edits. The current player
+package passed all 35 hashes and 36 archive-entry checks. These checks do not
+close the known bright ground or native UI/gameplay/visual/provenance gates.
+
 With an isolated 41-ms minimum frame setting, the actual engine client reported
 138 world calls across 17 input frames and a maximum piece of 20 ms. Its injured
 character retained exactly 50 health on exit and the capture was viewed. A fresh

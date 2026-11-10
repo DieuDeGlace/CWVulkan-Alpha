@@ -10,6 +10,7 @@
 #include "creatures/Buffs.h"
 #include "creatures/Hits.h"
 #include "creatures/Relationships.h"
+#include "creatures/LinkedItems.h"
 #include <map>
 #include <vector>
 
@@ -35,9 +36,14 @@ struct Item {
         int32_t level = 1;
     };
     std::vector<Cube> cubes;
+    uint32_t product = 0;
+    uint8_t flags = 0;
 
     // The fields above from a 280-byte item record (behaviour §10.1).
     static Item parse(const uint8_t *record);
+    // Update represented fields without overwriting padding or inactive backing
+    // bytes. Full records remain necessary when replacing the source item.
+    void write(ItemRecord &record) const;
 };
 
 // Weapon subtypes (models spec §6.2).
@@ -92,6 +98,7 @@ struct Combatant {
     float multipliers[5] = {100, 1, 1, 1, 1}; // health, attack speed, damage, armour, resistance (§8.4)
     uint16_t appearanceFlags = 0;
     std::array<Item, SLOT_COUNT> equipment{};
+    LinkedItemState linkedItem; // full slot-12 source and actor-resident comparison state
     Item held; // the item being eaten or drunk (record field 43)
     std::array<int32_t, 11> skills{}; // skill levels (record field 46)
 

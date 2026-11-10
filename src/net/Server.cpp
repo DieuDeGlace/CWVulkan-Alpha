@@ -21,6 +21,7 @@ struct Server::Connection {
     std::vector<creatures::Buff> buffs; // core snapshots exclude the resident list
     creatures::Relations relations;
     uint64_t linkedId = 0;
+    creatures::LinkedItemSnapshot linkedItemSnapshot;
     std::map<uint64_t, CreatureRecord> known; // what this player was sent last tick
     Clock::time_point joined = Clock::now();
     std::deque<std::pair<uint64_t, std::vector<uint16_t>>> chat;
@@ -607,6 +608,7 @@ void Server::stepWorld(float dtMs) {
         f.buffs = std::move(c->buffs);
         f.relations = std::move(c->relations);
         f.linkedId = c->linkedId;
+        f.linkedItem.retained = c->linkedItemSnapshot;
         creatures::Body b;
         b.place(glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0);
         b.velocity = c->creature.velocity();
@@ -1032,6 +1034,8 @@ void Server::stepWorld(float dtMs) {
         who[index]->buffs = std::move(fighters[index].buffs);
         who[index]->relations = std::move(fighters[index].relations);
         who[index]->linkedId = fighters[index].linkedId;
+        who[index]->linkedItemSnapshot = fighters[index].linkedItem.retained;
+        who[index]->creature.setLinkedItem(fighters[index].linkedItem.source);
     }
 
     // World items §3.5: changed zones are saved and listed to everyone.

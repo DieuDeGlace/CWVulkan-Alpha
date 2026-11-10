@@ -342,6 +342,8 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
             c.equipment[slot].seed = r.seed;
         }
     c.appearanceFlags = npc.looks.flags;
+    c.linkedItem.source = toRecord(s.equipment[12]);
+    c.equipment[12] = Item::parse(c.linkedItem.source.data());
     if (!s.finished || npc.regear)
         equip(c, npc.looks, [&] { return draw(); });
     c.health = maxHealth(c);

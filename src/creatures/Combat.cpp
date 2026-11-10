@@ -26,8 +26,10 @@ Item Item::parse(const uint8_t *r) {
     item.type = r[0];
     item.subtype = r[1];
     std::memcpy(&item.seed, r + 0x04, 4);
+    std::memcpy(&item.product, r + 0x08, 4);
     item.rarity = r[0x0c];
     item.material = r[0x0d];
+    item.flags = r[0x0e];
     int16_t level;
     std::memcpy(&level, r + 0x10, 2);
     item.level = level;
@@ -42,6 +44,28 @@ Item Item::parse(const uint8_t *r) {
         item.cubes.push_back({(int8_t)e[0], (int8_t)e[1], (int8_t)e[2], e[3], level});
     }
     return item;
+}
+
+void Item::write(ItemRecord &record) const {
+    record[0] = type;
+    record[1] = subtype;
+    std::memcpy(record.data() + 4, &seed, 4);
+    std::memcpy(record.data() + 8, &product, 4);
+    record[0x0c] = rarity;
+    record[0x0d] = material;
+    record[0x0e] = flags;
+    setItemLevel(record, std::bit_cast<int16_t>(uint16_t(level)));
+    const size_t copiedCubes = std::min<size_t>(cubes.size(), 32);
+    for (size_t i = 0; i < copiedCubes; i++) {
+        const Cube &cube = cubes[i];
+        uint8_t *entry = record.data() + 0x14 + 8 * i;
+        entry[0] = uint8_t(cube.x);
+        entry[1] = uint8_t(cube.y);
+        entry[2] = uint8_t(cube.z);
+        entry[3] = cube.material;
+        std::memcpy(entry + 4, &cube.level, 4);
+    }
+    std::memcpy(record.data() + 0x114, &spirits, 4);
 }
 
 ItemBonuses &itemBonuses() {

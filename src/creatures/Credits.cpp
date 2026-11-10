@@ -23,6 +23,20 @@ KillRecord KillRecord::parse(const uint8_t *bytes) {
     return record;
 }
 
+CreditItems actorCreditItems(Combatant &actor) {
+    actor.equipment[12].write(actor.linkedItem.source);
+    return {actor.linkedItem.source, actor.linkedItem.retained.item};
+}
+
+void stampLinkedCredit(Combatant &actor, const Combatant &linked, CreditItems items) {
+    std::memcpy(items.source.data() + 4, &linked.experience, 4);
+    const int16_t level = std::bit_cast<int16_t>(uint16_t(linked.level));
+    setItemLevel(items.source, level);
+    actor.equipment[12].seed = uint32_t(linked.experience);
+    actor.equipment[12].level = level;
+    copyItemFields(items.source, items.snapshot);
+}
+
 CreditResult receiveCredit(const KillRecord &record, const CreditWorld &world) {
     CreditResult result;
     Combatant *credited = world.lookup(record.player);
@@ -51,13 +65,8 @@ CreditResult receiveCredit(const KillRecord &record, const CreditWorld &world) {
         if (Combatant *linked = world.lookup(credited->linkedId); linked && linked->health > 0) {
             addExperience(*linked, record.experience);
             result.linkedAward = linked;
-            const auto [source, snapshot] = world.linkedItems(*credited);
-            std::memcpy(source.data() + 4, &linked->experience, 4);
-            const int16_t level = std::bit_cast<int16_t>(uint16_t(linked->level));
-            setItemLevel(source, level);
-            credited->equipment[12].seed = uint32_t(linked->experience);
-            credited->equipment[12].level = level;
-            copyItemFields(source, snapshot);
+            const auto items = world.linkedItems ? world.linkedItems(*credited) : actorCreditItems(*credited);
+            stampLinkedCredit(*credited, *linked, items);
         }
     return result;
 }

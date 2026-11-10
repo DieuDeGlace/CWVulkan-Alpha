@@ -15,18 +15,6 @@ namespace {
 
 constexpr int PET_SLOT = 12;
 
-// §9.2: what of the Pet slot item the pass compares (its type, creature, level, experience
-// and name).
-std::vector<uint8_t> itemKey(const Item &item) {
-    std::vector<uint8_t> key = {item.type, item.subtype, item.material, item.rarity};
-    for (int32_t v : {item.level, (int32_t)item.seed, item.spirits})
-        for (int k = 0; k < 4; k++)
-            key.push_back((uint8_t)(v >> (8 * k)));
-    for (const Item::Cube &c : item.cubes)
-        key.push_back(c.material);
-    return key;
-}
-
 float yawTo(glm::vec2 d) { return (float)(std::atan2(-d.x, d.y) * 180.0 / 3.141592653589793); }
 
 } // namespace
@@ -90,6 +78,9 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     c.level = std::min(c.level, owner.level);
     c.multipliers[0] *= 1 + 0.5f * skillFactor(owner.skills[0]);
     c.actionMs = 1000000;
+    c.linkedItem.source.fill(0); // native reset differs from fresh item construction
+    c.equipment[PET_SLOT].level = 0;
+    c.linkedItem.retained = pet.fighter.linkedItem.retained;
     pet.fighter = c;
     pet.fighter.ownerId = owner.id;
     pet.spawn = Npc::NO_SPAWN;
@@ -111,8 +102,10 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
     if (namedWorld)
         for (PlayerView &p : players) {
             auto &owner = p.fighter;
-            PetLink &cache = pets[owner.id];
+            if (owner.controller != 0)
+                continue;
             const Item &slot = owner.equipment[PET_SLOT];
+            slot.write(owner.linkedItem.source);
             if (slot.type == 19) {
                 // The first and post-recovery forward lookups each exclude zero.
                 ActorEntry linked = owner.linkedId ? lookupActor(owner.linkedId, players) : ActorEntry{};
@@ -126,13 +119,11 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
                 }
                 linked = owner.linkedId ? lookupActor(owner.linkedId, players) : ActorEntry{};
                 bool refreshed = false;
-                const std::vector<uint8_t> key = itemKey(slot);
-                if (linked.npc && (owner.skills[0] != cache.skill || key != cache.item)) {
+                if (linked.npc && !owner.linkedItem.matches(uint32_t(owner.skills[0]))) {
                     refreshed = true;
                     makePet(*linked.npc, slot, owner);
                 }
-                cache.skill = owner.skills[0];
-                cache.item = itemKey(slot); // snapshot precedes the possible construction
+                owner.linkedItem.publish(uint32_t(owner.skills[0])); // before possible construction, even with no link
                 if (!refreshed && owner.linkedId == 0 && !(p.body.mode & GLIDER)) {
                     const uint64_t id = freeId();
                     owner.linkedId = id;
@@ -163,8 +154,6 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
                     if (linked.combat())
                         linked.combat()->health = 0;
                 }
-                cache.skill = owner.skills[0];
-                cache.item = itemKey(slot);
             }
         }
 
@@ -182,11 +171,9 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
             const bool changed = slot.level != level || slot.seed != experience;
             slot.level = level;
             slot.seed = experience;
+            slot.write(current->linkedItem.source);
             if (changed) {
                 frame.petItems.push_back({current->id, level, linked.combat()->experience});
-                // Engine cache synchronization, separate from native item equality.
-                if (const auto cache = pets.find(current->id); cache != pets.end())
-                    cache->second.item = itemKey(slot);
             }
         }
         if (current->controller == 5) {
@@ -312,19 +299,12 @@ void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
 
 // §12: the owner's kill experience goes to a living pet, whose item follows.
 void Npcs::sharePetExperience(Combatant &owner, int32_t experience, NpcFrame &frame) {
-    const auto it = pets.find(owner.id);
     Npc *pet = findNpc(owner.linkedId);
     if (!pet || pet->fighter.controller != 5 || pet->fighter.ownerId != owner.id || pet->fighter.health <= 0)
         return;
     addExperience(pet->fighter, experience);
+    stampLinkedCredit(owner, pet->fighter, actorCreditItems(owner)); // retained legacy admission, shared copy boundary
     frame.petItems.push_back({owner.id, pet->fighter.level, pet->fighter.experience});
-    // (The item's copy follows too, so the pass does not rebuild the pet for it.)
-    if (it != pets.end() && it->second.item.size() >= 12) {
-        for (int k = 0; k < 4; k++) {
-            it->second.item[4 + k] = (uint8_t)(pet->fighter.level >> (8 * k));
-            it->second.item[8 + k] = (uint8_t)(pet->fighter.experience >> (8 * k));
-        }
-    }
 }
 
 } // namespace creatures

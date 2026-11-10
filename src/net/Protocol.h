@@ -47,6 +47,8 @@ struct CreatureRecord {
     // Semantic seed for a newly received creature, before its first delta.
     // Native unwritten storage is unspecified; this engine initializes it to zero.
     static CreatureRecord nativeDefaults();
+    // Complete current slot-12 payload; the actor-resident comparison is separate.
+    void setLinkedItem(const creatures::ItemRecord &item);
 
     // A few fields by name; everything else stays as bytes and is relayed unchanged.
     int64_t position(int axis) const;

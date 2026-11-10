@@ -125,9 +125,14 @@ creatures::Combatant CreatureRecord::fighter() const {
     c.backing = {get<int32_t>(bytes, 0x1a0), get<int32_t>(bytes, 0x1a4), get<int32_t>(bytes, 0x1a8)};
     for (size_t slot = 0; slot < c.equipment.size(); slot++)
         c.equipment[slot] = creatures::Item::parse(&bytes[EQUIPMENT + ITEM_SIZE * slot]);
+    std::memcpy(c.linkedItem.source.data(), bytes.data() + EQUIPMENT + ITEM_SIZE * 12, ITEM_SIZE);
     for (size_t i = 0; i < c.skills.size(); i++)
         c.skills[i] = get<int32_t>(bytes, 0x1128 + 4 * i);
     return c;
+}
+
+void CreatureRecord::setLinkedItem(const creatures::ItemRecord &item) {
+    std::memcpy(bytes.data() + EQUIPMENT + ITEM_SIZE * 12, item.data(), ITEM_SIZE);
 }
 
 void CreatureRecord::setFighter(const creatures::Combatant &c) {
@@ -161,16 +166,9 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     put<int32_t>(bytes, 0x1a8, c.backing.index);
     for (size_t slot = 0; slot < c.equipment.size(); slot++) {
         uint8_t *r = &bytes[EQUIPMENT + ITEM_SIZE * slot];
-        std::memset(r, 0, ITEM_SIZE);
-        const creatures::Item &item = c.equipment[slot];
-        r[0] = item.type;
-        r[1] = item.subtype;
-        std::memcpy(r + 0x04, &item.seed, 4);
-        r[0x0c] = item.rarity;
-        r[0x0d] = item.material;
-        const int16_t level = (int16_t)item.level;
-        std::memcpy(r + 0x10, &level, 2);
-        std::memcpy(r + 0x114, &item.spirits, 4);
+        creatures::ItemRecord record = slot == 12 ? c.linkedItem.source : creatures::ItemRecord{};
+        c.equipment[slot].write(record);
+        std::memcpy(r, record.data(), ITEM_SIZE);
     }
     for (size_t i = 0; i < c.skills.size(); i++)
         put<int32_t>(bytes, 0x1128 + 4 * i, c.skills[i]);

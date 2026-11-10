@@ -661,3 +661,30 @@ retaining its separate boss-argument adapter. Synchronous per-recipient cleanup,
 credit consumption, completion grants and final backing writes remain open.
 Selected-control numeric/status checks and synthetic callback mutations do not
 establish the original game's ambient controls or native gameplay acceptance.
+
+The finalized linked-item storage contract was reread completely before adding
+actor-owned current and retained item records. Only the current slot twelve is
+core state; remote core assignment and the dedicated engine connection bridge
+retain their actor's snapshot and comparison word. Remote actor assignment also
+retains the five existing source alignment bytes through selected-field copying.
+The network record remains a distinct raw 280-byte payload. Constructors establish level
+one, while the scoped reconstruction reset clears the current source and retains
+comparison state. Raw source transport preserves all 280 bytes; selected snapshot
+assignment retains its five destination padding bytes. Fresh padding remains
+deterministic engine initialization.
+
+The item view now retains product/flags and writes represented body fields without
+discarding inactive raw backing. Owned inventory, descriptor activation and the
+codec supply the current source. The selected role-zero maintenance path uses
+the common field equality, publishes even without a usable link and does so before
+missing-child construction. Other categories retain comparison state; the later
+controlled level/XP mirror does not acknowledge it. The shared credit stamp
+updates the source and snapshot without changing the comparison word, and the
+mode-zero consumer can use that real actor-owned storage directly.
+
+The named-world admission, PlayerView collection, NPC-only reconstruction and
+broader configuration/name/reset producers remain explicit engine adapters.
+Complete native packet/callback lifetime, generation provenance and server
+equivalence are not inferred. The retained later-corpse sharing route uses the
+common stamp but retains its older eligibility until synchronous fatal migration.
+This storage checkpoint does not certify the remaining recipient/grant sequence.

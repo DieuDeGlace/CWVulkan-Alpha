@@ -595,6 +595,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             return;
         for (size_t slot = 0; slot < inventory.equipment.size(); slot++)
             player->combat().equipment[slot] = creatures::Item::parse(inventory.equipment[slot].data());
+        player->combat().linkedItem.source = inventory.equipment[12];
     };
     creatures::Npcs npcs{worldRandom};
     npcs.objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {

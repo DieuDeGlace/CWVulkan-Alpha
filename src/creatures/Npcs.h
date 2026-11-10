@@ -345,11 +345,6 @@ class Npcs {
     // Pets and bombs §4.2: the blast of `bomb` hits every live creature in reach.
     void blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame);
     // Pets (Pets.cpp).
-    struct PetLink {
-        int32_t skill = -1;        // copy of the taming skill (obj +0x1d44)
-        std::vector<uint8_t> item; // copy of the Pet slot item (obj +0x1d48)
-    };
-    std::map<uint64_t, PetLink> pets; // by owner
     Npc *findNpc(uint64_t id);
     uint64_t freeId() const;
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
