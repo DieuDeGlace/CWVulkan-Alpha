@@ -114,6 +114,14 @@ Differences from the Steam engine that shape the plan:
   records a unique spatial-identity exclusion union; path/body reset clears it.
   The production created-companion caller uses this query. Imported math,
   relocation/concurrency, complete path search and native acceptance remain open.
+- [x] Supplied-input search core and classifier: independent coordinate records,
+  pending selection, remembered destination scores, asymmetric costs, actual
+  cardinal-update admission and partial predecessor lists. Ordered terrain and
+  record probes preserve distinct conversion boundaries and raw reference gates.
+  Synthetic end-to-end flat-ground search passes. This kernel is not yet bound
+  to the production route consumer; native gameplay acceptance remains open.
+- [ ] Bind the held route-list consumer and rerooting to the new search core,
+  including velocity recurrence, resident-object effects and caller decisions.
 - [x] Raw reference core state: existing field 40 retains all 24 bytes through
   wire/core refresh and the inspected linked reset. Descriptor activation copies
   its effective raw coordinates. Fresh engine storage is deterministic zero,

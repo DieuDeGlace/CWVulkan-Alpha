@@ -960,3 +960,20 @@ score, selection and expansion relations await the separate search implementatio
 The existing search/classification adapter is retained explicitly. Original
 pointer width is represented by engine spatial identity, independently of actor
 IDs. No native server or whole-navigation equivalence follows from this binding.
+
+The subsequent original-only selected-coordinate classification contract was
+FINAL/STABLE/HELD and read completely before implementing SearchState and
+SearchGeometry. Its SHA-256 is
+`7c22e89698413dd5ed8513337e8c49dfdc41dc6a57400dae70f812a6102d612a`.
+The already held path-state contract supplies container/score/list transitions.
+Neither author received engine, tests, captures, logs or runtime findings.
+
+The independently owned kernel uses coordinate values and standard containers,
+without reproducing native record allocation layouts. It preserves the seed's
+distinct score conversion, signed tie order, cached scores, asymmetric costs,
+same-call cardinal updates and partial predecessor publication. Its classifier
+retains the complete boundary query order, independent sample bit, unusual plus-Y
+flag, early record-below probe and pointer/tag distinctions. Synthetic isolated
+and combined cases establish these supplied-input relations. Production route
+consumer integration is a separate next step; no native gameplay, performance,
+concurrency, imported runtime or server equivalence is certified by these tests.

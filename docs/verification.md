@@ -336,6 +336,26 @@ over 17 input frames. An isolated repeat of the unchanged build completed in
 20 ms pieces. The stall did not reproduce; contention is a possible explanation,
 not an established cause or a general performance acceptance result.
 
+SearchStateTests checks signed lexicographic selection ties, distinct seed
+binary32 rounding, strict destination-score replacement, pending-only
+improvement, retained destination-score epochs, new/improved Y-minus costs and
+same-call cardinal updates controlling diagonals. Limits admit equality and
+clear an exceeded count only on the next call. List checks retain missing-parent
+partials, self-parent stopping and the count-plus-one lookup guard for cycles.
+Setup checks seed-before-endpoint order, snapped centers and unique exclusions.
+
+Classifier cases check the complete expanded boundary query stream, all terrain
+flag sites, the plus-Y lower-plane asymmetry, the independent sample bit, negative
+conversion boundaries and inverted ranges. Record cases distinguish pointer
+exclusion, early below-probe, height, selector, raw tag, zero state, edge equality,
+odd orientation and repeated ordered bucket entries. An integrated kernel case
+builds a flat-ground route and pops the exact goal without another classification.
+The full 50 CTests passed; a later test-only addition of that integrated case
+was rebuilt and passed separately. Production Paths/Npcs are unchanged in this
+checkpoint, so earlier client captures are not presented as new runtime evidence.
+Follower binding, imported math, resident lifetime, native gameplay and server
+equivalence remain open.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
