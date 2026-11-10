@@ -146,6 +146,9 @@ struct Combatant {
         setItemLevel(record, 1);
         return record;
     }();
+    // Raw core field40. Native fresh storage is unspecified; engine fresh state
+    // is deterministic zero. Keep its producers distinct from main position.
+    std::array<int64_t, 3> behaviorReference{};
 
     ItemRecord &equipmentSource(size_t slot) {
         return slot == SLOT_COUNT - 1 ? linkedItem.source : equipmentSources.records[slot];

@@ -71,11 +71,13 @@ Differences from the Steam engine that shape the plan:
   the decoded word before linked maintenance. The held producer audit supplies
   raw word/copy/reset boundaries. First native bit-0x20 behavior production,
   complete descriptor generation and world transition/lifetime remain open.
-- [ ] Action-92 actor creation: the new held original-only contract establishes
-  selector/admission, live key/link scans, direct new-actor state, copy defaults,
-  draw counts and setup publication. Future setup behavior, other candidate
-  appearance outputs and lifetime remain bounded; this is research closure,
-  not a claim that the production actor-creation path is implemented.
+- [x] Bounded action-92 creation: production owned NPC and designated offline
+  player dispatch retain the two anticipation queries, live link/minimum-key
+  scan, full copy routes, fresh defaults and predecessor publication before
+  clock advancement. Closed generation covers kind 0x25 and unsigned out-of-table
+  kinds; other generation reports an explicit engine capability boundary.
+  Configuration/kind producers, remaining appearance outputs, network-client
+  creation/authority and complete native lifetime/acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;
@@ -85,9 +87,16 @@ Differences from the Steam engine that shape the plan:
   import, existing wire field 43 and core refresh. Consumable assignment retains
   destination gaps and inactive entries. This closes a storage prerequisite;
   native target-selection and wider consumable acceptance remain open.
-- [ ] Created-actor behavior: held source contracts establish ordered child
-  processing and a target-selection prefix. Later action/navigation, reference
-  producers and complete production integration remain open.
+- [ ] Complete created-actor behavior: production roots now retry combat,
+  companion and wander in order. The bounded selection, companion caller and
+  third-child counter/draw relations are implemented; broad geometry/search,
+  later combat/navigation, universal reference initialization and complete
+  native scheduling/gameplay acceptance remain open.
+- [x] Raw reference core state: existing field 40 retains all 24 bytes through
+  wire/core refresh and the inspected linked reset. Descriptor activation copies
+  its effective raw coordinates. Fresh engine storage is deterministic zero,
+  separate from unspecified native constructor storage; it is never inferred
+  from the current or creation position.
 - [x] Bounded target-selection prefix: entry/inventory precedence, preliminary
   and linked lookups, live signed candidate order, fixed-coordinate binary32
   scoring, visibility/classifier gates, fallback relationship publication and

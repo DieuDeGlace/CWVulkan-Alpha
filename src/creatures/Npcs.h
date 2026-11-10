@@ -6,6 +6,8 @@
 // client runs them for its one player; online the server runs the same step for all.
 #include "creatures/Appearance.h"
 #include "creatures/ActorMap.h"
+#include "creatures/ActorCreation.h"
+#include "creatures/CreatedBehavior.h"
 #include "creatures/Combat.h"
 #include "creatures/Credits.h"
 #include "creatures/Inventory.h"
@@ -83,6 +85,9 @@ struct Npc {
     // Wildlife §4: the behaviour sequence (as the spawn's), the route and where on it, the
     // wait at a point, and the creature a member follows.
     uint8_t behaviour = 0;
+    creation::Configuration creationConfig; // resident, independently initialized for a new actor
+    int32_t createdWalkMs = 0;
+    created::PathState createdPath;
     std::vector<glm::dvec3> route;
     size_t routeIndex = 0;
     float waitMs = 0;
@@ -91,7 +96,7 @@ struct Npc {
     std::vector<std::pair<glm::dvec3, int32_t>> schedule;
     int32_t scheduleStop = 0, scheduleArrived = 0; // schedules §3.1: current and arrived entries
     float routeRadius = 10; // WalkPath's arrival radius (2 for a shopkeeper's counter)
-    uint64_t target = 0;       // the creature with the highest threat
+    uint64_t target = 0;       // legacy continuation cache; the selector itself uses pointers
     float threat = 0;
 };
 
@@ -106,6 +111,8 @@ struct PlayerView {
     bool strikes = true;
     bool advanceBuffs = false; // server view; local clients already ran their own countdown
     bool local = false; // distinguished controlled creature; absent in a dedicated world
+    const Appearance *appearance = nullptr;
+    const creation::Configuration *creationConfig = nullptr;
 };
 
 // What a step of creatures did.
@@ -336,10 +343,13 @@ class Npcs {
     // §9.2 step 7: one creature of spawn `s` (zone `key`, index `index` among `base` zone
     // spawns) at `p`, added to the list.
     void spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base, uint64_t id,
-                       glm::dvec3 p, bool descriptorBacked = true);
+                       const std::array<int64_t, 3> &position, bool descriptorBacked = true);
     void activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day,
                   float dtMs);
-    void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame);
+    void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block,
+               NpcFrame &frame, const worldgen::WorldMap &map);
+    bool createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t step, const BlockType &block,
+                          const worldgen::WorldMap &map);
     bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame);
     bool lookAtPlayer(Npc &npc, std::vector<PlayerView> &players);
     void randomWalk(Npc &npc, float dtMs);
@@ -391,6 +401,7 @@ class Npcs {
         bool local() const { return player && player->local; }
     };
     ActorMap<ActorEntry> actors;
+    void createActor(const ActorEntry &current, int32_t step);
     Combatant *controlledActor = nullptr; // valid while the refreshed index is protected
     bool actorPassActive = false;
     bool actorLookupActive = false;

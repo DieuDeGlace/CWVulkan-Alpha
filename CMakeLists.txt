@@ -157,6 +157,8 @@ add_library(engine STATIC
     src/creatures/Physics.cpp
     src/creatures/Visibility.cpp
     src/creatures/TargetSelection.cpp
+    src/creatures/ActorCreation.cpp
+    src/creatures/CreatedBehavior.cpp
     src/creatures/FollowCamera.cpp
     src/creatures/Combat.cpp
     src/creatures/Hits.cpp
@@ -355,6 +357,8 @@ add_executable(VisibilityTests tests/VisibilityTests.cpp)
 target_link_libraries(VisibilityTests PRIVATE engine)
 add_executable(TargetSelectionTests tests/TargetSelectionTests.cpp)
 target_link_libraries(TargetSelectionTests PRIVATE engine)
+add_executable(ActorCreationTests tests/ActorCreationTests.cpp)
+target_link_libraries(ActorCreationTests PRIVATE engine)
 add_executable(PlxDump tools/PlxDump.cpp)
 target_link_libraries(PlxDump PRIVATE engine)
 add_executable(ZoneDump tools/ZoneDump.cpp)
@@ -372,6 +376,8 @@ if(MSVC)
         src/creatures/Physics.cpp
         src/creatures/Visibility.cpp tests/VisibilityTests.cpp
         src/creatures/TargetSelection.cpp tests/TargetSelectionTests.cpp
+        src/creatures/ActorCreation.cpp tests/ActorCreationTests.cpp
+        src/creatures/CreatedBehavior.cpp
         src/AlphaLook.cpp
         src/worldgen/Regions.cpp src/worldgen/Random.cpp
         src/TerrainLights.cpp
@@ -456,7 +462,7 @@ target_link_libraries(RangedSchedulingTests PRIVATE engine)
 include(CTest)
 set(ALPHAVULKAN_TEST_GAME_PATH "" CACHE PATH "Owned Alpha installation used by content/save/UI checks")
 if(BUILD_TESTING)
-    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests VisibilityTests TargetSelectionTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests GamepadTests ControllerKeyboardTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests PeriodicHitTests SimulationFrameTests ActorOrderTests WorldHitDeliveryTests RelationshipTests FatalContextTests FatalLootTests FatalObjectTests CreditTests RegionProgressTests ItemIdentityTests LinkedItemTests FatalRecipientTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests RemoteFighterTests)
+    foreach(testTarget StoreTests ModTests WorldgenTests NetTests SaveTests ContentTests LookTests UiTests CreatureTests VisibilityTests TargetSelectionTests ActorCreationTests LightingTests WaterTests RangedSchedulingTests OwnerContentTests EngineModuleTests GenerationProfileTests GamepadTests ControllerKeyboardTests NoiseMathTests ActionPhaseTests BuffTests HitRecordTests HitApplicationTests PeriodicHitTests SimulationFrameTests ActorOrderTests WorldHitDeliveryTests RelationshipTests FatalContextTests FatalLootTests FatalObjectTests CreditTests RegionProgressTests ItemIdentityTests LinkedItemTests FatalRecipientTests SourceAuxiliaryTests IncomingHitTests SpatialScalarTests TerrainLightTests SectorLightTests CreatureLightTests CachedLightTests RemoteFighterTests)
         set(testArguments)
         if(ALPHAVULKAN_TEST_GAME_PATH AND testTarget MATCHES "^(Store|Save|Content|Ui|OwnerContent)Tests$")
             list(APPEND testArguments "${ALPHAVULKAN_TEST_GAME_PATH}")

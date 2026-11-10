@@ -60,6 +60,7 @@ class PathSearch {
     void clear();
     bool empty() const { return path.empty(); }
     bool searching() const { return !nodes.empty(); }
+    int32_t nodeCount() const { return int32_t(nodes.size()); }
 
     // §6: steers `body` along the path for a step of dt ms: sets intent (and velocity) and
     // the climbing flag. Returns false when there is nothing to follow.

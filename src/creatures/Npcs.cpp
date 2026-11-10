@@ -2,6 +2,7 @@
 #include "creatures/Npcs.h"
 #include "creatures/FatalRecipients.h"
 #include "creatures/TargetSelection.h"
+#include "creatures/CreatedBehavior.h"
 #include <cassert>
 #include <bit>
 #include "BlockEdits.h"
@@ -279,7 +280,8 @@ int Npcs::draw() {
 // §9.2 (server §5.2): the spawns of the active zones, the 3 x 3 round each player's zone,
 // come alive when any player is within their radius.
 void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base,
-                         uint64_t id, glm::dvec3 p, bool descriptorBacked) {
+                         uint64_t id, const std::array<int64_t, 3> &position, bool descriptorBacked) {
+    const glm::dvec3 p = glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
     Npc npc;
     npc.zone = key;
     npc.spawn = descriptorBacked ? index : Npc::NO_SPAWN;
@@ -289,6 +291,8 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     c.id = id;
     if (descriptorBacked)
         c.backing = {key.first, key.second, (int32_t)index};
+    if (descriptorBacked)
+        c.behaviorReference = position;
     c.type = s.type;
     c.controller = (uint8_t)s.controller;
     c.characterClass = s.characterClass;
@@ -396,18 +400,19 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
                 state.countdownMs = 0;
             if (state.countdownMs != 0 && state.deathDay == day)
                 continue;
-            glm::dvec3 p = glm::dvec3((double)s.x, (double)s.y, (double)s.z) / 65536.0;
-            // Schedules §3.5: a resident's spawn stands where its schedule says it is now.
+            std::array<int64_t, 3> position{s.x, s.y, s.z};
+            // Effective descriptor position, retaining its raw coordinates through schedule selection.
             for (const worldgen::ScheduleStop &stop : s.schedule)
                 if (timeOfDayMs >= stop.timeMs)
-                    p = glm::dvec3((double)stop.x, (double)stop.y, (double)stop.z) / 65536.0;
+                    position = {stop.x, stop.y, stop.z};
+            const glm::dvec3 p = glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
             const bool near = std::any_of(players.begin(), players.end(), [&](const PlayerView &v) {
                 const glm::dvec3 d = p - v.body.blocks();
                 return glm::dot(d, d) < (double)s.radius * s.radius;
             });
             if (!near)
                 continue;
-            spawnCreature(s, key, i, base, id, p);
+            spawnCreature(s, key, i, base, id, position);
         }
     }
     // Quests: their creatures, near any player, until dead or gone.
@@ -425,7 +430,7 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
             if (near) {
                 const int32_t zx = worldgen::floorDiv((int32_t)std::floor(p.x), worldgen::ZONE);
                 const int32_t zy = worldgen::floorDiv((int32_t)std::floor(p.y), worldgen::ZONE);
-                spawnCreature(s, {zx, zy}, i, 0, id, p, false); // engine quests have no native descriptor backing
+                spawnCreature(s, {zx, zy}, i, 0, id, {s.x, s.y, s.z}, false); // engine quests have no native descriptor backing
             }
         }
 }
@@ -551,6 +556,60 @@ void Npcs::appendNpc(Npc npc) {
     list.push_back(std::move(npc));
     Npc &added = list.back();
     actors[added.fighter.id] = {&added, nullptr};
+}
+
+void Npcs::createActor(const ActorEntry &current, int32_t step) {
+    const Combatant *creator = current.combat();
+    if (!creator || uint8_t(creator->action) != 92)
+        return;
+    const auto view = [](const ActorEntry &entry) {
+        return creation::Actor{entry.combat(), entry.body(), entry.npc ? &entry.npc->looks :
+            entry.player ? entry.player->appearance : nullptr};
+    };
+    const creation::Actor source = view(current);
+    if (!source.looks)
+        return; // a supplied player view needs appearance state for this engine binding
+    const creation::Configuration defaults;
+    const auto &configuration = current.npc ? current.npc->creationConfig :
+        current.player->creationConfig ? *current.player->creationConfig : defaults;
+    creation::World world;
+    // This NPC world runs offline and on the engine's authoritative server.
+    // Network-client creation/authority is a separate integration boundary.
+    world.designated = controlledActor;
+    world.visit = [&](const creation::Visitor &visit) {
+        for (const auto &[key, entry] : actors)
+            visit(key, entry.combat());
+    };
+    world.lookup = [&](uint64_t key) {
+        const auto entry = actors.find(key);
+        return entry == actors.end() ? creation::Actor{} : view(entry->second);
+    };
+    creation::Services services;
+    services.anticipation = [&](int32_t action) {
+        return phases(*creator, action < 0 ? uint8_t(creator->action) : action).windUp;
+    };
+    services.maximumHealth = maxHealth;
+    services.draw = [&] { return draw(); };
+    auto result = creation::create(source, configuration, step, world, services);
+    if (!result.actor)
+        return;
+    auto &created = *result.actor;
+    Npc npc;
+    npc.fighter = std::move(created.fighter);
+    npc.body = created.body;
+    npc.looks = created.looks;
+    npc.spawn = Npc::NO_SPAWN;
+    npc.home = npc.body.blocks(); // existing engine navigation/unload adapter
+    npc.zone = {worldgen::floorDiv(int32_t(std::floor(npc.home.x)), worldgen::ZONE),
+                worldgen::floorDiv(int32_t(std::floor(npc.home.y)), worldgen::ZONE)};
+    npc.behaviour = 7;
+    npc.follows = created.setup.companionKey;
+    npc.specialMs = created.setup.specialMs;
+    npc.targetRange = created.setup.range;
+    npc.chaseMs = created.setup.chaseMs;
+    npc.cooldownMs = created.setup.cooldownMs;
+    npc.createdWalkMs = created.setup.walkMs;
+    appendNpc(std::move(npc)); // live predecessor publication is last
 }
 
 void Npcs::refreshActors(std::span<PlayerView> players) {
@@ -822,12 +881,22 @@ void Npcs::removeTargets(const std::set<std::pair<int32_t, int32_t>> &zones) {
 // §13.1: the sequence Combat, LookAtPlayer, RandomWalk; the first that handles the moment
 // wins (which of them report "handled" is open, A-1: here Combat with a target, LookAtPlayer
 // with a player near, RandomWalk always).
-void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame) {
+void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block,
+                 NpcFrame &frame, const worldgen::WorldMap &map) {
     if (npc.fighter.controller == 6)
         return;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
         if (!combat(npc, dtMs, players, block, frame))
             companion(npc, npc.fighter.ownerId, players, dtMs, block);
+        return;
+    }
+    if (npc.behaviour == 7) { // created root: retry Combat, Companion, Wander in that order
+        if (!combat(npc, dtMs, players, block, frame) && !createdCompanion(npc, players, int32_t(dtMs), block, map)) {
+            npc.fighter.mode = npc.body.mode;
+            created::wander(npc.fighter, npc.body, npc.fighter.behaviorReference, npc.createdWalkMs,
+                            int32_t(dtMs), [&] { return draw(); });
+            npc.body.mode = npc.fighter.mode;
+        }
         return;
     }
     // Wildlife §4.9: the cell monster, the group leader and its members.
@@ -870,6 +939,55 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
         return;
     }
     randomWalk(npc, dtMs);
+}
+
+bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t step, const BlockType &block,
+                            const worldgen::WorldMap &map) {
+    created::CompanionServices services;
+    services.lookup = [&](uint64_t key) { return lookupActor(key, players).body(); };
+    services.maximumHealth = [&] { return maxHealth(npc.fighter); };
+    services.directRoute = [&](const Body &from, const Body &to, float width) {
+        // The existing owned geometry/search implementation is an adapter;
+        // the original broad geometry and expansion/tie relations remain open.
+        return clearRoute(from.size, from.swimmer, from.blocks(), to.blocks(), width, block, objects);
+    };
+    services.voxel = [&](const created::Position &position) {
+        const auto coordinate = [](int64_t value) {
+            if (value < 0)
+                value = std::bit_cast<int64_t>(uint64_t(value) - uint64_t(65536));
+            return std::bit_cast<int32_t>(uint32_t(value / 65536));
+        };
+        const int32_t z = coordinate(position[2]);
+        const int32_t y = coordinate(position[1]);
+        const int32_t x = coordinate(position[0]);
+        if (x < 0 || y < 0 || x >= 0x1000000 || y >= 0x1000000)
+            return uint8_t(1);
+        return block(x, y, z);
+    };
+    services.clearPath = [&] { npc.path.clear(); };
+    services.cellPresent = [&](int32_t x, int32_t y) {
+        return x >= 0 && y >= 0 && x < 65536 && y < 65536 && map.zone(x, y) != nullptr;
+    };
+    services.initializePath = [&] {
+        const auto blocks = [](const created::Position &position) {
+            return glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
+        };
+        npc.path.start(blocks(npc.createdPath.start), blocks(npc.createdPath.goal), npc.createdPath.radius);
+    };
+    services.pathStep = [&] {
+        npc.path.radius = npc.createdPath.radius;
+        npc.path.round(npc.body.size, block);
+    };
+    services.pathStatus = [&] {
+        created::PathStatus status{npc.path.nodeCount(), int32_t(npc.path.path.size()), {}};
+        if (!npc.path.empty())
+            status.tail = npc.path.path.back();
+        return status;
+    };
+    npc.fighter.mode = npc.body.mode;
+    const bool handled = created::companion(npc.fighter, npc.body, npc.follows, step, npc.createdPath, services);
+    npc.body.mode = npc.fighter.mode;
+    return handled;
 }
 
 // §13.2
@@ -1639,6 +1757,10 @@ void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::spa
 }
 
 void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame) {
+    if (actorLookupActive)
+        for (PlayerView &player : players)
+            if (player.strikes && player.fighter.health > 0)
+                createActor({nullptr, &player}, dtMs);
     for (PlayerView &p : players)
         if (p.strikes && p.fighter.health > 0 && meleeAction(p.fighter.action) &&
             strikeWindow(p.fighter, p.actionMsBefore, (float)dtMs))
@@ -1766,7 +1888,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         // update permits later movement, but must not admit an early decision.
         const bool canThink = c.hitStun <= 0;
         if (canThink && npc.thinkMs >= 32) {
-            think(npc, npc.thinkMs, players, block, frame);
+            think(npc, npc.thinkMs, players, block, frame, map);
             npc.thinkMs = 0;
         }
         // The authoritative path phase sees incoming stun, before lock/action
@@ -1794,6 +1916,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         for (const PlayerView &p : players)
             if (p.fighter.id == npc.target)
                 c.aim = glm::vec3(p.body.blocks() - npc.body.blocks());
+        createActor(actor, milliseconds);
         ShotEffects shot;
         chargeSound(c, before, milliseconds, npc.body.blocks(), shot);
         actionSounds(c, before, dtMs, npc.body.blocks(), [&] { return draw(); }, shot.sounds);

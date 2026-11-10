@@ -843,3 +843,31 @@ the complete created-actor sequence or action-92 creation. Synthetic origin-key
 behavior is distinguished from ordinary routing fixtures. Neither the supplied
 state tests nor engine captures certify original-client/server gameplay.
 The source-side author received no implementation, test or runtime material.
+
+The world actor-creation and created-behavior contracts were fully reread before
+the next implementation. An independent factory retains the action-92 admission,
+two threshold queries, live link/key scan, candidate-draw precedence, complete
+copy alternatives, current-actor level/health/position sources and fresh state.
+Closed generation covers kind 0x25 and unsigned kinds beyond the original table.
+Other generation outputs report an explicit engine capability boundary; this is
+not a native rejection rule. The completed record enters the owned live map last,
+with its ordered setup and owner link, before the creator's common clock advance.
+
+Two later original-only identity-publication and companion-navigation contracts
+were HELD and read completely. Normal initial/connected identity publication is
+kept distinct from key-zero lookup, pointer exclusions, aliases and other ID
+producers. Companion caller arithmetic, terrain query order, partial writes and
+work budgets use a separate scalar service. Broad geometry and path expansion
+still use explicit owned adapters. The third child retains its counter, ordered
+unnormalized draws and action-clock preservation rather than reusing the older
+generic wander adapter.
+
+The reference triple is retained as raw core field 40. The inspected activation
+producer copies the effective descriptor coordinates; the inspected body reset
+preserves it. Copy/stream behavior does not establish a universal initializer.
+Fresh engine reference storage is deterministic zero, including action-92 births,
+without claiming that native allocation initializes it. Current position and
+reference state remain separate. Configuration/kind producers, arbitrary generated
+appearances, network-client creation/authority, broader geometry and complete
+native lifetime/gameplay remain gates. No implementation or runtime findings
+were supplied to either source-side author task.

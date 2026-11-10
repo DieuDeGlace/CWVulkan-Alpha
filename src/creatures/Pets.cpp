@@ -81,6 +81,7 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     c.linkedItem.source.fill(0); // native reset differs from fresh item construction
     c.equipment[PET_SLOT].level = 0;
     c.linkedItem.retained = pet.fighter.linkedItem.retained;
+    c.behaviorReference = pet.fighter.behaviorReference; // the held body reset preserves field40
     pet.fighter = c;
     pet.body.mode = c.mode;
     pet.fighter.ownerId = owner.id;

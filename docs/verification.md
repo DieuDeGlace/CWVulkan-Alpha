@@ -222,6 +222,32 @@ with nine map tiles, the preview and 170 edits. Native identity/range producers,
 stat/phase/power equivalence, grouped inventory, later behavior and full native
 acceptance remain open; bright-ground rendering is still unresolved.
 
+ActorCreationTests covers action/pointer/mode admission, distinct anticipation
+queries, strict crossings and wrapped clocks, live ownership counts and signed
+map-key allocation. Copy fixtures retain all thirteen item payloads, selected
+appearance flags and independent creator level/health/position sources. Fresh
+state, ordered setup, discarded candidate draws, closed generation outputs and
+explicit unsupported-generation results are checked separately. Actual NPC and
+designated offline-player dispatch create without updating the new predecessor
+again in its birth pass.
+
+The same target checks raw reference field 40 through actual delta/core refresh,
+descriptor activation and fresh-reference policy. LinkedItemTests verifies its
+preservation through real reconstruction. Wander fixtures check counter admission,
+unnormalized draw order and retained action clocks. Companion fixtures distinguish
+fixed/float distance gates, ordered health queries, both 21-query terrain limits,
+repeated turning-point sampling, partial writes on failure, retained setup and
+the initial-plus-ten work budget. Supplied geometry/path callbacks establish the
+caller relation; the production owned search remains a bounded adapter.
+
+All 47 CTests and the production Player/controller diagnostic passed. Fresh
+reward, injured-health, dedicated-server and save/reload flows passed; all five
+captures were reviewed. Reward state retained level 2/-33 XP/7 Platinum Coins,
+injured health stayed binary32 50, and reload retained seed 123, nine map tiles,
+the preview and 170 edits. Configuration producers, remaining generated
+appearances, universal reference initialization, broad geometry and online/native
+acceptance remain open. Bright-ground rendering is still unresolved.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

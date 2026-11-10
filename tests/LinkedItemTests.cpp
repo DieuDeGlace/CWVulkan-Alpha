@@ -144,6 +144,8 @@ static void maintenancePublication() {
     child.fighter.linkedItem.retained.item.fill(0x77);
     child.fighter.linkedItem.retained.word = 123;
     child.fighter.mode = child.body.mode = 0xa620;
+    const std::array<int64_t, 3> reference{0x123456789abcdef, -65537, 999};
+    child.fighter.behaviorReference = reference;
     f.owner.equipment[12].cubes[0].x++;
     f.step();
     check(!child.fighter.cooldowns.contains(1234) && child.fighter.linkedItem.retained.word == 123 &&
@@ -151,6 +153,8 @@ static void maintenancePublication() {
           "a compared coordinate reconstructs the real child without discarding its resident snapshot");
     check(child.fighter.mode == 0 && child.body.mode == 0,
           "actual pet reconstruction resets the complete mode word without reviving flags from the old body");
+    check(child.fighter.behaviorReference == reference,
+          "actual linked reconstruction preserves the reference field skipped by the native body reset");
     child.fighter.cooldowns[1234] = 55;
     f.owner.skills[0]++;
     f.step();

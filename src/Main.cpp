@@ -685,6 +685,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     std::vector<creatures::Projectile> playerLaunched;
     creatures::ShotEffects playerShot;
     creatures::NpcFrame playerActionFrame;
+    creatures::creation::Configuration playerCreationConfig;
     bool frontListsStale = true; // character screens: reread the saves' lists
     // Character screens §4.1: the figures of the character panels, posed and turning.
     struct PanelFigure {
@@ -724,7 +725,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             return statics.blocks(view.held(), lo, hi, axis, move);
         };
         activePlayer = &*player;
-        player->combat().id = client.connected() ? client.id() : 1; // never 0, which means "nobody"
+        player->combat().id = client.connected() ? client.id() : 1; // native initial ID; a received zero remains valid
         // Without a saved character the engine hands out a level 1 iron sword, so that there is
         // something to fight with (not Alpha's; a new Alpha character's kit is unspecified).
         inventory.equipment[creatures::MAIN_HAND][0] = 3;
@@ -1319,6 +1320,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                               [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); });
             if (!client.connected()) {
                 creatures::PlayerView local{actor, player->body(), player->facing(), beforeMs};
+                local.appearance = &player->appearance();
+                local.creationConfig = &playerCreationConfig;
                 npcs.dispatchPlayerActions({&local, 1}, dtMs,
                     [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, playerActionFrame);
             } else {
@@ -2050,7 +2053,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             }
                         }
                         npcs.stepInto((float)elapsed, view.held(),
-                            {{c, player->body(), player->facing(), player->actionBefore(), false, false, true}}, scene.timeOfDayMs, scene.day,
+                            {{c, player->body(), player->facing(), player->actionBefore(), false, false, true,
+                              &player->appearance(), &playerCreationConfig}}, scene.timeOfDayMs, scene.day,
                             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
                             aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer);
                         const auto happened = aggregate.addedSince(npcEvents);
