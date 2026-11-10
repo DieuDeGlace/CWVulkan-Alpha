@@ -249,8 +249,6 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     }
     npc.creationConfig.choice = s.creationChoice;
     npc.creationConfig.kinds = s.creationKinds;
-    for (const worldgen::ItemRecord &item : s.inventory)
-        npc.inventory.push_back(toRecord(item));
     // §9.1: the spawn's own appearance flags and gear (a town guard keeps its gear, 0x40).
     npc.looks.flags |= s.appearanceFlags;
     npc.boss = s.bossLoot;
@@ -293,16 +291,11 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     if (!s.finished)
         equip(c, npc.looks, [&] { return draw(); }, false, s.controller, npc.creationConfig);
     if (s.inventoryValue) {
-        npc.activationInventory.copyFrom(*s.inventoryValue);
+        npc.inventory.copyFrom(*s.inventoryValue);
     } else if (!s.inventory.empty()) {
         // Direct one-unit rows do not run automatic counted-type normalization.
-        auto &entries = npc.activationInventory.groups.emplace_back();
-        entries.resize(s.inventory.size());
-        for (size_t index = 0; index < entries.size(); index++) {
-            entries[index].count = 1;
-            const auto item = toRecord(s.inventory[index]);
-            copyItemFields(item, entries[index].item);
-        }
+        for (const auto &item : s.inventory)
+            npc.inventory.appendUnit(toRecord(item));
     }
     c.health = maxHealth(c);
     c.actionMs = 1000000;
@@ -988,13 +981,9 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         }
         return int32_t(0);
     };
-    int32_t unitCount = 1;
     services.firstPotion = [&] {
-        // The current descriptor inventory is flat, one unit per entry. Keep
-        // the consumed row's other bytes; the loot adapter skips its empty type.
-        for (ItemRecord &item : npc.inventory)
-            if (itemType(item) == 1 && itemSubtype(item) == 1)
-                return selection::Potion{&unitCount, &item};
+        if (auto *entry = npc.inventory.firstHealthItem())
+            return selection::Potion{&entry->count, &entry->item};
         return selection::Potion{};
     };
     services.draw = [&] { return draw(); };
@@ -1499,8 +1488,7 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
         if (onFatalObject)
             onFatalObject(*target, frame);
         if (onFatalLoot) {
-            const auto inventory = recipient.npc ? std::span<const ItemRecord>(recipient.npc->inventory)
-                                                 : std::span<const ItemRecord>{};
+            const auto inventory = recipient.npc ? recipient.npc->inventory.entries() : std::vector<CountedItem>{};
             onFatalLoot(*target, *recipient.body(), inventory);
             if (recipient.npc)
                 recipient.npc->fatalLootApplied = true;
@@ -2055,7 +2043,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             }
             if (!n.fatalPresented)
                 frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
-            NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory, n.zone, n.boss};
+            NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory.entries(), n.zone, n.boss};
             death.quest = n.quest, death.questRole = n.questRole;
             death.lootApplied = n.fatalLootApplied;
             death.regionApplied = n.fatalRegionApplied;

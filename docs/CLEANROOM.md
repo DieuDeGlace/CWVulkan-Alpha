@@ -1045,3 +1045,31 @@ occurs after equipment/configuration and before the amount query. Legacy compact
 generation remains a one-unit bridge, and later flat NPC consumers remain open.
 This is supplied-value/transfer evidence, not complete native inventory storage,
 generation, UI, allocation, concurrent publication or server acceptance.
+
+The subsequent original-only actor-inventory consumer contract was HELD, read
+completely and hash-verified before its production connection:
+`alpha-actor-inventory-consumers.md`, SHA-256
+`b68e27f8bdfdd6985e389b4d7bd516c7da3b064ae3fe294bcac9d7c4018f1bc8`.
+Its author received no engine, tests, captures, logs or runtime observations.
+
+One grouped NPC value now supplies real mutable health-item quantities, complete
+vendor-buffer copies and counted fatal inputs. These routes keep their distinct
+admissions: nonzero quantities for the health scan, all rows for export, and
+positive quantities/nonzero categories for fatal units, with healing items skipped
+before their scatter work. Engine event snapshots and the value-only widget view
+are explicitly separate from the original allocation and presentation services.
+The pre-equipment engine activation callback precedes the later inventory copy;
+the amount query follows that copy. Native pointer-visible construction, alias
+and lifetime guarantees, widgets/transactions, full generation, nested drop
+publication and server equivalence remain open.
+
+Two further original-only provenance audits were HELD, read completely and
+hash-verified: `alpha-mode-twenty-production.md` has SHA-256
+`349555670c6e1c9e89111502fa94b72e6c38d314b0421f0d7ad88ea1fb9c65db`, and
+`alpha-spatial-record-association-production.md` has
+`079705c0eb15e79e6663f99be3f97e37cc8dc71f0c98e8c6c8437fddddbf3365`.
+They establish bounded zero/default, full-width copy, reader and lifetime facts.
+They do not establish a first positive local mode-0x20 writer or a first
+nonnegative spatial association/loading source. Existing raw values remain
+preserved; no producer or descriptor-ordinal assignment is invented from these
+negative findings. Neither author received implementation or runtime feedback.

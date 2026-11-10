@@ -93,7 +93,7 @@ Server::Server(ServerOptions o) : options(std::move(o)) {
         statics.fatal(zones, fighter.backing, frame);
     };
     npcs.onFatalLoot = [this](const creatures::Combatant &fighter, const creatures::Body &body,
-                              std::span<const creatures::ItemRecord> inventory) {
+                              std::span<const creatures::CountedItem> inventory) {
         dropLoot(lootVictim(fighter, body, inventory), items, (int32_t)clockDay,
                  [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); }, worldRandom);
     };

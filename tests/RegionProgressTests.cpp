@@ -212,7 +212,7 @@ static void actualFatalBoundary() {
     int callbacks = 0;
     int items = 0, backingCalls = 0;
     Inventory inventory = Inventory::fresh();
-    npcs.onFatalLoot = [&](const Combatant &, const Body &, std::span<const ItemRecord>) {
+    npcs.onFatalLoot = [&](const Combatant &, const Body &, std::span<const CountedItem>) {
         check(npcs.all()[1].fighter.health == 17 && !npcs.all()[0].fatalRecipientsApplied,
               "fatal loot precedes linked health and credit preparation");
         npcs.npcs()[0].fighter.level = 10;

@@ -60,8 +60,7 @@ struct Npc {
     bool fatalBackingApplied = false; // backing update was attempted, including rejected indices
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
-    std::vector<ItemRecord> inventory; // the spawn's bags (a vendor's stock, talk §3.2), one per unit
-    InventoryValue activationInventory; // full activation value; legacy consumers remain separate adapters
+    InventoryValue inventory;
     uint8_t boss = 0; // raw descriptor +0x10e8 byte; the regional gate tests nonzero
     // RandomInteraction §4.2: its timer and the seat it is bound for (index -1: none).
     float interactMs = 0;
@@ -135,7 +134,7 @@ struct NpcFrame {
         Combatant fighter;
         uint16_t appearanceFlags = 0;
         int64_t position[3] = {0, 0, 0};
-        std::vector<ItemRecord> inventory;
+        std::vector<CountedItem> inventory;
         std::pair<int32_t, int32_t> zone{0, 0}; // its home zone
         uint8_t boss = 0;
         uint64_t credited = 0; // missions §5.1: the first player in its threat map, or 0
@@ -248,7 +247,7 @@ class Npcs {
     std::function<void(const Combatant &, NpcFrame &)> onFatalObject;
     // World-owned service, called synchronously after first fatal presentation.
     // It may update drop storage, but must not structurally mutate the actor table.
-    std::function<void(const Combatant &, const Body &, std::span<const ItemRecord>)> onFatalLoot;
+    std::function<void(const Combatant &, const Body &, std::span<const CountedItem>)> onFatalLoot;
     // After linked-health stores: append progress before completion-cell work.
     // The supplied service must retain actor storage throughout this call.
     std::function<void(Combatant &, uint8_t, const std::function<Combatant *(uint64_t)> &, NpcFrame &)> onFatalRegion;

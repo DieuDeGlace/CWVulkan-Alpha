@@ -2,6 +2,7 @@
 #include "creatures/Inventory.h"
 #include <bit>
 #include <stdexcept>
+#include <utility>
 
 namespace creatures {
 
@@ -96,6 +97,44 @@ void InventoryValue::replaceTen(const std::function<ItemRecord(size_t)> &generat
         const ItemRecord item = generate(index);
         copyItemFields(item, entry.item);
     }
+}
+
+void InventoryValue::appendUnit(const ItemRecord &source, size_t group) {
+    CountedItem entry;
+    entry.count = 1;
+    copyItemFields(source, entry.item);
+    if (group >= groups.size())
+        groups.resize(group + 1);
+    groups[group].push_back(std::move(entry));
+}
+
+CountedItem *InventoryValue::firstHealthItem() {
+    for (auto &group : groups)
+        for (auto &entry : group)
+            if (entry.count != 0 && entry.item[0] == 1 && entry.item[1] == 1)
+                return &entry;
+    return nullptr;
+}
+
+std::vector<CountedItem> InventoryValue::entries() const {
+    size_t count = 0;
+    for (const auto &group : groups) count += group.size();
+    std::vector<CountedItem> result;
+    result.reserve(count);
+    for (const auto &group : groups)
+        result.insert(result.end(), group.begin(), group.end());
+    return result;
+}
+
+std::vector<ItemRecord> InventoryValue::itemValues() const {
+    size_t count = 0;
+    for (const auto &group : groups) count += group.size();
+    std::vector<ItemRecord> result;
+    result.reserve(count);
+    for (const auto &group : groups)
+        for (const auto &entry : group)
+            result.push_back(entry.item);
+    return result;
 }
 
 } // namespace creatures

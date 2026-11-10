@@ -28,6 +28,13 @@ struct InventoryValue {
     // -1 selects the held type classifier. Other negative values are outside
     // the native ordinary domain and are rejected by this engine API.
     void insert(const ItemRecord &item, int32_t group = -1);
+    // Direct one-unit producer adapter; never normalizes the internal word.
+    void appendUnit(const ItemRecord &item, size_t group = 0);
+    CountedItem *firstHealthItem(); // first nonzero-count type1/subtype1 in all groups
+    // Engine event/widget projections retain group/entry order. Counted events
+    // retain every count; the value-only widget view does not define quantity UI.
+    std::vector<CountedItem> entries() const;
+    std::vector<ItemRecord> itemValues() const;
     // Bounded collection-only producer: count1 before each of ten callbacks.
     void replaceTen(const std::function<ItemRecord(size_t index)> &generate);
 };

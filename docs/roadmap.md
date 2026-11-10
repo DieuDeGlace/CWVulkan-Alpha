@@ -104,7 +104,13 @@ Differences from the Steam engine that shape the plan:
   and accumulators. Semantic assignment preserves destination gaps. Constructor,
   insertion and bounded ten-entry replacement have regressions. Owned full
   descriptor input refreshes before transfer and the amount query. Legacy flat
-  generation and later selection/vendor/loot consumers remain separate adapters.
+  generation remains a separate producer adapter.
+- [x] Bounded grouped inventory consumers: NPCs now own one grouped value.
+  Health-item selection mutates its real count across all groups; fatal inputs
+  retain counted rows and submit positive units without consuming the source.
+  Vendor export keeps a complete independent value before the existing widget
+  projection. Native widget/transaction/periodic refresh, full generation,
+  nested drop publication and original-client acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

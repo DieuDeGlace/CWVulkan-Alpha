@@ -220,8 +220,8 @@ void production() {
         world.onActivate = [&](Npc &actor) {
             observations++;
             check(actor.fighter.level == (role == 6 ? 17 : 65536) && actor.fighter.powerTier == (role == 6 ? 3 : 255) &&
-                  actor.looks.flags == 0x3200 && itemLevel(actor.inventory[0]) == 0,
-                  "actual construction observes descriptor level, flags and inventory already refreshed");
+                  actor.looks.flags == 0x3200 && actor.inventory.groups.empty(),
+                  "pre-equipment callback observes refreshed descriptor state before the later inventory assignment");
         };
         Combatant player; player.id = 1; player.health = maxHealth(player);
         Body body; body.place({276.5, 150.5, 11.1});
@@ -232,7 +232,8 @@ void production() {
               "actual refresh uses one cached containing-cell context and setup/inventory draws before activation");
         if (world.all().size() != 1) continue;
         const auto actions = world.all()[0].fighter.specials;
-        check(actions == (role == 6 ? std::vector<int32_t>{55} : std::vector<int32_t>{55, 92}) &&
+        check(world.all()[0].inventory.groups.size() == 1 && itemLevel(world.all()[0].inventory.groups[0][0].item) == 0 &&
+              actions == (role == 6 ? std::vector<int32_t>{55} : std::vector<int32_t>{55, 92}) &&
               world.all()[0].creationConfig.choice == (role == 6 ? 2 : 0) &&
               itemLevel(world.all()[0].fighter.equipmentRecord(7)) == (role == 6 ? 17 : 0),
               "full descriptor role controls setup and zero low-word hand levels survive actual actor import");

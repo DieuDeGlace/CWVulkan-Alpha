@@ -1266,8 +1266,8 @@ int main() {
         for (int i = 0; i < 4; i++)
             npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
         same(npcs.all()[0].fighter.action, 80, "it drinks");
-        same(npcs.all()[0].inventory.size() == 1 && itemType(npcs.all()[0].inventory[0]) == 0 &&
-             itemSubtype(npcs.all()[0].inventory[0]) == 0, 1, "the potion is used up without erasing its payload row");
+        same(npcs.all()[0].inventory.groups.size() == 1 && npcs.all()[0].inventory.groups[0].size() == 1 && itemType(npcs.all()[0].inventory.groups[0][0].item) == 0 &&
+             itemSubtype(npcs.all()[0].inventory.groups[0][0].item) == 0, 1, "the potion is used up without erasing its payload row");
     }
 
     // Behaviour §9, §13: a creature wakes near the player, hunts, fights, dies and returns.

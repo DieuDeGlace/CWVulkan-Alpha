@@ -425,6 +425,31 @@ injured health remained binary32 50 with one visit, and reload retained health
 reported 138 world calls over 17 input frames with maximum 20 ms pieces. Bright
 ground, negative XP display and physical-controller acceptance remain open.
 
+The later grouped-consumer checkpoint removes the NPC flat inventory cache and
+uses one owned InventoryValue. Actual-world health cases cover a zero row before
+a later-group match, multi-unit consumption, negative quantities and minimum
+signed decrement wrap. Complete held/remaining item fields survive and the next
+matching row stays untouched. Fatal-hook fixtures preserve every ordered count,
+then verify two positive marker units, skipped zero/negative/healing rows and
+unchanged source quantities. Live/delayed loot and existing region/object ordering
+checks use the same counted input type.
+
+UI checks retain all exported groups, zero/negative counts, extra scalars and
+destination gaps independently of the older widget list. The full 53 CTests pass
+after these connections. Native vendor transactions, periodic and alternate-mode
+refresh, identity/lifetime, nested drop publication and original-client behavior
+remain open; the counted export is not a complete vendor or loot certification.
+Fresh reward, injured-health, dedicated-server and save/reload flows passed, and
+a separate vendor-window render passed; all six captures were reviewed. Rewards
+retained level 2/-33 XP/7 Platinum Coins, injured health remained binary32 50 with
+one visit, and reload retained health 265, seed 123, nine tiles, 33,792 preview
+bytes and 170 edits. The health run reported 134 world calls over 17 frames;
+the vendor render reported 98 calls over 17 frames, both with maximum 20 ms pieces.
+An initial vendor diagnostic invocation omitted the required numeric `--loot`
+argument and aborted in argument parsing. The corrected invocation passed on
+the unchanged binary. Bright ground, negative XP display and hardware controller
+acceptance remain open; the vendor capture establishes rendering only.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

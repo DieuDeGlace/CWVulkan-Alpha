@@ -165,6 +165,19 @@ void accumulatorsAndReplacement() {
           itemLevel(value.groups[0][9].item) == 5,
           "ten-entry collection replacement retains other members and bypasses counted normalization");
 }
+void consumerProjections() {
+    InventoryValue value;
+    value.groups.resize(3);
+    value.groups[0] = {{0, item(1, 1, 1)}, {-1, item(3, 0, 1)}};
+    value.groups[2] = {{-7, item(1, 1, 2)}, {5, item(1, 1, 3)}};
+    check(value.firstHealthItem() == &value.groups[2][0],
+          "health lookup skips zero counts and searches every group in order, including negative quantities");
+    const auto entries = value.entries();
+    const auto items = value.itemValues();
+    check(entries.size() == 4 && entries[0].count == 0 && entries[1].count == -1 && entries[2].count == -7 && entries[3].count == 5 &&
+          items.size() == 4 && itemLevel(items[2]) == 2 && entries[2].item == value.groups[2][0].item,
+          "event and widget projections retain ordered rows without imposing a shared quantity filter");
+}
 struct WorldFixture {
     std::shared_ptr<worldgen::Zone> zone = std::make_shared<worldgen::Zone>(1, 0);
     worldgen::WorldMap map;
@@ -208,7 +221,7 @@ void activationTransfer() {
     const auto saved = bonuses.health;
     bonuses.health = [&](const Item &) {
         if (creating && !sawInventory) {
-            const auto &value = creating->activationInventory;
+            const auto &value = creating->inventory;
             check(value.groups.size() == 3 && value.groups[0][1].count == -1 && value.auxiliary == 0xabcdef01 &&
                   value.accumulators == source->accumulators && creating->creationConfig.choice == 17 &&
                   creating->creationConfig.kinds == std::vector<int32_t>{96, 17},
@@ -221,7 +234,7 @@ void activationTransfer() {
     bonuses.health = saved;
     check(world.all().size() == 1 && sawInventory, "actual activation reaches its post-transfer amount query");
     if (world.all().size() != 1) return;
-    const auto &value = world.all()[0].activationInventory;
+    const auto &value = world.all()[0].inventory;
     check(value.groups[1].empty() && value.groups[2][0].count == 7 && value.groups[0].data() != source->groups[0].data() &&
           assigned(source->groups[0][1].item, value.groups[0][1].item, freshInventoryItem()) &&
           assigned(source->separate, value.separate, freshInventoryItem()),
@@ -232,8 +245,8 @@ void activationTransfer() {
     legacy.zone->spawns.push_back(compact);
     Npcs older;
     legacy.start(older);
-    check(older.all().size() == 1 && older.all()[0].activationInventory.groups.size() == 1 &&
-          older.all()[0].activationInventory.groups[0][0].count == 1 && itemLevel(older.all()[0].activationInventory.groups[0][0].item) == 7,
+    check(older.all().size() == 1 && older.all()[0].inventory.groups.size() == 1 &&
+          older.all()[0].inventory.groups[0][0].count == 1 && itemLevel(older.all()[0].inventory.groups[0][0].item) == 7,
           "legacy flat generator bridge retains direct one-unit internal word7 instead of applying automatic insertion");
 }
 void refreshBacking() {
@@ -262,7 +275,7 @@ void refreshBacking() {
     f.start(world);
     check(world.all().size() == 1 && random.count() == 2, "full grouped refresh preserves its two reached item draws without compact-row work");
     if (world.all().size() != 1) return;
-    const auto &value = world.all()[0].activationInventory;
+    const auto &value = world.all()[0].inventory;
     check(value.groups[0][0].count == 0 && itemLevel(value.groups[0][0].item) == 4 &&
           value.groups[2][0].count == -1 && itemLevel(value.groups[2][0].item) == 42 && value.groups[2][0].item[0x0c] == rarity &&
           itemLevel(value.groups[2][1].item) == 42 && itemLevel(value.groups[2][2].item) == 5 && itemLevel(value.separate) == 99 &&
@@ -273,6 +286,7 @@ void refreshBacking() {
 
 int main() {
     constructionAndCopy(); routingAndCounts(); identityAndVacancies(); accumulatorsAndReplacement(); activationTransfer(); refreshBacking();
+    consumerProjections();
     if (failures) std::printf("%d inventory-value failures\n", failures);
     else std::puts("InventoryValueTests PASS");
     return failures ? 1 : 0;

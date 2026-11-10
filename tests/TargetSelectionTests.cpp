@@ -566,7 +566,8 @@ void production() {
         drinker.fighter.actionMs = 101;
         drinker.fighter.heldSource.fill(0x5a);
         const ItemRecord source = payload();
-        drinker.inventory.push_back(source);
+        drinker.inventory.appendUnit(source);
+        const auto remaining = drinker.inventory.groups[0][0].item;
         world.npcs().push_back(drinker);
         world.step(0, map, {}, 1000, 0, floor);
         const Npc &result = world.all()[0];
@@ -574,9 +575,29 @@ void production() {
         for (const size_t gap : {2, 3, 15, 18, 19})
             expected[gap] = 0x5a;
         check(result.fighter.action == 80 && result.fighter.heldRecord() == expected &&
-              result.inventory.size() == 1 && result.inventory[0][0] == 0 && result.inventory[0][1] == 0 &&
-              std::equal(source.begin() + 2, source.end(), result.inventory[0].begin() + 2),
-              "actual flat inventory adapter consumes one unit in place while retaining complete held and remaining source bytes");
+              result.inventory.groups.size() == 1 && result.inventory.groups[0].size() == 1 && result.inventory.groups[0][0].count == 0 && result.inventory.groups[0][0].item[0] == 0 && result.inventory.groups[0][0].item[1] == 0 &&
+              std::equal(remaining.begin() + 2, remaining.end(), result.inventory.groups[0][0].item.begin() + 2),
+              "actual grouped inventory consumes one unit in place while retaining complete held and remaining source bytes");
+    }
+    for (int32_t count : {2, -1, std::numeric_limits<int32_t>::min()}) {
+        Npcs world;
+        auto drinker = npc(7, 10.5);
+        drinker.fighter.health = 10;
+        drinker.fighter.actionMs = 101;
+        drinker.fighter.heldSource.fill(0x5a);
+        const auto source = payload();
+        drinker.inventory.groups.resize(3);
+        drinker.inventory.groups[0] = {{0, source}};
+        drinker.inventory.groups[2] = {{count, source}, {5, source}};
+        world.npcs().push_back(std::move(drinker));
+        world.step(0, map, {}, 1000, 0, floor);
+        const auto &result = world.all()[0];
+        const auto &entry = result.inventory.groups[2][0];
+        const int32_t expectedCount = count == 2 ? 1 : count == -1 ? 0 : std::numeric_limits<int32_t>::max();
+        check(result.fighter.action == 80 && entry.count == expectedCount && result.inventory.groups[0][0].count == 0 &&
+              result.inventory.groups[2][1].count == 5 && entry.item[0] == (count == -1 ? 0 : 1) &&
+              result.inventory.groups[1].empty() && result.fighter.health == 10,
+              "actual world potion consumer uses the first nonzero count across groups, retaining negative/decrement-wrap distinctions without direct healing");
     }
 }
 } // namespace

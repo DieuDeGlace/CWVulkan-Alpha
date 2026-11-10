@@ -7,6 +7,7 @@
 #include "worldgen/Random.h"
 #include "creatures/Crafting.h"
 #include "creatures/Inventory.h"
+#include "creatures/InventoryValue.h"
 #include "creatures/Skills.h"
 #include "creatures/Spirits.h"
 #include "ui/Painter.h"
@@ -179,6 +180,7 @@ class Interface {
     bool vendorOpen = false;
     int vendorTab = 0;
     std::vector<creatures::ItemRecord> vendorStock;
+    creatures::InventoryValue vendorInventory; // complete owned export; current widget list is a value-only view
     std::vector<creatures::Stack> buyBack; // oldest first
     // Character and world screens (alpha-character-screens.md), after "Start Game". The game
     // fills the lists from the saves, answers `frontRequest` and rebuilds the player's looks

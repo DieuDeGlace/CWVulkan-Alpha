@@ -82,7 +82,7 @@ int32_t rebalancedAdaptionCost(int16_t level, uint8_t rarity, int32_t playerLeve
 
 namespace {
 LootVictim collectLootVictim(const creatures::Combatant &c, uint16_t appearanceFlags,
-                             const int64_t position[3], std::span<const creatures::ItemRecord> inventory) {
+                             const int64_t position[3], std::span<const creatures::CountedItem> inventory) {
     LootVictim v;
     v.controller = c.controller;
     v.type = c.type;
@@ -90,9 +90,7 @@ LootVictim collectLootVictim(const creatures::Combatant &c, uint16_t appearanceF
     v.level = c.level;
     v.tier = c.powerTier;
     std::copy_n(position, 3, v.position);
-    for (const creatures::ItemRecord &item : inventory)
-        if (creatures::itemType(item) != 0)
-            v.inventory.push_back({1, item}); // (one unit per entry)
+    v.inventory.assign(inventory.begin(), inventory.end());
     for (size_t k = 0; k < c.equipment.size(); k++)
         v.equipment[k] = c.equipmentRecord(k);
     return v;
@@ -105,6 +103,17 @@ LootVictim lootVictim(const creatures::NpcFrame::Death &death) {
 
 LootVictim lootVictim(const creatures::Combatant &fighter, const creatures::Body &body,
                      std::span<const creatures::ItemRecord> inventory) {
+    // Retained one-unit caller adapter; production NPCs supply counted entries.
+    std::vector<creatures::CountedItem> entries;
+    entries.reserve(inventory.size());
+    for (const auto &item : inventory)
+        if (creatures::itemType(item) != 0)
+            entries.push_back({1, item});
+    return collectLootVictim(fighter, fighter.appearanceFlags, body.position, entries);
+}
+
+LootVictim lootVictim(const creatures::Combatant &fighter, const creatures::Body &body,
+                     std::span<const creatures::CountedItem> inventory) {
     return collectLootVictim(fighter, fighter.appearanceFlags, body.position, inventory);
 }
 
@@ -223,7 +232,7 @@ void dropLoot(const LootVictim &v, WorldItems &items, int32_t day, const creatur
     }
     // §3.6: a hostile's inventory, one world item per unit, healing potions kept back.
     if (v.controller == 1)
-        for (const creatures::Stack &s : v.inventory)
+        for (const creatures::CountedItem &s : v.inventory)
             if (s.item[0] != 0 && s.count > 0)
                 for (int32_t n = 0; n < s.count; n++)
                     if (!(s.item[0] == 1 && s.item[1] == 1))

@@ -23,7 +23,7 @@ struct LootVictim {
     int32_t level = 1;
     int32_t tier = 0;
     std::array<creatures::ItemRecord, 13> equipment{};
-    std::vector<creatures::Stack> inventory; // all bags, in order
+    std::vector<creatures::CountedItem> inventory; // all groups/entries, without count filtering
     int64_t position[3] = {0, 0, 0};          // 1/65536 blocks
 };
 
@@ -32,6 +32,8 @@ LootVictim lootVictim(const creatures::NpcFrame::Death &death);
 // Live fatal input without copying the combatant's resident maps or death event.
 LootVictim lootVictim(const creatures::Combatant &fighter, const creatures::Body &body,
                      std::span<const creatures::ItemRecord> inventory);
+LootVictim lootVictim(const creatures::Combatant &fighter, const creatures::Body &body,
+                     std::span<const creatures::CountedItem> inventory);
 
 // Item services §1.5: the identifier's fee, in copper (0 without Leftovers, type 14).
 int32_t identificationFee(const creatures::ItemRecord &leftovers);

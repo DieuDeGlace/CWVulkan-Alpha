@@ -21,6 +21,27 @@ static void check(bool ok, const std::string &what) {
 }
 
 static void checkMenuRequests() {
+    {
+        Interface vendor;
+        creatures::InventoryValue source;
+        source.groups.resize(3);
+        auto item = creatures::freshInventoryItem();
+        item[0] = 11; item[1] = 12;
+        source.groups[0] = {{0, item}};
+        source.groups[2] = {{-7, item}, {5, item}};
+        source.auxiliary = 0xabcdef01;
+        source.accumulators = {0x80000001, 0xffffffff};
+        source.separate[2] = 0x99;
+        vendor.vendorInventory.separate[2] = 0x66;
+        vendor.vendorInventory.copyFrom(source);
+        vendor.vendorStock = vendor.vendorInventory.itemValues();
+        check(vendor.vendorInventory.groups.size() == 3 && vendor.vendorInventory.groups[1].empty() &&
+              vendor.vendorInventory.groups[0][0].count == 0 && vendor.vendorInventory.groups[2][0].count == -7 &&
+              vendor.vendorInventory.groups[2][1].count == 5 && vendor.vendorInventory.auxiliary == source.auxiliary &&
+              vendor.vendorInventory.accumulators == source.accumulators && vendor.vendorInventory.separate[2] == 0x66 &&
+              vendor.vendorStock.size() == 3 && vendor.vendorInventory.groups[2].data() != source.groups[2].data(),
+              "vendor export preserves full groups/counts/scalars and destination gaps independently of the current widget projection");
+    }
     // Drive the engine's public screen input API, without touching owner saves.
     // These checks cover requests; Main's save/renderer integration is separate.
     const glm::vec2 window{1280, 720}, listButton{820, 235}, createButton{1100, 680}, backButton{100, 40};

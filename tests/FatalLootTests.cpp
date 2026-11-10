@@ -26,7 +26,7 @@ Npc victim(uint64_t id, glm::dvec3 position = {10, 10, 3}) {
     feather[0] = 11;
     feather[1] = 2;
     setItemLevel(feather, 1);
-    result.inventory.push_back(feather); // guaranteed admitted inventory drop
+    result.inventory.appendUnit(feather); // guaranteed admitted inventory drop
     return result;
 }
 std::array<uint8_t, 172> appearance(const Appearance &looks) {
@@ -115,7 +115,7 @@ int main() {
         death.fighter = fighter;
         death.appearanceFlags = fighter.appearanceFlags;
         std::copy_n(body.position, 3, death.position);
-        death.inventory = {item};
+        death.inventory = {{1, item}};
         const auto delayed = lootVictim(death);
         check(std::equal(std::begin(live.position), std::end(live.position), body.position) &&
               live.inventory.size() == 1 && live.inventory[0].item == item &&
@@ -139,7 +139,7 @@ int main() {
         items.generated(*zone);
         NpcFrame frame;
         int callbacks = 0;
-        world.onFatalLoot = [&](const Combatant &fighter, const Body &body, std::span<const ItemRecord> inventory) {
+        world.onFatalLoot = [&](const Combatant &fighter, const Body &body, std::span<const CountedItem> inventory) {
             callbacks++;
             check(fighter.health == 0 && fighter.actionMs == 0 && frame.sounds.size() == 1 &&
                   frame.sounds[0].sound == 27 && world.all()[1].fighter.health == 17,
@@ -161,6 +161,44 @@ int main() {
         check(callbacks == 1 && shared.count() == draws && frame.deaths.size() == 2 &&
               frame.deaths[0].lootApplied && !frame.deaths[1].lootApplied,
               "death outputs distinguish completed fatal loot from the linked actor's non-hit adapter");
+    }
+    {
+        worldgen::Random random{123};
+        Npcs world{random};
+        auto actor = victim(72);
+        ItemRecord marker = freshInventoryItem();
+        marker[0] = 11; marker[1] = 2;
+        const uint32_t seed = 0xdeadbeef;
+        std::memcpy(marker.data() + 4, &seed, 4);
+        auto potion = marker; potion[0] = potion[1] = 1;
+        actor.inventory.groups = {{{0, marker}, {-1, marker}}, {}, {{2, marker}, {3, potion}}};
+        world.npcs().push_back(std::move(actor));
+        auto zone = std::make_shared<worldgen::Zone>(0, 0);
+        WorldItems items; items.generated(*zone);
+        NpcFrame frame;
+        int callbacks = 0;
+        world.onFatalLoot = [&](const Combatant &fighter, const Body &body, std::span<const CountedItem> inventory) {
+            callbacks++;
+            check(inventory.size() == 4 && inventory[0].count == 0 && inventory[1].count == -1 &&
+                  inventory[2].count == 2 && inventory[3].count == 3,
+                  "actual fatal hook preserves every ordered row and its signed count before tail admission");
+            dropLoot(lootVictim(fighter, body, inventory), items, 0, floorBlock, random);
+        };
+        HitRecord hit; hit.attacker = 999; hit.target = 72; hit.amount = 1;
+        world.applyWorldHit(hit, {}, frame);
+        int markers = 0, potions = 0;
+        if (const auto *drops = items.zone(0, 0))
+            for (const auto &drop : *drops) {
+                uint32_t actual;
+                std::memcpy(&actual, drop.item.data() + 4, 4);
+                if (actual == seed) {
+                    markers += drop.item[0] == 11 && drop.item[1] == 2;
+                    potions += drop.item[0] == 1 && drop.item[1] == 1;
+                }
+            }
+        check(callbacks == 1 && markers == 2 && potions == 0 && world.all()[0].inventory.groups[2][0].count == 2 &&
+              world.all()[0].inventory.groups[2][1].count == 3,
+              "fatal inventory tail submits each positive unit, skips zero/negative rows and healing items, and leaves source quantities unchanged");
     }
     for (const uint64_t link : {uint64_t(0), uint64_t(999), uint64_t(72)}) {
         Npcs world;
@@ -199,7 +237,7 @@ int main() {
         std::vector<PlayerView> players{{attacker, body, 0, attacker.actionMs, true, false, true}};
         std::vector<uint64_t> fatalities;
         std::vector<uint32_t> drawCounts;
-        world.onFatalLoot = [&](const Combatant &fighter, const Body &targetBody, std::span<const ItemRecord> inventory) {
+        world.onFatalLoot = [&](const Combatant &fighter, const Body &targetBody, std::span<const CountedItem> inventory) {
             if (!fatalities.empty())
                 check(!items.zone(0, 0)->empty() && shared.count() > drawCounts.back(),
                       "the next melee target sees prior drops and the continued random stream");

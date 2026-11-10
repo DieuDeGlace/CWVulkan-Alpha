@@ -813,7 +813,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             statics.fatal(view.held(), fighter.backing, frame);
     };
     npcs.onFatalLoot = [&](const creatures::Combatant &fighter, const creatures::Body &body,
-                           std::span<const creatures::ItemRecord> items) {
+                           std::span<const creatures::CountedItem> items) {
         if (!client.connected())
             dropLoot(lootVictim(fighter, body, items), worldItems, scene.day,
                      [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, worldRandom);
@@ -3657,19 +3657,29 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         if (characterClass >= 128 && characterClass <= 130) {
                             interface.vendorOpen = interface.inventoryOpen = true;
                             interface.vendorTab = 0;
-                            interface.vendorStock.clear();
                             for (const creatures::Npc &n : npcs.all())
                                 if (n.fighter.id == who)
-                                    interface.vendorStock = n.inventory;
+                                    interface.vendorInventory.copyFrom(n.inventory);
                             // Talk §3.2: online the stock is not sent; it is this client's own copy of
                             // the vendor's spawn, found by the spawn id (zy·65536 + zx)·256 + index.
                             if (client.connected()) {
                                 const int32_t zx = (int32_t)((who >> 8) & 0xffff), zy = (int32_t)((who >> 24) & 0xffff);
                                 const size_t index = (size_t)(who & 0xff);
-                                if (const worldgen::Zone *zone = view.held().zone(zx, zy); zone && index < zone->spawns.size())
-                                    for (const worldgen::ItemRecord &item : zone->spawns[index].inventory)
-                                        interface.vendorStock.push_back(creatures::toRecord(item));
+                                if (const worldgen::Zone *zone = view.held().zone(zx, zy); zone && index < zone->spawns.size()) {
+                                    const auto &source = zone->spawns[index];
+                                    if (source.inventoryValue) {
+                                        interface.vendorInventory.copyFrom(*source.inventoryValue);
+                                    } else {
+                                        creatures::InventoryValue projected;
+                                        for (const auto &item : source.inventory)
+                                            projected.appendUnit(creatures::toRecord(item));
+                                        interface.vendorInventory.copyFrom(projected);
+                                    }
+                                }
                             }
+                            // Preserve the complete export independently of the
+                            // older widget/transaction value-only projection.
+                            interface.vendorStock = interface.vendorInventory.itemValues();
                         }
                         if (!questTalk)
                             interface.talk(who, [&] { return npcSpeech(dictionary, who, characterClass, talkKind, place); });

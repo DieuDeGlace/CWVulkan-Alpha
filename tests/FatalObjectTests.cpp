@@ -175,7 +175,7 @@ int main() {
                   "object processing follows first death presentation and clock reset");
             states.fatal(map, fighter.backing, events);
         };
-        world.onFatalLoot = [&](const Combatant &, const Body &, std::span<const ItemRecord>) {
+        world.onFatalLoot = [&](const Combatant &, const Body &, std::span<const CountedItem>) {
             calls++;
             check(states.zone(2, 3)->at(0).state == 0 && frame.staticStates.size() == 1 &&
                   frame.sounds.size() == 2 && frame.sounds[1].sound == 51 && world.all()[1].fighter.health == 17,
