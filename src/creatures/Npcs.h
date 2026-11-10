@@ -76,8 +76,9 @@ struct Npc {
 
     // §13: behaviour state.
     float thinkMs = 0;         // accumulated until a decision (every ≥ 32 ms)
-    float specialMs = 20000;   // special timer
-    float chaseMs = 0, cooldownMs = 0, walkMs = 0;
+    int32_t specialMs = 20000, chaseMs = 0, cooldownMs = 0;
+    float targetRange = 20; // supplied selection range; producer parity remains bounded
+    float walkMs = 0;
     PathSearch path; // path search §4: kept between updates
     // Wildlife §4: the behaviour sequence (as the spawn's), the route and where on it, the
     // wait at a point, and the creature a member follows.
@@ -338,8 +339,8 @@ class Npcs {
                        glm::dvec3 p, bool descriptorBacked = true);
     void activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day,
                   float dtMs);
-    void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block);
-    bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block);
+    void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame);
+    bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame);
     bool lookAtPlayer(Npc &npc, std::vector<PlayerView> &players);
     void randomWalk(Npc &npc, float dtMs);
     // §5: `attacker` hits what is in reach at its hit moment: NPCs when a player strikes,
@@ -364,7 +365,6 @@ class Npcs {
     uint64_t freeId() const;
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
     void petPass(std::vector<PlayerView> &players, NpcFrame &frame);
-    uint64_t petTarget(const Npc &pet, std::vector<PlayerView> &players);
     // Pets §10.2, wildlife §4.7: follow creature `followed`; false when not handled.
     bool companion(Npc &n, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block);
     // Trails spec §4: sit a while on a free seat in sight; false when not handled.

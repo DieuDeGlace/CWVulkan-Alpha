@@ -1016,14 +1016,16 @@ int main() {
     }
 
     // Wildlife §4.6: a group leader walks its route by path search and stands at the point.
+    // These behavior fixtures use zone1 so their spawn key is nonzero. A key-zero
+    // actor is a valid preliminary target, tested separately in TargetSelectionTests.
     {
-        auto zone = std::make_shared<worldgen::Zone>();
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
         worldgen::Spawn s;
-        s.x = 20ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
+        s.x = 276ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
         s.type = 2;
         s.controller = 3;
         s.behaviour = 2;
-        s.route = {{80, 20, 10}};
+        s.route = {{336, 20, 10}};
         zone->spawns.push_back(s);
         worldgen::WorldMap map;
         map.add(zone);
@@ -1032,13 +1034,13 @@ int main() {
         me.id = 1;
         me.health = maxHealth(me);
         Body body;
-        body.place({20.5, 150.5, 10 + 1.08 + 0.01}); // within 200 to wake it, beyond 8 to be ignored
+        body.place({276.5, 150.5, 10 + 1.08 + 0.01}); // within 200 to wake it, beyond 8 to be ignored
         Npcs npcs;
         double closest = 1e9;
         for (int i = 0; i < 1500; i++) { // 24 s
             npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, flat);
             if (!npcs.all().empty())
-                closest = std::min(closest, std::abs(npcs.all()[0].body.blocks().x - 80.0));
+                closest = std::min(closest, std::abs(npcs.all()[0].body.blocks().x - 336.0));
         }
         same(closest < 10, 1, "the leader reaches within 10 blocks of its route point");
     }
@@ -1046,13 +1048,13 @@ int main() {
     // Schedules §3: a resident appears at its current stop and walks to the next when its time
     // comes, arriving within 4 blocks.
     {
-        auto zone = std::make_shared<worldgen::Zone>();
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
         worldgen::Spawn s;
-        s.x = 20ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
+        s.x = 276ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
         s.type = 2;
         s.controller = 3;
         s.characterClass = 0x88;
-        s.schedule = {{20ll << 16, 20ll << 16, 10ll << 16, 0}, {60ll << 16, 20ll << 16, 10ll << 16, 10 * 3600000}};
+        s.schedule = {{276ll << 16, 20ll << 16, 10ll << 16, 0}, {316ll << 16, 20ll << 16, 10ll << 16, 10 * 3600000}};
         zone->spawns.push_back(s);
         worldgen::WorldMap map;
         map.add(zone);
@@ -1061,15 +1063,15 @@ int main() {
         me.id = 1;
         me.health = maxHealth(me);
         Body body;
-        body.place({40.5, 150.5, 10 + 1.08 + 0.01});
+        body.place({296.5, 150.5, 10 + 1.08 + 0.01});
         Npcs npcs;
         npcs.step(16, map, {{me, body, 0, me.actionMs}}, 9 * 3600000.0, 0, flat);
-        same(!npcs.all().empty() && std::abs(npcs.all()[0].body.blocks().x - 20.5) < 1, 1, "at home before ten");
+        same(!npcs.all().empty() && std::abs(npcs.all()[0].body.blocks().x - 276.5) < 1, 1, "at home before ten");
         double closest = 1e9;
         for (int i = 0; i < 1500; i++) {
             npcs.step(16, map, {{me, body, 0, me.actionMs}}, 11 * 3600000.0, 0, flat);
             if (!npcs.all().empty())
-                closest = std::min(closest, std::abs(npcs.all()[0].body.blocks().x - 60.0));
+                closest = std::min(closest, std::abs(npcs.all()[0].body.blocks().x - 316.0));
         }
         same(closest < 5, 1, "walked to the ten o'clock stop");
     }
@@ -1077,13 +1079,13 @@ int main() {
     // Trails spec §4: a resident at its stop walks to a free bench in sight, sits about 20 s,
     // then stands up.
     {
-        auto zone = std::make_shared<worldgen::Zone>();
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
         worldgen::Spawn s;
-        s.x = 20ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
+        s.x = 276ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
         s.type = 2;
         s.controller = 3;
         s.characterClass = 0x88;
-        s.schedule = {{20ll << 16, 20ll << 16, 10ll << 16, 0}};
+        s.schedule = {{276ll << 16, 20ll << 16, 10ll << 16, 0}};
         zone->spawns.push_back(s);
         worldgen::WorldMap map;
         map.add(zone);
@@ -1092,13 +1094,13 @@ int main() {
         me.id = 1;
         me.health = maxHealth(me);
         Body body;
-        body.place({40.5, 150.5, 10 + 1.08 + 0.01});
+        body.place({296.5, 150.5, 10 + 1.08 + 0.01});
         Npcs npcs;
         bool taken = false;
         int sat = 0;
         npcs.seats = [](glm::ivec3, double) {
             Npcs::Seats out;
-            out.keep = out.pick = {{0, 0, 3, {26.0, 21.5, 10.0}}};
+            out.keep = out.pick = {{1, 0, 3, {282.0, 21.5, 10.0}}};
             return out;
         };
         npcs.seatFree = [&](const Seat &) { return !taken; };
@@ -1269,14 +1271,15 @@ int main() {
         for (int i = 0; i < 4; i++)
             npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
         same(npcs.all()[0].fighter.action, 80, "it drinks");
-        same(npcs.all()[0].inventory.empty(), 1, "the potion is used up");
+        same(npcs.all()[0].inventory.size() == 1 && itemType(npcs.all()[0].inventory[0]) == 0 &&
+             itemSubtype(npcs.all()[0].inventory[0]) == 0, 1, "the potion is used up without erasing its payload row");
     }
 
     // Behaviour §9, §13: a creature wakes near the player, hunts, fights, dies and returns.
     {
-        auto zone = std::make_shared<worldgen::Zone>();
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
         worldgen::Spawn s;
-        s.x = 10ll << 16;
+        s.x = 266ll << 16;
         s.y = 10ll << 16;
         s.z = 1ll << 16;
         s.type = 4;
@@ -1289,7 +1292,7 @@ int main() {
         me.id = 1;
         me.health = maxHealth(me);
         Body body;
-        body.place({25.5, 10.5, 1 + 1.08 + 0.01}); // 15 blocks away, as in §13.2's example
+        body.place({281.5, 10.5, 1 + 1.08 + 0.01}); // 15 blocks away, as in §13.2's example
         Npcs npcs;
         auto step = [&](float ms) {
             return npcs.step(ms, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
@@ -1373,6 +1376,12 @@ int main() {
         step(16);
         same(npcs.all().size(), 1, "back again");
         body.place(npcs.all()[0].home + glm::dvec3(230, 0, 2));
+        step(16);
+        same(npcs.all().size(), 1, "active acquired threat retains the creature within 512 blocks of home");
+        // Noncombat despawn: acquisition now publishes the native threat slot.
+        // End that supplied relationship before checking the independent radius.
+        npcs.npcs()[0].fighter.relations.threats.clear();
+        npcs.npcs()[0].target = 0;
         step(16);
         same(npcs.all().empty(), 1, "despawned beyond 220 blocks");
     }

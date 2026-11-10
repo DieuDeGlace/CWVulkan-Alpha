@@ -192,24 +192,6 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
         }
     }
 }
-// §10.1: the pet's target: the creature its owner has hit most, still alive.
-uint64_t Npcs::petTarget(const Npc &pet, std::vector<PlayerView> &players) {
-    const PlayerView *owner = nullptr;
-    for (const PlayerView &p : players)
-        if (p.fighter.id == pet.fighter.ownerId)
-            owner = &p;
-    if (!owner || owner->fighter.action == 106)
-        return 0;
-    uint64_t best = 0;
-    float most = 0;
-    for (const auto &[id, count] : owner->fighter.relations.counts) {
-        const Npc *n = findNpc(id);
-        if (count > most && n && n->fighter.health > 0)
-            best = id, most = count;
-    }
-    return best;
-}
-
 // §10.2: Companion: run when far, heal 10 % a second out of combat, walk up to the owner.
 bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block) {
     const Body *owner = nullptr;

@@ -1,6 +1,7 @@
 #include "creatures/Strike.h"
 #include "creatures/Npcs.h"
 #include "creatures/FatalRecipients.h"
+#include "creatures/TargetSelection.h"
 #include <cassert>
 #include <bit>
 #include "BlockEdits.h"
@@ -821,37 +822,37 @@ void Npcs::removeTargets(const std::set<std::pair<int32_t, int32_t>> &zones) {
 // §13.1: the sequence Combat, LookAtPlayer, RandomWalk; the first that handles the moment
 // wins (which of them report "handled" is open, A-1: here Combat with a target, LookAtPlayer
 // with a player near, RandomWalk always).
-void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block) {
+void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame) {
     if (npc.fighter.controller == 6)
         return;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
-        if (!combat(npc, dtMs, players, block))
+        if (!combat(npc, dtMs, players, block, frame))
             companion(npc, npc.fighter.ownerId, players, dtMs, block);
         return;
     }
     // Wildlife §4.9: the cell monster, the group leader and its members.
     if (npc.behaviour == 1) {
-        if (!combat(npc, dtMs, players, block))
+        if (!combat(npc, dtMs, players, block, frame))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 5) { // a location's ring creature: Combat, WalkPath, RandomInteraction
-        if (!combat(npc, dtMs, players, block) && !walkPath(npc, dtMs, block) && !randomInteraction(npc, dtMs, block))
+        if (!combat(npc, dtMs, players, block, frame) && !walkPath(npc, dtMs, block) && !randomInteraction(npc, dtMs, block))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 6) { // a location's group leader: Combat, WalkPath, RandomWalk
-        if (!combat(npc, dtMs, players, block) && !walkPath(npc, dtMs, block))
+        if (!combat(npc, dtMs, players, block, frame) && !walkPath(npc, dtMs, block))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 4) { // a shopkeeper: Combat, LookAtPlayer, WalkPath to its counter
-        if (!combat(npc, dtMs, players, block) && !lookAtPlayer(npc, players))
+        if (!combat(npc, dtMs, players, block, frame) && !lookAtPlayer(npc, players))
             walkPath(npc, dtMs, block);
         return;
     }
     if (npc.behaviour == 2 || npc.behaviour == 3) {
-        if (combat(npc, dtMs, players, block) || lookAtPlayer(npc, players))
+        if (combat(npc, dtMs, players, block, frame) || lookAtPlayer(npc, players))
             return;
         if (npc.behaviour == 3 && companion(npc, npc.follows, players, dtMs, block))
             return;
@@ -859,7 +860,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
             randomWalk(npc, dtMs);
         return;
     }
-    if (combat(npc, dtMs, players, block) || lookAtPlayer(npc, players) || spawnLocation(npc, block))
+    if (combat(npc, dtMs, players, block, frame) || lookAtPlayer(npc, players) || spawnLocation(npc, block))
         return;
     if (npc.fighter.characterClass == 0x88 && randomInteraction(npc, dtMs, block)) // trails spec §3.6
         return;
@@ -872,110 +873,81 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
 }
 
 // §13.2
-bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block) {
+bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame) {
     Combatant &c = npc.fighter;
-    // Open points 4 §1: by raw time, finished or not; the time itself runs on.
-    if (c.action != 79 && (c.action < 82 || c.action > 84) && c.actionMs > 10000)
-        c.action = 0;
-    npc.body.mode &= ~AIMING; // (step 1: set again only when in range)
-    // §13.2 step 2: nothing while dodging or in the first 3 s of drinking.
-    if (c.dodgeMs > 0 || (c.action == 80 && c.actionMs < 3000))
-        return true;
-    // Step 3: below a quarter of its health, with its action done, it drinks a potion from
-    // its bags and steps aside at random.
-    const bool actionDone = c.action == 0 || c.actionMs >= (float)duration(c, c.action);
-    if (c.health < 0.25f * maxHealth(c) && actionDone)
-        for (auto it = npc.inventory.begin(); it != npc.inventory.end(); ++it)
-            if (itemType(*it) == 1 && itemSubtype(*it) == 1) {
-                c.copyHeld(*it);
-                npc.inventory.erase(it);
-                c.action = 80;
-                c.actionMs = 0;
-                const float rx = (float)draw() / 32767.f, ry = (float)draw() / 32767.f;
-                npc.body.intent = {4 * rx - 2, 4 * ry - 2, 0};
-                return true;
-            }
-    npc.specialMs = std::max(0.f, npc.specialMs - dtMs);
-    const glm::dvec3 self = npc.body.blocks();
-
-    // The target: a player or another creature, by id.
-    struct Seen {
-        Combatant *fighter;
-        Body *body;
+    selection::Services services;
+    services.lookup = [&](uint64_t key) {
+        const ActorEntry entry = lookupActor(key, players);
+        return selection::Actor{entry.combat(), entry.body()};
     };
-    auto find = [&](uint64_t id) -> std::optional<Seen> {
-        for (PlayerView &p : players)
-            if (p.fighter.id == id)
-                return Seen{&p.fighter, &p.body};
-        for (Npc &o : list)
-            if (o.fighter.id == id)
-                return Seen{&o.fighter, &o.body};
-        return std::nullopt;
+    services.maximumHealth = [&] { return maxHealth(c); };
+    services.duration = [&] { return duration(c, uint8_t(c.action)); };
+    services.timing = [&](selection::Timing query, int32_t action) {
+        // Existing engine phase tables supply these distinct native query sites;
+        // complete table/stat equivalence remains a separate dependency.
+        const Phases p = phases(c, action < 0 ? uint8_t(c.action) : action);
+        switch (query) {
+        case selection::Timing::Recovery: return p.recovery;
+        case selection::Timing::Anticipation: return p.windUp;
+        case selection::Timing::Active: return p.active;
+        }
+        return int32_t(0);
     };
+    int32_t unitCount = 1;
+    services.firstPotion = [&] {
+        // The current descriptor inventory is flat, one unit per entry. Keep
+        // the consumed row's other bytes; the loot adapter skips its empty type.
+        for (ItemRecord &item : npc.inventory)
+            if (itemType(item) == 1 && itemSubtype(item) == 1)
+                return selection::Potion{&unitCount, &item};
+        return selection::Potion{};
+    };
+    services.draw = [&] { return draw(); };
+    services.power = [](double exponent) { return std::pow(1.5, exponent); };
+    services.related = hostile;
+    services.classified = [](const Combatant &actor) { return harmless(actor.type, actor.appearanceFlags); };
+    services.visible = [&](selection::Actor from, selection::Actor to) {
+        const visibility::Position start{from.body->position[0], from.body->position[1], from.body->position[2]};
+        const visibility::Position end{to.body->position[0], to.body->position[1], to.body->position[2]};
+        return visibility::visible(start, end, {block, sightRecords});
+    };
+    services.acquired = [&](selection::Actor target) { propagateThreat(*target.fighter, {&npc, nullptr}, frame); };
+    services.extensionAdmission = [&](selection::Actor target) {
+        // Required engine quests: allies fight hostile non-animal creatures.
+        return npc.questRole == 3 && target.fighter->controller == 1 &&
+               !harmless(target.fighter->type, target.fighter->appearanceFlags);
+    };
+    selection::TargetSelection selector{{&c, &npc.body},
+        {npc.specialMs, npc.chaseMs, npc.cooldownMs, npc.targetRange}, int32_t(dtMs), services};
+    selector.begin();
+    if (selector.scanning())
+        for (const auto &[key, entry] : actors)
+            selector.consider({entry.combat(), entry.body()});
+    const selection::Result selected = selector.finish();
+    npc.body.mode = c.mode; // publish prefix writes to this phase's movement view
+    if (selected.outcome != selection::Outcome::ContinueWithTarget) {
+        if (selected.outcome == selection::Outcome::ReturnFalse)
+            npc.target = 0, npc.threat = 0;
+        return selected.outcome == selection::Outcome::ReturnTrue;
+    }
+    const selection::Actor target = selected.target;
+    npc.target = target.fighter->id; // legacy continuation cache, not a selection sentinel
+    const auto threat = c.relations.threats.find(npc.target);
+    npc.threat = threat == c.relations.threats.end() ? 0 : threat->second;
     const bool ownedPet = c.controller == 5;
-    if (ownedPet) // pets §10.1: what the owner has hit most (nothing while the owner rides)
-        npc.target = petTarget(npc, players);
-    std::optional<Seen> target = npc.target ? find(npc.target) : std::nullopt;
-    if (target && target->fighter->health <= 0)
-        target.reset(), npc.target = 0;
-    // Pets §7.2: a player holding out food of this creature's type tempts it.
-    const auto tempting = [&](const Combatant &f) {
-        return f.action == 82 && f.equipment[12].type == 20 && f.equipment[12].subtype == c.type;
-    };
-    // Step 5: a peaceful townsperson below half its health drinks (a potion of its level).
-    if (!target && c.controller == 3 && c.health < 0.5f * maxHealth(c)) {
-        c.held = Item{};
-        c.held.type = 1, c.held.subtype = 4, c.held.level = c.level;
-        c.action = 80;
-        c.actionMs = 0;
-        npc.body.intent = glm::vec3(0);
-        return true;
-    }
-
-    // Acquire the nearest hostile creature in sight within 20 blocks, unless harmless.
     const bool pacified = c.hasBuff(8);
-    if (!target && npc.cooldownMs <= 0 && !pacified && !ownedPet) {
-        double best = 400;
-        auto consider = [&](Combatant &f, Body &b) {
-            if (&f == &c || f.health <= 0 || f.controller == 5)
-                return;
-            // (Quests: an ally fights every hostile creature that is not a harmless animal.)
-            const bool allyAgainst = npc.questRole == 3 && f.controller == 1 && !harmless(f.type, f.appearanceFlags);
-            if (!tempting(f) && !allyAgainst && (harmless(c.type, c.appearanceFlags) || !hostile(c, f)))
-                return;
-            const glm::dvec3 d = b.blocks() - self;
-            double d2 = glm::dot(d, d);
-            const float hide = std::max(0.1f, 1.f - (float)std::pow(1.5, f.level - c.level) * f.stealth);
-            d2 /= (double)hide * hide;
-            if (d2 < best && sight(self, b.blocks(), block, sightRecords)) {
-                best = d2;
-                npc.target = f.id;
-                target = Seen{&f, &b};
-            }
-        };
-        for (PlayerView &p : players)
-            consider(p.fighter, p.body);
-        for (Npc &o : list)
-            consider(o.fighter, o.body);
-        if (target)
-            npc.threat = 1;
-    }
-
+    const auto tempting = [&](const Combatant &other) {
+        return uint8_t(other.action) == 82 && other.equipment[12].type == 20 &&
+               int32_t(other.equipment[12].subtype) == c.type;
+    };
     const Phases p = phases(c, c.action);
-    const bool running = target && (c.action == 0 || c.actionMs > (float)(p.windUp + p.active) + p.recovery * 0.5f);
-    npc.body.mode = running ? npc.body.mode | 0x40 : npc.body.mode & ~0x40u;
-    npc.cooldownMs -= dtMs;
-    if (!target) {
-        npc.chaseMs = 0;
-        return false;
-    }
-
-    const glm::dvec3 there = target->body->blocks();
+    const glm::dvec3 self = npc.body.blocks();
+    const glm::dvec3 there = target.body->blocks();
     const glm::dvec3 toTarget = there - self;
     const bool seen = sight(self, there, block, sightRecords);
     // Open points 4 §2: the range, each rule over the last. A special is rolled afresh on every
     // update while its timer is out; it is kept only if the creature is in range for that roll.
-    const float own = npc.looks.box.x, theirs = target->body->size.x;
+    const float own = npc.looks.box.x, theirs = target.body->size.x;
     int32_t special = 0;
     if (npc.specialMs <= 0 && !c.specials.empty())
         special = c.specials[(uint32_t)draw() % c.specials.size()];
@@ -1000,7 +972,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     if (distance > R || !seen) {
         // Chase, for up to 20 s. Giving up changes neither the action nor the intent, so the
         // walk toward the target goes on until the next behaviour sets another (§8.3).
-        npc.chaseMs += dtMs;
+        npc.chaseMs = std::bit_cast<int32_t>(uint32_t(npc.chaseMs) + uint32_t(int32_t(dtMs)));
         if (npc.chaseMs > 20000) {
             npc.target = 0;
             npc.threat = 0;
@@ -1020,9 +992,9 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             npc.path.clear();
         } else {
             const glm::dvec3 feet = self - glm::dvec3(0, 0, npc.body.size.z * 0.5 - 0.1);
-            const glm::dvec3 goal = there - glm::dvec3(0, 0, target->body->size.z * 0.5 - 0.1);
-            if (npc.path.empty() && !npc.path.searching() && (target->body->contact & 7))
-                npc.path.start(feet, goal, npc.body.size.x + target->body->size.x);
+            const glm::dvec3 goal = there - glm::dvec3(0, 0, target.body->size.z * 0.5 - 0.1);
+            if (npc.path.empty() && !npc.path.searching() && (target.body->contact & 7))
+                npc.path.start(feet, goal, npc.body.size.x + target.body->size.x);
             if (feet != goal)
                 npc.path.rounds(npc.body.size, npc.body.size.x, block);
             npc.threat *= 0.9f;
@@ -1045,7 +1017,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     npc.body.intent = glm::vec3(0);
     // Pets §7.3: fed by a player holding out its food: up to five bites (action 110), then, if
     // still not tamed, pacified for 20 s.
-    if (!pacified && !ownedPet && tempting(*target->fighter)) {
+    if (!pacified && !ownedPet && tempting(*target.fighter)) {
         if (actionOver(c)) {
             if (c.action != 110)
                 npc.bites = 0;
@@ -1346,10 +1318,9 @@ void Npcs::propagateThreat(Combatant &source, const ActorEntry &recipient, NpcFr
         const float squared = (y2 + x2) + z2;
         if (!(squared < 64.f))
             continue;
-        float &value = candidate->relations.threats[source.id];
-        if (value == 0) {
-            value = .5f;
-            frame.relationships.push_back({candidate->id, source.id, value});
+        if (candidate->relations.threats[source.id] == 0) {
+            candidate->relations.threats[source.id] = .5f;
+            frame.relationships.push_back({candidate->id, source.id, candidate->relations.threats[source.id]});
         }
     }
 }
@@ -1795,7 +1766,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         // update permits later movement, but must not admit an early decision.
         const bool canThink = c.hitStun <= 0;
         if (canThink && npc.thinkMs >= 32) {
-            think(npc, npc.thinkMs, players, block);
+            think(npc, npc.thinkMs, players, block, frame);
             npc.thinkMs = 0;
         }
         // The authoritative path phase sees incoming stun, before lock/action

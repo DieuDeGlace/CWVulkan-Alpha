@@ -88,6 +88,13 @@ Differences from the Steam engine that shape the plan:
 - [ ] Created-actor behavior: held source contracts establish ordered child
   processing and a target-selection prefix. Later action/navigation, reference
   producers and complete production integration remain open.
+- [x] Bounded target-selection prefix: entry/inventory precedence, preliminary
+  and linked lookups, live signed candidate order, fixed-coordinate binary32
+  scoring, visibility/classifier gates, fallback relationship publication and
+  readiness now feed production NPC behavior. Counter wrap and complete/partial
+  held-item writes have regressions. Stat/phase/power providers, identity/range
+  producers, full grouped inventory, later actions/navigation and native
+  gameplay acceptance remain open; quest-ally admission is an explicit extension.
 - [x] Bounded visibility ray: fixed-coordinate voxel traversal retains category,
   conversion, tie, endpoint and step-limit rules. Optional spatial side faces
   consume current static state in source order. Client and dedicated NPC sight

@@ -198,6 +198,30 @@ through real input, physics and outgoing serialization. All 45 CTests passed,
 along with a fresh dedicated-server connection and reviewed client capture.
 Complete native consumable behavior and target selection remain separate gates.
 
+TargetSelectionTests checks entry clock/roll gates, strict health/duration
+boundaries, negative and wrapped potion counts, complete held copies before the
+two draws, partial friendly writes, preliminary key-zero/self/dead targets,
+linked overrides and repeated lookups. Signed live scan ties, rejected nearer
+actors, binary32 distance ties, stealth/pacification order, wrapped level
+exponents, full-kind food comparison and ordered readiness queries also have
+provided-state regressions. ContinueWithTarget explicitly denotes the later
+behavior boundary rather than a native success return.
+
+Production NPC fixtures cover typed subject-before-neighbor fanout, zero and
+nonzero threat values, distance-64 exclusion, full mode publication, required
+quest allies and in-place consumption of the flat inventory adapter. A supplied
+origin spawn demonstrates its key-zero preliminary self lookup. Independent
+route, schedule, sitting and fighting fixtures use the neighboring zone while
+retaining their relative geometry. The lifecycle fixture checks active-threat
+retention before ending that relationship to check noncombat despawn.
+
+All 46 CTests passed. Fresh reward, injured-health, dedicated-server and both
+save/reload phases passed with all five captures reviewed. Retained state was
+level 2/-33 XP/7 Platinum Coins, injured health binary32 50, and saved seed 123
+with nine map tiles, the preview and 170 edits. Native identity/range producers,
+stat/phase/power equivalence, grouped inventory, later behavior and full native
+acceptance remain open; bright-ground rendering is still unresolved.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

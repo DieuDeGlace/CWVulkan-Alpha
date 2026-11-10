@@ -826,3 +826,20 @@ all 280 bytes; local consumable assignment and remote core refresh retain the
 destination's five omitted-copy bytes. Fresh engine storage uses the specified
 level-one properties with deterministic zero gaps. This storage bridge does not
 close the behavior-selection prefix or full native consumable/input acceptance.
+
+The previously held original-only target-selection contract was fully reread
+before the next implementation. A phased engine selector performs entry and
+inventory work, receives candidates from the live signed world map, then
+publishes a fallback choice before readiness. It retains key-zero lookup,
+preliminary/link identity distinctions, integer counter wrap, binary32 distance
+and stealth arithmetic, selected versus partial item writes and ordered draws.
+Production NPC behavior uses this service and its existing relationship fanout;
+quest-ally admission remains an always-bound intentional engine extension.
+
+Stat/phase providers, the platform power function, initial range/identity
+producers, the flat one-unit descriptor inventory and later action/navigation
+remain explicit engine adapters or open dependencies. This does not implement
+the complete created-actor sequence or action-92 creation. Synthetic origin-key
+behavior is distinguished from ordinary routing fixtures. Neither the supplied
+state tests nor engine captures certify original-client/server gameplay.
+The source-side author received no implementation, test or runtime material.
