@@ -98,13 +98,14 @@ its build with `-DALPHAVULKAN_EXAMPLE_MODULE=OFF`.
 An external source module supplies a CMake directory containing, for example:
 
 ```cmake
-alpha_add_engine_module(MyTerrain VERSION 1.0 MyTerrain.cpp)
+alpha_add_engine_module(MyTerrain VERSION 1.0 MyTerrain.cpp MyTerrain.h)
 ```
 
 Configure with `-DALPHAVULKAN_MODULE_DIRS="path/to/MyTerrain"` (a semicolon-separated
 list for several). Each ID must be unique and use letters, digits or underscores,
 starting with a letter. `VERSION` defaults to `1` and is included in saved-world
-profile checks. Export its lifecycle entry using the definition provided
+profile checks. List each source and private header used by the module. Export
+its lifecycle entry using the definition provided
 by that CMake function:
 
 ```cpp
@@ -132,10 +133,29 @@ the same compiled terrain passes and content overrides. Its generic host current
 provides logging and content reads; client UI, local-player and frame callbacks
 are not wired into dedicated-server gameplay. All peers need matching terrain
 modules and settings; automatic module/profile negotiation is still open.
-Saved worlds pin the ordered mod IDs and declared versions along with their water
-policy. Bump versions when changing terrain semantics and use a new world for
-incompatible generation. Source-module code/content fingerprints and migrations
-are not yet enforced by that settings guard.
+Saved worlds pin the ordered mod IDs, declared versions and input fingerprints
+along with their water policy. A folder mod's fingerprint covers `mod.ini`, its
+declared plugin DLL and every flat file in `content/`, including the file names.
+Subdirectories are excluded because the content loader does not read them.
+Enumeration order and the installation path do not affect the fingerprint.
+Fingerprinting runs at startup; restart the engine after editing a mod.
+
+A compiled source module fingerprints its explicitly listed sources/headers, the
+two SDK headers and compiler identity/version. CMake automatically reconfigures
+when a listed input changes. Text line endings are normalized, and checkout paths
+are excluded. Unlisted headers, indirect DLLs, external files, custom compile
+definitions/options and wider engine changes are outside this bounded identity;
+bump the declared version when those change terrain semantics. A fingerprint is
+a compatibility input check, not a proof of identical execution or a signature.
+
+Changed inputs are rejected before opening a saved world for writing. Restoring
+the exact setup reopens it; incompatible generation needs a new world. Older
+modded profiles that lack fingerprints require a separate migration, which is not
+implemented. Unmodded profiles keep their existing identity. Cross-peer profile
+negotiation also remains open. Failed plugin startup leaves no content overrides;
+shutdown removes each mod's own layer in reverse load order after its callback.
+The supplied Content must outlive the loader, and registration changes must occur
+outside content/world workers.
 
 ## Further API coverage
 

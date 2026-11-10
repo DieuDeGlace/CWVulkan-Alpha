@@ -1,10 +1,12 @@
 #include "FileHash.h"
+#include "DataStore.h"
 #include "GenerationProfile.h"
 #include "Saves.h"
 #include "WorldSession.h"
 #include <windows.h>
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 
 namespace {
 int failures = 0;
@@ -66,6 +68,43 @@ int main() {
     const auto serverFile = saves / "world_server_41.db";
     check(ensureGenerationProfile(serverFile, swimming, &error) && ensureGenerationProfile(serverFile, swimming, &error) &&
           !ensureGenerationProfile(serverFile, native, &error), "dedicated-server save path pins the same policy");
+    const auto modFolder = scratch / "Mods" / "UnchangedVersion";
+    std::filesystem::create_directories(modFolder / "content");
+    std::ofstream(modFolder / "mod.ini") << "[Mod]\nVersion=1\n";
+    const auto asset = modFolder / "content" / "sample.cub";
+    std::ofstream(asset, std::ios::binary) << "original";
+    Content content;
+    ModLoader loader({});
+    loader.load(scratch / "Mods", {"UnchangedVersion"}, content);
+    const auto originalProfile = generationProfile(true, loader.loaded());
+    check(loader.loaded().size() == 1 && loader.loaded().front().fingerprint.size() == 64, "actual content mod has a pinned identity");
+    {
+        WorldSession session;
+        check(session.open(scratch, "modded", 17, -1, &error, originalProfile), "actual mod profile pins a new world");
+        session.clock.day = 7;
+        session.saveClock();
+    }
+    const auto moddedFile = saves / "world_modded.db";
+    const auto moddedHash = fileSha256(moddedFile), moddedListHash = fileSha256(saves / "worlds.db");
+    loader.shutdown();
+    std::ofstream(asset, std::ios::binary) << "modified";
+    loader.load(scratch / "Mods", {"UnchangedVersion"}, content);
+    const auto changedProfile = generationProfile(true, loader.loaded());
+    check(originalProfile != changedProfile && loader.loaded().front().version == "1", "same version with changed bytes changes the profile");
+    {
+        WorldSession wrong;
+        check(!wrong.open(scratch, "modded", 99, -1, &error, changedProfile), "changed code/content identity is rejected at the real world boundary");
+    }
+    check(moddedHash && moddedHash == fileSha256(moddedFile) && moddedListHash == fileSha256(saves / "worlds.db"),
+          "changed-input rejection leaves world and world list unchanged");
+    loader.shutdown();
+    std::ofstream(asset, std::ios::binary) << "original";
+    loader.load(scratch / "Mods", {"UnchangedVersion"}, content);
+    {
+        WorldSession restored;
+        check(restored.open(scratch, "modded", 99, -1, &error, generationProfile(true, loader.loaded())) &&
+              restored.seed() == 17 && restored.clock.day == 7, "restoring exact inputs reopens the original saved world");
+    }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

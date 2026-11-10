@@ -7,6 +7,7 @@ struct BuiltinModule {
     std::string_view id;
     AvModLoadFunction load;
     std::string_view version;
+    std::string_view fingerprint;
 };
 
 // Generated from explicit CMake registrations, avoiding static-init/linker order.

@@ -39,7 +39,11 @@ class Content {
   public:
     bool open(const std::filesystem::path &gameDir, std::string *error = nullptr);
     // Adds a folder of override files on top of everything added before it.
-    void addOverride(const std::filesystem::path &folder);
+    using OverrideId = uint64_t;
+    OverrideId addOverride(const std::filesystem::path &folder);
+    // Remove only this registration, preserving other loaders' layers. Change
+    // registrations before/after content workers, never during their reads.
+    bool removeOverride(OverrideId id);
     std::optional<std::vector<uint8_t>> read(const std::string &key) const;
     // Keys from every store and override ending in `extension` (e.g. ".cub"), each once,
     // sorted.
@@ -49,5 +53,7 @@ class Content {
 
   private:
     DataStore stores[COUNT];
-    std::vector<std::filesystem::path> overrides;
+    struct Override { OverrideId id; std::filesystem::path folder; };
+    std::vector<Override> overrides;
+    OverrideId nextOverride = 1;
 };

@@ -53,10 +53,30 @@ private extraction, output rejection and unchanged source-file hashes.
 EngineModuleTests loads a compiled module without a DLL/folder, exercises an actual
 generation pass, checks ordering/duplicate rejection and verifies shutdown/reload.
 ModTests continues to exercise the separate TimeLapse DLL and content override path.
+It now checks SHA-256 standard empty/short/million-byte vectors, changed DLL and
+content bytes, content-key changes and path-independent fingerprints. A synthetic
+SDK DLL reads its own override during startup, declines or succeeds from that
+input, and observes the layer through shutdown. Failed loads and shutdown leave
+no owned layer, while another registration of the same folder remains intact.
 GenerationProfileTests checks new-world pinning, matching reloads, legacy native
 acceptance and rejection of changed settings without modifying world/list files.
 It uses Unicode, literal-percent and hash characters in the save path to exercise
 the shared immutable SQLite URI encoder used by both store and save readers.
+An actual content mod retains its declared version while its bytes change: the
+real WorldSession boundary rejects it without changing either save database.
+Restoring those bytes reopens the same world with its original seed and clock.
+EngineModuleTests also checks the generated source-input identity. A separate
+private build check configures a real external module, changes a declared header
+without a version bump and observes Ninja's automatic reconfiguration and changed
+identity. Normalized line endings and a relocated module preserve that identity.
+These are bounded engine compatibility checks; undeclared dependencies, wider
+engine/build settings, migrations and cross-peer negotiation remain open.
+All 42 CTests passed after this compatibility change. Fresh reward, injured-health,
+loopback and both save/reload runs passed, with all five captures reviewed. Saved
+reward state retained level 2, -33 XP and 7 Platinum Coins; injured health retained
+exactly binary32 50. Reload retained the character, seed, nine map tiles, preview
+and 170 block edits. The package passed 35 hashes and 36 entry checks. Known bright
+ground and broader native UI/gameplay/visual acceptance remain unresolved.
 
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.

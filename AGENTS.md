@@ -37,6 +37,10 @@
 - Water must reuse the Steam engine's shared surface shader. All Alpha water,
   including its shallow walkable form, must be swimmable. Reeds belong along
   water banks. These are user-requested extensions, not native parity claims.
+- Include a gamepad/controller support system when completing controls, covering
+  gameplay and menu navigation. Verify the actual input paths and document the
+  mappings. Keep this owner-requested engine feature distinct from native parity
+  unless original Alpha controller behavior has been independently verified.
 - Continue through actionable roadmap work after tested checkpoints. Retain open
   parity, provenance and native acceptance gates; do not describe partial results
   as a completed Alpha replacement.

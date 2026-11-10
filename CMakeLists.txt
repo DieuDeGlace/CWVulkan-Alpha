@@ -130,6 +130,7 @@ add_library(engine STATIC
     src/Motion.cpp
     src/Moon.cpp
     src/Mods.cpp
+    src/ModFingerprint.cpp
     src/EngineModules.cpp
     src/worldgen/Random.cpp
     src/worldgen/NoiseMath.cpp
@@ -230,6 +231,27 @@ function(alpha_add_engine_module id)
     target_sources(engine PRIVATE $<TARGET_OBJECTS:alpha_module_${id}>)
     set_property(GLOBAL APPEND PROPERTY ALPHA_MODULE_IDS ${id})
     set_property(GLOBAL PROPERTY ALPHA_MODULE_VERSION_${id} "${module_VERSION}")
+    # Fingerprint declared inputs without checkout-specific absolute paths.
+    # Listing headers here also makes Ninja reconfigure when they change.
+    set(moduleInputs ${module_UNPARSED_ARGUMENTS}
+        "${PROJECT_SOURCE_DIR}/sdk/alphavulkan_mod.h"
+        "${PROJECT_SOURCE_DIR}/sdk/alphavulkan_engine_module.h")
+    set(moduleManifest "AlphaVulkan source inputs 1\n${CMAKE_CXX_COMPILER_ID}\n${CMAKE_CXX_COMPILER_VERSION}\n")
+    foreach(input IN LISTS moduleInputs)
+        get_filename_component(inputPath "${input}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(NOT EXISTS "${inputPath}" OR IS_DIRECTORY "${inputPath}")
+            message(FATAL_ERROR "Module ${id} requires an existing source/header input: ${input}")
+        endif()
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${inputPath}")
+        get_filename_component(inputName "${inputPath}" NAME)
+        file(READ "${inputPath}" inputText)
+        string(REPLACE "\r\n" "\n" inputText "${inputText}")
+        string(SHA256 inputHash "${inputText}")
+        string(LENGTH "${inputName}" inputNameLength)
+        string(APPEND moduleManifest "${inputNameLength}:${inputName}${inputHash}\n")
+    endforeach()
+    string(SHA256 moduleFingerprint "${moduleManifest}")
+    set_property(GLOBAL PROPERTY ALPHA_MODULE_FINGERPRINT_${id} "${moduleFingerprint}")
 endfunction()
 
 option(ALPHAVULKAN_EXAMPLE_MODULE "Compile the opt-in StoneTint source-module example" ON)
@@ -251,7 +273,8 @@ endforeach()
 string(APPEND moduleRegistry "std::span<const BuiltinModule> builtinModules() {\n    static const std::array<BuiltinModule, ${moduleCount}> modules{{\n")
 foreach(id IN LISTS moduleIds)
     get_property(moduleVersion GLOBAL PROPERTY ALPHA_MODULE_VERSION_${id})
-    string(APPEND moduleRegistry "        {\"${id}\", avBuiltin_${id}, \"${moduleVersion}\"},\n")
+    get_property(moduleFingerprint GLOBAL PROPERTY ALPHA_MODULE_FINGERPRINT_${id})
+    string(APPEND moduleRegistry "        {\"${id}\", avBuiltin_${id}, \"${moduleVersion}\", \"${moduleFingerprint}\"},\n")
 endforeach()
 string(APPEND moduleRegistry "    }};\n    return modules;\n}\n")
 file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/BuiltinModules.cpp" CONTENT "${moduleRegistry}" @ONLY)
@@ -280,6 +303,10 @@ set_target_properties(TimeLapse PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURR
 configure_file(examples/mods/TimeLapse/mod.ini ${CMAKE_CURRENT_BINARY_DIR}/Mods/TimeLapse/mod.ini COPYONLY)
 
 add_executable(ModTests tests/ModTests.cpp)
+add_library(ModStartupProbe SHARED tests/ModStartupProbe.c)
+target_include_directories(ModStartupProbe PRIVATE sdk)
+set_target_properties(ModStartupProbe PROPERTIES PREFIX "" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test-plugins")
+add_dependencies(ModTests ModStartupProbe)
 target_link_libraries(ModTests PRIVATE engine)
 add_dependencies(ModTests TimeLapse)
 add_executable(WorldgenTests tests/WorldgenTests.cpp)

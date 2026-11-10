@@ -3,7 +3,10 @@
 // built next to this test. Needs no game install.
 #include "DataStore.h"
 #include "Install.h"
+#include "FileHash.h"
+#include "ModFingerprint.h"
 #include "Mods.h"
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <windows.h>
@@ -45,6 +48,13 @@ int main() {
     fs::copy_file(here / "Mods" / "TimeLapse" / "TimeLapse.dll", mods / "TimeLapse" / "TimeLapse.dll", ec);
     check(!ec, "example plugin built at build/Mods/TimeLapse");
     write(mods / "TimeLapse" / "mod.ini", "[Mod]\nName=TimeLapse\nPlugin=TimeLapse.dll\n");
+    fs::create_directories(mods / "Startup");
+    fs::copy_file(here / "test-plugins" / "ModStartupProbe.dll", mods / "Startup" / "Probe.dll", ec);
+    check(!ec, "startup probe plugin built outside the package");
+    write(mods / "Startup" / "mod.ini", "[Mod]\nName=Startup\nPlugin=Probe.dll\n");
+    write(mods / "Startup" / "content" / "startup.txt", "N");
+    write(mods / "Broken" / "mod.ini", "[Mod]\nPlugin=missing.dll\n");
+    write(mods / "Broken" / "content" / "leaked.cub", "must not load");
 
     check(splitModList(" A, B ,,C ") == std::vector<std::string>{"A", "B", "C"}, "load list parsing");
 
@@ -56,10 +66,15 @@ int main() {
     host.setTimeOfDay = [&](double t) { time = t; };
     Content content; // no stores opened: only the overrides answer
     host.content = &content;
+    const auto externalLayer = content.addOverride(mods / "Second" / "content");
     {
         ModLoader loader(host);
-        loader.load(mods, {"First", "Second", "Escape", "NotAMod", "Missing", "..", "TimeLapse"}, content);
+        loader.load(mods, {"First", "Second", "Escape", "NotAMod", "Missing", "..", "TimeLapse", "Startup", "Broken"}, content);
         check(loader.loaded().size() == 3, "three mods load (First, Second, TimeLapse)");
+        check(!content.read("startup.txt") && !content.read("leaked.cub"), "declined and missing DLL mods leave no content layer");
+        check(std::all_of(loader.loaded().begin(), loader.loaded().end(), [](const ModInfo &mod) {
+            return mod.fingerprint.size() == 64;
+        }), "every active mod has an input fingerprint");
 
         check(text(content.read("thing.cub")) == "second", "later mod wins");
         check(text(content.read("only-first.wav")) == "f", "earlier mod's other files stay");
@@ -77,6 +92,41 @@ int main() {
         loader.frame(1);
         check(time >= 0 && time < 3600000.0, "plugin wraps the clock past midnight");
     }
+    check(!content.read("only-first.wav") && text(content.read("thing.cub")) == "second",
+          "unload removes owned layers and preserves another registration of the same folder");
+    check(content.removeOverride(externalLayer) && !content.removeOverride(externalLayer) && !content.read("thing.cub"),
+          "external override lifetime remains independent");
+    write(mods / "Startup" / "content" / "startup.txt", "Y");
+    {
+        ModLoader loader(host);
+        loader.load(mods, {"Startup"}, content);
+        check(loader.loaded().size() == 1 && text(content.read("startup.txt")) == "Y", "successful startup retains its content");
+        loader.shutdown();
+        check(!content.read("startup.txt"), "successful shutdown removes its content");
+    }
+    const auto originalFingerprint = modFingerprint(mods / "First", "");
+    write(mods / "First" / "content" / "thing.cub", "changed without a version bump");
+    check(originalFingerprint && originalFingerprint != modFingerprint(mods / "First", ""), "content bytes change the fingerprint");
+    const auto changedFingerprint = modFingerprint(mods / "First", "");
+    write(mods / "First" / "content" / "renamed.cub", "f");
+    fs::remove(mods / "First" / "content" / "only-first.wav");
+    check(changedFingerprint != modFingerprint(mods / "First", ""), "content key set changes the fingerprint");
+    fs::copy(mods / "First", mods / "Relocated", fs::copy_options::recursive, ec);
+    check(!ec && modFingerprint(mods / "First", "") == modFingerprint(mods / "Relocated", ""), "fingerprints do not depend on install paths");
+    const auto pluginFingerprint = modFingerprint(mods / "TimeLapse", "TimeLapse.dll");
+    std::ofstream(mods / "TimeLapse" / "TimeLapse.dll", std::ios::binary | std::ios::app) << "test overlay";
+    check(pluginFingerprint && pluginFingerprint != modFingerprint(mods / "TimeLapse", "TimeLapse.dll"),
+          "DLL bytes change the fingerprint without executing the modified file");
+    check(!modFingerprint(mods / "Broken", "missing.dll"), "missing declared input fails fingerprinting");
+    const std::string abc = "abc";
+    check(bytesSha256({reinterpret_cast<const uint8_t *>(abc.data()), abc.size()}) ==
+          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          "byte hashing matches the standard SHA-256 vector");
+    check(bytesSha256({}) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "empty byte hashing matches the standard SHA-256 vector");
+    const std::vector<uint8_t> million(1000000, 'a');
+    check(bytesSha256(million) == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+          "multi-block byte hashing matches the standard million-byte vector");
     auto logged = [&](const std::string &line) {
         for (const auto &l : log)
             if (l.find(line) != std::string::npos)
@@ -88,6 +138,8 @@ int main() {
     check(logged("NotAMod: not loaded: no mod.ini"), "folder without mod.ini skipped");
     check(logged("TimeLapse: hello"), "plugin logged on load");
     check(logged("TimeLapse: goodbye (2 zones seen)"), "plugin shut down on unload, having seen two zones");
+    check(logged("Startup: startup content present") && logged("Startup: shutdown content present"),
+          "DLL lifecycle sees its layer before decline and through shutdown");
     for (const auto &l : log)
         std::printf("  log  %s\n", l.c_str());
 

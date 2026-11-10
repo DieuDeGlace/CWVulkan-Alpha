@@ -36,6 +36,9 @@ int main() {
         loader.load("nonexistent-mod-folder", {"StoneTint", "StoneTint"}, content);
         check(loader.loaded().size() == 1 && loader.loaded().front().builtin && loader.loaded().front().version == "1",
               "source module loads once without a DLL or mod folder");
+        check(loader.loaded().front().fingerprint.size() == 64 && std::any_of(builtinModules().begin(), builtinModules().end(),
+              [&](const BuiltinModule &module) { return module.id == "StoneTint" && module.fingerprint == loader.loaded().front().fingerprint; }),
+              "source module publishes its configure-time input fingerprint");
         applyTerrainPasses(*zone, terrain);
         check(zone->column(0, 0).blocks.back().r == 75 && zone->column(0, 0).blocks.back().b == 140,
               "source module modifies engine-owned terrain");

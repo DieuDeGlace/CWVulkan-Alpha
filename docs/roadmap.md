@@ -197,6 +197,10 @@ Differences from the Steam engine that shape the plan:
   - [x] built-in controller support (`Gamepad.h`, `[Controller]`): any Xbox-style pad through
     GLFW for moving, camera, jump, dodge, attacks and abilities, the menu row, the world map,
     zoom, menus (stick cursor, A click, B back) and reviving.
+  - [ ] Owner-required controller acceptance: audit and complete actual gameplay
+    and menu input paths, document mappings and verify device/reconnection and
+    keyboard/mouse coexistence. The inherited implementation above does not
+    establish a tested controller system or original Alpha parity.
 - [x] Alpha extractor mod (32-bit, `tools/alpha-extractor`, spec `alpha-extractor.md`): on F9 or a
   trigger file it records, under Alpha's world lock, the loaded zones round the player block for
   block, their regions' location records and zone tables, and every creature record.
@@ -774,8 +778,10 @@ Differences from the Steam engine that shape the plan:
 - [x] Saved-world settings guard: production client/server pin water policy and
   ordered mod IDs/declared versions for new worlds; changed settings and implicit
   extension adoption by unmarked legacy worlds are rejected. Synthetic tests
-  confirm matching reloads and unchanged files after rejection. Code/content
-  fingerprints, migrations and network negotiation remain open.
+  confirm matching reloads and unchanged files after rejection. Bounded declared
+  source/SDK and mod DLL/content fingerprints now reject same-version input
+  changes, with failed-startup/unload content rollback. Unlisted dependencies,
+  migrations and network negotiation remain open.
 - [x] Quests, a required core engine feature (`docs/design/quests.md`, `src/Quests.*`):
   one town resident in three offers a quest a day (the same board for every player): free
   prisoners from a guarded camp, fight beside a band of townspeople against monsters (the two

@@ -55,6 +55,7 @@ struct ModInfo {
     std::string name, version, description, plugin;
     std::filesystem::path folder;
     bool builtin = false; // source module compiled into this engine
+    std::string fingerprint; // SHA-256 of the declared source inputs or loaded mod files
 };
 
 // Reads `folder`/mod.ini; false (with a reason) if the folder is not a mod.

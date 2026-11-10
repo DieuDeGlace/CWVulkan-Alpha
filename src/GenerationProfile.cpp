@@ -8,6 +8,7 @@ std::string generationProfile(bool swimmableWater, const std::vector<ModInfo> &m
         result += mod.builtin ? "Source=" : "Mod=";
         result += std::to_string(mod.folderName.size()) + ":" + mod.folderName;
         result += std::to_string(mod.version.size()) + ":" + mod.version + '\n';
+        result += "Inputs=" + std::to_string(mod.fingerprint.size()) + ':' + mod.fingerprint + '\n';
     }
     return result;
 }

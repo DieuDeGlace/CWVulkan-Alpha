@@ -726,3 +726,17 @@ separate: the audited constructors/builders initialize minus one and copies
 preserve it; its first nondefault producer is still unresolved. No ordinal is
 invented for that spatial member. Short-reader publication, descriptor editing
 and broader generation/lifetime stay open under the contract's explicit bounds.
+
+The subsequent spatial-association producer contract was FINAL/STABLE/HELD and
+read completely. Its audit covers the three large generators' direct output
+families, record copying/relocation, active-byte restoration and separate ordinal
+reference publication. Those scoped paths retain association minus one. The
+first nondefault writer and complete transitive generation remain unresolved;
+the engine does not assign an invented spatial ordinal from this negative result.
+No engine, runtime or test findings were supplied to that source-only author.
+
+Mod input fingerprints and owned content-layer lifetimes are independently
+designed engine features. They use project source declarations, public filesystem
+operations and the operating system's SHA-256 API, without original-game source
+facts. Their bounded compatibility checks do not establish full dependency,
+cross-peer, migration or native gameplay equivalence.

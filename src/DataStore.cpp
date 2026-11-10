@@ -1,4 +1,5 @@
 #include "DataStore.h"
+#include <algorithm>
 #include "Install.h"
 #include "SqlitePath.h"
 #include <sqlite3.h>
@@ -105,7 +106,21 @@ bool Content::open(const std::filesystem::path &gameDir, std::string *error) {
     return true;
 }
 
-void Content::addOverride(const std::filesystem::path &folder) { overrides.push_back(folder); }
+Content::OverrideId Content::addOverride(const std::filesystem::path &folder) {
+    if (nextOverride == 0)
+        return 0;
+    const auto id = nextOverride++;
+    overrides.push_back({id, folder});
+    return id;
+}
+
+bool Content::removeOverride(OverrideId id) {
+    const auto entry = std::find_if(overrides.begin(), overrides.end(), [&](const Override &value) { return value.id == id; });
+    if (entry == overrides.end())
+        return false;
+    overrides.erase(entry);
+    return true;
+}
 
 // A key is a plain file name: no folders, so an override can never reach outside its folder.
 static bool plainName(const std::string &key) {
@@ -115,7 +130,7 @@ static bool plainName(const std::string &key) {
 std::optional<std::vector<uint8_t>> Content::read(const std::string &key) const {
     if (plainName(key))
         for (auto folder = overrides.rbegin(); folder != overrides.rend(); ++folder) {
-            std::ifstream in(*folder / pathOfUtf8(key), std::ios::binary);
+            std::ifstream in(folder->folder / pathOfUtf8(key), std::ios::binary);
             if (in)
                 return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), {});
         }
@@ -137,7 +152,7 @@ std::vector<std::string> Content::list(const std::string &extension) const {
                 keys.insert(std::move(key));
     for (const auto &folder : overrides) {
         std::error_code ec;
-        for (const auto &entry : std::filesystem::directory_iterator(folder, ec))
+        for (const auto &entry : std::filesystem::directory_iterator(folder.folder, ec))
             if (entry.is_regular_file(ec) && matches(utf8(entry.path().filename())))
                 keys.insert(utf8(entry.path().filename()));
     }

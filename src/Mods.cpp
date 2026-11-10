@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "DataStore.h"
 #include "Install.h"
+#include "ModFingerprint.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstring>
@@ -187,6 +188,17 @@ struct ModLoader::Plugin {
     HMODULE library = nullptr;
     AvHost table{};
     AvMod mod{};
+    bool initialized = false;
+    Content *content = nullptr;
+    Content::OverrideId overrideId = 0;
+    ~Plugin() {
+        if (initialized && mod.onShutdown)
+            mod.onShutdown(mod.user);
+        if (library)
+            FreeLibrary(library);
+        if (content)
+            content->removeOverride(overrideId);
+    }
 };
 
 std::vector<std::string> splitModList(const std::string &list) {
@@ -250,6 +262,7 @@ void ModLoader::load(const std::filesystem::path &modsFolder, const std::vector<
                 info.folderName = folderName;
                 info.name = folderName;
                 info.version = module.version;
+                info.fingerprint = module.fingerprint;
                 info.builtin = true;
                 entry = module.load;
                 break;
@@ -259,12 +272,18 @@ void ModLoader::load(const std::filesystem::path &modsFolder, const std::vector<
             continue;
         }
         std::error_code ec;
-        if (!info.builtin && std::filesystem::is_directory(folder / "content", ec))
-            content.addOverride(folder / "content");
+        if (!info.builtin) {
+            const auto fingerprint = modFingerprint(folder, info.plugin, &error);
+            if (!fingerprint) {
+                report(info.name, "not loaded: " + error);
+                continue;
+            }
+            info.fingerprint = *fingerprint;
+        }
 
+        auto plugin = std::make_unique<Plugin>();
+        plugin->context = {info.name, &host};
         if (entry || !info.plugin.empty()) {
-            auto plugin = std::make_unique<Plugin>();
-            plugin->context = {info.name, &host};
             if (!entry) {
                 plugin->library = LoadLibraryW((folder / pathOfUtf8(info.plugin)).wstring().c_str());
                 entry = plugin->library
@@ -273,10 +292,20 @@ void ModLoader::load(const std::filesystem::path &modsFolder, const std::vector<
             }
             if (!entry) {
                 report(info.name, plugin->library ? "plugin has no avModLoad" : "plugin DLL could not be loaded");
-                if (plugin->library)
-                    FreeLibrary(plugin->library);
                 continue;
             }
+        }
+        // Startup may read this layer. Its registration is rolled back with the
+        // plugin on any failure and removed on shutdown, even for content-only mods.
+        if (!info.builtin && std::filesystem::is_directory(folder / "content", ec)) {
+            plugin->overrideId = content.addOverride(folder / "content");
+            if (!plugin->overrideId) {
+                report(info.name, "not loaded: content registration failed");
+                continue;
+            }
+            plugin->content = &content;
+        }
+        if (entry) {
             plugin->table = {sizeof(AvHost), AV_API_VERSION, &plugin->context, hostLog, hostReadContent,
                              hostPlaySound, hostGetTimeOfDay, hostSetTimeOfDay, hostGetBlock, hostGetPlayer,
                              hostShowText, hostShowBanner, hostGetStaticCount, hostGetStatic,
@@ -285,12 +314,11 @@ void ModLoader::load(const std::filesystem::path &modsFolder, const std::vector<
             plugin->mod.size = sizeof(AvMod);
             if (!entry(&plugin->table, &plugin->mod)) {
                 report(info.name, "plugin declined to load");
-                if (plugin->library)
-                    FreeLibrary(plugin->library);
                 continue;
             }
-            plugins.push_back(std::move(plugin));
+            plugin->initialized = true;
         }
+        plugins.push_back(std::move(plugin));
         report(info.name, "loaded" + (info.builtin ? std::string(" (built in)") :
                     (info.version.empty() ? std::string() : " (version " + info.version + ")")));
         mods.push_back(std::move(info));
@@ -360,10 +388,7 @@ void ModLoader::itemReceived(int32_t type, int32_t subtype, int32_t level) {
 void ModLoader::shutdown() {
     // Last loaded, first unloaded.
     for (auto it = plugins.rbegin(); it != plugins.rend(); ++it) {
-        if ((*it)->mod.onShutdown)
-            (*it)->mod.onShutdown((*it)->mod.user);
-        if ((*it)->library)
-            FreeLibrary((*it)->library);
+        it->reset();
     }
     plugins.clear();
     mods.clear();
