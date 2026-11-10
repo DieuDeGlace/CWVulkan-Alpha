@@ -382,6 +382,25 @@ Coins, injured health remained binary32 50, and reload retained health 265, seed
 and negative XP display remain open; these engine regressions do not certify
 original Alpha route behavior or physical controller operation.
 
+DescriptorEquipmentTests checks every early classification return, exact generic
+clear masks across complete records, fixed kind/action routes, full role/kind
+widths and repeated appends. Random cases distinguish all hand outcomes, negative
+remainders, unrecognized classes, the forced-class discarded draw and visible
+field publication before later draws. Optional cases retain failed fields and
+accessories while checking conditional parity calls and subsequent seed order.
+Numeric cases cover the complete kind table, omitted fields, low-byte options,
+the hand predicate, boss caps/scales and distinct unsigned/signed configuration
+draws. An actual actor adapter retains full inactive payloads and gap bytes.
+The seven affected existing suites passed, followed by all 52 CTests on the final
+build. The production Player/controller diagnostic also passed. These checks
+establish the supplied setup and engine adapters; compact generated descriptor
+payload storage and full native generation/activation acceptance remain open.
+Fresh reward, injured-health, dedicated-server and save/reload flows passed for
+this build; all five captures were reviewed. The reward retained level 2/-33 XP/
+7 Platinum Coins; injured health remained binary32 50 with one visit and 139 world
+calls over 17 frames. Reload retained health 265, seed 123, nine map tiles, 33,792
+preview bytes and 170 edits. Bright ground and negative XP display persist.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

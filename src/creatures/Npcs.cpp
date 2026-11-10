@@ -3,6 +3,7 @@
 #include "creatures/FatalRecipients.h"
 #include "creatures/TargetSelection.h"
 #include "creatures/CreatedBehavior.h"
+#include "creatures/DescriptorEquipment.h"
 #include <cassert>
 #include <bit>
 #include "BlockEdits.h"
@@ -89,172 +90,45 @@ bool harmless(int32_t type, uint16_t appearanceFlags) {
     }
 }
 
-// §9.3; mode 0 as the spawn objects spec §4.2 gives it.
+// The older actor setup entry is an engine projection onto the held descriptor
+// kernel. Complete item backing survives each partial header/scalar mutation.
 void equip(Combatant &c, const Appearance &looks, const std::function<int()> &draw, bool generating,
            int32_t descriptorRole, creation::Configuration &configuration) {
     if (looks.flags & 0x40)
         return;
-    auto weapon = [&](int slot, uint8_t subtype, uint8_t material) {
-        c.equipment[slot] = Item{3, subtype, material, 0, c.level, 0};
-    };
-    if (c.characterClass >= 0x80 && c.characterClass <= 0x89) {
-        // Townsfolk and other non-combat NPCs.
-        const uint8_t subtype = c.characterClass == 0x88 ? (uint8_t)(2 + draw() % 5) : 0;
-        c.equipment[CHEST_SLOT] = Item{4, subtype, 6, 0, c.level, 0};
-        c.multipliers[1] = 0.3f;
-        c.multipliers[2] = 0.1f;
-        c.multipliers[3] = c.multipliers[4] = 10;
-        return;
-    }
-    for (int slot : {6, 7, 1, 2, 3, 4, 5, 8}) {
-        Item &item = c.equipment[slot];
-        if (generating) // mode 0 clears the kinds and keeps the levels (spawn objects §3.3)
-            item.type = item.subtype = item.material = 0;
-        else
-            item = Item{};
-    }
-    const bool unarmed = (looks.flags & 0x18) || descriptorRole == 6 || c.type == 118;
-    switch (unarmed ? -1 : c.type) {
-    case -1: break; // no weapons
-    case 117:
-        c.specials.push_back(92);
-        configuration.choice = 0;
-        configuration.kinds.push_back(17);
-        configuration.kinds.push_back(96);
-        break;
-    case 108: case 114: c.specials = {91, 93}; weapon(MAIN_HAND, 17, 2); break;
-    case 46: weapon(MAIN_HAND, 17, 2); break;
-    case 109: c.specials = {86, 93, 91}; weapon(MAIN_HAND, 2, 7); weapon(OFF_HAND, 2, 7); break;
-    case 81: c.specials.push_back(87); weapon(MAIN_HAND, 12, 11); weapon(OFF_HAND, 12, 11); break;
-    case 82: weapon(MAIN_HAND, 0, 1); weapon(OFF_HAND, 0, 1); break;
-    case 47: case 111: case 112: case 113: break;
-    case 43: case 45:
-        c.specials = {95};
-        c.specialization = 2;
-        weapon(MAIN_HAND, (uint8_t)(10 + (draw() & 1)), 2);
-        break;
-    case 115: c.specials = {86, 93}; weapon(MAIN_HAND, 4, 1); weapon(OFF_HAND, 4, 1); break;
-    default: {
-        c.characterClass = c.type == 97 ? 4 : (uint8_t)(1 + draw() % 4);
-        c.specialization = (uint8_t)(draw() & 1);
-        switch (c.characterClass) {
-        case 1:
-            switch (draw() % 3) {
-            case 0: weapon(MAIN_HAND, (uint8_t)(15 + draw() % 3), 1); break;
-            case 1: weapon(MAIN_HAND, (uint8_t)(draw() % 3), 1); weapon(OFF_HAND, (uint8_t)(draw() % 3), 1); break;
-            default: weapon(MAIN_HAND, (uint8_t)(draw() % 3), 1); weapon(OFF_HAND, SHIELD, 1); break;
-            }
-            break;
-        case 2: weapon(MAIN_HAND, (uint8_t)(6 + draw() % 3), 2); break;
-        case 3:
-            switch (draw() % 3) {
-            case 0: weapon(MAIN_HAND, STAFF, 2); break;
-            case 1: weapon(MAIN_HAND, WAND, 2); break;
-            default: weapon(MAIN_HAND, BRACELET, 11); weapon(OFF_HAND, BRACELET, 11); break;
-            }
-            break;
-        default: {
-            const uint8_t subtype = (uint8_t)(3 + draw() % 3);
-            weapon(MAIN_HAND, subtype, 1);
-            if (subtype != LONGSWORD)
-                weapon(OFF_HAND, subtype, 1);
-            break;
-        }
-        }
-        if (!(looks.flags & 0x20)) {
-            const int m = c.mainHand().subtype;
-            const uint8_t material = m == WAND || m == STAFF || m == BRACELET        ? 25
-                                     : m == BOW || m == CROSSBOW || m == BOOMERANG ? 26
-                                     : m == DAGGER || m == FIST || m == LONGSWORD  ? 27
-                                                                                   : 1;
-            c.equipment[CHEST_SLOT] = Item{4, 0, material, 0, c.level, 0};
-            for (auto [slot, type] : {std::pair{SHOULDERS_SLOT, 7}, std::pair{GLOVES_SLOT, 5}, std::pair{BOOTS_SLOT, 6}})
-                if (draw() & 1)
-                    c.equipment[slot] = Item{(uint8_t)type, 0, material, 0, c.level, 0};
-            for (auto [slot, type] : {std::pair{AMULET_SLOT, 8}, std::pair{RING_RIGHT, 9}, std::pair{RING_LEFT, 9}})
-                if (draw() % 10 == 0)
-                    c.equipment[slot] = Item{(uint8_t)type, 0, (uint8_t)(12 - (draw() & 1)), 0, c.level, 0};
-        }
-        break;
-    }
-    }
-    for (int slot : {MAIN_HAND, OFF_HAND})
-        c.equipment[slot].level = std::bit_cast<int16_t>(uint16_t(c.level));
-    if (generating) {
-        // Mode 0: the per-type stat multipliers (health, attack speed, damage, armour,
-        // resistance; < 0 leaves one unchanged) and specials.
-        float *m = c.multipliers;
-        const auto set = [m](float health, float speed, float damage, float armour, float resist) {
-            const float v[5] = {health, speed, damage, armour, resist};
-            for (int k = 0; k < 5; k++)
-                if (v[k] >= 0)
-                    m[k] = v[k];
-        };
-        switch (c.type) {
-        case 17: case 94: case 97: set(400, -1, 1.5f, 3, 3); c.specials.push_back(93); break;
-        case 21: set(250, -1, 2, 3, 3); c.specials.push_back(69); break;
-        case 25: set(200, -1, 0.5f, 3, 3); break;
-        case 46: case 82: set(250, -1, -1, 3, 3); c.specials.push_back(86); break;
-        case 47: case 88: set(250, m[1] * 0.5f, 3, 3, 3); break;
-        case 81: set(250, -1, -1, 3, 3); c.specials.push_back(92); break;
-        case 85: set(1000, -1, 2, 3, 3); break;
-        case 86: c.characterClass = 3, c.specialization = 1; break;
-        case 107: case 108: case 109: case 111: case 112: case 113: case 114: case 115: case 116: case 118:
-            set(2500, 0.5f, 6, 5, 5); // (0.75 attack speed when 0x444820 holds; not specified)
-            break;
-        case 117: set(2500, -1, 5, 4, 5); break;
-        case 119: set(2500, 0.5f, 6, 10, 10); break;
-        default: break;
-        }
-        if (looks.flags & 0x200) {
-            m[0] = std::min(m[0] * 15.f, 10000.f);
-            m[2] *= 3, m[1] *= 0.75f, m[3] += 2, m[4] += 2;
-            static const int32_t BOSS_SPECIALS[5] = {92, 93, 86, 89, 87};
-            c.specials.push_back(BOSS_SPECIALS[uint32_t(draw()) % 5]);
-            configuration.choice = draw() % 3;
-            configuration.kinds.push_back(17);
-            configuration.kinds.push_back(96);
-        }
-    }
-    for (int slot : {6, 7, 5, 2, 4, 3})
-        c.equipment[slot].seed = (uint32_t)draw();
+    std::array<ItemRecord, SLOT_COUNT> records;
+    for (size_t slot = 0; slot < records.size(); slot++)
+        records[slot] = c.equipmentRecord(slot);
+    equipment::setup({c.type, descriptorRole, uint16_t(c.level), looks.flags, c.characterClass, c.specialization,
+                      records, c.multipliers, c.specials, configuration.choice, configuration.kinds},
+                     generating ? 0 : 1, draw);
+    for (size_t slot = 0; slot < records.size(); slot++)
+        c.setEquipment(slot, records[slot]);
 }
 
 namespace {
-// Existing owned equipment projection shared by descriptor setup routes.
-// Full native equipment/stat generation remains a separate provenance gate.
 void equipDescriptor(worldgen::Spawn &s, const Appearance &looks, const std::function<int()> &draw,
                      bool generating) {
-    Combatant c;
-    c.type = s.type;
-    c.controller = (uint8_t)s.controller;
-    c.characterClass = s.characterClass;
-    c.specialization = s.specialization;
-    c.level = s.level;
-    c.powerTier = s.powerTier;
-    std::copy(s.multipliers, s.multipliers + 5, c.multipliers);
-    c.specials = s.specials;
-    for (int slot = 0; slot < 13; slot++) {
-        const worldgen::ItemRecord &r = s.equipment[slot];
-        const int32_t level = s.finished ? r.level : r.level ? r.level : 1;
-        c.equipment[slot] = Item{r.type, r.subtype, r.material, r.rarity, level, r.seed};
+    if (looks.flags & 0x40)
+        return;
+    // The generator currently owns compact item headers. Preserve every
+    // represented field; this bridge does not claim full native payload storage.
+    std::array<ItemRecord, SLOT_COUNT> records;
+    for (size_t slot = 0; slot < records.size(); slot++)
+        records[slot] = toRecord(s.equipment[slot]);
+    equipment::setup({s.type, s.controller, uint16_t(s.level), looks.flags, s.characterClass, s.specialization,
+                      records, s.multipliers, s.specials, s.creationChoice, s.creationKinds},
+                     generating ? 0 : 1, draw);
+    for (size_t slot = 0; slot < records.size(); slot++) {
+        const auto &record = records[slot];
+        auto &item = s.equipment[slot];
+        item.type = record[0]; item.subtype = record[1];
+        std::memcpy(&item.seed, record.data() + 4, 4);
+        std::memcpy(&item.product, record.data() + 8, 4);
+        item.rarity = record[0x0c]; item.material = record[0x0d]; item.byte0e = record[0x0e];
+        item.level = itemLevel(record);
     }
-    creation::Configuration configuration{s.creationChoice, std::move(s.creationKinds)};
-    equip(c, looks, draw, generating, s.controller, configuration);
-    for (int slot = 0; slot < 13; slot++) {
-        const Item &i = c.equipment[slot];
-        worldgen::ItemRecord &r = s.equipment[slot];
-        r.type = i.type, r.subtype = i.subtype, r.material = i.material, r.rarity = i.rarity, r.seed = i.seed;
-        r.level = (int16_t)i.level;
-    }
-    s.characterClass = c.characterClass;
-    s.specialization = c.specialization;
-    std::copy(c.multipliers, c.multipliers + 5, s.multipliers);
-    s.specials = c.specials;
-    s.creationChoice = configuration.choice;
-    s.creationKinds = std::move(configuration.kinds);
 }
-
 void refreshDescriptor(worldgen::Spawn &s, uint64_t identifier, const activation::Context &context,
                        worldgen::Random &random) {
     Appearance looks;

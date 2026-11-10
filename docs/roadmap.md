@@ -90,9 +90,15 @@ Differences from the Steam engine that shape the plan:
   World-owned overlays retain changes before construction and across reactivation
   without mutating shared generated zones. Window queries, raw binary32 distance
   admission, hand-level width and retained flag precedence follow the held caller.
-  Full grouped inventory production, general equipment setup, time/identity
+  Full grouped inventory production, time/identity
   producers, native pointer publication, parent/descriptor lifetime and complete
   native activation remain open.
+- [x] Bounded descriptor equipment setup: full item records retain unlisted
+  fields, generic header clears leave accessories intact, action/configuration
+  appends preserve duplicates, and fixed/random routes retain exact draw order.
+  The full numeric table uses low-byte option admission and the reached hand
+  predicate. Production actor/descriptor adapters share this kernel. Compact
+  generator item storage, wider callers and native acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

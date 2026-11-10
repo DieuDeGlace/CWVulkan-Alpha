@@ -431,8 +431,8 @@ class Npcs {
 // Equipment/setup adapter. Generating corresponds to setup argument zero; the
 // activation route uses a nonzero argument. Preserve the descriptor's full role
 // for its gates, and keep action entries distinct from creation candidates.
-// Held alpha-actor-creation-configuration.md closes those configuration writes
-// and bounded draw paths; unrelated equipment/stat branches remain inherited.
+// Uses the held full descriptor-equipment setup kernel while retaining the
+// actor API. Compact generated descriptors remain an explicit storage adapter.
 void equip(Combatant &c, const Appearance &looks, const std::function<int()> &draw,
            bool generating, int32_t descriptorRole, creation::Configuration &configuration);
 

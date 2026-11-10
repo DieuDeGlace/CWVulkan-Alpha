@@ -1006,3 +1006,21 @@ inferred. Integer counter addition follows physical integration. The existing
 authoritative client/server ownership policy and older block-coordinate endpoint
 callers remain adapters. Imported math, broader native scheduling, object
 ownership/concurrency, native gameplay and server equivalence remain open.
+
+The original-only descriptor-equipment contract was FINAL/STABLE/HELD, read
+completely and hash-verified before replacing the inherited setup projection.
+`alpha-descriptor-equipment-setup.md` has SHA-256
+`621e13d977210c1a2fc7c95cf1e609ab850590c3788814da3664abe03195b495`.
+Its author received no engine, tests, captures, logs or runtime observations.
+
+A borrowed-value kernel now operates on full item records, ordered action and
+candidate collections, full kind/role inputs and explicit scalar state. It keeps
+unlisted bytes, ordered header/level writes, distinct fixed/random admissions,
+the discarded forced-class draw, conditional optional draws and six seed stores.
+Numeric setup preserves low-byte argument admission, retained multipliers, the
+complete supplied table, hand predicate and separate boss arithmetic/draws.
+Actor setup projects complete equipment backing through this kernel. The existing
+generator still stores compact item headers; its adapter preserves all represented
+fields without claiming original descriptor payload storage or constructor values.
+Completed adapter publication does not certify native pointer-visible mutation
+timing, arbitrary producer coverage, imported RNG, concurrency or server behavior.
