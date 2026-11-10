@@ -927,3 +927,36 @@ retain zero hand-level words rather than substituting the actor level. General
 equipment/stat setup, flat one-unit inventory generation, full native grouped
 transfer, pointer publication and complete activation/concurrency remain gates.
 The engine's dedicated-server binding is not a native server equivalence claim.
+
+The original-only direct-route geometry, path-state order and resident bucket
+contracts were HELD and read completely before the next geometry implementation.
+Their SHA-256 identities are respectively
+`5593a1d5d13fa41155c2308c77e73ce9a4bcf152052c90589dee978e6a4d6ac3`,
+`28dbc38804c48e5d9e6d0197fa5090de0755feb47ce81d2797d942ecc68641c2` and
+`a2c44ca0237434dff31079f45c5084dd3ab6e0696e342d6e58854e833d205e57`.
+Neither author received engine, tests, captures, runtime or implementation history.
+
+A separate route kernel simulates only a private fixed-coordinate triplet. It
+retains binary32 conversion, separate square-root boundaries, distinct initial
+and iteration proximity gates, the three-axis budget, terrain boundary scans,
+raised-box scans and the specified non-surface-derived height replacement. True
+can mean sufficient progress without target arrival. Record consumers preserve
+selector/state gates, pointer-identity exclusion, directional truncation and
+asymmetric overlap. The production square root is a bounded platform adapter;
+the native imported routine's internals and ambient controls remain separate.
+
+An immutable-source index stores one admitted center-selected bucket membership
+per record and retains source ordinal order. It uses the producer's binary64/
+integer conversion chain and own-chunk bounds, independently of footprint or
+state. Cached indices use compact offsets; queries obtain the current state and
+stable engine record identity. This preserves the ordinary final membership
+relation without reproducing original allocation or publication machinery.
+Individual relocation, pointer reuse, concurrent publication and unload lifetime
+remain open. Bucket owner/ordinal metadata does not establish record +0x178.
+
+The held path contract additionally supplies snapped endpoint overlap and a
+unique exclusion union. This checkpoint uses those setup/reset relations; its
+score, selection and expansion relations await the separate search implementation.
+The existing search/classification adapter is retained explicitly. Original
+pointer width is represented by engine spatial identity, independently of actor
+IDs. No native server or whole-navigation equivalence follows from this binding.

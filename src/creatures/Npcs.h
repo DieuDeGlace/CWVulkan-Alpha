@@ -8,6 +8,7 @@
 #include "creatures/ActorMap.h"
 #include "creatures/ActorCreation.h"
 #include "creatures/DescriptorRefresh.h"
+#include "creatures/RouteGeometry.h"
 #include "creatures/CreatedBehavior.h"
 #include "creatures/Combat.h"
 #include "creatures/Credits.h"
@@ -87,6 +88,7 @@ struct Npc {
     creation::Configuration creationConfig; // resident, independently initialized for a new actor
     int32_t createdWalkMs = 0;
     created::PathState createdPath;
+    std::set<uintptr_t> spatialExclusions; // endpoint-overlapping spatial identities, independently owned
     std::vector<glm::dvec3> route;
     size_t routeIndex = 0;
     float waitMs = 0;
@@ -305,6 +307,7 @@ class Npcs {
     // Current spatial records for visibility's four side-face tests. Terrain
     // classification uses the step's existing block reader.
     visibility::RecordLookup sightRecords;
+    route::RecordLookup routeRecords;
     // Path search §6.5: opens the closed doors overlapping a box (left empty: none).
     std::function<void(glm::dvec3 lo, glm::dvec3 hi)> openDoors;
     // RandomInteraction §4.4: the seats round a block (in a house, its lists; outdoors, the

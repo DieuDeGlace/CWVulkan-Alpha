@@ -147,6 +147,8 @@ static void maintenancePublication() {
     const std::array<int64_t, 3> reference{0x123456789abcdef, -65537, 999};
     child.fighter.behaviorReference = reference;
     child.creationConfig = {0x12345601, {96, 17, 96}};
+    child.path.path = {{1, 2, 3}};
+    child.spatialExclusions.insert(1234);
     f.owner.equipment[12].cubes[0].x++;
     f.step();
     check(!child.fighter.cooldowns.contains(1234) && child.fighter.linkedItem.retained.word == 123 &&
@@ -158,6 +160,8 @@ static void maintenancePublication() {
           "actual linked reconstruction preserves the reference field skipped by the native body reset");
     check(child.creationConfig.choice == 0x12345601 && child.creationConfig.kinds == std::vector<int32_t>{96, 17, 96},
           "actual linked reconstruction preserves resident creation configuration outside the replaced body");
+    check(child.path.path.empty() && child.spatialExclusions.empty(),
+          "actual linked reconstruction clears path containers and spatial identity exclusions");
     child.fighter.cooldowns[1234] = 55;
     f.owner.skills[0]++;
     f.step();

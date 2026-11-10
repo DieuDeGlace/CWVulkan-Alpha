@@ -1015,9 +1015,22 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
     services.lookup = [&](uint64_t key) { return lookupActor(key, players).body(); };
     services.maximumHealth = [&] { return maxHealth(npc.fighter); };
     services.directRoute = [&](const Body &from, const Body &to, float width) {
-        // The existing owned geometry/search implementation is an adapter;
-        // the original broad geometry and expansion/tie relations remain open.
-        return clearRoute(from.size, from.swimmer, from.blocks(), to.blocks(), width, block, objects);
+        const route::Dimensions size{from.size.x, from.size.y, from.size.z};
+        const route::Subject subject{from.position, size, npc.fighter.appearanceFlags,
+            [&](uintptr_t identity) { return npc.spatialExclusions.contains(identity); }};
+        route::Scene scene;
+        scene.column = [&](int32_t x, int32_t y) -> std::optional<route::Column> {
+            const auto *zone = map.zoneAt(x, y);
+            if (!zone)
+                return std::nullopt;
+            const auto &column = zone->column(x, y);
+            static_assert(sizeof(worldgen::Block) == 4);
+            return route::Column{column.bottom, int32_t(column.blocks.size()), std::as_bytes(std::span(column.blocks))};
+        };
+        scene.spatial = [&](const route::Position &position, int axis, const route::Dimensions &direction, bool terrain) {
+            return route::scanRecords(subject, position, axis, direction, terrain, routeRecords);
+        };
+        return route::direct(subject, to.position, width, scene);
     };
     services.voxel = [&](const created::Position &position) {
         const auto coordinate = [](int64_t value) {
@@ -1032,7 +1045,7 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
             return uint8_t(1);
         return block(x, y, z);
     };
-    services.clearPath = [&] { npc.path.clear(); };
+    services.clearPath = [&] { npc.path.clear(); npc.spatialExclusions.clear(); };
     services.cellPresent = [&](int32_t x, int32_t y) {
         return x >= 0 && y >= 0 && x < 65536 && y < 65536 && map.zone(x, y) != nullptr;
     };
@@ -1041,6 +1054,12 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
             return glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
         };
         npc.path.start(blocks(npc.createdPath.start), blocks(npc.createdPath.goal), npc.createdPath.radius);
+        npc.spatialExclusions.clear();
+        const route::Dimensions size{npc.body.size.x, npc.body.size.y, npc.body.size.z};
+        const route::Subject subject{npc.body.position, size, npc.fighter.appearanceFlags, {}};
+        const auto insert = [&](uintptr_t identity) { npc.spatialExclusions.insert(identity); };
+        route::endpointExclusions(subject, npc.createdPath.start, routeRecords, insert);
+        route::endpointExclusions(subject, npc.createdPath.goal, routeRecords, insert);
     };
     services.pathStep = [&] {
         npc.path.radius = npc.createdPath.radius;

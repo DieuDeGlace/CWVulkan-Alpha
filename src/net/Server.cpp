@@ -817,6 +817,10 @@ void Server::stepWorld(float dtMs) {
         npcs.sightRecords = [this](int32_t zx, int32_t zy, const creatures::visibility::RecordVisitor &visit) {
             statics.visibilityRecords(zones, zx, zy, visit);
         };
+    if (!npcs.routeRecords)
+        npcs.routeRecords = [this](int32_t x, int32_t y, const creatures::route::RecordVisitor &visit) {
+            statics.routeRecords(zones, x, y, visit);
+        };
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };

@@ -104,9 +104,16 @@ Differences from the Steam engine that shape the plan:
   native target-selection and wider consumable acceptance remain open.
 - [ ] Complete created-actor behavior: production roots now retry combat,
   companion and wander in order. The bounded selection, companion caller and
-  third-child counter/draw relations are implemented; broad geometry/search,
-  later combat/navigation, universal reference initialization and complete
+  third-child counter/draw relations are implemented; full search classification,
+  expansion, later combat, universal reference initialization and complete
   native scheduling/gameplay acceptance remain open.
+- [x] Bounded companion direct-route geometry: private raw-coordinate simulation
+  retains proximity, budget, terrain/raised-box query order, directional record
+  tests and progress-only success. Resident spatial buckets use one center-selected
+  reference per source record with ordered live-state lookup. Endpoint setup
+  records a unique spatial-identity exclusion union; path/body reset clears it.
+  The production created-companion caller uses this query. Imported math,
+  relocation/concurrency, complete path search and native acceptance remain open.
 - [x] Raw reference core state: existing field 40 retains all 24 bytes through
   wire/core refresh and the inspected linked reset. Descriptor activation copies
   its effective raw coordinates. Fresh engine storage is deterministic zero,

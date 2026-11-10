@@ -305,6 +305,37 @@ flows passed; all five captures were reviewed. Rewards retained level 2/-33 XP/
 123, nine map tiles, the preview and 170 edits. Known bright ground, the negative
 XP display and broader native visual/gameplay acceptance remain open.
 
+RouteGeometryTests checks initial/iteration proximity differences, separate
+square-root queries, capped work, exact vertical increments and progress success
+without actor-position writes. Terrain cases retain missing-column blockage,
+swimmer handling, raised-box height replacement and remaining inner-Z queries
+after blockage. Record fixtures cover pointer exclusion, selector/state order,
+directional truncation, edge equality and negative odd orientation.
+
+Bucket checks cover X-outer/Y-inner scan order, first-record exits and the full
+first-list traversal before a retained third-axis terrain result is tested.
+Production index cases retain duplicate-valued records, one center membership,
+own-chunk and negative boundaries, live state, owner/ordinal metadata, immediate
+visitor stop, snapshot replacement and unload. Endpoint overlap uses snapped
+centers and accumulates unique identities. A real companion-world fixture uses
+the current object state to choose direct steering or the separate search
+continuation. Linked reconstruction clears search containers and exclusions.
+Search expansion/classification, imported math and original-client gameplay
+remain separate acceptance gates.
+
+All 49 CTests and the production Player/controller diagnostic passed for this
+geometry checkpoint. Fresh reward, injured-health, dedicated-server and save/
+reload flows passed; their five captures and a repeated health capture were
+reviewed. Reward state retained level 2/-33 XP/7 Platinum Coins, injured health
+remained binary32 50, and reload retained seed 123, nine map tiles, the preview
+and 170 edits. Bright ground and negative XP display remain unresolved.
+
+The concurrent health run was unusually slow and accumulated 3,726 world calls
+over 17 input frames. An isolated repeat of the unchanged build completed in
+16.427 seconds with 133 calls over 17 frames. Both retained health 50 and maximum
+20 ms pieces. The stall did not reproduce; contention is a possible explanation,
+not an established cause or a general performance acceptance result.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

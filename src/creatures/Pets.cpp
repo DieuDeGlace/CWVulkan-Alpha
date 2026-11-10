@@ -55,6 +55,8 @@ uint64_t Npcs::freeId() const {
 
 // §9.2 steps 1-5 and §9.4: the creature becomes the pet of `owner` as the Pet slot item says.
 void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
+    pet.path.clear();
+    pet.spatialExclusions.clear();
     Combatant c;
     c.id = pet.fighter.id;
     c.health = pet.fighter.health;

@@ -615,6 +615,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     npcs.sightRecords = [&](int32_t zx, int32_t zy, const creatures::visibility::RecordVisitor &visit) {
         statics.visibilityRecords(view.held(), zx, zy, visit);
     };
+    npcs.routeRecords = [&](int32_t x, int32_t y, const creatures::route::RecordVisitor &visit) {
+        statics.routeRecords(view.held(), x, y, visit);
+    };
     npcs.pathStatics = [&](int32_t ix0, int32_t ix1, int32_t iy0, int32_t iy1,
                            const std::function<void(const creatures::SearchStatic &)> &visit) {
         statics.searchStatics(view.held(), ix0, ix1, iy0, iy1, visit);

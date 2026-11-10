@@ -67,6 +67,34 @@ std::vector<uint8_t> StaticStates::stateBytes(int32_t zx, int32_t zy) const {
     return out;
 }
 
+void StaticStates::routeRecords(const worldgen::WorldMap &map, int32_t cellX, int32_t cellY,
+                               const creatures::route::RecordVisitor &visit) const {
+    if (cellX < 0 || cellY < 0 || cellX >= 0x200000 || cellY >= 0x200000)
+        return;
+    const Key key{cellX / 32, cellY / 32};
+    const auto held = map.zones().find(key);
+    if (held == map.zones().end())
+        return;
+    const auto &source = held->second;
+    auto &index = spatial[key];
+    // Compare ownership without locking a weak pointer on every bucket query.
+    if (index.address != source.get() || index.source.owner_before(source) || source.owner_before(index.source)) {
+        index.buckets.build(*source);
+        index.source = source;
+        index.address = source.get();
+    }
+    const auto *states = zone(key.first, key.second);
+    for (const uint32_t ordinal : index.buckets.at(cellX % 32, cellY % 32)) {
+        const auto &object = source->statics[ordinal];
+        const uint8_t state = states && ordinal < states->size() ? (*states)[ordinal].state : object.state;
+        const creatures::route::Record record{
+            reinterpret_cast<uintptr_t>(&object), object.kind, {object.x, object.y, object.z}, object.rotation,
+            {object.scale[0], object.scale[1], object.scale[2]}, state, {key.first, key.second, int32_t(ordinal)}};
+        if (!visit(record))
+            break;
+    }
+}
+
 std::array<uint8_t, 88> StaticStates::record(const worldgen::Zone &zone, int32_t index) const {
     std::array<uint8_t, 88> r{};
     const auto *list = this->zone(zone.zx, zone.zy);

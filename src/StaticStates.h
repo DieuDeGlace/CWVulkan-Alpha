@@ -9,6 +9,8 @@
 #include "creatures/Inventory.h"
 #include "creatures/Npcs.h"
 #include "creatures/Physics.h"
+#include "creatures/RouteGeometry.h"
+#include "creatures/SpatialBuckets.h"
 #include "worldgen/Zone.h"
 #include <array>
 #include <functional>
@@ -36,7 +38,7 @@ class StaticStates {
     // A zone's statics as generated, then the state bytes of its save (alpha-saves §5.2).
     void generated(const worldgen::Zone &zone);
     void restore(int32_t zx, int32_t zy, const std::vector<uint8_t> &states);
-    void forget(int32_t zx, int32_t zy) { zones.erase({zx, zy}); }
+    void forget(int32_t zx, int32_t zy) { zones.erase({zx, zy}); spatial.erase({zx, zy}); }
     const std::vector<StaticState> *zone(int32_t zx, int32_t zy) const;
     std::vector<uint8_t> stateBytes(int32_t zx, int32_t zy) const;
     // Physics §4.5: whether a static object's box overlaps the box `lo`..`hi` (blocks). Traps
@@ -63,6 +65,8 @@ class StaticStates {
     // Current state byte plus the retained spatial metadata, in source order.
     void visibilityRecords(const worldgen::WorldMap &map, int32_t zx, int32_t zy,
                            const creatures::visibility::RecordVisitor &visit) const;
+    void routeRecords(const worldgen::WorldMap &map, int32_t cellX, int32_t cellY,
+                      const creatures::route::RecordVisitor &visit) const;
     // Packets §3.6: a static's 88-byte section-6 record, and applying one received.
     std::array<uint8_t, 88> record(const worldgen::Zone &zone, int32_t index) const;
     void apply(const uint8_t *record);
@@ -109,5 +113,11 @@ class StaticStates {
     // §6.3: the one state setter (the hook a mod would use for new usable kinds).
     void set(const worldgen::StaticObject &o, StaticState &s, uint8_t to, std::vector<creatures::SoundEvent> &sounds);
     std::map<Key, std::vector<StaticState>> zones;
+    struct IndexedSpatial {
+        std::weak_ptr<const worldgen::Zone> source;
+        const worldgen::Zone *address = nullptr;
+        creatures::SpatialBuckets buckets;
+    };
+    mutable std::map<Key, IndexedSpatial> spatial;
     std::set<Key> changed;
 };
