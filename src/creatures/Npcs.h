@@ -420,12 +420,13 @@ class Npcs {
     float leftoverMs = 0;
 };
 
-// §9.3: the weapons and armour a spawned creature carries. `generating`: the zone generator's
-// mode 0 (spawn objects spec §4.2), which also sets the per-type stat multipliers and specials,
-// a boss's extras (its +0x10b8 choice into `bossChoice`) and the levels of both hands;
-// otherwise the activation mode.
-void equip(Combatant &c, const Appearance &looks, const std::function<int()> &draw, bool generating = false,
-           int32_t *bossChoice = nullptr);
+// Equipment/setup adapter. Generating corresponds to setup argument zero; the
+// activation route uses a nonzero argument. Preserve the descriptor's full role
+// for its gates, and keep action entries distinct from creation candidates.
+// Held alpha-actor-creation-configuration.md closes those configuration writes
+// and bounded draw paths; unrelated equipment/stat branches remain inherited.
+void equip(Combatant &c, const Appearance &looks, const std::function<int()> &draw,
+           bool generating, int32_t descriptorRole, creation::Configuration &configuration);
 
 // Spawn objects spec §3.2 steps 2-7, for worldgen::Terrain::finishSpawn: the appearance and
 // mode-0 equipment of a freshly generated spawn, a boss's spirit, the rarities and level

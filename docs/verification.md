@@ -257,6 +257,30 @@ connected-client/server smoke passed. The rendered client frame was reviewed.
 Full native actor replacement, saved-state restoration, alias lifetime and
 incomplete transport behavior remain separate acceptance gates.
 
+Extended ActorCreationTests distinguishes descriptor and actor defaults, checks
+candidate/action separation, duplicate appends on repeated setup, full-width role
+gates, early returns, the separate action/choice draws and all six seed writes.
+Actual finishing and activation paths retain full choice values and independent
+candidate allocations. LinkedItemTests also verifies resident configuration
+through actual body reconstruction. The action-phase fixture isolates its AI
+decision counter so an independent behavior decision cannot replace its supplied
+action before dispatch.
+
+Fresh candidate appearances for kinds 17 and 96 are compared byte by byte with
+the independent full-extent contract, excluding unspecified byte 5. Boundary
+random values still spend all six selection/prefix draws, copy alternatives
+spend only selection, and full-width kind classification is checked separately.
+Actual NPC dispatch covers the three reachable generated kinds 17, 37 and 96
+with independently initialized newborn configuration. Native descriptor refresh,
+upstream distribution, other kinds, rendering and online authority stay open.
+
+All 47 CTests and the production Player/controller diagnostic passed for this
+configuration/appearance checkpoint. Fresh reward, injured-health, dedicated
+server and save/reload flows passed; all five captures were reviewed. Rewards
+retained level 2/-33 XP/7 Platinum Coins, injured health remained binary32 50,
+and reload retained seed 123, nine map tiles, the preview and 170 edits. Bright
+ground and broader native visual/gameplay acceptance remain unresolved.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

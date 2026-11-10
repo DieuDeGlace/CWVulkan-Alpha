@@ -6,8 +6,8 @@
 
 namespace creatures::creation {
 
-// Resident configuration, outside copied network core state. Its wider native
-// producers remain open; fresh actors use choice1 and an empty kind collection.
+// Resident configuration, outside copied network core state. Fresh actors use
+// choice 1 and no candidates; descriptor activation supplies its own values.
 struct Configuration {
     int32_t choice = 1;
     std::vector<int32_t> kinds;
@@ -51,7 +51,7 @@ struct Result {
 // Held alpha-world-actor-creation.md. Call at the action-effect phase before
 // clock advancement. The caller publishes the completed actor in its live map.
 // Stable supplied actor/map pointers and ordinary finite arithmetic are required.
-// Generation outputs are closed only for kind0x25 and unsigned kinds >0x9b;
+// Generation outputs are closed for kinds 17, 37, 96 and unsigned kinds >0x9b;
 // other generation kinds report an engine capability boundary, not a native gate.
 Result create(Actor current, const Configuration &configuration, int32_t step,
               const World &world, const Services &services);

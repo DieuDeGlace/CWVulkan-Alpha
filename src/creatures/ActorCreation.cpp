@@ -17,6 +17,27 @@ void generatedAppearance(uint32_t kind, Appearance &looks, const Services &servi
         looks.bodyScale = 1.5f;
         looks.box = glm::vec3(std::bit_cast<float>(uint32_t(0x3f4ccccd)));
         looks.flags |= 0x0029;
+    } else if (kind == 0x11) {
+        looks.models[0] = 0x0148;
+        looks.models[1] = 0x0149;
+        looks.models[3] = 0x014c;
+        looks.models[4] = 0x014b;
+        looks.models[2] = 0x014a;
+        looks.headScale = std::bit_cast<float>(uint32_t(0x3f4ccccd));
+        looks.handRotation = {0, -90, 0};
+        looks.bodyOffset = {0, 0, -2};
+        looks.headOffset = {0, 4, 7};
+        looks.handOffset = {5, 3, 0};
+        looks.flags |= 0x0428;
+    } else if (kind == 0x60) {
+        looks.models[0] = 0x00e3;
+        looks.models[1] = NO_MODEL;
+        looks.models[3] = 0x00e4;
+        looks.models[4] = 0x00e2;
+        looks.models[2] = 0x00e5;
+        looks.handOffset = {6, 3, -2};
+        looks.handRotation = {0, -90, 0};
+        looks.flags |= 0x0028;
     }
 }
 } // namespace
@@ -71,7 +92,7 @@ Result create(Actor current, const Configuration &configuration, int32_t step,
         result.fighter.copyEquipmentFrom(*provider.fighter);
         result.looks = *provider.looks; // all semantic appearance fields; no native gap5 claim
     } else {
-        if (kind != 0x25 && kind <= 0x9b)
+        if (kind != 0x11 && kind != 0x25 && kind != 0x60 && kind <= 0x9b)
             return {Outcome::AppearancePending, {}};
         result.fighter.type = std::bit_cast<int32_t>(kind);
         generatedAppearance(kind, result.looks, services);

@@ -169,13 +169,16 @@ struct Spawn {
     uint8_t questRole = 0;
     // What the zone generator's finishing pass (spawn objects spec §3.2) made of it: the
     // appearance record (172 bytes, +0x74; its flags are `appearanceFlags`), the
-    // specialization (+0x31), the special actions (+0x10ac) and a boss's +0x10b8 choice.
+    // specialization (+0x31) and special actions (+0x10ac).
     // Until then `finished` is false and the creature is made up when it comes alive.
     bool finished = false;
     std::array<uint8_t, 172> appearance{};
     uint8_t specialization = 0;
     std::vector<int32_t> specials;
-    int32_t bossChoice = 0;
+    // Descriptor defaults differ from a fresh actor's choice 1. Candidate kinds
+    // are separate from actions and retain insertion order, including duplicates.
+    int32_t creationChoice = 0; // +0x10b8, full width
+    std::vector<int32_t> creationKinds; // +0x10bc
 };
 
 // Trees §5: a kind-60 record, a point in an autumn or blossom crown that leaves fall from

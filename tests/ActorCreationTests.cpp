@@ -242,6 +242,181 @@ void generation() {
               "an unclosed generation output is an explicit engine capability boundary rather than a claimed native rejection");
     }
 }
+void descriptorConfiguration() {
+    check(worldgen::Spawn{}.creationChoice == 0 && worldgen::Spawn{}.creationKinds.empty() &&
+          creation::Configuration{}.choice == 1 && creation::Configuration{}.kinds.empty(),
+          "descriptor zero/empty and fresh actor one/empty are distinct defaults");
+    const std::array<int, 6> seedSlots{6, 7, 5, 2, 4, 3};
+    for (const int32_t kind : {81, 117}) {
+        for (const bool generating : {false, true}) {
+            Combatant actor;
+            actor.type = kind;
+            actor.specials = {123};
+            Appearance looks;
+            creation::Configuration configuration{7, {-1}};
+            int calls = 0;
+            const auto draw = [&] { return 100 + calls++; };
+            equip(actor, looks, draw, generating, 1, configuration);
+            const bool candidates = kind == 117;
+            const auto actions = candidates ? std::vector<int32_t>{123, 92} :
+                generating ? std::vector<int32_t>{123, 87, 92} : std::vector<int32_t>{123, 87};
+            check(actor.specials == actions && configuration.choice == (candidates ? 0 : 7) &&
+                  configuration.kinds == (candidates ? std::vector<int32_t>{-1, 17, 96} : std::vector<int32_t>{-1}) && calls == 6,
+                  "bounded builders preserve old entries, separate action92 from candidate kinds, and spend six tail draws");
+            for (size_t i = 0; i < seedSlots.size(); i++)
+                check(actor.equipment[seedSlots[i]].seed == 100 + i,
+                      "the six seed writes retain descriptor offset order rather than slot order");
+            equip(actor, looks, draw, false, 1, configuration);
+            auto repeated = actions;
+            repeated.push_back(candidates ? 92 : 87);
+            check(actor.specials == repeated && configuration.choice == (candidates ? 0 : 7) && calls == 12 &&
+                  configuration.kinds == (candidates ? std::vector<int32_t>{-1, 17, 96, 17, 96} : std::vector<int32_t>{-1}),
+                  "nonzero setup keeps prior configuration and can append the earlier kind117 pair again");
+        }
+    }
+    for (const int32_t kind : {81, 117}) {
+        for (int selected = 0; selected < 5; selected++) {
+            Combatant actor;
+            actor.type = kind;
+            Appearance looks;
+            looks.flags = 0x200;
+            creation::Configuration configuration{7, {-1}};
+            const std::array<int32_t, 5> pool{92, 93, 86, 89, 87};
+            int calls = 0;
+            const auto draw = [&] {
+                const int call = calls++;
+                if (call == 1)
+                    check(actor.specials.back() == pool[size_t(selected)] && configuration.choice == (kind == 117 ? 0 : 7),
+                          "action selection is published before the separate choice draw");
+                if (call == 2)
+                    check(configuration.choice == 2 && configuration.kinds.back() == 96,
+                          "choice and candidate appends precede the common seed tail");
+                return call == 0 ? selected : call == 1 ? 5 : 200 + call;
+            };
+            equip(actor, looks, draw, true, 1, configuration);
+            const auto actions = kind == 117 ? std::vector<int32_t>{92, pool[size_t(selected)]} :
+                                              std::vector<int32_t>{87, 92, pool[size_t(selected)]};
+            const auto kinds = kind == 117 ? std::vector<int32_t>{-1, 17, 96, 17, 96} : std::vector<int32_t>{-1, 17, 96};
+            check(actor.specials == actions && configuration.choice == 2 && configuration.kinds == kinds && calls == 8,
+                  "boss setup keeps exact five-action selection, separate choice and duplicate candidate order");
+            for (size_t i = 0; i < seedSlots.size(); i++)
+                check(actor.equipment[seedSlots[i]].seed == 202 + i,
+                      "boss selection consumes two draws before all six seeds");
+        }
+    }
+    for (const uint8_t classification : {uint8_t(0), uint8_t(0x80), uint8_t(0x84), uint8_t(0x88), uint8_t(0x89)}) {
+        Combatant actor;
+        actor.type = 117;
+        actor.characterClass = classification;
+        actor.specials = {123};
+        Appearance looks;
+        looks.flags = classification == 0 ? 0x240 : 0x200;
+        creation::Configuration configuration{0x12345601, {-7, 96}};
+        int calls = 0;
+        equip(actor, looks, [&] { calls++; return 0; }, true, 1, configuration);
+        check(configuration.choice == 0x12345601 && configuration.kinds == std::vector<int32_t>{-7, 96} &&
+              actor.specials == std::vector<int32_t>{123} && calls == (classification == 0x88 ? 1 : 0),
+              "early flag and special-class returns leave configuration intact and skip generic draws");
+    }
+    for (const int32_t role : {6, 0x106}) {
+        for (const uint16_t flags : {uint16_t(0), uint16_t(8), uint16_t(16), uint16_t(0x200)}) {
+            for (const bool generating : {false, true}) {
+                Combatant actor;
+                actor.type = 117;
+                actor.controller = uint8_t(role);
+                Appearance looks;
+                looks.flags = flags;
+                creation::Configuration configuration{7, {-1}};
+                int calls = 0;
+                equip(actor, looks, [&] { calls++; return 5; }, generating, role, configuration);
+                const bool earlyPair = role != 6 && !(flags & 0x18);
+                const bool laterPair = generating && (flags & 0x200);
+                std::vector<int32_t> expected{-1};
+                for (int pair = 0; pair < int(earlyPair) + int(laterPair); pair++) {
+                    expected.push_back(17);
+                    expected.push_back(96);
+                }
+                check(configuration.kinds == expected && configuration.choice == (laterPair ? 2 : earlyPair ? 0 : 7) &&
+                      calls == (laterPair ? 8 : 6),
+                      "full descriptor role and mask18 gate only the earlier pair; nonzero setup skips the later phase");
+            }
+        }
+    }
+    for (const int32_t kind : {81, 117}) {
+        worldgen::Spawn spawn;
+        spawn.type = kind;
+        worldgen::Random random{73};
+        finishSpawn(spawn, random, false);
+        check(spawn.finished && spawn.creationChoice == 0 &&
+              spawn.creationKinds == (kind == 117 ? std::vector<int32_t>{17, 96} : std::vector<int32_t>{}) &&
+              spawn.specials == (kind == 117 ? std::vector<int32_t>{92} : std::vector<int32_t>{87, 92}),
+              "the actual finishing pass retains independent descriptor configuration and actions");
+        finishSpawn(spawn, random, false);
+        check(spawn.creationKinds == (kind == 117 ? std::vector<int32_t>{17, 96, 17, 96} : std::vector<int32_t>{}) &&
+              spawn.specials == (kind == 117 ? std::vector<int32_t>{92, 92} : std::vector<int32_t>{87, 92, 87, 92}),
+              "a second finishing pass appends instead of rebuilding configuration from fresh defaults");
+    }
+}
+void candidateAppearances() {
+    for (const int32_t kind : {17, 96}) {
+        for (const int32_t randomValue : {0, 32767}) {
+            Fixture f;
+            f.configuration = {0, {kind}};
+            f.services.draw = [&] { f.draws++; return randomValue; };
+            const auto result = f.run();
+            check(result.actor && result.actor->fighter.type == kind && f.draws == 6 &&
+                  f.configuration.kinds == std::vector<int32_t>{kind},
+                  "a single candidate still spends its selection draw before five discarded appearance draws without consuming the entry");
+            if (!result.actor)
+                continue;
+            std::array<uint8_t, 172> expected{}, actual{};
+            const auto word = [&](size_t offset, uint16_t value) { std::memcpy(expected.data() + offset, &value, 2); };
+            const auto bits = [&](size_t offset, uint32_t value) { std::memcpy(expected.data() + offset, &value, 4); };
+            expected[2] = expected[3] = expected[4] = 0xff;
+            word(6, kind == 17 ? 0x0c28 : 0x0828);
+            bits(8, 0x3f75c290);
+            bits(12, 0x3f75c290);
+            bits(16, 0x400a3d71);
+            const std::array<uint16_t, 8> models = kind == 17 ?
+                std::array<uint16_t, 8>{0x0148, 0x0149, 0x014a, 0x014c, 0x014b, 0xffff, 0xffff, 0xffff} :
+                std::array<uint16_t, 8>{0x00e3, 0xffff, 0x00e5, 0x00e4, 0x00e2, 0xffff, 0xffff, 0xffff};
+            for (size_t i = 0; i < models.size(); i++)
+                word(0x14 + 2 * i, models[i]);
+            // Exact nonzero binary32 fields from the held full-extent table.
+            // All unlisted bytes are specified zero, except unknown byte 5.
+            for (const auto [offset, value] : std::array<std::pair<size_t, uint32_t>, 23>{{
+                    {0x24, kind == 17 ? 0x3f4ccccdu : 0x3f8147aeu},
+                    {0x28, 0x3f800000}, {0x2c, 0x3f800000}, {0x30, 0x3f7ae148},
+                    {0x34, 0x3f800000}, {0x38, 0x3f733333}, {0x3c, 0x3f4ccccd},
+                    {0x40, 0x3f800000}, {0x44, 0x3f800000}, {0x50, 0xc2b40000},
+                    {0x6c, kind == 17 ? 0xc0000000u : 0xc0a00000u},
+                    {0x74, kind == 17 ? 0x40800000u : 0x3f000000u},
+                    {0x78, kind == 17 ? 0x40e00000u : 0x40a00000u},
+                    {0x7c, kind == 17 ? 0x40a00000u : 0x40c00000u},
+                    {0x80, 0x40400000}, {0x84, kind == 17 ? 0u : 0xc0000000u},
+                    {0x88, 0x40400000}, {0x8c, 0x3f800000}, {0x90, 0xc1280000},
+                    {0x98, 0xc1000000}, {0x9c, 0x40000000}, {0xa0, 0}, {0xa8, 0}}})
+                bits(offset, value);
+            result.actor->looks.serialize(actual.data());
+            bool matches = true;
+            for (size_t i = 0; i < actual.size(); i++)
+                if (i != 5 && actual[i] != expected[i])
+                    matches = false;
+            check(matches, "every specified appearance byte matches the independent fresh-state table after caller flag publication");
+        }
+        Fixture copied;
+        copied.configuration = {1, {kind}};
+        const auto result = copied.run();
+        check(result.actor && copied.draws == 1 && result.actor->fighter.type == copied.current.fighter.type,
+              "copy alternatives retain the candidate draw but skip all appearance-generation draws");
+    }
+    Fixture fullWidth;
+    fullWidth.configuration = {0, {0x10011}};
+    const auto result = fullWidth.run();
+    check(result.actor && result.actor->fighter.type == 0x10011 && result.actor->looks.models[0] == NO_MODEL &&
+          result.actor->looks.flags == 0x0800 && fullWidth.draws == 6,
+          "matching a candidate's low byte does not select its full-width appearance case");
+}
 void production() {
     worldgen::WorldMap map;
     map.add(std::make_shared<worldgen::Zone>(0, 0));
@@ -475,6 +650,9 @@ void controlledAndDescriptor() {
     check(descriptors.all().size() == 1 && descriptors.all()[0].fighter.behaviorReference ==
           std::array<int64_t, 3>{source.x, source.y, source.z},
           "actual descriptor activation retains all raw reference coordinates independently of the body adapter");
+    check(descriptors.all().size() == 1 && descriptors.all()[0].creationConfig.choice == 0 &&
+          descriptors.all()[0].creationConfig.kinds.empty(),
+          "actual descriptor activation replaces fresh actor choice1 with descriptor choice0 even for an empty collection");
     player.fighter.action = 92;
     player.fighter.actionMs = phases(player.fighter, 92).windUp - 10;
     Npcs controlled;
@@ -485,16 +663,74 @@ void controlledAndDescriptor() {
           born->fighter.actionMs == 0 && born->fighter.behaviorReference == std::array<int64_t, 3>{},
           "actual designated role-zero action dispatch creates before clock advancement with separately defined fresh engine reference storage");
 }
+void configuredActivation() {
+    worldgen::WorldMap map;
+    auto zone = std::make_shared<worldgen::Zone>(1, 0);
+    worldgen::Spawn source;
+    source.x = 276 * 65536ll;
+    source.y = 20 * 65536ll;
+    source.z = 10 * 65536ll;
+    source.type = 81;
+    source.finished = true;
+    Appearance{}.serialize(source.appearance.data());
+    source.specials = {87, 92};
+    source.creationChoice = 0x12345601;
+    source.creationKinds = {96, -17, 96};
+    zone->spawns.push_back(source);
+    map.add(zone);
+    const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z < 10 ? 1 : 0); };
+    Entity player;
+    player.fighter.id = 1;
+    player.fighter.health = maxHealth(player.fighter);
+    player.body.place({276.5, 150.5, 11.1});
+    Npcs world;
+    world.step(16, map, {{player.fighter, player.body, 0, 0, false}}, 1000, 0, floor);
+    check(world.all().size() == 1, "configured descriptor activates in the real actor world");
+    if (world.all().size() != 1)
+        return;
+    auto &actor = world.npcs()[0];
+    check(actor.fighter.specials == source.specials && actor.creationConfig.choice == 0x12345601 &&
+          actor.creationConfig.kinds == source.creationKinds,
+          "activation copies full configuration and candidate order separately from actions");
+    actor.creationConfig.kinds[0] = 17;
+    check(zone->spawns[0].creationKinds == source.creationKinds,
+          "resident candidates do not alias the descriptor allocation");
+    actor.creationConfig = {0, {}};
+    actor.thinkMs = 0; // isolate the action phase from the next independent AI decision
+    actor.fighter.action = 92;
+    actor.fighter.actionMs = phases(actor.fighter, 92).windUp - 10;
+    world.step(20, map, {{player.fighter, player.body, 0, 0, false}}, 1000, 0, floor);
+    const auto born = std::find_if(world.all().begin(), world.all().end(),
+                                  [](const Npc &npc) { return npc.fighter.id == UINT64_MAX; });
+    check(born != world.all().end() && born->fighter.type == 37 && born->looks.flags == 0x0829 &&
+          born->creationConfig.choice == 1 && born->creationConfig.kinds.empty(),
+          "the real activated creator generates kind37 from zero/empty while its newborn retains independent one/empty defaults");
+    for (const int32_t kind : {17, 96}) {
+        actor.creationConfig = {0, {kind}};
+        actor.fighter.action = 92;
+        actor.fighter.actionMs = phases(actor.fighter, 92).windUp - 10;
+        actor.thinkMs = 0;
+        const size_t before = world.all().size();
+        world.step(20, map, {{player.fighter, player.body, 0, 0, false}}, 1000, 0, floor);
+        check(world.all().size() == before + 1 && world.all().back().fighter.type == kind &&
+              world.all().back().looks.flags == (kind == 17 ? 0x0c28 : 0x0828) &&
+              world.all().back().creationConfig.choice == 1 && world.all().back().creationConfig.kinds.empty(),
+              "real action dispatch also publishes each reachable candidate appearance with fresh independent resident configuration");
+    }
+}
 } // namespace
 int main() {
     admission();
     countAndKeys();
     copiesAndDefaults();
     generation();
+    descriptorConfiguration();
+    candidateAppearances();
     production();
     referenceAndWander();
     companionCaller();
     controlledAndDescriptor();
+    configuredActivation();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

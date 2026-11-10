@@ -90,7 +90,7 @@ bool harmless(int32_t type, uint16_t appearanceFlags) {
 
 // §9.3; mode 0 as the spawn objects spec §4.2 gives it.
 void equip(Combatant &c, const Appearance &looks, const std::function<int()> &draw, bool generating,
-           int32_t *bossChoice) {
+           int32_t descriptorRole, creation::Configuration &configuration) {
     if (looks.flags & 0x40)
         return;
     auto weapon = [&](int slot, uint8_t subtype, uint8_t material) {
@@ -112,14 +112,19 @@ void equip(Combatant &c, const Appearance &looks, const std::function<int()> &dr
         else
             item = Item{};
     }
-    const bool unarmed = (looks.flags & 0x18) || c.controller == 6 || c.type == 118;
+    const bool unarmed = (looks.flags & 0x18) || descriptorRole == 6 || c.type == 118;
     switch (unarmed ? -1 : c.type) {
     case -1: break; // no weapons
-    case 117: c.specials = {92, 17, 96}; break;
+    case 117:
+        c.specials.push_back(92);
+        configuration.choice = 0;
+        configuration.kinds.push_back(17);
+        configuration.kinds.push_back(96);
+        break;
     case 108: case 114: c.specials = {91, 93}; weapon(MAIN_HAND, 17, 2); break;
     case 46: weapon(MAIN_HAND, 17, 2); break;
     case 109: c.specials = {86, 93, 91}; weapon(MAIN_HAND, 2, 7); weapon(OFF_HAND, 2, 7); break;
-    case 81: c.specials = {87}; weapon(MAIN_HAND, 12, 11); weapon(OFF_HAND, 12, 11); break;
+    case 81: c.specials.push_back(87); weapon(MAIN_HAND, 12, 11); weapon(OFF_HAND, 12, 11); break;
     case 82: weapon(MAIN_HAND, 0, 1); weapon(OFF_HAND, 0, 1); break;
     case 47: case 111: case 112: case 113: break;
     case 43: case 45:
@@ -201,14 +206,14 @@ void equip(Combatant &c, const Appearance &looks, const std::function<int()> &dr
         case 119: set(2500, 0.5f, 6, 10, 10); break;
         default: break;
         }
-        if (looks.flags & 0x200) { // a boss: stronger, one of five specials, and its +0x10b8
+        if (looks.flags & 0x200) {
             m[0] = std::min(m[0] * 15.f, 10000.f);
             m[2] *= 3, m[1] *= 0.75f, m[3] += 2, m[4] += 2;
             static const int32_t BOSS_SPECIALS[5] = {92, 93, 86, 89, 87};
-            c.specials.push_back(BOSS_SPECIALS[draw() % 5]);
-            const int32_t choice = draw() % 3;
-            if (bossChoice)
-                *bossChoice = choice;
+            c.specials.push_back(BOSS_SPECIALS[uint32_t(draw()) % 5]);
+            configuration.choice = draw() % 3;
+            configuration.kinds.push_back(17);
+            configuration.kinds.push_back(96);
         }
     }
     for (int slot : {6, 7, 5, 2, 4, 3})
@@ -236,7 +241,8 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
         const worldgen::ItemRecord &r = s.equipment[slot];
         c.equipment[slot] = Item{r.type, r.subtype, r.material, r.rarity, r.level ? r.level : 1, r.seed};
     }
-    equip(c, looks, draw, true, &s.bossChoice);
+    creation::Configuration configuration{s.creationChoice, std::move(s.creationKinds)};
+    equip(c, looks, draw, true, s.controller, configuration);
     for (int slot = 0; slot < 13; slot++) {
         const Item &i = c.equipment[slot];
         worldgen::ItemRecord &r = s.equipment[slot];
@@ -247,6 +253,8 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole) {
     s.specialization = c.specialization;
     std::copy(c.multipliers, c.multipliers + 5, s.multipliers);
     s.specials = c.specials;
+    s.creationChoice = configuration.choice;
+    s.creationKinds = std::move(configuration.kinds);
     s.appearanceFlags = looks.flags;
     looks.serialize(s.appearance.data());
     s.finished = true;
@@ -298,8 +306,6 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     c.characterClass = s.characterClass;
     npc.talkKind = s.field42;
     npc.talkTarget = {s.field41[0], s.field41[1]};
-    for (const worldgen::ItemRecord &item : s.inventory)
-        npc.inventory.push_back(toRecord(item));
     c.specialization = 0;
     c.level = s.level;
     c.powerTier = s.powerTier;
@@ -312,6 +318,10 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
         int32_t type = s.type;
         generate(type, npc.looks, nullptr, [&] { return draw(); });
     }
+    npc.creationConfig.choice = s.creationChoice;
+    npc.creationConfig.kinds = s.creationKinds;
+    for (const worldgen::ItemRecord &item : s.inventory)
+        npc.inventory.push_back(toRecord(item));
     // §9.1: the spawn's own appearance flags and gear (a town guard keeps its gear, 0x40).
     npc.looks.flags |= s.appearanceFlags;
     npc.boss = s.bossLoot;
@@ -348,7 +358,7 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     c.linkedItem.source = toRecord(s.equipment[12]);
     c.equipment[12] = Item::parse(c.linkedItem.source.data());
     if (!s.finished || npc.regear)
-        equip(c, npc.looks, [&] { return draw(); });
+        equip(c, npc.looks, [&] { return draw(); }, false, s.controller, npc.creationConfig);
     c.health = maxHealth(c);
     c.actionMs = 1000000;
     if (npc.looks.flags & 0x200) // (the recorded bosses are all twice the size of their kind)

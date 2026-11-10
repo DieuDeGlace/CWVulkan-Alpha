@@ -879,3 +879,27 @@ does not restore literal 1. Real loopback regressions distinguish getter, sender
 and remote-key classification across reconnects, including adopted zero. This
 does not certify the complete native actor replacement, saved-state restoration,
 pointer alias lifetime or incomplete-message handling.
+
+Two later original-only configuration and candidate-appearance contracts were
+FINAL/STABLE/HELD and read completely before their implementation. Their SHA-256
+identities are respectively
+`43e27073883dca4302360eb3139712769f36245c9f1a5898c6e2e9de7b4a8760` and
+`fe2179bfe2698dd5f557a7e98e5805b9f0a73200e8e959b395f4f8a723f0bd29`.
+The author received no implementation, tests, captures, logs or runtime findings.
+
+Descriptor configuration now keeps its full-width choice and ordered candidate
+kinds separately from action entries. Descriptor zero/empty and fresh actor
+one/empty are distinct; activation performs a value copy, and inspected body
+replacement preserves resident configuration. The bounded builder retains the
+full descriptor role for its gates, earlier kind-117 append, later action draw,
+separate choice draw and six item-seed writes. Repeated setup appends duplicates.
+Unrelated equipment/stat branches remain inherited. Native refresh modifies the
+descriptor before actor construction; the existing mission regear adapter does
+not establish that complete producer or lifetime relation.
+
+Fresh action-92 appearance generation additionally covers full kinds 17 and 96.
+The five discarded prefix draws precede exact field writes and caller flag
+publication. Independent full-extent fixtures exclude byte 5, whose native value
+is unspecified. This closes those supplied generation paths, without claiming
+arbitrary reused-buffer initialization, other kinds, rendering interpretation,
+upstream generator distribution or a native server counterpart.

@@ -74,10 +74,16 @@ Differences from the Steam engine that shape the plan:
 - [x] Bounded action-92 creation: production owned NPC and designated offline
   player dispatch retain the two anticipation queries, live link/minimum-key
   scan, full copy routes, fresh defaults and predecessor publication before
-  clock advancement. Closed generation covers kind 0x25 and unsigned out-of-table
-  kinds; other generation reports an explicit engine capability boundary.
-  Configuration/kind producers, remaining appearance outputs, network-client
-  creation/authority and complete native lifetime/acceptance remain open.
+  clock advancement. Closed fresh generation covers kinds 17, 37, 96 and unsigned
+  out-of-table kinds; other generation reports an explicit engine capability
+  boundary. Complete upstream configuration, remaining appearance outputs,
+  network-client creation/authority and native lifetime/acceptance remain open.
+- [x] Bounded descriptor creation configuration: descriptor zero/empty defaults
+  transfer independently of fresh actor one/empty defaults. Candidate kinds stay
+  separate from action entries, retain duplicates and survive the inspected body
+  reset. Kind-117 and boss setup retain full-width role gates and ordered draws.
+  Activation refresh before actor construction, complete upstream distribution,
+  indirect writers and exceptional lifetime remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;
