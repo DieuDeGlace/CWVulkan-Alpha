@@ -131,9 +131,10 @@ Differences from the Steam engine that shape the plan:
 - [x] Three bounded vendor-stock generators: independently established client
   and server routes preserve all thirty level bands, fixed stock, candidate
   order/fields, discarded draws, family-specific material parity and selection
-  without replacement. Town descriptors publish owned grouped values. Full
-  upstream town admission, class-0x83 caller, imported RNG/control state,
-  lifecycle and original gameplay acceptance remain open.
+  without replacement. Town descriptors publish owned grouped values. The
+  held class-0x83 contract confirms that class shares the 0x81 stock body. Full
+  upstream plot selection, the stock-less template producer, imported
+  RNG/control state, lifecycle and original gameplay acceptance remain open.
 - [x] Bounded camera kernels: final view-matrix construction from eye, anchor,
   angles, amplitude and two clock reads, plus input targets, per-update
   smoothing, anchor following, eight corner samples and the centre correction.

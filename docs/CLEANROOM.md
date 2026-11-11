@@ -1273,3 +1273,24 @@ no followed creature keep the engine's 45-degree, far-4000 lens. The sky pass
 keeps its separate lens. The engine still renders through its right-handed
 view and the explicit projection adapter; the constructed native view
 matrices are not yet the production view.
+
+The second resumed author's contract, `alpha-class-83-descriptor-production.md`,
+was FINAL/STABLE/HELD with SHA-256
+`5e46ce8aee74fed70c109a600d594e1d59a169178911552bfedd611db7dd3366`, and was
+hash-verified and read completely. Its author reported that the reconstruction
+was not consulted and received no engine, test or runtime material. It
+establishes independently in both images that no class-value dispatcher exists:
+a plot-kind discriminator selects the stock body in a fixed comparison order,
+the class byte is a constant written in the same branch, and the branch that
+writes 0x83 calls the same stock body as the branch that writes 0x81.
+
+This closes the earlier caveat about the inherited town caller. The existing
+engine shopkeeper path already requires both nonempty collections, draws the
+position index with an unsigned remainder, draws the kind as remainder two plus
+two, assigns the settlement level and the class constant, and only then
+generates stock, with 0x84 and 0x88 producing none and 0x83 sharing the 0x81
+route. No engine arithmetic changed. The engine's house subtype stands in for
+the native discriminator, whose upstream plot selection, the unread scalar
+arguments, draws inside construction and position services, and the second,
+stock-less template-stamping producer of class 0x83 remain open. That second
+producer is not implemented as a native claim here.
