@@ -587,6 +587,23 @@ reference. This is an engine input adapter correction, not a native mouse
 claim. These checks establish supplied-input behavior and engine rendering;
 native ray geometry, widget gates, the constructed matrices as the production
 view and original visual acceptance remain open.
+
+WorldDropTests drives the shared drop helper and the inventory-unit tail with
+supplied draws and block callbacks. It checks the exact scale bits for factor
+0.75, the landing remainder, the replacement angle, one draw and no append
+without first residency, key coalescing without suppressed records, the
+double truncation that keeps a small negative coordinate in zone zero while a
+negative zone is absent, immediate scan termination outside the horizontal
+range, the vertical start for positive, zero, fractional-negative and exact
+negative heights, class masking through values with high bits set, and
+field-wise item assignment with zero gaps. Paired runs from one seed isolate the
+tail's draws: five per resident unit, four without residency, none for excluded
+category-1 subtype-1 units, nonpositive quantities or category zero, and no
+units for an actor byte other than one. All 59 CTests pass, and the
+player/controller diagnostic, reward, health, network, save/reload and town
+runs pass with their six client captures reviewed and unchanged in framing.
+These supplied-input checks do not establish native column fallbacks, total
+fatal draw counts or original drop placement.
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

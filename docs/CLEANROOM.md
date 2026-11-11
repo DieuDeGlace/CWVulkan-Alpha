@@ -1204,3 +1204,27 @@ matrices, their rebasing members and native field-of-view selection are not yet
 the production view. Imported trigonometry, power and square root use platform
 adapters. Ray geometry, widget/device producers, initial and reset camera
 state, pointer lifetime and native visual acceptance remain open.
+
+The original-only fatal inventory-unit world-drop contract was FINAL/STABLE/HELD,
+hash-verified and read completely before the drop-helper correction:
+`alpha-fatal-world-drop-production.md` has SHA-256
+`ba7e3f568e422a877ab5b1ea3611a4e2282b8e3d05565f5a551199116dbf90b5`. Its author
+received no engine, tests, captures, logs or runtime feedback. The inherited
+unit loop already matched its admission, exclusion, per-unit draw order and
+unchanged source quantities. The shared drop helper now forms its scale with one
+binary32 product from the constructor scalar, truncates each raw coordinate
+toward zero twice for the first residency lookup with the 0..65535 admission,
+assigns the item by selected fields after that lookup, starts the vertical scan
+one step lower for every negative raw height, and ends the scan at once for
+horizontal integers outside the world range. Draw order, the early return
+without an item copy or angle draw, append to the first lookup's list and key
+publication after the append were already in place.
+
+The engine's zone lists stand in for the native pointer grid, its day value for
+the uninterpreted receiver snapshot, and its supplied block callback for the
+column service and its three fallback records. The native scan has no length
+limit; the engine keeps a bounded guard for arbitrary callbacks. Fresh record
+gaps are deterministic engine zero. The helper is shared by other engine drop
+callers whose own native routes this contract does not examine. Earlier fatal
+loot branches, total draw counts, collection retention, later dropped-item
+simulation, pickup and transport remain open.

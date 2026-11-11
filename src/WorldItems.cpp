@@ -1,6 +1,7 @@
 #include "WorldItems.h"
 #include "worldgen/Random.h"
 #include "worldgen/Regions.h"
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <glm/gtc/matrix_transform.hpp>
@@ -180,27 +181,42 @@ bool WorldItems::drop(const creatures::ItemRecord &item, glm::dvec3 at, float fa
 
 bool WorldItems::drop(const creatures::ItemRecord &item, const int64_t at[3], float factor, int32_t day,
                       const creatures::BlockType &block, const std::function<int()> &draw) {
+    // Held docs/specs/alpha-fatal-world-drop-production.md: the record is built
+    // and its landing draw consumed before the first residency lookup.
     WorldItem w;
     for (int k = 0; k < 3; k++)
         w.position[k] = at[k];
-    w.scale = factor / 14;
-    w.landingMs = 500 + draw() % 300;
-    w.day = day;
-    const int32_t bx = (int32_t)(w.position[0] / 65536), by = (int32_t)(w.position[1] / 65536);
-    const Key key{worldgen::floorDiv(bx, worldgen::ZONE), worldgen::floorDiv(by, worldgen::ZONE)};
-    const auto it = lists.find(key);
+    w.scale = std::bit_cast<float>(0x3d924925u) * factor; // one binary32 product
+    w.landingMs = draw() % 300 + 500;
+    w.day = day; // engine day stands in for the uninterpreted receiver snapshot
+    // Each raw coordinate truncates toward zero to a 32-bit integer, which
+    // truncates toward zero again to its zone; the lookup admits 0..65535.
+    const int32_t by = int32_t(uint32_t(std::bit_cast<uint64_t>(w.position[1] / 65536)));
+    const int32_t bx = int32_t(uint32_t(std::bit_cast<uint64_t>(w.position[0] / 65536)));
+    const Key key{bx / worldgen::ZONE, by / worldgen::ZONE};
+    const auto admitted = [](int32_t zone) { return zone >= 0 && zone <= 0xffff; };
+    const auto it = admitted(key.first) && admitted(key.second) ? lists.find(key) : lists.end();
     if (it == lists.end())
-        return false;
-    w.item = item;
+        return false; // no item copy and no replacement-angle draw
+    creatures::copyItemFields(item, w.item); // fresh destination gaps stay engine zero
     w.angle = (float)draw() * 360.f / 32767.f;
-    // It falls through air and water to the first solid block.
-    int32_t z = (int32_t)(at[2] >> 16);
-    for (int guard = 0; guard < 4096; guard++, z--) {
+    // The vertical start takes one extra step down for any negative raw height,
+    // including exact multiples, so it is not a floor division.
+    int32_t z = int32_t(uint32_t(std::bit_cast<uint64_t>(at[2] / 65536)));
+    if (at[2] < 0)
+        z = std::bit_cast<int32_t>(std::bit_cast<uint32_t>(z) - 1u);
+    // It falls through classes 0 and 2. Horizontal integers outside the world
+    // range select the terminating fallback. The native scan has no length
+    // limit; the bound here is an engine guard for supplied block callbacks.
+    const bool inside = bx >= 0 && bx <= 0xffffff && by >= 0 && by <= 0xffffff;
+    for (int guard = 0; inside && guard < 4096; guard++) {
         const uint8_t t = block(bx, by, z) & 0x1f;
         if (t != 0 && t != 2)
             break;
+        z = std::bit_cast<int32_t>(std::bit_cast<uint32_t>(z) - 1u);
     }
-    w.position[2] = (int64_t)(z + 1) * 65536;
+    w.position[2] = (int64_t)std::bit_cast<int32_t>(std::bit_cast<uint32_t>(z) + 1u) * 65536;
+    // Append to the first lookup's list, then publish its key.
     it->second.push_back(w);
     changed.insert(key);
     return true;

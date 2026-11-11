@@ -141,6 +141,10 @@ Differences from the Steam engine that shape the plan:
   query, world-clock and eye-displacement adapters. Native ray geometry,
   widget gates, production use of the constructed matrices, field-of-view
   selection and original visual acceptance remain open.
+- [x] Fatal inventory-unit world drops: the shared drop helper follows the held
+  record, residency, truncation, vertical-start and item-assignment rules, with
+  four or five direct draws per attempted unit. Earlier loot branches, native
+  column fallbacks, retention, pickup and transport remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;
