@@ -88,11 +88,6 @@ void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibilit
     subject.verticalOffset = player.bob;
     subject.extent = player.size;
     subject.action = uint8_t(player.action);
-    if (!anchorSet) {
-        // Engine start: the first frame begins at the ordinary vertical target.
-        s.anchor = {subject.position[0], subject.position[1], camera_follow::verticalTarget(subject, false)};
-        anchorSet = true;
-    }
     camera_follow::followAnchor(s, subject, elapsedMs);
     camera_follow::placeEye(s, subject.position, camera_follow::offsetDirection(s.angles, trig), sceneQueries(scene));
     store(s);

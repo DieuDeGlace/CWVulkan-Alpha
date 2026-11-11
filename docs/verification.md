@@ -637,6 +637,15 @@ category moved aside, and the level adjuster drawing only from level three
 upward. All 59 CTests pass. Only tests and documents changed in this
 checkpoint; the client executable is unchanged, so no new client runs were
 made.
+
+CameraTests now checks the constructed camera values and option defaults, the
+first update's snap of the zero anchor to a creature far from the origin
+followed by the start of the vertical blend, and settling at the head-height
+target after many updates. All 59 CTests pass. The player/controller
+diagnostic and the reward, health, network, save/reload and town runs pass;
+all six client captures were reviewed and keep the preceding framing, using
+the labelled direct-entry distance because these runs skip the front end.
+The front-end rotation and creation snaps have no automated run here.
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

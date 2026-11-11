@@ -914,6 +914,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         return ui::Interface::ItemModel{creatureView.plainMesh(slot), creatureView.voxels(slot)};
     };
     interface.startScreen = options.start;
+    // Engine direct-entry adapter: runs that skip the front end never pass the
+    // native screens that move the constructed zero distance, so they begin a
+    // few blocks out to keep the character in view.
+    if (player && !options.start)
+        player->followCamera().distance = player->followCamera().targetDistance = 6;
     interface.systemMenu = options.systemPanel;
     interface.inventoryOpen = options.inventory && player;
     bool sayAtStart = options.speech;
@@ -2900,8 +2905,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             creatures::FollowCamera &cam = player->followCamera();
             const F front = interface.front;
             if (interface.startScreen || front == F::Characters || front == F::Worlds || front == F::Connect) {
+                // Held initial-state contract: distance, first angle, then the
+                // third angle advanced by the frame duration in binary32.
                 cam.targetDistance = 10, cam.targetPitch = 100;
-                cam.targetYaw += 0.005f * (float)(seconds * 1000.0);
+                cam.targetYaw = float(frameElapsedMs) * std::bit_cast<float>(0x3ba3d70au) + cam.targetYaw;
             } else if ((front == F::Creation || front == F::WorldCreation) && front != cameraFront) {
                 cam.targetPitch = cam.pitch = 90;
                 cam.targetYaw = cam.yaw = front == F::Creation ? 0.f : 180.f;

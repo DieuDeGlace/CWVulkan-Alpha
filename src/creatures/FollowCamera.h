@@ -1,9 +1,9 @@
 #pragma once
 // The production follow camera. Targets, smoothing, anchor following, corner
 // sampling and shake use the held camera contracts through CameraFollow and
-// CameraView, and the held ray query through creatures/Visibility. Starting
-// values, the world-clock source and the render origin used for horizontal
-// rebasing are explicit engine adapters.
+// CameraView, the held ray query through creatures/Visibility, and the held
+// constructed values. The world-clock source and the render origin used for
+// horizontal rebasing are explicit engine adapters.
 #include "creatures/CameraFollow.h"
 #include "creatures/Physics.h"
 #include "creatures/Visibility.h"
@@ -11,7 +11,7 @@
 namespace creatures {
 
 struct CameraOptions {
-    int speed = 50, smoothness = 100;
+    int speed = 50, smoothness = 80; // the constructed option defaults
     bool invertY = false;
 };
 
@@ -20,8 +20,9 @@ class FollowCamera {
     CameraOptions options;
     float pitch = 120, yaw = 0;             // current first and third angles (degrees)
     float targetPitch = 120, targetYaw = 0; // targets
-    // Engine starting distance; the native initial value is unresolved.
-    float distance = 6, targetDistance = 6;
+    // Constructed values per the held initial-state contract: both distances
+    // are zero until a front-end state, button handler or the wheel moves them.
+    float distance = 0, targetDistance = 0;
     // Shake amplitude, set to 1 by explosion and punch sounds, easing back to 0.
     float shake = 0;
 
@@ -48,8 +49,9 @@ class FollowCamera {
     camera_follow::State state() const;
     void store(const camera_follow::State &state);
 
+    // The anchor is constructed as zero; the first update's distance snap moves
+    // it to the followed creature.
     camera_view::Fixed3 anchor{}, eye{};
-    bool anchorSet = false;
     camera_view::Matrix rebased = camera_view::identity();
 };
 

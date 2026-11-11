@@ -1342,3 +1342,39 @@ logic within the contracts' bounds, not a provenance certificate for its
 original authorship. The 45-entry table behind the world-list producer, the
 imported power routine, item gap bytes, the actor-field meanings and total
 draw counts for a fatal actor remain open.
+
+A further isolated author supplied `alpha-camera-initial-state.md`, FINAL/
+STABLE/HELD with SHA-256
+`6965b84b417adf0f78cb2a9748beecee7f0f89f6ee4d6d008329b54106ecfd6a`. It was
+hash-verified and read completely; its author reported that the reconstruction
+was not consulted. The follow camera now starts from the constructed values:
+first angle 120 degrees for current and target, both distances zero, the
+anchor zero and the option defaults 50, 80 and 0. The engine's first-frame
+anchor placement is removed: the first update's strict distance snap copies
+the creature position and the ordinary vertical blend then raises the anchor.
+The front-end rotation assigns target distance 10 and first angle 100 and
+advances the third target angle by the frame duration converted to binary32
+and multiplied by the contract's constant before the old value is added.
+The already implemented creation-screen snaps and the shake assignment for
+record values 0x51 and 0x52 agree with the contract.
+
+Engine limits remain explicit. Runs that skip the front end never pass the
+screens that move the zero distance, so they begin at an engine distance of
+six blocks as a labelled direct-entry adapter. The engine applies the
+front-end rotation after that frame's smoothing, where the contract places it
+before; its screen states stand in for the native widget properties; and only
+the two creation snaps are bound. The third button handler, the menu-selection
+route that restores the constructed distance and angle, the members that
+construction never stores, the constructed eye and the options screen's own
+bounds are not implemented as native claims.
+
+Process note. The implementer and the source-side agents were given the same
+session temporary folder. Source agents left extracts of original listings
+there; the implementer listed that folder by file name only, opened none of
+those files and deleted them once every source agent had finished. For a few
+minutes during the last author's run the same folder also held a short
+implementer diagnostic that named two engine generator functions. That author
+reported that it opened no file it had not created, apart from seeing a few
+lines of another source agent's header-reading helper in an error message, and
+that it saw no engine material. Later source agents are to be given a separate
+working folder.

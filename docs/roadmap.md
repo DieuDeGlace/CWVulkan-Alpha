@@ -152,8 +152,10 @@ Differences from the Steam engine that shape the plan:
   selects the held projection angle with native planes and pixel aspect, and
   the camera's corner and centre rays use the held ray query. The constructed
   rebased view, with view-coordinate shake, is the production view through an
-  explicit mirrored-axis adapter and the engine render origin. Widget gates,
-  initial camera state and original visual acceptance remain open.
+  explicit mirrored-axis adapter and the engine render origin. The camera
+  starts from the held constructed values, with a labelled direct-entry
+  distance for runs that skip the front end. Widget gates, the remaining
+  front-end handlers and original visual acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

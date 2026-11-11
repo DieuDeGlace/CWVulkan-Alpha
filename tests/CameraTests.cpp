@@ -361,18 +361,29 @@ static void voxelsAndEye() {
 
 static void productionCamera() {
     creatures::Body body;
-    body.position[0] = 5 * UNIT; body.position[1] = -3 * UNIT; body.position[2] = 20 * UNIT;
+    body.position[0] = 5000 * UNIT; body.position[1] = 3000 * UNIT; body.position[2] = 20 * UNIT;
     const creatures::visibility::Scene open{[](int32_t, int32_t, int32_t) { return uint8_t(0); }, {}};
     creatures::FollowCamera camera;
+    check(camera.distance == 0.f && camera.targetDistance == 0.f && camera.pitch == 120.f && camera.targetPitch == 120.f &&
+          camera.yaw == 0.f && camera.options.speed == 50 && camera.options.smoothness == 80 && !camera.options.invertY,
+          "the camera starts from the constructed distances, angles and option defaults");
+    camera.distance = camera.targetDistance = 6.f; // the direct-entry adapter's value
     camera.update(body, 16, open, [] { return 0; });
     const glm::vec3 direction = camera.direction();
     const double pitch = glm::radians(double(camera.pitch)), yaw = glm::radians(double(camera.yaw));
     check(std::abs(direction.x - std::sin(yaw) * std::sin(pitch)) < 1e-6 && std::abs(direction.y + std::cos(yaw) * std::sin(pitch)) < 1e-6 &&
           std::abs(direction.z - std::cos(pitch)) < 1e-6, "production direction agrees with the oriented third axis");
-    const glm::dvec3 head(5, -3, 20 + 2.16f * .5 + .5);
-    const glm::dvec3 expected = head - glm::dvec3(direction) * double(camera.distance);
+    // The zero anchor snaps to the creature, then its height starts blending.
+    const double rise = (2.16f * .5 + .5) * double(camera_view::weight(16, fromBits(0x3ba3d70a)));
+    const glm::dvec3 expected = glm::dvec3(5000, 3000, 20 + rise) - glm::dvec3(direction) * double(camera.distance);
     check(glm::length(camera.position() - expected) < 1e-3 && std::abs(camera.distance - 6.f) < 1e-5f,
-          "the first open-air frame sits the retained distance behind the head-height anchor");
+          "the first frame snaps the constructed zero anchor to the creature and begins the vertical blend");
+    creatures::FollowCamera settled = camera;
+    for (int i = 0; i < 400; ++i)
+        settled.update(body, 16, open, [] { return 0; });
+    const glm::dvec3 head(5000, 3000, 20 + 2.16f * .5 + .5);
+    check(glm::length(settled.position() - (head - glm::dvec3(settled.direction()) * double(settled.distance))) < 2e-2,
+          "the anchor settles at the head-height target");
 
     creatures::FollowCamera shaken = camera, steady = camera;
     shaken.shake = 1.f;
@@ -390,13 +401,14 @@ static void productionCamera() {
     bool shifted = rebasedCamera.view()[0] == steady.view()[0] && rebasedCamera.view()[1] == steady.view()[1];
     for (int i = 0; i < 3; ++i) {
         const float expected = steady.view()[3][i] + 3.f * steady.view()[0][i] - 4.f * steady.view()[1][i];
-        shifted &= std::abs(rebasedCamera.view()[3][i] - expected) < 1e-3f;
+        shifted &= std::abs(rebasedCamera.view()[3][i] - expected) < 2e-2f; // binary32 at this coordinate size
     }
     check(shifted, "the render origin changes only the horizontal translation input, leaving rotation and height alone");
     check(bits(shaken.shake) == bits(camera_view::decayedAmplitude(1.f, 16)), "the amplitude decays after the frame's view offset");
 
     const creatures::visibility::Scene solid{[](int32_t, int32_t, int32_t z) { return uint8_t(z >= 23 ? 1 : 0); }, {}};
     creatures::FollowCamera pressed;
+    pressed.distance = pressed.targetDistance = 6.f;
     pressed.pitch = pressed.targetPitch = 170.f; // looking down, so the camera rises into the ceiling
     for (int i = 0; i < 4; ++i)
         pressed.update(body, 16, solid, [] { return 0; });
