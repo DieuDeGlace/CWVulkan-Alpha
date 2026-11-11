@@ -1378,3 +1378,18 @@ reported that it opened no file it had not created, apart from seeing a few
 lines of another source agent's header-reading helper in an error message, and
 that it saw no engine material. Later source agents are to be given a separate
 working folder.
+
+A third round of isolated authors ran with separate scratch folders, apart
+from the implementer's temporary folder. All three were interrupted by a usage
+limit and resumed under unchanged briefs. `alpha-world-item-list-population.md`
+was FINAL/STABLE/HELD with SHA-256
+`237ff15b2fbdc159f70b0ee27645798b41a93606349b25dde6e2e038b92f5cb1`, was
+hash-verified and read completely; its author reported that the
+reconstruction was not consulted. It establishes in both images that the world
+constructor fills the list read by the pet-food producer with one unconditional
+run of 45 fixed values, that nothing changes it afterwards, and that the
+producer picks by an unsigned remainder of one draw. The inherited 45-entry
+table in the loot code holds the same values in the same order and is used
+with the same reduction, so no engine code changed. The client's second reader
+of the list, which passes a whole element to an unexamined routine, is not
+implemented.

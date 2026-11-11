@@ -202,7 +202,22 @@ static void branchGenerators() {
     check(rerollLevel(low, 2) == 1 && rerollLevel(low, 1) == 1, "level two falls to one and level one is unchanged");
 }
 
+// The held world-list population contract: 45 fixed values in this order.
+static void worldItemList() {
+    static const uint8_t expected[45] = {35, 87, 60, 55, 34, 23, 22, 30, 33, 98, 25, 53, 67, 102, 104,
+                                         105, 19, 40, 37, 38, 39, 92, 93, 56, 90, 91, 50, 27, 75, 26,
+                                         86, 99, 106, 63, 66, 64, 65, 74, 36, 57, 58, 59, 61, 62, 88};
+    bool same = sizeof(TAMEABLE) == sizeof(expected);
+    int sum = 0;
+    for (size_t i = 0; i < 45; ++i) {
+        same &= TAMEABLE[i] == expected[i];
+        sum += TAMEABLE[i];
+    }
+    check(same && sum == 2750, "the pet-food subtype list holds the 45 held values in order");
+}
+
 int main() {
+    worldItemList();
     branchGenerators();
     recordAndResidency(); truncationAndScan(); semanticItem(); unitAccounting();
     if (!failures) std::puts("PASS: world-drop record, residency, truncation, vertical scan, semantic item copy and unit draw accounting");

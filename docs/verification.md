@@ -1324,3 +1324,7 @@ the supplied-input point/vector placement and color relations using those
 observations. This executes no
 original creature, pose or transform helper and proves no whole-game equivalence.
 The current town night capture also renders successfully.
+
+WorldDropTests also checks the pet-food subtype list against the held
+world-list contract: 45 values in the held order with sum 2750. All 59 CTests
+pass. Only a test and documents changed; the client executable is unchanged.
