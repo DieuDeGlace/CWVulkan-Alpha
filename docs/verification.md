@@ -1363,3 +1363,8 @@ shallow bank, and seventeen-frame captures cannot show whether a submerged
 player swims or rests on the seabed. Live swimming and reed placement therefore
 remain unverified in the client; WaterTests still covers them with synthetic
 terrain and the real movement code.
+
+WorldDropTests additionally pins the held fatal-branch table of generator draws
+per recipient class: 1, 6, 4, 5 and 4 draws for the weapon generator and 5, 9,
+10, 10 and 10 for the armour generator for classes 0 to 4, with an empty weapon
+result for class 0. All 59 CTests pass; only a test and documents changed.

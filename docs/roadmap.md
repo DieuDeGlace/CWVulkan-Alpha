@@ -218,6 +218,9 @@ Differences from the Steam engine that shape the plan:
   remaining identity/protection callers, linked actors,
   regional progress, credit and shared random-stream ordering. Existing later
   death/loot adapters are not completion of that native continuation.
+  The held fatal-branch order contract now confirms the engine's synchronous
+  sequence step by step; the virtual disposal routines and upstream callers
+  remain open.
 - [x] Bounded fatal-context producers: core snapshots retain cached descriptor
   coordinates/ordinal and reverse ownership; the forward link stays resident.
   Ordinary descriptor activation preserves its origin across movement, while

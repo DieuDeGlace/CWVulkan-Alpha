@@ -181,6 +181,16 @@ static void branchGenerators() {
     check(spent([](worldgen::Random &r) { worldgen::weaponItem(r, 9, 2, -1); }) == 16 &&
           spent([](worldgen::Random &r) { worldgen::armourItem(r, 9, 2, -1); }) == 24,
           "the two generators with selector minus one make sixteen and twenty-four draws");
+    // Held fatal-branch contract: completion gear uses the recipient class as selector.
+    const uint32_t weaponDraws[5] = {1, 6, 4, 5, 4}, armourDraws[5] = {5, 9, 10, 10, 10};
+    bool perClass = true;
+    for (int c = 0; c <= 4; ++c) {
+        perClass &= spent([c](worldgen::Random &r) { worldgen::weaponItem(r, 9, 2, c); }) == weaponDraws[c];
+        perClass &= spent([c](worldgen::Random &r) { worldgen::armourItem(r, 9, 2, c); }) == armourDraws[c];
+    }
+    worldgen::Random empty(3);
+    perClass &= worldgen::weaponItem(empty, 9, 2, 0).type == 0;
+    check(perClass, "per-class generator draws match the held fatal-branch table, including the empty out-of-range weapon pick");
     bool weapons = true, armour = true, wrapped = true;
     for (uint32_t seed = 1; seed < 400; ++seed) {
         worldgen::Random a(seed), b(seed), c(seed);

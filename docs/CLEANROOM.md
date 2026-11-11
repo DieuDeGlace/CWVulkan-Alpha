@@ -1459,3 +1459,20 @@ and sound are the third angle mirrored about 180 degrees and the first angle
 less 90, so the fog gradient's zenith angle equals the native first angle,
 including straight up and straight down. The free-flight camera keeps its own
 turning bound. This removes an engine adapter; it is not a new native claim.
+
+Round five took its topics from the open roadmap items at the owner's
+direction. `alpha-fatal-branch-order.md`, FINAL/STABLE/HELD with SHA-256
+`a1db6ed7e7dbf0d1ee7caca901bda81f0872f35394fcf8a36436fd386afaf368`, was
+hash-verified and read completely; its author reported that the reconstruction
+was not consulted. It gives the complete ordered fatal branch of hit
+application in both images. Compared step by step, the engine's synchronous
+fatal sequence already follows it: health zeroing, the first presentation and
+state reset, the pre-loot object stage, loot, the direct linked-actor health
+store without a recursive fatal sequence, the credit value, regional progress,
+the per-actor cleanup with credit and completion rewards, and the final backing
+write. The completion reward's Platinum amount and its single parity draw
+choosing between the two generators with the recipient's class as selector also
+match, as do the generators' per-class draw counts and the empty out-of-range
+weapon pick. No engine arithmetic changed. The unresolved virtual disposal
+routines, the unattributed upstream callers and runtime values of the steering
+world fields remain open.
