@@ -28,7 +28,7 @@ class Player {
     // Called once after all world pieces; leaves intent/actions for the next call.
     void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr,
                    const std::array<bool, 2> *mouseButtons = nullptr);
-    void finishFrame(int32_t dtMs); // engine camera adapter, once per rendered frame
+    void finishFrame(int32_t dtMs, const camera_view::Clock &worldClock); // camera, once per rendered frame
     // Adds the player's creature to the draw list.
     // Also the player's footsteps (models §7.3), into the ability effects' sounds.
     void draw(std::vector<DrawItem> &items, CreatureView &creatureView, float dtMs,

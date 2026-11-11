@@ -134,6 +134,13 @@ Differences from the Steam engine that shape the plan:
   without replacement. Town descriptors publish owned grouped values. Full
   upstream town admission, class-0x83 caller, imported RNG/control state,
   lifecycle and original gameplay acceptance remain open.
+- [x] Bounded camera kernels: final view-matrix construction from eye, anchor,
+  angles, amplitude and two clock reads, plus input targets, per-update
+  smoothing, anchor following, eight corner samples and the centre correction.
+  The production follow camera uses them with explicit starting-state, ray
+  query, world-clock and eye-displacement adapters. Native ray geometry,
+  widget gates, production use of the constructed matrices, field-of-view
+  selection and original visual acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

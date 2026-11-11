@@ -551,6 +551,42 @@ and 17.5 s, and the previously published executable 118 world calls and 16.8 s,
 so the earlier figures reflect machine contention and not this change. These
 are single local samples, not a performance benchmark or native comparison.
 
+CameraTests supplies recorded trigonometry, power, clock, voxel and ray inputs
+to the two camera kernels. It checks binary32-first fixed conversions and the
+wrapped opposite, each row-pair rotation's saved-value mixing and
+cosine-before-sine request, rounded products without fused cancellation,
+fourth-row translation order, the count-fold weight against an independent
+binary64 loop, both clock reads and the y-then-x shake results at zero and
+nonzero amplitude, and decay. Construction cases count eleven cosine and nine
+sine requests in order, check sign-bit inversion of zero angles, and use
+coordinates near 2^40 to distinguish raw subtraction before conversion. Follow
+cases cover mouse and wheel bounds including signed zero and wrapped doubling,
+the scale route's zero-argument division, smoothing order, the strict snap,
+quantized x/y steps with truncation in both directions, all five vertical
+action cases, the binary32 raw blend at zero weight, both alternative-anchor
+column outcomes, the negative voxel coordinate rule, corner order, original
+maximum per ray, strict candidate retention, the unclamped negative candidate
+and the final correction's negative, unordered, zero and zero-offset cases.
+Production cases check the engine direction, first-frame placement, shake
+displacement with decay afterward, and distance shortening under a ceiling
+through the engine ray adapter.
+
+All 58 CTests pass for this checkpoint. The player/controller diagnostic and
+fresh reward, health, network and save/reload runs also pass, together with the
+seed-123 town walking capture; all six client captures were reviewed and keep
+their previous framing. Rewards retain level 2/-33 XP/7 Platinum Coins, injured
+health remains binary32 50 with one visit (144 world calls over 17 input
+frames, maximum 20 ms pieces), and reload retains health 265, seed 123, nine
+tiles, 33,792 preview bytes and 170 edits. An earlier batch produced top-down
+and from-below town and reload captures. The previously published executable
+reproduced the same view under the same desktop conditions: the cursor
+callback treated its first sample as a movement from the origin, so a cursor
+resting over the new window became a large look input. The callback now uses
+the first sample after window creation or a cursor-mode change only as its
+reference. This is an engine input adapter correction, not a native mouse
+claim. These checks establish supplied-input behavior and engine rendering;
+native ray geometry, widget gates, the constructed matrices as the production
+view and original visual acceptance remain open.
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from

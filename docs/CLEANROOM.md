@@ -1161,3 +1161,46 @@ boundary. In particular, the inherited house-subtype-5/class-0x83 caller still
 selects the weapon route; these contracts establish the bodies reached for
 0x80/0x81/0x82 and do not certify that additional caller. Wider stock persistence,
 refresh, ownership and native client/server acceptance remain open.
+
+The two original-only camera contracts were FINAL/STABLE/HELD, read completely
+and hash-verified before the camera kernels:
+`alpha-camera-view-production.md` has SHA-256
+`0f4cc8b708c61bd55ef73e4c6d1b0480924f461c15e3a5196e49b1020524e1a4` and
+`alpha-camera-follow-collision.md` has
+`a16961fefc82c061f281182e8de7bd91d29b406f4c753bf79a9cb3615b58cfb3`.
+Their authors received no engine, tests, captures, logs or runtime feedback.
+The implementation continued in a different implementer tool after the earlier
+implementer's context ended; the same separation applies, and that implementer
+opened no original code, reconstruction source or source-author workspace.
+
+CameraView is an independent scalar implementation of the supplied-input view
+relations: binary32-first fixed conversions, the wrapped-product opposite,
+three degree-angle row-pair rotations with cosine requested before sine,
+fourth-row translations, the count-fold binary64 weight, two separate clock
+reads for the shake and decay after construction. It builds the companion,
+absolute and horizontally rebased matrices with raw subtraction before float
+conversion. CameraFollow separately holds the mouse and wheel targets,
+per-update smoothing, the strict fifty-unit snap, quantized x/y following, the
+action-dependent vertical target and its binary32 raw blend, the alternative
+anchor, eight quarter-unit corner samples and the final centre correction.
+
+The contract does not state the index convention of the direction helper. The
+engine reads it as the same stored-row convention the contract gives for
+translation, which also reproduces the inherited view direction; this is an
+interpretive bound, not an independently verified native fact. The alternative
+anchor's "fixed integer fifty" is read as fifty coordinate units.
+
+Production FollowCamera now uses these kernels for targets, smoothing, anchor
+following, corner sampling and shake. Several inputs remain explicit engine
+adapters: the starting angles and distance, the first-frame anchor, the block
+ray march standing in for the unresolved native ray query (the distance to the
+first change of blocked state), the engine world clock supplying the shake, and
+the displacement of the right-handed engine eye in place of a view-coordinate
+translation. The widget gates are unbound, so production takes the ordinary
+route; the scale route, the second angle and the alternative anchor have
+supplied-state coverage only. The engine still renders through its own
+right-handed view and adapted projection: the three constructed native
+matrices, their rebasing members and native field-of-view selection are not yet
+the production view. Imported trigonometry, power and square root use platform
+adapters. Ray geometry, widget/device producers, initial and reset camera
+state, pointer lifetime and native visual acceptance remain open.

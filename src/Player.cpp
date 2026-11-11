@@ -283,9 +283,10 @@ void Player::advance(int32_t dt, bool replica) {
 
 }
 
-void Player::finishFrame(int32_t dtMs) {
-    // Camera following is an engine frame adapter, separate from actor stepping.
-    camera.update(state, (float)dtMs, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); });
+void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock) {
+    // Camera following runs once after the frame's world calls, with the whole
+    // frame duration rather than a world piece.
+    camera.update(state, dtMs, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, worldClock);
     view.placeCamera(camera.position(), camera.direction());
 }
 

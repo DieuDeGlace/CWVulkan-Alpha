@@ -1021,6 +1021,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         Player *player;
         bool dragging = false;
         double lastX = 0, lastY = 0;
+        bool cursorKnown = false; // no look delta until one sample in the current cursor mode
         bool dropOne = false; // screens §8.1.8: a left press over nothing with an item in hand
         Gamepad::PointerButtons pointerButtons;
         std::function<void(int, int, Gamepad::PointerButtons::Source)> mouseDispatch;
@@ -1250,6 +1251,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     glfwSetCursorPosCallback(window, [](GLFWwindow *w, double x, double y) {
         auto *in = (Input *)glfwGetWindowUserPointer(w);
         const bool menus = in->interface->wantsMouse();
+        // The first sample only establishes a reference: where the cursor rests
+        // when the window opens or changes cursor mode is not a movement.
+        if (!in->cursorKnown) {
+            in->cursorKnown = true;
+            in->lastX = x;
+            in->lastY = y;
+            return;
+        }
         if (in->player && !menus)
             in->player->look((float)(x - in->lastX), (float)(y - in->lastY)); // §7.2: look mode
         else if (in->dragging)
@@ -1496,8 +1505,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     controllerMouse.fill(false);
                 }
                 const int cursor = interface.wantsMouse() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED;
-                if (glfwGetInputMode(window, GLFW_CURSOR) != cursor)
+                if (glfwGetInputMode(window, GLFW_CURSOR) != cursor) {
                     glfwSetInputMode(window, GLFW_CURSOR, cursor);
+                    input.cursorKnown = false;
+                }
             };
             syncControllerContext();
             if (pad.connected) {
@@ -2316,7 +2327,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                       interface.mapOpen ? nullptr : &pad, &mouseButtons);
                     updatePlayerInterface();
                     publishPlayerEffects();
-                    player->finishFrame(frameElapsedMs);
+                    // The engine world clock stands in for the native world member.
+                    player->finishFrame(frameElapsedMs, [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); });
                 });
         } else {
             // A missing controlled actor does not suppress the world call.
