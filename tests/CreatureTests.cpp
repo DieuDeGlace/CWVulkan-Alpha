@@ -1183,9 +1183,12 @@ int main() {
         Npcs npcs;
         npcs.setNamedWorld(true);
         int bites = 0;
-        bool tamed = false;
+        bool tamed = false, contactSeen = false;
         for (int i = 0; i < 1500 && !tamed; i++) { // up to 24 s
             const NpcFrame f = npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+            // Held created-actor combat contract: the feeding branch records the feeder as contact.
+            for (const Npc &n : npcs.npcs())
+                contactSeen |= n.fighter.controller != 5 && n.fighter.relations.contact == me.id;
             for (const HitEmission &h : f.playerHits)
                 bites += h.record.kind == 6;
             for (const auto &t : f.tamed) {
@@ -1195,6 +1198,7 @@ int main() {
             }
         }
         same(tamed, 1, "the collie is tamed");
+        same(contactSeen, 1, "the feeding branch records the feeder as the creature's contact");
         same(bites, 5, "by five bites");
         const Npc *pet = npcs.petOf(me);
         same(pet && pet->fighter.controller == 5 && pet->fighter.ownerId == 1, 1, "a pet of the player");

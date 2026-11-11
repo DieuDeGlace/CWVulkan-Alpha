@@ -1368,3 +1368,9 @@ WorldDropTests additionally pins the held fatal-branch table of generator draws
 per recipient class: 1, 6, 4, 5 and 4 draws for the weapon generator and 5, 9,
 10, 10 and 10 for the armour generator for classes 0 to 4, with an empty weapon
 result for class 0. All 59 CTests pass; only a test and documents changed.
+
+CreatureTests' feeding fixture now also checks that the feeding branch records
+the feeder as the creature's contact, per the held created-actor combat
+contract. All 59 CTests pass; the player/controller diagnostic and the reward,
+health, network, save/reload and town runs pass, and all six reviewed captures
+match the preceding batch. The other combat corrections have no dedicated test.

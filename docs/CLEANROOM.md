@@ -1491,3 +1491,26 @@ per-selector pose evaluator is bounded but not closed. No engine change follows
 yet: production keeps its documented main-position fallback for the two weapon
 lights until the engine's pose producer is mapped onto the contract's creature
 fields and the one-frame light staleness is reproduced.
+
+`alpha-created-actor-combat.md`, FINAL/STABLE/HELD with SHA-256
+`23c4173adbce5f724407479cbde020474fd07f1f62cd609e6b426bf47f521f05`, was
+hash-verified and read completely; its author reported that the reconstruction
+was not consulted. It closes the combat continuation that a creature runs after
+target selection, in both images. The inherited engine combat update already
+follows most of it: the approach-range rules and their order, the candidate
+draw, the far route's give-up reset and pursuit speed, the big creatures'
+action lists and the saurian's part-dependent list, the dragon and
+claw-and-jaw hops, the ranged pair rule and the melee charges. Seven
+differences were corrected. The near route now clears the path in its common
+prefix. The feeding branch records the feeder as the creature's contact before
+its clock test. Magic users and non-magic dragons at or beyond the sixty-block
+band now do nothing further instead of falling through to later classes. The
+ranged and melee one-in-ten dodge draws are now made only while the dodge
+lockout is zero, and their attack fallbacks also require a zero lockout. The
+melee class now does nothing beyond its reach of three times the summed widths.
+The engine still writes a facing yaw in this update, which the contract says
+the native continuation does not; the native facing producer is elsewhere and
+not yet closed, so that write remains an engine adapter. The busy indicator,
+the kind-7 record handling, the magic class's aim adjustments, the 118 offset
+aim, the far route's direct-approach and path-loop details and every helper
+the contract leaves unaudited remain open.

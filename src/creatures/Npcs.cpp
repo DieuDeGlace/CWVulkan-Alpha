@@ -1096,12 +1096,16 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     }
 
     // In range: it faces the target and aims at it (flag 0x04, field 26).
+    // Held created-actor combat contract, near prefix: clear the give-up
+    // counter, clear the path, then zero the movement.
     npc.chaseMs = 0;
+    npc.path.clear();
     npc.yaw = yawToward(glm::vec2(toTarget));
     npc.body.intent = glm::vec3(0);
     // Pets §7.3: fed by a player holding out its food: up to five bites (action 110), then, if
     // still not tamed, pacified for 20 s.
     if (!pacified && !ownedPet && tempting(*target.fighter)) {
+        c.relations.contact = target.fighter->id; // before the clock test
         if (actionOver(c)) {
             if (c.action != 110)
                 npc.bites = 0;
@@ -1173,6 +1177,8 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     // §1.7: a dragon (no magic user) casts between 8 and 60 blocks; closer it leaps or lunges.
     if (c.type == 101 && !isMagicUser(c)) {
         const double d2 = glm::dot(toTarget, toTarget);
+        if (d2 >= 3600) // the class does nothing further; no later class runs
+            return true;
         if (d2 >= 64 && d2 < 3600) {
             if (actionOver(c))
                 start(37);
@@ -1194,7 +1200,9 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     }
     // Magic users within 60 blocks: the primary attack at low mana or on an even draw, else
     // the secondary.
-    if (isMagicUser(c) && distance < 60) {
+    if (isMagicUser(c)) {
+        if (!(distance < 60)) // the class does nothing further; no later class runs
+            return true;
         if (c.mana <= 0.5f || draw() % 2 == 0)
             startPrimaryAttack(c);
         else
@@ -1262,13 +1270,14 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         if (distance2 >= 3600)
             return true;
         const bool held = c.action == 24 || c.action == 25 || c.action == 27;
-        if (!held && (uint32_t)draw() % 10 == 0 && dodge())
+        // The one-in-ten draw is made only while the dodge lockout is zero.
+        if (!held && c.dodgeMs == 0 && (uint32_t)draw() % 10 == 0 && dodge())
             return true;
         if (c.mana < 0.8f && !held) {
             startPrimaryAttack(c);
             return true;
         }
-        if (actionOver(c)) {
+        if (c.dodgeMs == 0 && actionOver(c)) {
             const bool armed = c.mainHand().type != 0;
             const int m = c.mainHand().subtype;
             if (armed && m == CROSSBOW)
@@ -1292,15 +1301,19 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         return true;
     }
     // §6.1: melee.
+    // Held contract: the melee class does nothing beyond its reach; within it
+    // the dodge draw needs a zero lockout, and so does the attack fallback.
     const float reach = 3.f * (own + theirs);
+    if (!(distance2 < (double)reach * reach))
+        return true;
     const bool held = c.action == 59 || c.action == 63 || c.action == 8;
-    if (distance2 < (double)reach * reach && !held && (uint32_t)draw() % 10 == 0 && dodge())
+    if (!held && c.dodgeMs == 0 && (uint32_t)draw() % 10 == 0 && dodge())
         return true;
     if (c.mana < 0.8f && !held) {
         startPrimaryAttack(c);
         return true;
     }
-    if (!actionOver(c))
+    if (c.dodgeMs != 0 || !actionOver(c))
         return true;
     // §7.1: the mana ability of the weapons held. Those who charge jump first while they can.
     const bool main = c.mainHand().type != 0, off = c.offHand().type != 0;
