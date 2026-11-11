@@ -1476,3 +1476,18 @@ match, as do the generators' per-class draw counts and the empty out-of-range
 weapon pick. No engine arithmetic changed. The unresolved virtual disposal
 routines, the unattributed upstream callers and runtime values of the steering
 world fields remain open.
+
+`alpha-weapon-attachment-poses.md`, FINAL/STABLE/HELD with SHA-256
+`05006c22dad53e57cfc42ca2cad7a66697c3e8e20d461eef3f37b2ad3e7515dd`, was
+hash-verified and read completely. Its author reported consulting the
+authorized reconstruction for leads on member layout and order, each confirmed
+against the original before use. It closes the default-selector chain that
+produces both weapon attachment points (creature, body, hand and weapon
+matrices, the carried and held grip branches, the unconditional reference
+shift and the series updates), establishes that construction leaves both points
+uninitialised, and shows that the renderer's light reads see the previous
+refresh's points while the later geometry reads see the current one. The
+per-selector pose evaluator is bounded but not closed. No engine change follows
+yet: production keeps its documented main-position fallback for the two weapon
+lights until the engine's pose producer is mapped onto the contract's creature
+fields and the one-frame light staleness is reproduced.

@@ -561,6 +561,10 @@ Differences from the Steam engine that shape the plan:
   closes conditional transforms, reference recovery and identified read/refresh
   order. Complete pose matrices, special branches, initial validity and whole-frame
   freshness remain dependencies; production retains its documented fallback.
+  The held weapon-attachment pose contract now closes the default-selector
+  matrices, grip branches, initial state and the one-frame-stale light read;
+  the per-selector evaluator and the mapping onto engine creature fields remain
+  before the fallback can be replaced.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look
