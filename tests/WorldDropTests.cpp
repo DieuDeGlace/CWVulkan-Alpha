@@ -1,4 +1,5 @@
 #include "Loot.h"
+#include "worldgen/Items.h"
 #include <bit>
 #include <cstdio>
 #include <cstring>
@@ -159,7 +160,50 @@ static void unitAccounting() {
     check(unitsDropped == 0, "only actor byte value one reaches the inventory-unit branch");
 }
 
+// Draw counts and fixed fields from the held fatal-loot branch contract.
+static void branchGenerators() {
+    const auto spent = [](const auto &run) {
+        worldgen::Random random(77);
+        run(random);
+        return random.count();
+    };
+    check(spent([](worldgen::Random &r) { rarityRoll(r, 0); }) == 4 && spent([](worldgen::Random &r) { rarityRoll(r, 3, true); }) == 4,
+          "the grade routine always makes four draws");
+    bool bounded = true, forced = true;
+    for (uint32_t seed = 1; seed < 200; ++seed) {
+        worldgen::Random random(seed);
+        const int32_t grade = rarityRoll(random, 2);
+        bounded &= grade >= 0 && grade <= 4;
+        worldgen::Random again(seed);
+        forced &= rarityRoll(again, 2, true) == 3 && rarityRoll(again, 7, true) == 4;
+    }
+    check(bounded && forced, "the grade stays at most four and a force flag replaces it by the bound");
+    check(spent([](worldgen::Random &r) { worldgen::weaponItem(r, 9, 2, -1); }) == 16 &&
+          spent([](worldgen::Random &r) { worldgen::armourItem(r, 9, 2, -1); }) == 24,
+          "the two generators with selector minus one make sixteen and twenty-four draws");
+    bool weapons = true, armour = true, wrapped = true;
+    for (uint32_t seed = 1; seed < 400; ++seed) {
+        worldgen::Random a(seed), b(seed), c(seed);
+        const auto weapon = worldgen::weaponItem(a, 9, 2, -1);
+        weapons &= weapon.type == 3 && weapon.level == 9 && weapon.rarity == 2 && weapon.seed < 100;
+        const auto piece = worldgen::armourItem(b, 9, 2, -1);
+        armour &= piece.type >= 4 && piece.type <= 9 && piece.subtype == 0 && piece.level == 9 && piece.rarity == 2;
+        const uint32_t before = c.count();
+        const auto recipe = worldgen::recipeItem(c, 9, 2);
+        const uint32_t used = c.count() - before;
+        wrapped &= recipe.type == 2 && ((recipe.product == 3 && used == 17) || (recipe.product >= 4 && recipe.product <= 9 && used == 25));
+    }
+    check(weapons && armour, "generated candidates carry the supplied level and grade with their fixed categories");
+    check(wrapped, "the wrapped producer makes one parity draw, runs one full generator and moves the category aside");
+    check(spent([](worldgen::Random &r) { rerollLevel(r, 1); }) == 0 && spent([](worldgen::Random &r) { rerollLevel(r, 2); }) == 0 &&
+          spent([](worldgen::Random &r) { rerollLevel(r, 3); }) == 1,
+          "the level adjuster draws only from level three upward");
+    worldgen::Random low(5);
+    check(rerollLevel(low, 2) == 1 && rerollLevel(low, 1) == 1, "level two falls to one and level one is unchanged");
+}
+
 int main() {
+    branchGenerators();
     recordAndResidency(); truncationAndScan(); semanticItem(); unitAccounting();
     if (!failures) std::puts("PASS: world-drop record, residency, truncation, vertical scan, semantic item copy and unit draw accounting");
     return failures ? 1 : 0;

@@ -1313,3 +1313,32 @@ engine consumers (sky rotation, light admission planes, frame constants) read
 the adapted matrix; yaw and pitch scalars kept for the minimap, fog gradient
 and sound still come from the engine direction adapter with its pitch bound.
 The companion and absolute matrices are constructed but not consumed.
+
+A further isolated author supplied `alpha-fatal-loot-branches.md`, FINAL/STABLE/
+HELD with SHA-256
+`85aa0329e185a699e226a797cfad1920c470013b1e0e8ee1b78ef917d20fa629`, covering the
+fatal-loot helper from entry to the inventory-unit branch in both images. It
+was hash-verified and read completely. Its author reported that the
+reconstruction was not consulted and received no engine, test or runtime
+material. The implementer noticed that one generator's stated draw total did
+not equal the sum of that section's own itemised draws and put that question,
+about the document alone, back to the author. The held recount note
+`alpha-fatal-loot-branches-generator-recount.md`, SHA-256
+`2563c20fd13fb1a1feb95d854b6a4197013220188f3fb1ab938f9cd685b8d339`, was read
+completely: the itemised order is correct, the total is sixteen, and the note
+governs where the two differ.
+
+Compared branch by branch, the inherited loot implementation already agrees
+with these contracts: admission and the discarded draw; the worn-item
+candidate order, gate, selection between the offset and angle draws and unit
+scale; the generated-item gate, level, generator choice, grade, level
+adjustment and optional second item; the kind table with its scales and
+parity-selected rows; the wrapped item with placement draws ahead of its grade
+and generator draws; the value curve, amount, split and three denominations;
+the tiered item with its score bounds, always-made second draw and unreduced
+stored draw; and both generators' candidate order and fixed fields. No engine
+arithmetic changed. This is independent confirmation of previously inherited
+logic within the contracts' bounds, not a provenance certificate for its
+original authorship. The 45-entry table behind the world-list producer, the
+imported power routine, item gap bytes, the actor-field meanings and total
+draw counts for a fatal actor remain open.

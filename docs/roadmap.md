@@ -144,8 +144,10 @@ Differences from the Steam engine that shape the plan:
   selection and original visual acceptance remain open.
 - [x] Fatal inventory-unit world drops: the shared drop helper follows the held
   record, residency, truncation, vertical-start and item-assignment rules, with
-  four or five direct draws per attempted unit. Earlier loot branches, native
-  column fallbacks, retention, pickup and transport remain open.
+  four or five direct draws per attempted unit. The held branch contract and
+  recount independently confirm the earlier loot branches and both item
+  generators. The world-list table, imported power results, retention, pickup
+  and transport remain open.
 - [x] Native main lens and camera ray query: a followed creature's mode word
   selects the held projection angle with native planes and pixel aspect, and
   the camera's corner and centre rays use the held ray query. The constructed

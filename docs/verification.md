@@ -627,6 +627,16 @@ and that a render origin changes only the horizontal translation input. All 59
 CTests pass. With the constructed view in production, the player/controller
 diagnostic and the reward, health, network, save/reload and town runs pass and
 all six reviewed client captures match the preceding checkpoint's framing.
+
+WorldDropTests additionally pins the held fatal-loot branch contracts' counts:
+four draws for every grade call with the result at most four and the forced
+bound, sixteen and twenty-four draws for the two generators with selector
+minus one, their fixed categories with the supplied level and grade, one
+parity draw plus one full generator run for the wrapped producer with its
+category moved aside, and the level adjuster drawing only from level three
+upward. All 59 CTests pass. Only tests and documents changed in this
+checkpoint; the client executable is unchanged, so no new client runs were
+made.
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
