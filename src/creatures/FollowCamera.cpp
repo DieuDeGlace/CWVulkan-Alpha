@@ -65,12 +65,7 @@ glm::vec3 FollowCamera::direction() const {
     return camera_follow::offsetDirection({pitch, 0.f, yaw}, camera_view::platformTrig());
 }
 
-glm::dvec3 FollowCamera::position() const {
-    // Engine adapter for the native view-coordinate shake translation: the
-    // right-handed engine view mirrors x, so the eye moves with x and against y.
-    const glm::dvec3 r(right()), up = glm::cross(r, glm::dvec3(direction()));
-    return blocksOf(eye) + r * double(offset.x) - up * double(offset.y);
-}
+glm::dvec3 FollowCamera::position() const { return blocksOf(eye); }
 
 glm::vec3 FollowCamera::forward() const {
     const double p = yaw * DEG;
@@ -83,7 +78,7 @@ glm::vec3 FollowCamera::right() const {
 }
 
 void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibility::Scene &scene,
-                          const camera_view::Clock &clock) {
+                          const camera_view::Clock &clock, const camera_view::Fixed3 &renderOrigin) {
     const camera_view::Trig trig = camera_view::platformTrig();
     camera_follow::State s = state();
     camera_follow::smooth(s, elapsedMs, options.smoothness);
@@ -102,8 +97,14 @@ void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibilit
     camera_follow::placeEye(s, subject.position, camera_follow::offsetDirection(s.angles, trig), sceneQueries(scene));
     store(s);
 
-    // The view uses the amplitude from before this frame's decay.
-    offset = camera_view::shake(shake, clock, trig);
+    // The view uses the amplitude from before this frame's decay. The engine
+    // render origin takes the place of the followed anchor for rebasing.
+    camera_view::Inputs inputs;
+    inputs.eye = eye;
+    inputs.anchor = {renderOrigin[0], renderOrigin[1], 0};
+    inputs.angles = s.angles;
+    inputs.amplitude = shake;
+    rebased = camera_view::construct(inputs, clock, trig).rebased;
     shake = camera_view::decayedAmplitude(shake, elapsedMs);
 }
 

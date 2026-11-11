@@ -748,6 +748,7 @@ Camera WorldView::camera(VkExtent2D size) const {
     c.aspect = (float)size.width / (float)std::max(1u, size.height);
     if (lensWord && size.width > 0 && size.height > 0)
         c.mainLens = Camera::MainLens{*lensWord, int32_t(size.width), int32_t(size.height)};
+    c.nativeView = nativeView;
     return c;
 }
 

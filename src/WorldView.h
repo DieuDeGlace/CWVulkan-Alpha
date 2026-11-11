@@ -63,6 +63,10 @@ class WorldView {
     // The followed creature's mode word for the main lens; empty keeps the
     // engine's free-camera lens.
     std::optional<uint16_t> lensWord;
+    // The followed camera's constructed view; empty keeps the look-at view.
+    std::optional<std::array<std::array<float, 4>, 4>> nativeView;
+    // The render origin as raw fixed coordinates; heights are not rebased.
+    std::array<int64_t, 3> originFixed() const { return {int64_t(origin.x) * 65536, int64_t(origin.y) * 65536, 0}; }
     void move(glm::vec3 local, float seconds, bool fast); // x right, y forward, z up
     void turn(float yawDegrees, float pitchDegrees);
     void setLook(float yawDegrees, float pitchDegrees);

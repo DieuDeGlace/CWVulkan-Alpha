@@ -12,7 +12,17 @@ glm::vec3 Camera::forward() const {
     return {std::cos(pitch) * std::sin(yaw), std::cos(pitch) * std::cos(yaw), -std::sin(pitch)};
 }
 
-glm::mat4 Camera::view() const { return glm::lookAt(eye, eye + forward(), glm::vec3(0, 0, 1)); }
+glm::mat4 Camera::view() const {
+    if (!nativeView)
+        return glm::lookAt(eye, eye + forward(), glm::vec3(0, 0, 1));
+    glm::mat4 adapted;
+    for (int column = 0; column < 4; ++column)
+        for (int row = 0; row < 4; ++row) {
+            const float value = (*nativeView)[column][row];
+            adapted[column][row] = row == 0 || row == 2 ? projection::flipSign(value) : value;
+        }
+    return adapted;
+}
 
 glm::mat4 Camera::projection(float nearPlane, float farPlane, float lens) const {
     const projection::Inputs inputs{glm::radians(lens), projection::flipSign(aspect), nearPlane, farPlane};

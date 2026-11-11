@@ -148,9 +148,10 @@ Differences from the Steam engine that shape the plan:
   column fallbacks, retention, pickup and transport remain open.
 - [x] Native main lens and camera ray query: a followed creature's mode word
   selects the held projection angle with native planes and pixel aspect, and
-  the camera's corner and centre rays use the held ray query. Fallback-record
-  initialization, the constructed view matrices as the production view and
-  original visual acceptance remain open.
+  the camera's corner and centre rays use the held ray query. The constructed
+  rebased view, with view-coordinate shake, is the production view through an
+  explicit mirrored-axis adapter and the engine render origin. Widget gates,
+  initial camera state and original visual acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

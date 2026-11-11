@@ -30,6 +30,10 @@ struct Camera {
         int32_t width, height;
     };
     std::optional<MainLens> mainLens;
+    // The constructed native view as four stored rows, already relative to the
+    // render origin. view() applies the explicit right-handed adapter, which
+    // mirrors the view x and z axes by sign-bit inversion.
+    std::optional<std::array<std::array<float, 4>, 4>> nativeView;
     projection::Inputs mainInputs() const;
     // The main projection through the explicit right-handed Vulkan adapter.
     glm::mat4 mainProjection() const;

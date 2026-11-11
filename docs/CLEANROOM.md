@@ -1294,3 +1294,22 @@ the native discriminator, whose upstream plot selection, the unread scalar
 arguments, draws inside construction and position services, and the second,
 stock-less template-stamping producer of class 0x83 remain open. That second
 producer is not implemented as a native claim here.
+
+The already held camera view-production contract now supplies the production
+view while a creature is followed. The follow camera constructs the rebased
+view each frame from its fixed eye, current angles, pre-decay amplitude and two
+clock reads, so shake is the contract's view-coordinate translation and no
+longer an engine displacement of the eye. The engine render origin takes the
+place of the followed anchor as the horizontal rebasing origin, because engine
+geometry is positioned relative to that origin with absolute heights; this is
+an explicit engine adapter, and the contract's publication of the opposite
+anchor members has no engine consumer. The renderer applies an explicit
+right-handed adapter that mirrors the view x and z axes by sign-bit inversion.
+A supplied-state comparison shows that this adapted view agrees with the
+engine's previous look-at view for the same eye and angles within binary32
+rounding, which also supports the stored-row reading recorded earlier. Free
+cameras, model viewers and probes keep the look-at view. The view's remaining
+engine consumers (sky rotation, light admission planes, frame constants) read
+the adapted matrix; yaw and pitch scalars kept for the minimap, fog gradient
+and sound still come from the engine direction adapter with its pitch bound.
+The companion and absolute matrices are constructed but not consumed.

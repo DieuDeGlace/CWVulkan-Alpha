@@ -1,6 +1,8 @@
 #include "creatures/CameraFollow.h"
 #include "creatures/CameraView.h"
 #include "creatures/FollowCamera.h"
+#include "Frame.h"
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdio>
@@ -376,9 +378,21 @@ static void productionCamera() {
     shaken.shake = 1.f;
     shaken.update(body, 16, open, [] { return 0; });
     steady.update(body, 16, open, [] { return 0; });
-    const glm::dvec3 moved = shaken.position() - steady.position();
-    check(std::abs(glm::length(moved) - std::sqrt(.5)) < 1e-4 && std::abs(glm::dot(moved, glm::dvec3(direction))) < 1e-4,
-          "shake displaces the engine eye across the view by both half-amplitude components");
+    const auto &moved = shaken.view()[3], &kept = steady.view()[3];
+    check(shaken.position() == steady.position() && std::abs(moved[0] - kept[0] - .5f) < 1e-4f &&
+          std::abs(moved[1] - kept[1] - .5f) < 1e-4f && std::abs(moved[2] - kept[2]) < 1e-4f,
+          "shake translates the constructed view by both half-amplitude components and leaves the eye alone");
+    const camera_view::Fixed3 origin{3 * UNIT, -4 * UNIT, 0};
+    creatures::FollowCamera rebasedCamera = camera;
+    rebasedCamera.update(body, 16, open, [] { return 0; }, origin);
+    steady = camera;
+    steady.update(body, 16, open, [] { return 0; });
+    bool shifted = rebasedCamera.view()[0] == steady.view()[0] && rebasedCamera.view()[1] == steady.view()[1];
+    for (int i = 0; i < 3; ++i) {
+        const float expected = steady.view()[3][i] + 3.f * steady.view()[0][i] - 4.f * steady.view()[1][i];
+        shifted &= std::abs(rebasedCamera.view()[3][i] - expected) < 1e-3f;
+    }
+    check(shifted, "the render origin changes only the horizontal translation input, leaving rotation and height alone");
     check(bits(shaken.shake) == bits(camera_view::decayedAmplitude(1.f, 16)), "the amplitude decays after the frame's view offset");
 
     const creatures::visibility::Scene solid{[](int32_t, int32_t, int32_t z) { return uint8_t(z >= 23 ? 1 : 0); }, {}};
@@ -390,7 +404,40 @@ static void productionCamera() {
           "blocked corners shorten the production distance through the held ray query");
 }
 
+// The constructed native view and the engine's right-handed look-at view for
+// the same eye and angles differ only by mirrored view x and z axes.
+static void viewRelation() {
+    float worst = 0, adaptedWorst = 0;
+    for (const auto &angles : {std::array<float, 3>{120.f, 0.f, 0.f}, std::array<float, 3>{60.f, 0.f, 135.f},
+                               std::array<float, 3>{95.f, 0.f, -70.f}, std::array<float, 3>{150.f, 0.f, 200.f}}) {
+        camera_view::Inputs inputs;
+        inputs.eye = {12 * UNIT, -7 * UNIT, 30 * UNIT};
+        inputs.angles = angles;
+        const auto views = camera_view::construct(inputs, [] { return 0; }, camera_view::platformTrig());
+        const glm::vec3 direction = camera_follow::offsetDirection(angles, camera_view::platformTrig());
+        Camera camera;
+        camera.eye = {12, -7, 30};
+        camera.yawDegrees = glm::degrees(std::atan2(direction.x, direction.y));
+        camera.pitchDegrees = -glm::degrees(std::asin(direction.z));
+        const glm::mat4 engine = camera.view();
+        for (int column = 0; column < 4; ++column)
+            for (int row = 0; row < 4; ++row) {
+                const float sign = row == 0 || row == 2 ? -1.f : 1.f;
+                worst = std::max(worst, std::abs(engine[column][row] - sign * views.absolute[column][row]));
+            }
+        Camera native = camera;
+        native.nativeView = views.absolute;
+        const glm::mat4 adapted = native.view();
+        for (int column = 0; column < 4; ++column)
+            for (int row = 0; row < 4; ++row)
+                adaptedWorst = std::max(adaptedWorst, std::abs(engine[column][row] - adapted[column][row]));
+    }
+    check(worst < 1e-4f && adaptedWorst < 1e-4f,
+          "the production adapter of the constructed view agrees with the engine look-at view within float rounding");
+}
+
 int main() {
+    viewRelation();
     conversions(); rotationsAndTranslations(); weightsAndShake(); finalConstruction();
     inputTargets(); smoothing(); anchorFollowing(); voxelsAndEye(); productionCamera();
     if (!failures) std::puts("PASS: camera conversions, view construction, input targets, smoothing, anchor following, corner sampling and production adapter");

@@ -617,6 +617,16 @@ health, network, save/reload and town runs pass; all six client captures were
 reviewed and show the wider 50-degree framing with the character, HUD, map and
 terrain intact and the camera placed behind the character as before. These are
 engine captures under the engine's view adapter, not native pixel comparisons.
+
+CameraTests additionally compares the constructed view with the engine look-at
+view for four angle sets at one eye: after mirroring the view x and z axes the
+worst component difference stays below 1e-4, both directly and through the
+production Camera adapter. Production cases check that shake translates the
+constructed view by both half-amplitude components while the eye is unchanged,
+and that a render origin changes only the horizontal translation input. All 59
+CTests pass. With the constructed view in production, the player/controller
+diagnostic and the reward, health, network, save/reload and town runs pass and
+all six reviewed client captures match the preceding checkpoint's framing.
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
