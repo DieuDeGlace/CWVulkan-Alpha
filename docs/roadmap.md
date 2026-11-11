@@ -153,9 +153,13 @@ Differences from the Steam engine that shape the plan:
   the camera's corner and centre rays use the held ray query. The constructed
   rebased view, with view-coordinate shake, is the production view through an
   explicit mirrored-axis adapter and the engine render origin. The camera
-  starts from the held constructed values, with a labelled direct-entry
-  distance for runs that skip the front end. Widget gates, the remaining
-  front-end handlers and original visual acceptance remain open.
+  starts from the held constructed values; world entry reproduces the held
+  local-entry snap, and the in-game return row its reset. The loading-overlay
+  gate, visibility defaults and original visual acceptance remain open.
+- [x] Prefab placer checked against the held template-stamping contract: guard
+  gear levels, raw-orientation angles and the ordered column-value test
+  corrected. Behaviour objects, the column-value fallback and native feature
+  collections remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

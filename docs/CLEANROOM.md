@@ -1393,3 +1393,39 @@ table in the loot code holds the same values in the same order and is used
 with the same reduction, so no engine code changed. The client's second reader
 of the list, which passes a whole element to an unexamined routine, is not
 implemented.
+
+`alpha-front-end-widget-states.md`, FINAL/STABLE/HELD with SHA-256
+`7f37c47da67b8aa1ee81a0220c18fb92527fe0562ca5727dda19f1cb5fa6fd4c`, was
+hash-verified and read completely; its author reported that the reconstruction
+was not consulted. It identifies the nine front-end screens by the literal
+strings they are built with, their creation-time visibility, every located
+transition and the owners of the three camera-snapping button handlers. The
+engine's rotation screens (title, character list, world list, connection)
+match the contract's admissions. The world-list Select and the Create World
+button both snap the camera to distance 5, first angle 90 and third angle 180
+on the way into a local world; a server connection has no snap. Because the
+engine restarts into a world, the direct-entry state now reproduces that
+native local-entry snap instead of the earlier six-block adapter, and a
+connection starts at the front-end targets of distance 10 and first angle 100
+as a labelled adapter for the lost smoothing state. The in-game menu's return
+row now resets both distances to zero and the first and third angle targets to
+120 and 0, leaving the current angles. The loading overlay's admission gate,
+first-frame visibility defaults, the options screen and the in-game menu
+key toggles are not bound as native claims.
+
+`alpha-template-stamping-markers.md`, FINAL/STABLE/HELD with SHA-256
+`501d46a358424decd714931072f1180f294a5b08360211a3a76869a1aba68355`, was
+hash-verified and read completely; its author reported that the reconstruction
+was not consulted. Compared marker by marker, the inherited prefab placer
+already matches its traversal, crop table, column scan, pre-pass, protection
+test, selector admission, all fifteen markers' kinds, positions, sizes,
+draw order and clear writes, the box finder and the ordinary-cell rule. Three
+differences were corrected: all five guard equipment blocks for selectors 9 to
+12 now take level 20, not only the weapon and chest; the wall-plant, crest and
+sign angles and the creature yaw use the raw orientation argument rather than
+its remainder; and the column-value test is ordered, so a NaN value skips the
+wall-plant and flower-box markers. Engine zone lists stand in for the native
+feature, object and descriptor collections, the column warmth stands in for the
+column value, negative orientations remain reduced, and the behaviour object,
+the column-value fallback service and the uninitialised object-entry field are
+not modelled.

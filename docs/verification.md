@@ -1328,3 +1328,15 @@ The current town night capture also renders successfully.
 WorldDropTests also checks the pet-food subtype list against the held
 world-list contract: 45 values in the held order with sum 2750. All 59 CTests
 pass. Only a test and documents changed; the client executable is unchanged.
+
+WorldgenTests additionally checks the held template-stamping corrections: all
+five guard equipment blocks at level 20 for selector 9, creature yaw and crest
+angle from the raw orientation 5, and a lone wall-plant voxel that draws and
+clear-writes over a warm column but neither draws nor writes over an
+unordered (NaN) column value. All 59 CTests pass. The player/controller
+diagnostic and the reward, health, network, save/reload and town runs pass;
+all six client captures were reviewed. Local runs now open from the native
+local-entry camera (5 blocks, level, third angle 180) and connected runs from
+the front-end distance of 10 blocks, so their framing differs from earlier
+checkpoints by design. The menu return row and screen transitions have no
+automated run.

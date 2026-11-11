@@ -920,11 +920,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         return ui::Interface::ItemModel{creatureView.plainMesh(slot), creatureView.voxels(slot)};
     };
     interface.startScreen = options.start;
-    // Engine direct-entry adapter: runs that skip the front end never pass the
-    // native screens that move the constructed zero distance, so they begin a
-    // few blocks out to keep the character in view.
-    if (player && !options.start)
-        player->followCamera().distance = player->followCamera().targetDistance = 6;
+    // World entry. The engine restarts into a world, so the front-end camera
+    // state is not carried over. A local world is entered natively through the
+    // world-list Select or Create World button, both of which snap the camera
+    // (held front-end and initial-state contracts). A server connection has no
+    // snap and keeps the front-end targets; starting there is an engine adapter.
+    if (player && !options.start) {
+        creatures::FollowCamera &cam = player->followCamera();
+        if (options.connect.empty()) {
+            cam.distance = cam.targetDistance = 5;
+            cam.pitch = cam.targetPitch = 90;
+            cam.yaw = cam.targetYaw = 180;
+        } else {
+            cam.distance = cam.targetDistance = 10;
+            cam.pitch = cam.targetPitch = 100;
+        }
+    }
     interface.systemMenu = options.systemPanel;
     interface.inventoryOpen = options.inventory && player;
     bool sayAtStart = options.speech;
@@ -1205,6 +1216,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             case ui::Action::StartMenu:
                 menu.systemMenu = false;
                 menu.startScreen = true;
+                // Held initial-state contract, in-game menu row 1: both distances,
+                // then the first and third angle targets; current angles stay.
+                if (in->player) {
+                    creatures::FollowCamera &cam = in->player->followCamera();
+                    cam.distance = cam.targetDistance = 0;
+                    cam.targetPitch = 120, cam.targetYaw = 0;
+                }
                 break;
             case ui::Action::Exit:
                 glfwSetWindowShouldClose(w, 1);

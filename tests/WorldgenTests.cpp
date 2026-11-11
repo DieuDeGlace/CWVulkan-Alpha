@@ -1,6 +1,8 @@
 // Checks the world generator against the test values written in the world-generation specs
 // (docs/specs/alpha-worldgen-*.md). They were computed from the specs' formulas, so a pass means
 // the implementation follows the spec; matching the running game is checked separately.
+#include <limits>
+#include <memory>
 #include "BlockEdits.h"
 #include "Missions.h"
 #include "worldgen/Builders.h"
@@ -384,6 +386,67 @@ int main() {
         same(zone.read(100, 103, 11).typeByte, DRY_AIR, "door air");
         same(zone.read(100, 103, 10).typeByte, ROCK | DRY_AIR, "floor block");
         same(zone.statics[1].kind, 56 + 440 % 9, "vase kind");
+    }
+
+    // Held template-stamping contract: guard gear levels, raw orientation, ordered column value.
+    {
+        auto run = [&](int mode, int rotation, float warmth, uint8_t r, uint8_t g, uint8_t b) {
+            auto zone = std::make_shared<Zone>();
+            zone->zx = zone->zy = 0;
+            for (Column &c : zone->columns) {
+                c.bottom = 0;
+                c.blocks.assign(10, Block{90, 90, 90, GRASS});
+                c.warmth = warmth;
+            }
+            Prefab model;
+            model.sx = model.sy = 1, model.sz = 3;
+            model.rgb = {120, 100, 80, r, g, b, 120, 100, 80};
+            PlacerWorld pw;
+            pw.warmth = [&](int32_t, int32_t) { return warmth; };
+            pw.level = [](int32_t, int32_t) { return 3; };
+            pw.gapFill = [](int32_t, int32_t, int32_t) { return IMPLICIT_SOLID; };
+            Placement at;
+            at.x = at.y = 50, at.z = 10;
+            at.rotation = rotation;
+            at.mode = mode;
+            Random s(123);
+            placePrefab(*zone, s, pw, model, at);
+            return zone;
+        };
+        const auto guard = run(9, 0, 1, 127, 0, 127);
+        bool levels = guard->spawns.size() == 1;
+        for (int slot : {2, 3, 4, 5, 7})
+            levels &= levels && guard->spawns[0].equipment[slot].level == 20;
+        same(levels, 1, "every guard equipment block takes level 20");
+        same(run(9, 5, 1, 127, 0, 127)->spawns[0].yaw, (2 - 5) * 90.f, "creature yaw uses the raw orientation");
+        same(run(1, 5, 1, 63, 0, 0)->sprites[0].angle, -90.f * 5, "crest angle uses the raw orientation");
+        // A lone wall-plant voxel in open air above the column.
+        auto plant = [&](float warmth) {
+            auto zone = std::make_shared<Zone>();
+            zone->zx = zone->zy = 0;
+            for (Column &c : zone->columns) {
+                c.bottom = 0;
+                c.blocks.assign(10, Block{90, 90, 90, GRASS});
+                c.warmth = warmth;
+            }
+            Prefab model;
+            model.sx = model.sy = model.sz = 1;
+            model.rgb = {0, 127, 127};
+            PlacerWorld pw;
+            pw.warmth = [&](int32_t, int32_t) { return warmth; };
+            pw.level = [](int32_t, int32_t) { return 3; };
+            pw.gapFill = [](int32_t, int32_t, int32_t) { return IMPLICIT_SOLID; };
+            Placement at;
+            at.x = at.y = 50, at.z = 10;
+            at.mode = 1;
+            Random s(123);
+            placePrefab(*zone, s, pw, model, at);
+            return std::make_pair(s.count(), zone->read(50, 50, 10).typeByte);
+        };
+        const auto warm = plant(1), unordered = plant(std::numeric_limits<float>::quiet_NaN());
+        same(warm.first >= 1 && warm.second == DRY_AIR, 1, "a warm column draws and clear-writes the wall-plant cell");
+        same(unordered.first == 0 && unordered.second != DRY_AIR, 1,
+             "an unordered column value skips the wall-plant marker without a draw or write");
     }
 
     // Screens §5.1.6: the map tile of a flat zone of grass up to z = 70, floor level 62.

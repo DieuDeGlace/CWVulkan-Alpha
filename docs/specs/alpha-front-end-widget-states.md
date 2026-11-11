@@ -1,0 +1,101 @@
+Status: FINAL / STABLE / HELD after complete saved-document readback. Bounded, code-free behavioral contract for the nine named client front-end widget members, the three named button handlers, the pointer-release menu block in routine 0x07DDD0, and the front-end states the per-frame input predicate treats as "shown". Every statement below was taken from the original listing and confirmed against the image bytes; unresolved points are listed at the end.
+
+# Alpha client front end: widget identities, property defaults, and screen-to-screen transitions
+
+This contract names what each of the nine client widget pointers displays, by evidence a reader can verify without the code (the literal text the widget is built with, the resource and layout names passed to its constructor, and the label strings of its child buttons), the order in which the client constructor creates them, the default of the zero/nonzero property each one is tested through, every located routine that sets or clears those properties with the condition and value and order, the owner and firing rule of the three named button handlers, the list the selection block in 0x07DDD0 reads and what triggers it, and which of these states the per-frame mouse predicate treats as "front end shown". It does not restate the camera arithmetic of the three earlier camera contracts; those were used only to locate the members, and every fact here was re-derived from original evidence.
+
+## Image, evidence and notation
+
+The supported original is `binary/Cube.exe` under the evidence root `disassembled alpha cube world`: 3,885,568 bytes, SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf` (recomputed before use), preferred image base 0x00400000. Addresses are RVAs unless marked VA. Evidence files are the complete listing `decompiled/client/assembly.txt` (called A), the constructor listing `decompiled/client/assembly-functions/00459c40.asm` (called K), and the image bytes themselves (strings, the import and the two menu virtual tables). No decompiler output, runtime observation, reconstruction or implementation material supplied any fact.
+
+`C` is the client object. Widget pointers are named only by their client byte offsets (for example "+0x800874"). A "widget property" means the single 32-bit value reached from the widget pointer through its pointed object at +0x3C, then the index at +0x68 of that object, then the four-byte-element array whose pointer is at +0x94 of that object; the index tested is the one stored at that +0x68 field. Routine 0x07FA10 performs the zero-versus-nonzero read of exactly that element (K-independent; A at 0x07FA10-0x07FA24). "Set" below means that element is written 1 (or a nonzero result); "clear" means it is written 0. A button's "label" is the literal text passed when the button is built.
+
+## How a widget and its tested property are built
+
+The constructor obtains each of these widgets from one shared factory at 0x64F4E0 (A at 0x64F4E0-0x64F640). Given a text name and optional layout arguments, that factory builds the widget's effect/state object (through 0x678080 and 0x678EF0) and then the base widget object (through 0x630470), and returns the widget pointer. In 0x630470 the pointer stored at the new widget's +0x3C is the effect/state object the factory just built (A at 0x63050B-0x630524). Inside that effect/state object the first named sub-object, built at object-offset +0x48 by 0x661480 and carrying the literal name `visibility` (A at 0x678080 passing the text at VA 0x71F38C, and 0x661480), sets its own index field to zero (A at 0x6614DD-0x6614EB). Because that index field lies at effect-object +0x68, the property element the whole front end is tested through is element zero of the visibility track. In plain terms, the tested property is each widget's "visible" flag.
+
+The constructor does not pre-clear the client block (K at 0x59FB4 region obtains raw storage and passes it straight to construction). A property that construction does not write therefore has no proven value from construction alone; see the defaults section.
+
+## The nine widgets: what each displays, and creation order
+
+The constructor builds these widgets in the following order (RVA of the store that records each widget pointer). Each "bare" widget is created with an empty name and no layout, then populated later with child widgets and buttons.
+
+1. +0x800884 (not one of the nine, listed for order only): bare root panel, created first at 0x5A778. Nearly every heads-up and title element is parented to it.
+2. +0x800880: bare, created at 0x5A7E8. Later populated as the character-creation screen: it is the parent of the button labeled `Create Character` (its own pointer kept at +0x800970, K at 0x5CB85-0x5CBA1) and of a one-line text field built from resource `resource1.dat` layout `charactername` under the on-screen caption `Name` (K at 0x5D08E-0x5D0A8 and the strings there).
+3. +0x800890: bare, created at 0x5A871. Later the world-creation screen: parent of the button labeled `Create World` (pointer at +0x8009B4, K at 0x5CC0D-0x5CC29), of a name field from `resource1.dat` layout `worldName` under caption `Name`, and of a field from layout `worldSeed` under caption `Seed (must be a number)` (K at 0x5D42C-0x5D7E4 and the strings there).
+4. +0x800888: bare, created at 0x5A8FA. Later the character-list screen: parent of the button labeled `Select` (pointer +0x800990, handler registered at K 0x656A6), of a second button (pointer +0x800994), and of the button labeled `Delete Character` (pointer +0x800998) (K at 0x65628-0x6579C and the strings there).
+5. +0x800894: bare, created at 0x5A983. Later the server-connection screen: parent of a field from `resource1.dat` layout `serverName` under caption `Server address` (K at 0x5DB68-0x5DB82 and the strings there).
+6. +0x80088C: bare, created at 0x5AA0C. Later the world-list screen: parent of the button labeled `Select` (pointer +0x8009E8, handler registered at K 0x65842), of a second button (pointer +0x8009EC), and of the button labeled `Delete World` (pointer +0x8009F0) (K at 0x657C4-0x65938 and the strings there).
+7. +0x800874: bare, created at 0x5AA95. This is the opening/title screen. Its content includes a child widget (pointer +0x800918, parent +0x800874, K at 0x63F4E-0x63F6C) and a menu-selection object (pointer +0x80091C) built by 0x583270. That object is given the virtual table at VA 0x71A124 (A at 0x583270 and 0x5832EC). The update routine for that table, 0x583320, builds three clickable rows and sets the object's selected-index field, in index order, to the rows labeled `Start Game` (index 0, text at VA 0x71A1DC), `Options` (index 1, VA 0x71A1F4), and `Exit` (index 2, VA 0x71A204) (A at 0x583475, 0x5836BE, 0x583907 with the index stores at 0x58344F/0x583698/0x5838E1; the unselected default of that field is -1, A at 0x5832F9).
+8. +0x800898: created at 0x5B6A5, carrying the on-screen text `Please wait...` (VA 0x6FFE74, pushed at K 0x5B5FC) with the layout name `wait` (VA 0x6FFE94, pushed at K 0x5B65E) and the resource `resource1.dat` used by the surrounding screen builds. This is the loading overlay. It has no child buttons of its own among the nine.
+9. +0x800A00: created much later at 0x648BD by cloning the template widget named `itembox` and positioning it (K at 0x648BD-0x64923). It is the container shown for the "Options" choice (see the transition tables).
+10. +0x800910: created at 0x64A13, also a clone of `itembox`, positioned at 0x64A59 (K). It is the in-game pop-up menu container. Its selection logic is a separate object (pointer +0x800914, built at 0x64AFA by 0x587660). That object is given the virtual table at VA 0x71A564 (A at 0x587660 and 0x5876DC). Its update routine 0x587710 builds three rows and sets the object's selected-index field, in index order, to `Options` (index 0, VA 0x71A1F4), `Start Menu` (index 1, VA 0x71A61C), and `Exit Game` (index 2, VA 0x71A634) (A at 0x587865/0x587AAE/0x587CF7 with index stores at 0x58783F/0x587A88/0x587CD1; unselected default -1 at 0x5876E9).
+
+## Default property at the first frame
+
+Immediately after creating each of the five screens +0x800880, +0x800890, +0x800888, +0x800894 and +0x80088C, the constructor writes zero to that widget's tested property element (K at 0x5A83D, 0x5A8C6, 0x5A94F, 0x5A9D8, 0x5AA61 respectively). Those five therefore begin hidden. The constructor creates +0x800874 at 0x5AA95 and performs no such write to its property, and likewise performs no property write to +0x800898, +0x800A00 or +0x800910 after creating them. For those four the first-frame value is whatever the factory leaves in visibility element zero; the raw factory default of that element was not conclusively closed (see Unresolved). That the constructor deliberately clears the other five but not +0x800874 is consistent with the title screen being the one shown at the first frame, but this contract does not state that as proven.
+
+## Routines that set or clear these properties, with condition, value and order
+
+Every located routine that writes one of the nine properties is given below. Each row states the exact order of the writes inside that routine. All of these routines are client methods receiving the client in the first-argument register.
+
+### Title-screen menu, on pointer press (0x07B600)
+
+0x07B600 is the client's pointer-button-press method (client virtual table slot +0x1C; the window procedure 0x0C83F0 routes a left/right/middle button-down to this slot with argument 0/1/2, A at 0x0C83F0). After hover bookkeeping it reaches a title-menu block only when all hold, in this order: the property of +0x800874 is nonzero; the property of +0x800918 is nonzero; the button argument is 0; and the selected-index field of the object +0x80091C is not negative (A at 0x7B684-0x7B6C6). It then acts on that selected index (the title list above):
+
+- index 0 (`Start Game`): clears the property of +0x800874, then sets the property of +0x800888 to 1 (A at 0x7B6E3 then 0x7B708). Effect: leave the title screen, show the character list.
+- index 1 (`Options`): sets the property of +0x800A00 to 1 (A at 0x7B6DB then 0x7B708). Effect: show the options container.
+- index 2 (`Exit`): sets the byte at C+0x1A0 to 1 (A at 0x7B6D2). This is not one of the nine properties; it is the quit flag.
+
+### In-game menu, on pointer release (0x07DDD0)
+
+0x07DDD0 is the client's pointer-button-release method (virtual table slot +0x20; the window procedure routes a left/right/middle button-up here with argument 0/1/2). After release bookkeeping it reaches the selection block only when all hold, in this order: the property of +0x800910 is nonzero; the button argument is 0; and the selected-index field of the object +0x800914 is not negative (A at 0x7E00E-0x7E03E). It then, in order, clears the property of +0x800910 and clears the byte at C+0x8008F2 (A at 0x7E050, 0x7E059), and acts on the selected index of +0x800914 (the in-game list above):
+
+- index 0 (`Options`): sets the property of +0x800A00 to 1 (A at 0x7E16F then 0x7E181). Effect: show the options container.
+- index 1 (`Start Menu`): runs a return-to-start sequence (several client calls at 0x7E084-0x7E0B2, a loop over the character sequence at C+0x800984, a time query and an empty-text call to 0x6F620), then sets the property of +0x800874 to 1 (A at 0x7E0F5 then 0x7E10C), and finally performs four camera writes already covered by the camera contracts. Effect: tear down the session and show the title screen.
+- index 2 (`Exit Game`): sets the byte at C+0x1A0 to 1 (A at 0x7E078). The quit flag, not one of the nine.
+- any other index: no further property change.
+
+The list the selected index comes from is the object at +0x800914, whose rows in index order are `Options`, `Start Menu`, `Exit Game` as established above; the block is triggered by a left pointer-release while the +0x800910 menu is shown and a non-negative row is selected.
+
+### The three named button handlers
+
+Each of the three is registered during construction by the same mechanism: after the button is built, the code passes the event code 3, the client pointer, the handler address, and two flags of 1 to the handler-attach routine 0x4576F0, which stores a four-element record {dispatch stub 0x46F480, flag byte, client pointer, handler address} into the button node's handler map keyed by code 3 and recurses to children (K at the three call sites below; A at 0x4576F0 and the stub 0x46F480, which tail-calls the stored handler with the client in the first-argument register). No direct call to any of the three handler addresses exists in the listing; they are reached only through that code-3 dispatch.
+
+The widget library fires a code-3 handler from the pointer-release path, not the press path. On a left pointer-release the release method 0x07DDD0 calls the library release helper 0x652B60, which walks to the focused child, and when that child still carries the pressed flag (the flag bit the press helper 0x6527F0 set on button-down) invokes the child node's dispatch entry, which runs any code-3 handler (A at 0x652B60, reached from 0x07DDD0 at 0x7DE23; the press helper 0x6527F0 reached from the press method 0x07B600 at 0x7B67F). The natural reading is therefore: a registered code-3 handler runs when the pointer is released over the button it was pressed on, i.e. on a completed left-click. The exact set of library conditions gating that invocation was not exhaustively audited.
+
+Owners:
+
+- 0x083E70 owns the button labeled `Select` whose pointer is +0x800990 and whose parent is the character-list screen +0x800888 (registered K at 0x656A6).
+- 0x084170 owns the button labeled `Select` whose pointer is +0x8009E8 and whose parent is the world-list screen +0x80088C (registered K at 0x65842).
+- 0x082530 owns the button labeled `Create World` whose pointer is +0x8009B4 and whose parent is the world-creation screen +0x800890 (registered K at 0x5CC81).
+
+Their property writes:
+
+- 0x083E70 first clears the property of +0x800888 unconditionally (A at 0x83EAE). Then, when the selected index in the character sequence is valid it sets the property of +0x80088C to 1 (A at 0x83EF2) and advances toward the world list; when it is not valid it sets the property of +0x800880 to 1 (A at 0x83F66) and shows the character-creation screen. Only one of the two is written per call, after the clear. (The camera writes this routine also performs are covered by the camera contracts.)
+- 0x084170 first clears the property of +0x80088C unconditionally (A at 0x84185). Then, when the selected index in the world sequence is valid it proceeds to connect (no further property among the nine is written), otherwise it sets the property of +0x800890 to 1 (A at 0x84223) and shows the world-creation screen.
+- 0x082530 clears the property of +0x800890 (A at 0x82579), appends a new entry to the world sequence and proceeds to create/enter it. It sets none of the other eight.
+
+### Other located property writers (for a complete transition table)
+
+These are the remaining routines that write one of the nine properties; they are the other front-end buttons and the per-frame bookkeeping, and they complete the set of screen-to-screen transitions.
+
+- 0x4814F0 (the `Back` button, pointer +0x80099C): a back-navigation chain tested in this order (A at 0x814F0-0x815AE): if +0x800890 is shown, clear it and show +0x80088C; else if +0x80088C is shown, clear it and show +0x800888; else if +0x800880 is shown, clear it and show +0x800888; else if +0x800888 is shown, clear it and show +0x800874; else if +0x800894 is shown, clear it and show +0x80088C. Exactly one clear and one set per invocation.
+- 0x481FE0 (the `Connect to server` button): sets the property of +0x800894 to 1 and clears the property of +0x80088C (A at 0x8202B then 0x82044), in that order. Shows the connection screen, hides the world list.
+- 0x4815E0 (the `Connect` button): clears the property of +0x800894 (A at 0x8168A) and begins connecting (call to 0x46FC50). 
+- 0x4821A0 (the `Create Character` button): clears the property of +0x800880 and sets the property of +0x80088C to 1 (A at 0x821F0 then 0x82210), in that order. Leaves the character-creation screen for the world list.
+- 0x488C00 and 0x488D00 (two client helpers reached from the key dispatch in 0x07E1B0): each toggles one of a complementary pair and, when it turned its own on, clears the other. 0x488C00 toggles the property of +0x8008BC (not one of the nine) and, when that becomes nonzero, clears the property of +0x800910 (A at 0x488C1E-0x488C64). 0x488D00 toggles the property of +0x800910 and, when that becomes nonzero, clears the property of +0x8008BC (A at 0x488D1B-0x488D4E). This is how the in-game menu +0x800910 is opened and closed and made mutually exclusive with the other overlay +0x8008BC; the dispatch reaching them is keyed by the key codes 0x42 and 0x4F in 0x07E1B0 (A at the jump table based at 0x47E92C).
+- The per-frame update 0x488EE0 writes the property of +0x800898 once, to the result of a pending-work test: it is set nonzero while a load is still outstanding and cleared otherwise (A at 0x4894F5-0x48950C). That is the only writer of the loading overlay's property; no front-end button sets it.
+
+Collecting the above, the screen the player sees is governed entirely by which of these properties is nonzero, and the transitions are exactly: title (+0x800874) through its menu to character list (+0x800888), options (+0x800A00) or quit; character list to world list (+0x80088C), character creation (+0x800880) or, by Back, title; world list to world creation (+0x800890) or connection, or by Back to character list; world/character creation forward by their Create buttons and back by Back; the connection screen (+0x800894) forward by Connect and back to the world list; the in-game menu (+0x800910) opened and closed by key, and from it options, return-to-title or quit; and the loading overlay (+0x800898) driven only by the loader.
+
+## Which states the per-frame input predicate treats as "front end shown"
+
+The client's mouse method consults the predicate at 0x07F1D0 before admitting gameplay mouse input; that predicate yields its "admit gameplay" result only when, among other conditions, all of these eight properties are zero, tested in this order (A at 0x7F210, 0x7F2F9, 0x7F315, 0x7F32D, 0x7F345, 0x7F35D, 0x7F375, 0x7F38D): +0x800910, +0x800880, +0x800888, +0x800874, +0x80088C, +0x800894, +0x800890, +0x800A00. In other words the in-game menu, the two creation screens, the two list screens, the title screen, the connection screen and the options container are each treated as "front end shown" for input admission, and any one of them being nonzero suppresses gameplay mouse input. This follows directly from the routine read. The loading overlay +0x800898 is not part of that eight: it does not by itself gate gameplay mouse admission, although the earlier camera contract's program-driven camera blocks separately require +0x800898 to be zero.
+
+## Unresolved
+
+- The raw factory default of visibility element zero (and therefore the first-frame property) for +0x800874, +0x800898, +0x800A00 and +0x800910, which the constructor does not overwrite. The tested index is proven to be zero; the stored value of that element before any later write was not conclusively closed. The constructor's deliberate clearing of the other five, and not of +0x800874, strongly suggests +0x800874 begins shown, but this is not proven.
+- The widget library's exact gating of when a registered code-3 handler fires (the press/release helpers 0x6527F0, 0x652940, 0x652A70, 0x652B60 were read enough to place the firing on the release path, but the full condition set was not audited).
+- What populates the character sequence at C+0x800984 and the world sequence at C+0x8009DC that the two `Select` handlers index, and what seeds the two menu-logic objects +0x80091C and +0x800914 beyond the row labels and the -1 default established here.
+- Any writer of one of the nine properties reaching it by a route outside the located load/compute/store shapes scanned here (an indexed or block write, a write through a pointer formed elsewhere, or a write performed by an imported library on an address handed to it) is not excluded.

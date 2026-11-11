@@ -1,4 +1,6 @@
-// The prefab placer (docs/specs/alpha-worldgen-structures.md §6.2).
+// The prefab placer (docs/specs/alpha-worldgen-structures.md §6.2), checked against the held
+// docs/specs/alpha-template-stamping-markers.md contract. Engine zone lists stand in for the
+// native feature, object and descriptor collections; negative rotations are reduced.
 #include "worldgen/Prefab.h"
 #include <glm/glm.hpp>
 #include <algorithm>
@@ -198,7 +200,7 @@ class Placer {
         s.x = px + HALF;
         s.y = py + HALF;
         s.z = pz + HALF;
-        s.yaw = (float)((2 - r) * 90);
+        s.yaw = (float)((2 - at.rotation) * 90); // the raw, unreduced orientation
         s.level = world.level ? world.level(X, Y) : 1;
         return s;
     }
@@ -231,9 +233,9 @@ class Placer {
             weapon.level = 20;
             weapon.material = weaponMaterial;
             slot(5, 7, armourMaterial, true); // chest
-            slot(2, 4, armourMaterial, false);
-            slot(3, 6, armourMaterial, false);
-            slot(4, 5, armourMaterial, false);
+            slot(2, 4, armourMaterial, true); // held template contract: every block gets level 20
+            slot(3, 6, armourMaterial, true);
+            slot(4, 5, armourMaterial, true);
         };
         switch (at.mode) {
         case 6: s.characterClass = 0x83; break;
@@ -270,11 +272,11 @@ class Placer {
             air(X, Y, Z);
             return true;
         case WALL_PLANT:
-            if (wm <= 0.5f || solidType(E))
+            if (!(wm > 0.5f) || solidType(E)) // ordered: NaN also skips
                 return true;
             if (random.draw() % 5 == 0) {
                 Sprite s = makeSprite(41 + random.draw() % 3, px + 32964, py + 32964, pz + 196, 0.15f,
-                                      (float)(-90 * r), 0);
+                                      (float)(-90 * at.rotation), 0);
                 zone.sprites.push_back(s);
             }
             air(X, Y, Z);
@@ -305,7 +307,7 @@ class Placer {
             return true;
         }
         case CREST:
-            zone.sprites.push_back(makeSprite(48, px + HALF, py + HALF, pz + HALF, 0.065f, (float)(-90 * r), 0));
+            zone.sprites.push_back(makeSprite(48, px + HALF, py + HALF, pz + HALF, 0.065f, (float)(-90 * at.rotation), 0));
             airIfInside(inside, X, Y, Z);
             return true;
         case SIGN: {
@@ -322,12 +324,12 @@ class Placer {
             default: break;
             }
             if (kind >= 0)
-                zone.sprites.push_back(makeSprite(kind, px + HALF, py + HALF, pz - HALF, 0.1f, (float)((-1 - r) * 90), 0));
+                zone.sprites.push_back(makeSprite(kind, px + HALF, py + HALF, pz - HALF, 0.1f, (float)((-1 - at.rotation) * 90), 0));
             airIfInside(inside, X, Y, Z);
             return true;
         }
         case FLOWER_BOX:
-            if (wm <= 0.5f)
+            if (!(wm > 0.5f)) // ordered: NaN also skips
                 return true;
             if (blob(C, i, j, k, 0, o)) {
                 o.kind = 47 + random.draw() % 3;
