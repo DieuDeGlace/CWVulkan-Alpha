@@ -60,8 +60,30 @@ static void productsAndAdapter() {
           "production Camera projection reaches the scalar constructor and explicit Vulkan adapter");
 }
 
+static void productionLens() {
+    Camera camera;
+    camera.aspect = 2;
+    const auto engine = camera.mainInputs();
+    check(engine.farPlane == Camera::FAR_PLANE && bits(engine.signedAspect) == bits(-2.f),
+          "without a followed creature the engine free-camera lens is retained");
+    camera.mainLens = Camera::MainLens{0xfbff, 1920, 1080};
+    const auto wide = camera.mainInputs();
+    camera.mainLens = Camera::MainLens{0x0400, 1920, 1080};
+    const auto narrow = camera.mainInputs();
+    check(bits(wide.angle) == 0x3f5f66f4 && bits(narrow.angle) == 0x3f060a92 && bits(wide.nearPlane) == 0x3dcccccd &&
+          wide.farPlane == 2000 && bits(wide.signedAspect) == bits(projection::flipSign(1920.f / 1080.f)),
+          "a followed creature's mode word selects the native angle with native planes and pixel aspect");
+    const auto expected = projection::rightHandedVulkan(projection::perspective(narrow));
+    check(camera.mainProjection() == expected, "the main projection is the native constructor through the explicit adapter");
+    Scene scene;
+    const auto frame = makeFrame(camera, scene, ShadowSettings{}, MoonSettings{});
+    check(bits(frame.water.x) == 0x3dcccccd && frame.water.y == 2000 &&
+          frame.viewProjection == projection::multiply(expected, camera.view()),
+          "frame constants carry the selected planes and ordered product");
+}
+
 int main() {
-    inputsAndComponents(); productsAndAdapter();
+    inputsAndComponents(); productsAndAdapter(); productionLens();
     if (!failures) std::puts("PASS: projection input widths, tangent/depth boundaries, matrix rounding and production adapter");
     return failures ? 1 : 0;
 }

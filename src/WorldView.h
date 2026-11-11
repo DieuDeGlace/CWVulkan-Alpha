@@ -60,6 +60,9 @@ class WorldView {
 
     // The camera: where it is (render-origin relative) and where it looks.
     Camera camera(VkExtent2D size) const;
+    // The followed creature's mode word for the main lens; empty keeps the
+    // engine's free-camera lens.
+    std::optional<uint16_t> lensWord;
     void move(glm::vec3 local, float seconds, bool fast); // x right, y forward, z up
     void turn(float yawDegrees, float pitchDegrees);
     void setLook(float yawDegrees, float pitchDegrees);

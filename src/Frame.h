@@ -3,6 +3,7 @@
 // day (alpha-rendering.md §2-§4, §7, §8). The layout matches `Frame` in shaders/frame.glsl.
 #include "AlphaLook.h"
 #include "Moon.h"
+#include "Projection.h"
 #include "Shadows.h"
 #include "TerrainLights.h"
 #include <glm/glm.hpp>
@@ -21,6 +22,17 @@ struct Camera {
     glm::vec3 forward() const;
     glm::mat4 view() const;
     glm::mat4 projection(float nearPlane, float farPlane, float lens) const;
+    // The main renderer's lens from the held projection-input contract: the
+    // followed creature's two-byte mode word selects the angle, and signed
+    // pixel dimensions give the aspect. Without it the engine lens above is used.
+    struct MainLens {
+        uint16_t modeWord;
+        int32_t width, height;
+    };
+    std::optional<MainLens> mainLens;
+    projection::Inputs mainInputs() const;
+    // The main projection through the explicit right-handed Vulkan adapter.
+    glm::mat4 mainProjection() const;
     // Raw extraction applied to the adapted engine camera matrices. Production
     // angle/near/far selection, native following and references remain separate.
     std::array<glm::vec4, 6> lightAdmissionPlanes() const;

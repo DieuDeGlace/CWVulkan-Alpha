@@ -1228,3 +1228,48 @@ gaps are deterministic engine zero. The helper is shared by other engine drop
 callers whose own native routes this contract does not examine. Earlier fatal
 loot branches, total draw counts, collection retention, later dropped-item
 simulation, pickup and transport remain open.
+
+Source-side research resumed in two new isolated author contexts started by the
+implementer at the owner's instruction. Each author received only the project
+requirements file, the author policy and individually named finished contracts
+to locate routines, with original evidence as the sole source of facts and the
+separately authorized reconstruction available as leads. Their reports to the
+implementer carry only a path, hash, line count, status and generically named
+open points. `alpha-camera-ray-geometry.md` was FINAL/STABLE/HELD with SHA-256
+`c935b2997e30839a64400be03cdadc6448dc09897dfd4d3e00689065d6fd75fd` and was
+hash-verified and read completely before use. Its author reported that the
+reconstruction was not consulted. No engine, test, capture, log or runtime
+finding was sent to either author.
+
+That contract describes the same query the engine already implements from the
+earlier held visibility-ray contract, and adds the two camera call shapes: both
+pass option values one and one, so the walk continues through blocking cells
+and side faces of spatial records may shorten the result. The production
+camera now calls that existing query for its corner samples and final centre
+correction, replacing the engine's own block march, and no longer bounds the
+resulting distance. A final call that starts in a non-blocking cell returns
+zero, which places the eye at the followed creature. The camera's separate
+voxel test still uses the engine block reader. The same author's held addendum
+`alpha-voxel-fallback-record-initialization.md`, SHA-256
+`6b9fa857c480d9866157f5d974dde901f7016c1590c32d9df045f2f2af8f87b8`, was requested
+with a source-side question only, hash-verified and read completely. It
+corrects the ray contract's statement that the fallback records stay zero and
+governs where the two differ: missing, out-of-range and below-column cells are
+blocking, and cells at or above the column top are non-blocking, for both the
+query and the caller's separate lookup. The engine's existing query and block
+reader already classify those cases that way, so no arithmetic changed.
+Writers through register-held addresses remain unaudited at the source side.
+
+The fully reread projection-input contract (SHA-256
+`bce52cffb167fcb2887b4901d5afa4c83518670f0eb629af0fcbab196e073a07`) now also
+binds the production lens. While a creature is followed, the main projection
+uses the contract's inputs: the creature's two-byte mode word selects the
+angle by its 0x0400 bit, signed pixel dimensions convert separately before the
+aspect division and sign-bit inversion, and the planes are the native near and
+2000. The mode word is identified with that contract's tested member through
+the existing record layout, in which the action byte and position sit at the
+corresponding offsets. Free cameras, model viewers and diagnostic probes with
+no followed creature keep the engine's 45-degree, far-4000 lens. The sky pass
+keeps its separate lens. The engine still renders through its right-handed
+view and the explicit projection adapter; the constructed native view
+matrices are not yet the production view.

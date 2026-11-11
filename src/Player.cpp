@@ -283,11 +283,14 @@ void Player::advance(int32_t dt, bool replica) {
 
 }
 
-void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock) {
+void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
+                         const creatures::visibility::RecordLookup &records) {
     // Camera following runs once after the frame's world calls, with the whole
     // frame duration rather than a world piece.
-    camera.update(state, dtMs, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, worldClock);
+    const creatures::visibility::Scene scene{[&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, records};
+    camera.update(state, dtMs, scene, worldClock);
     view.placeCamera(camera.position(), camera.direction());
+    view.lensWord = uint16_t(fighter.mode);
 }
 
 void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, float dtMs,

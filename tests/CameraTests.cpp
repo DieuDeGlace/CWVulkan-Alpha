@@ -360,7 +360,7 @@ static void voxelsAndEye() {
 static void productionCamera() {
     creatures::Body body;
     body.position[0] = 5 * UNIT; body.position[1] = -3 * UNIT; body.position[2] = 20 * UNIT;
-    const creatures::BlockType open = [](int32_t, int32_t, int32_t) { return uint8_t(0); };
+    const creatures::visibility::Scene open{[](int32_t, int32_t, int32_t) { return uint8_t(0); }, {}};
     creatures::FollowCamera camera;
     camera.update(body, 16, open, [] { return 0; });
     const glm::vec3 direction = camera.direction();
@@ -381,13 +381,13 @@ static void productionCamera() {
           "shake displaces the engine eye across the view by both half-amplitude components");
     check(bits(shaken.shake) == bits(camera_view::decayedAmplitude(1.f, 16)), "the amplitude decays after the frame's view offset");
 
-    const creatures::BlockType solid = [](int32_t, int32_t, int32_t z) { return uint8_t(z >= 23 ? 1 : 0); };
+    const creatures::visibility::Scene solid{[](int32_t, int32_t, int32_t z) { return uint8_t(z >= 23 ? 1 : 0); }, {}};
     creatures::FollowCamera pressed;
     pressed.pitch = pressed.targetPitch = 170.f; // looking down, so the camera rises into the ceiling
     for (int i = 0; i < 4; ++i)
         pressed.update(body, 16, solid, [] { return 0; });
     check(pressed.distance >= 0.f && pressed.distance < 6.f && pressed.position().z < 23.3,
-          "blocked corners shorten the production distance through the engine ray adapter");
+          "blocked corners shorten the production distance through the held ray query");
 }
 
 int main() {

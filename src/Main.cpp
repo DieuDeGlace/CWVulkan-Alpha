@@ -2328,7 +2328,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     updatePlayerInterface();
                     publishPlayerEffects();
                     // The engine world clock stands in for the native world member.
-                    player->finishFrame(frameElapsedMs, [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); });
+                    player->finishFrame(frameElapsedMs, [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); },
+                                        npcs.sightRecords);
                 });
         } else {
             // A missing controlled actor does not suppress the world call.

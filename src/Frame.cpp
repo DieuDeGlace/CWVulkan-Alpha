@@ -19,8 +19,16 @@ glm::mat4 Camera::projection(float nearPlane, float farPlane, float lens) const 
     return projection::rightHandedVulkan(projection::perspective(inputs));
 }
 
+projection::Inputs Camera::mainInputs() const {
+    if (mainLens)
+        return projection::mainInputs(mainLens->modeWord, mainLens->width, mainLens->height);
+    return {glm::radians(lensDegrees), projection::flipSign(aspect), NEAR_PLANE, FAR_PLANE};
+}
+
+glm::mat4 Camera::mainProjection() const { return projection::rightHandedVulkan(projection::perspective(mainInputs())); }
+
 std::array<glm::vec4, 6> Camera::lightAdmissionPlanes() const {
-    return terrain_lights::admissionPlanes(projection(NEAR_PLANE, FAR_PLANE, lensDegrees), view());
+    return terrain_lights::admissionPlanes(mainProjection(), view());
 }
 
 FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowSettings &shadowSettings,
@@ -31,8 +39,8 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     const glm::mat4 view = camera.view();
 
     FrameConstants c{};
-    constexpr float NEAR_PLANE = Camera::NEAR_PLANE, FAR_PLANE = Camera::FAR_PLANE;
-    c.viewProjection = projection::multiply(camera.projection(NEAR_PLANE, FAR_PLANE, camera.lensDegrees), view);
+    const projection::Inputs lens = camera.mainInputs();
+    c.viewProjection = projection::multiply(camera.mainProjection(), view);
     // §8.4: the sky camera keeps the view's rotation, sits at the origin, and has its own lens.
     glm::mat4 rotation = view;
     rotation[3] = glm::vec4(0, 0, 0, 1);
@@ -70,7 +78,7 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     c.nightAmbient = glm::vec4(moonLight.ambient, moon::phase(scene.day));
     const float disc = moonSettings.enabled && !scene.underwater ? moon::discVisibility(scene.timeOfDayMs) : 0;
     c.moonSprite = glm::vec4(moon::direction(scene.timeOfDayMs), disc);
-    c.water = glm::vec4(NEAR_PLANE, FAR_PLANE, scene.water == WaterLook::Omega ? 1.f : 0.f,
+    c.water = glm::vec4(lens.nearPlane, lens.farPlane, scene.water == WaterLook::Omega ? 1.f : 0.f,
                         (float)std::fmod(scene.seconds, 3600.0));
     if (scene.underwater && scene.water == WaterLook::Omega) {
         // The Omega look under water (references: water-underwater-reference.webp): the ground

@@ -1,10 +1,12 @@
 #pragma once
 // The production follow camera. Targets, smoothing, anchor following, corner
 // sampling and shake use the held camera contracts through CameraFollow and
-// CameraView. Starting values, the block ray march, the world-clock source and
-// the eye-space shake displacement are explicit engine adapters.
+// CameraView, and the held ray query through creatures/Visibility. Starting
+// values, the world-clock source and the eye-space shake displacement are
+// explicit engine adapters.
 #include "creatures/CameraFollow.h"
 #include "creatures/Physics.h"
+#include "creatures/Visibility.h"
 
 namespace creatures {
 
@@ -29,7 +31,7 @@ class FollowCamera {
     void wheel(int notches);
     // Once per rendered frame, after the frame's world calls. `elapsedMs` is the
     // whole frame duration; `clock` supplies the engine world clock twice.
-    void update(const Body &player, int32_t elapsedMs, const BlockType &block, const camera_view::Clock &clock);
+    void update(const Body &player, int32_t elapsedMs, const visibility::Scene &scene, const camera_view::Clock &clock);
 
     // The view direction and the camera position (blocks).
     glm::vec3 direction() const;

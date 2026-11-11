@@ -8,37 +8,19 @@ namespace {
 using camera_view::Fixed3;
 
 constexpr double DEG = 3.141592653589793 / 180.0;
-constexpr double STEP = .05; // engine ray-march resolution, blocks
-
 glm::dvec3 blocksOf(const Fixed3 &raw) { return glm::dvec3(double(raw[0]), double(raw[1]), double(raw[2])) / 65536.0; }
 
-bool blockedAt(const BlockType &block, glm::dvec3 at) {
-    return camera_follow::blocks(block(int32_t(std::floor(at.x)), int32_t(std::floor(at.y)), int32_t(std::floor(at.z))));
-}
-
-// Engine stand-in for the unresolved native ray query: the distance to the
-// first change of blocked state. From a blocked start it reports how far the
-// direction stays inside blocks; from a free start it reports the last free
-// distance before the first blocked cell, or a negative value when nothing
-// blocks within the maximum.
-camera_follow::Queries engineQueries(const BlockType &block) {
+// The caller's own voxel test and the held ray query. Both camera calls pass
+// option values one and one: the walk continues through blocking cells, and
+// spatial-record side faces can shorten the result.
+camera_follow::Queries sceneQueries(const visibility::Scene &scene) {
     camera_follow::Queries queries;
-    queries.blocked = [&block](const Fixed3 &at) {
-        return camera_follow::blocks(block(camera_follow::voxelCoordinate(at[0]), camera_follow::voxelCoordinate(at[1]),
-                                           camera_follow::voxelCoordinate(at[2])));
+    queries.blocked = [&scene](const Fixed3 &at) {
+        return camera_follow::blocks(scene.voxel(camera_follow::voxelCoordinate(at[0]), camera_follow::voxelCoordinate(at[1]),
+                                                 camera_follow::voxelCoordinate(at[2])));
     };
-    queries.ray = [&block](const Fixed3 &start, glm::vec3 direction, float maximum) {
-        const glm::dvec3 from = blocksOf(start), along(direction);
-        if (blockedAt(block, from)) {
-            double inside = 0;
-            while (inside < maximum && blockedAt(block, from + along * inside))
-                inside += STEP;
-            return inside;
-        }
-        for (double travelled = 0; travelled < maximum; travelled += STEP)
-            if (blockedAt(block, from + along * travelled))
-                return std::max(travelled - .1, 0.0);
-        return -1.0;
+    queries.ray = [&scene](const Fixed3 &start, glm::vec3 direction, float maximum) {
+        return double(visibility::trace(start, {direction.x, direction.y, direction.z}, maximum, 1, 1, scene));
     };
     return queries;
 }
@@ -100,7 +82,8 @@ glm::vec3 FollowCamera::right() const {
     return glm::vec3((float)-std::cos(p), (float)-std::sin(p), 0);
 }
 
-void FollowCamera::update(const Body &player, int32_t elapsedMs, const BlockType &block, const camera_view::Clock &clock) {
+void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibility::Scene &scene,
+                          const camera_view::Clock &clock) {
     const camera_view::Trig trig = camera_view::platformTrig();
     camera_follow::State s = state();
     camera_follow::smooth(s, elapsedMs, options.smoothness);
@@ -116,9 +99,7 @@ void FollowCamera::update(const Body &player, int32_t elapsedMs, const BlockType
         anchorSet = true;
     }
     camera_follow::followAnchor(s, subject, elapsedMs);
-    camera_follow::placeEye(s, subject.position, camera_follow::offsetDirection(s.angles, trig), engineQueries(block));
-    if (!(s.distance >= 0.f)) // engine bound on its own ray adapter's result
-        s.distance = 0.f;
+    camera_follow::placeEye(s, subject.position, camera_follow::offsetDirection(s.angles, trig), sceneQueries(scene));
     store(s);
 
     // The view uses the amplitude from before this frame's decay.

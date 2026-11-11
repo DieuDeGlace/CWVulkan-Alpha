@@ -604,6 +604,19 @@ player/controller diagnostic, reward, health, network, save/reload and town
 runs pass with their six client captures reviewed and unchanged in framing.
 These supplied-input checks do not establish native column fallbacks, total
 fatal draw counts or original drop placement.
+
+ProjectionTests additionally checks the production lens: without a followed
+creature the engine free-camera lens is retained; with one, the mode word's
+0x0400 bit selects the two native angle bit patterns with the native near
+plane, far 2000 and the separately converted pixel aspect; the main projection
+equals the native constructor through the explicit adapter; and frame
+constants carry the selected planes and the ordered product. CameraTests now
+drives the production camera through the held ray query with supplied voxel
+scenes. All 59 CTests pass. The player/controller diagnostic and the reward,
+health, network, save/reload and town runs pass; all six client captures were
+reviewed and show the wider 50-degree framing with the character, HUD, map and
+terrain intact and the camera placed behind the character as before. These are
+engine captures under the engine's view adapter, not native pixel comparisons.
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
