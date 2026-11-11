@@ -128,6 +128,12 @@ Differences from the Steam engine that shape the plan:
   order. Bag and direct-slot sales retain their distinct clear timing. Full
   widget art/control geometry, upstream input selection, periodic scheduling,
   cached-pointer lifetime and native/server acceptance remain open.
+- [x] Three bounded vendor-stock generators: independently established client
+  and server routes preserve all thirty level bands, fixed stock, candidate
+  order/fields, discarded draws, family-specific material parity and selection
+  without replacement. Town descriptors publish owned grouped values. Full
+  upstream town admission, class-0x83 caller, imported RNG/control state,
+  lifecycle and original gameplay acceptance remain open.
 - [x] Complete equipment core backing: all thirteen records retain inactive
   entries and opaque bytes through import, wire transfer and semantic refresh.
   Equipment assignment preserves destination gaps and resident comparison state;

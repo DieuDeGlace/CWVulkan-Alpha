@@ -5,6 +5,7 @@
 // A town zone's draw count also depends on the marker voxels of the models the placer visits
 // (§8 items 6, 10), so it lines up 1:1 only with the game's own models.
 #include "creatures/CreatureTables.h"
+#include "creatures/VendorStock.h"
 #include "worldgen/Builders.h"
 #include "worldgen/Items.h"
 #include "worldgen/Prefab.h"
@@ -1217,118 +1218,13 @@ class TownBuilder : StructureWriter {
         return s;
     }
 
-    // Three "rarity draws" of the vendor stock.
-    int32_t stockRarity() {
-        int32_t r = random.draw() % 100 == 0 ? 1 : 0;
-        if (random.draw() % 1000 == 0)
-            r++;
-        if (random.draw() % 10000 == 0)
-            r++;
-        return std::min(r, 4);
-    }
-
-    // The level of round k (0x4462f0).
-    static int32_t stockLevel(float t) { return (int32_t)f(f(f(1.f / f(1.f - t)) - 1.f) * 20.f + 1.f); }
-
-    // V1, V2, V3 (0x5c9b30, 0x5c8390, 0x5ca0a0): thirty rounds of stock.
+    // Full stock owns its grouped value; upstream town admission remains separate.
     void vendorStock(Spawn &shop, int32_t which) {
-        for (int32_t k = 0; k < 30; k++) {
-            const int32_t L0 = stockLevel(f((float)k / 30.f)), L1 = stockLevel(f(f((float)k + 0.99999f) / 30.f));
-            int32_t level = L0 + random.draw() % (L1 - L0 + 1);
-            if (level < 1)
-                level = 1;
-            if (k == 0)
-                level = 1;
-            auto item = [&](uint8_t type, uint8_t subtype, uint8_t material, int32_t lv, uint8_t rarity = 0) {
-                ItemRecord r;
-                r.type = type, r.subtype = subtype, r.material = material, r.rarity = rarity;
-                r.level = (int16_t)lv;
-                return r;
-            };
-            if (which == 1) {
-                if (k == 0) {
-                    shop.inventory.push_back(item(11, 12, 24, 1));
-                    shop.inventory.push_back(item(24, 0, 1, 1));
-                    for (int32_t i = 1; i <= 4; i++)
-                        if (random.draw() % (10 * i) == 0)
-                            shop.inventory.push_back(item(24, 0, 1, 1, (uint8_t)i));
-                    shop.inventory.push_back(item(23, 0, 2, 1));
-                    shop.inventory.push_back(item(23, 1, 2, 1));
-                    static const uint8_t PETS[6] = {34, 35, 19, 26, 30, 87};
-                    shop.inventory.push_back(item(20, PETS[random.draw() % 6], 0, 1));
-                }
-                const int32_t recipes = random.draw() % 3;
-                for (int32_t n = 0; n < recipes; n++) {
-                    int32_t r = random.draw() & 1;
-                    if (random.draw() % 100 == 0)
-                        r++;
-                    if (random.draw() % 1000 == 0)
-                        r++;
-                    if (random.draw() % 10000 == 0)
-                        r++;
-                    shop.inventory.push_back(recipeItem(random, level, std::min(r, 4)));
-                }
-                if (random.draw() & 1)
-                    shop.inventory.push_back(item(1, 7, 0, level));
-                continue;
-            }
-            // V2 and V3: candidates, then one to three picks.
-            std::vector<ItemRecord> candidates;
-            auto finish = [&](ItemRecord r) {
-                r.level = (int16_t)level;
-                r.byte0e = 1;
-                r.rarity = (uint8_t)stockRarity();
-                r.seed = (uint32_t)random.draw();
-                candidates.push_back(r);
-            };
-            if (which == 3) {
-                ItemRecord r = item(3, 0, 1, level);
-                r.subtype = (uint8_t)(random.draw() % 3);
-                random.draw();
-                finish(r);
-                r.subtype = (uint8_t)(random.draw() % 3 + 15);
-                random.draw();
-                finish(r);
-                for (uint8_t sub : {13, 3, 5, 4, 6}) {
-                    r.subtype = sub;
-                    r.material = sub == 6 ? 2 : 1;
-                    random.draw();
-                    finish(r);
-                }
-                for (int i = 0; i < 5; i++)
-                    random.draw();
-                r.material = 2;
-                for (uint8_t sub : {8, 10, 11}) {
-                    r.subtype = sub;
-                    random.draw();
-                    finish(r);
-                }
-                r.subtype = 12;
-                r.material = (random.draw() & 1) ? 12 : 11;
-                random.draw();
-                finish(r);
-            } else {
-                auto armour = [&](uint8_t type, uint8_t material) {
-                    random.draw();
-                    finish(item(type, 0, material, level));
-                };
-                for (uint8_t t : {7, 4, 5, 6})
-                    armour(t, 1);
-                for (uint8_t material : {25, 26, 27})
-                    for (uint8_t t : {7, 7, 4, 5, 6})
-                        armour(t, material);
-                for (uint8_t t : {8, 9}) {
-                    const uint8_t material = (random.draw() & 1) ? 12 : 11;
-                    armour(t, material);
-                }
-            }
-            const int32_t picks = random.draw() % 3 + 1;
-            for (int32_t n = 0; n < picks && !candidates.empty(); n++) {
-                const size_t i = (uint32_t)random.draw() % candidates.size();
-                shop.inventory.push_back(candidates[i]);
-                candidates.erase(candidates.begin() + (ptrdiff_t)i);
-            }
-        }
+        using creatures::vendor_stock::Route;
+        const Route route = which == 1 ? Route::General : which == 2 ? Route::Armour : Route::Weapons;
+        auto inventory = std::make_shared<creatures::InventoryValue>();
+        creatures::vendor_stock::generate(*inventory, route, [&] { return random.draw(); });
+        shop.inventoryValue = std::move(inventory);
     }
 
     // §5.5.9, town: innkeepers, shopkeepers and residents with their day.

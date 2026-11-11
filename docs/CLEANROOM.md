@@ -1133,3 +1133,31 @@ separate gate. In particular, the current engine camera's 45-degree/4000-far
 policy is not certified by that native main-input contract. Platform tangent
 accuracy, full control state, camera/view/origin production, every render pass,
 original device publication and shader/rasterizer precision remain unresolved.
+
+The three original-only stock contracts were HELD, read completely and verified
+before the new shared generator:
+`alpha-vendor-stock-generation.md` has SHA-256
+`5ce6e4f4194d7fbd6ef43efc43805f7d9cc83a6aa311d8f6cd79530655ea4b9d`;
+`alpha-specialized-vendor-stock.md` has
+`956fb14290a454de69d77675e465fcd790188cd0492afe16683f978631712e46`;
+and the independently inspected server artifact `alpha-server-vendor-stock.md`
+has `767095943f53dc57f8072e66d5b4da0899aed24385d763bdec0464c9492d2333`.
+The author received no engine, tests, captures, logs or runtime feedback. Client
+and server facts were established separately before their matching bounded
+generation relations were combined in one engine kernel.
+
+The independent implementation stores compact candidate attributes, consumes
+every specified draw, and materializes complete semantic items only for insertion.
+The established unused payload fields are zero for every candidate; no random
+draw or selected field is omitted by this representation. Full destination item
+copying still follows InventoryValue rules. Candidate allocation/address,
+exception/concurrency and original container publication are separate limits.
+The fixed-pet selector rejects negative out-of-domain remainders as engine policy.
+No imported random distribution, global stream or floating-control claim follows.
+
+Town publishes a cold owned grouped value, replacing its previous flat stock
+adapter. Its upstream house/position/admission remains an engine generator
+boundary. In particular, the inherited house-subtype-5/class-0x83 caller still
+selects the weapon route; these contracts establish the bodies reached for
+0x80/0x81/0x82 and do not certify that additional caller. Wider stock persistence,
+refresh, ownership and native client/server acceptance remain open.

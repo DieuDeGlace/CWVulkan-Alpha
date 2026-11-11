@@ -11,6 +11,7 @@
 #include "worldgen/Regions.h"
 #include "worldgen/Terrain.h"
 #include "worldgen/Trees.h"
+#include "creatures/InventoryValue.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -450,6 +451,8 @@ int main() {
         int quarters = 0;
         size_t statics = 0, houses = 0, seats = 0;
         bool seatsRight = true;
+        bool stockValues = true;
+        size_t vendors = 0;
         for (int32_t n = 0; region && n < 64 * 64 && quarters < 4; n++) {
             const ZoneEntry &E = region->zones[n];
             if (E.kind != 1)
@@ -459,6 +462,15 @@ int main() {
             std::printf("town quarter %d: zone (%d, %d), %zu statics, %zu spawns, %zu sprites\n", (int)E.variant, zx, zy,
                         zone->statics.size(), zone->spawns.size(), zone->sprites.size());
             statics += zone->statics.size();
+            for (const auto &spawn : zone->spawns)
+                if (spawn.characterClass >= 0x80 && spawn.characterClass <= 0x82) {
+                    ++vendors;
+                    stockValues &= spawn.inventory.empty() && spawn.inventoryValue &&
+                                   spawn.inventoryValue->groups.size() == 1 && !spawn.inventoryValue->groups[0].empty();
+                    if (spawn.inventoryValue)
+                        for (const auto &group : spawn.inventoryValue->groups)
+                            for (const auto &entry : group) stockValues &= entry.count > 0;
+                }
             for (const worldgen::House &h : zone->houses) { // structures §5.5.4 step 16
                 houses++;
                 seats += h.seats.size() + h.beds.size();
@@ -474,6 +486,8 @@ int main() {
         std::printf("%zu furnished houses, %zu seats and beds%c", houses, seats, 10);
         same(houses > 0, 1, "furnished houses kept");
         same(seatsRight, 1, "seats are stools and benches, beds are beds");
+        same(stockValues, 1, "generated vendors retain owned grouped stock instead of a flat shadow");
+        std::printf("%zu vendor descriptors checked for full grouped stock\n", vendors);
     }
 
     // Block edits §13.1: a bomb on flat natural ground (top block z 64) removes 955 blocks.

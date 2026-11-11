@@ -524,6 +524,33 @@ The health sample reports 151 world calls over 17 input frames, with maximum
 20 ms pieces. Bright ground, negative XP display, physical-controller and native
 visual acceptance remain open.
 
+VendorStockTests supplies deterministic draw streams to the three stock bodies.
+It checks fixed-item order and four independent optional gates, complete
+twenty-four/sixteen-draw nested selectors, saved original recipe category,
+opposite general/specialized jewel parity, full versus reduced random fields,
+five additional weapon discards and stable removal before a second ordinal pick.
+Exact complete-stream counts include 95/725/124 general cases and
+3300/1980/3330/2010 specialized cases. An upper-band fixture retains low-word
+0x8243 after separately rounded endpoints; band zero still consumes its overridden
+draw. Repeated insertion, eligible stacking, first-zero reuse, destination gaps,
+other inventory members and every cleared payload cell have checks. The existing
+town-generation fixture encounters three vendor descriptors and verifies owned
+grouped stock with positive quantities and no flat shadow. These checks establish
+bounded supplied-input behavior, not imported RNG state or full town parity.
+All 57 CTests pass for this checkpoint. The player/controller diagnostic and
+fresh reward, health, network and save/reload runs also pass, with their five
+client captures reviewed: level 2/-33 XP/7 Platinum Coins, injured health at
+binary32 50 with one visit (144 world calls over 17 input frames, maximum 20 ms
+pieces) and reload retaining health 265, seed 123, nine tiles, 33,792 preview
+bytes and 170 edits. An additional actual-client walking capture at the seed-123
+town (cell 8397824, 8397824, radius 1, noon) exercises production town stock
+and renders the plaza, character, HUD and map. Its first run reported 3,225
+world calls and 106.3 s of generation while other local jobs were active. Run
+back to back on an idle machine, the same executable reported 115 world calls
+and 17.5 s, and the previously published executable 118 world calls and 16.8 s,
+so the earlier figures reflect machine contention and not this change. These
+are single local samples, not a performance benchmark or native comparison.
+
 NoiseMathTests uses exact binary64 anchors from the held bounded-cosine numeric
 contract, including adjacent reduction labels and cancellation near half pi.
 `NoiseMathTests --bench` also reports local throughput and bit differences from
