@@ -290,7 +290,10 @@ void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
     const creatures::visibility::Scene scene{[&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, records};
     camera.update(state, dtMs, scene, worldClock, view.originFixed());
     view.nativeView = camera.view();
-    view.placeCamera(camera.position(), camera.direction());
+    // Engine yaw turns from +y towards +x and engine pitch is positive looking
+    // down; the native first angle is 90 when level and the native third angle
+    // turns the other way from the opposite axis.
+    view.placeCamera(camera.position(), 180.f - camera.yaw, camera.pitch - 90.f);
     view.lensWord = uint16_t(fighter.mode);
 }
 

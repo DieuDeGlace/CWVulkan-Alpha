@@ -72,6 +72,8 @@ class WorldView {
     void setLook(float yawDegrees, float pitchDegrees);
     // Puts the camera at `at` (world blocks) looking along `direction`.
     void placeCamera(glm::dvec3 at, glm::vec3 direction);
+    // Puts the camera at `at` with the follow camera's own angles: no pitch bound.
+    void placeCamera(glm::dvec3 at, float yawDegrees, float pitchDegrees);
     // The climate under the camera (for the sky palette) and the shadow focus.
     // and this frame's point lights (rendering §10).
     void fillScene(Scene &scene) const;

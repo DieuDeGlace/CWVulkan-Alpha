@@ -448,8 +448,26 @@ static void viewRelation() {
           "the production adapter of the constructed view agrees with the engine look-at view within float rounding");
 }
 
+// The view scalars use the follow camera's angles directly, without a pitch bound.
+static void viewScalars() {
+    float worst = 0;
+    for (const auto &angles : {std::array<float, 2>{120.f, 0.f}, std::array<float, 2>{180.f, 37.f},
+                               std::array<float, 2>{0.f, -200.f}, std::array<float, 2>{95.f, 721.f}}) {
+        creatures::FollowCamera follow;
+        follow.pitch = angles[0];
+        follow.yaw = angles[1];
+        Camera camera;
+        camera.yawDegrees = 180.f - follow.yaw;
+        camera.pitchDegrees = follow.pitch - 90.f;
+        const glm::vec3 a = camera.forward(), b = follow.direction();
+        worst = std::max(worst, glm::length(a - b));
+    }
+    check(worst < 1e-5f, "engine yaw and pitch from the native angles reproduce the native direction, straight down included");
+}
+
 int main() {
     viewRelation();
+    viewScalars();
     conversions(); rotationsAndTranslations(); weightsAndShake(); finalConstruction();
     inputTargets(); smoothing(); anchorFollowing(); voxelsAndEye(); productionCamera();
     if (!failures) std::puts("PASS: camera conversions, view construction, input targets, smoothing, anchor following, corner sampling and production adapter");

@@ -1344,3 +1344,9 @@ automated run.
 WorldgenTests also checks the held column-value contract's edge rule: an index
 outside 0 to 1023 in the three-by-three window yields one half. All 59 CTests
 pass. Only a test and documents changed; the client executable is unchanged.
+
+CameraTests checks that engine yaw and pitch formed from the native angles
+reproduce the native view direction within 1e-5 for four angle pairs, including
+first angle 180 and third angles beyond one turn. All 59 CTests pass; the
+player/controller diagnostic and the reward, health, network, save/reload and
+town runs pass, and all six reviewed captures match the preceding batch.

@@ -767,6 +767,12 @@ void WorldView::placeCamera(glm::dvec3 at, glm::vec3 d) {
     setLook(glm::degrees(std::atan2(d.x, d.y)), -glm::degrees(std::asin(std::clamp(d.z, -1.f, 1.f))));
 }
 
+void WorldView::placeCamera(glm::dvec3 at, float yawDegrees, float pitchDegrees) {
+    eye = toRender(at);
+    yaw = yawDegrees;
+    pitch = pitchDegrees;
+}
+
 void WorldView::setLook(float y, float p) {
     yaw = y;
     pitch = std::clamp(p, -89.f, 89.f);

@@ -1451,3 +1451,11 @@ window, jitter, distances, weights and the one-half fallback, and the engine
 value it calls warmth is that point value. No engine arithmetic changed. The
 contract's other readers, the neighbouring column members and the point-cleanup
 rule are not implemented as native claims.
+
+The follow camera now hands its own angles to the world view instead of the
+engine deriving yaw and pitch back from the view direction with a plus/minus
+89-degree pitch bound. The engine scalars used by the minimap, the fog gradient
+and sound are the third angle mirrored about 180 degrees and the first angle
+less 90, so the fog gradient's zenith angle equals the native first angle,
+including straight up and straight down. The free-flight camera keeps its own
+turning bound. This removes an engine adapter; it is not a new native claim.
