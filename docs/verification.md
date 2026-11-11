@@ -1350,3 +1350,16 @@ reproduce the native view direction within 1e-5 for four angle pairs, including
 first angle 180 and third angles beyond one turn. All 59 CTests pass; the
 player/controller diagnostic and the reward, health, network, save/reload and
 town runs pass, and all six reviewed captures match the preceding batch.
+
+Live water-extension captures at seed 123 (noon, radius 1, walking client with
+the local-entry camera), at points along the line from the start toward the
+nearest generated sea region: (8402900, 8396150) and (8403600, 8396100) start
+under the ocean and render the shared-shader underwater look (teal seabed,
+deep-blue fog, kelp, visible surface beyond); (8402300, 8396200) is a coastal
+hill above the same ocean; (8408064, 8395776) is a coastal town. These show
+underwater rendering and coastal geometry in the real client. They do not show
+bank reeds, because this coast is a steep slope into deep water rather than a
+shallow bank, and seventeen-frame captures cannot show whether a submerged
+player swims or rests on the seabed. Live swimming and reed placement therefore
+remain unverified in the client; WaterTests still covers them with synthetic
+terrain and the real movement code.
