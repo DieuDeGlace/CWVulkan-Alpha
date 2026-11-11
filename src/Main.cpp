@@ -843,6 +843,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         dictionary.parse(std::string(bytes->begin(), bytes->end()));
     ui::Interface interface;
     activeInterface = &interface;
+    // The engine screens that stand in for the native front-end rotation state.
+    const auto frontEndRotation = [&] {
+        using F = ui::Interface::Front;
+        const F front = interface.front;
+        return interface.startScreen || front == F::Characters || front == F::Worlds || front == F::Connect;
+    };
     mods.hooks().say = [&](const std::string &text) {
         interface.chatSubmitted.push_back(text); // (as if typed, /commands included)
         return true;
@@ -2332,6 +2338,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                       interface.mapOpen ? nullptr : &pad, &mouseButtons);
                     updatePlayerInterface();
                     publishPlayerEffects();
+                    // Held initial-state contract: the front-end rotation assigns
+                    // its targets before the same update's camera smoothing.
+                    if (frontEndRotation()) {
+                        creatures::FollowCamera &cam = player->followCamera();
+                        cam.targetDistance = 10, cam.targetPitch = 100;
+                        cam.targetYaw = float(frameElapsedMs) * std::bit_cast<float>(0x3ba3d70au) + cam.targetYaw;
+                    }
                     // The engine world clock stands in for the native world member.
                     player->finishFrame(frameElapsedMs, [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); },
                                         npcs.sightRecords);
@@ -2898,18 +2911,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (interface.startScreen && !player)
             view.turn(seconds * 3.f, 0);
         // Character screens §7: behind the start, connect, character and world lists the game
-        // camera eases to 10 blocks at pitch 100 and turns 5° a second; entering character or
-        // world creation snaps it level at 5 blocks (yaw 0, or 180 for a world).
+        // camera eases to 10 blocks at pitch 100 and turns (applied before the frame's camera
+        // smoothing, above); entering character or world creation snaps it level at 5 blocks
+        // (yaw 0, or 180 for a world).
         if (player) {
             using F = ui::Interface::Front;
             creatures::FollowCamera &cam = player->followCamera();
             const F front = interface.front;
-            if (interface.startScreen || front == F::Characters || front == F::Worlds || front == F::Connect) {
-                // Held initial-state contract: distance, first angle, then the
-                // third angle advanced by the frame duration in binary32.
-                cam.targetDistance = 10, cam.targetPitch = 100;
-                cam.targetYaw = float(frameElapsedMs) * std::bit_cast<float>(0x3ba3d70au) + cam.targetYaw;
-            } else if ((front == F::Creation || front == F::WorldCreation) && front != cameraFront) {
+            if (!frontEndRotation() && (front == F::Creation || front == F::WorldCreation) && front != cameraFront) {
                 cam.targetPitch = cam.pitch = 90;
                 cam.targetYaw = cam.yaw = front == F::Creation ? 0.f : 180.f;
                 cam.targetDistance = cam.distance = 5;

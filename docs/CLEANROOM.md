@@ -1360,10 +1360,10 @@ record values 0x51 and 0x52 agree with the contract.
 
 Engine limits remain explicit. Runs that skip the front end never pass the
 screens that move the zero distance, so they begin at an engine distance of
-six blocks as a labelled direct-entry adapter. The engine applies the
-front-end rotation after that frame's smoothing, where the contract places it
-before; its screen states stand in for the native widget properties; and only
-the two creation snaps are bound. The third button handler, the menu-selection
+six blocks as a labelled direct-entry adapter. The front-end rotation now assigns its targets
+in the input phase immediately before the camera update, so that update's
+smoothing sees them, as the contract orders it; its screen states stand in for
+the native widget properties; and only the two creation snaps are bound. The third button handler, the menu-selection
 route that restores the constructed distance and angle, the members that
 construction never stores, the constructed eye and the options screen's own
 bounds are not implemented as native claims.
