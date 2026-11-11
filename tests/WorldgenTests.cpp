@@ -388,6 +388,13 @@ int main() {
         same(zone.statics[1].kind, 56 + 440 % 9, "vase kind");
     }
 
+    // Held column-value contract: an index outside 0..1023 in the 3 x 3 window gives 0.5.
+    {
+        World cw(123);
+        same(cw.warmth(0, 8000000) == 0.5f && cw.warmth(8000000, 0) == 0.5f && cw.warmth(1023 * 16384, 8000000) == 0.5f, 1,
+             "column value falls back to one half at the world index edges");
+    }
+
     // Held template-stamping contract: guard gear levels, raw orientation, ordered column value.
     {
         auto run = [&](int mode, int rotation, float warmth, uint8_t r, uint8_t g, uint8_t b) {

@@ -1429,3 +1429,25 @@ feature, object and descriptor collections, the column warmth stands in for the
 column value, negative orientations remain reduced, and the behaviour object,
 the column-value fallback service and the uninitialised object-entry field are
 not modelled.
+
+A fourth author round ran with separate scratch folders. Two of its three
+authors reported that an automated safety classifier stopped their contract
+writes; no file was produced for the front-end visibility/key topic or the
+client's second world-list reader, and neither was retried or re-delegated.
+During that round the evidence root's two original executables stopped being
+visible in its binary folder; authors that had already verified them used
+hash-identical copies elsewhere under the evidence root. The implementer did
+not modify the evidence root.
+
+`alpha-column-value-production.md`, FINAL/STABLE/HELD with SHA-256
+`a6fc18649ce7ba8d3177318fa2f2d1dd709955666092819a7e442c0c07fec2b1`, was
+hash-verified and read completely; its author reported that the reconstruction
+was not consulted. It establishes that the column value read by the stamping
+markers is the distance-weighted region-point value produced by the fallback
+service, written once per column by the sector generator. The inherited engine
+region generator and its blend already match the contract's seed, both climate
+paths, the fire branch, position draws and snap, height noise, sea handling,
+window, jitter, distances, weights and the one-half fallback, and the engine
+value it calls warmth is that point value. No engine arithmetic changed. The
+contract's other readers, the neighbouring column members and the point-cleanup
+rule are not implemented as native claims.

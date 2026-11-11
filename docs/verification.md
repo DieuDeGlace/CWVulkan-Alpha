@@ -1340,3 +1340,7 @@ local-entry camera (5 blocks, level, third angle 180) and connected runs from
 the front-end distance of 10 blocks, so their framing differs from earlier
 checkpoints by design. The menu return row and screen transitions have no
 automated run.
+
+WorldgenTests also checks the held column-value contract's edge rule: an index
+outside 0 to 1023 in the three-by-three window yields one half. All 59 CTests
+pass. Only a test and documents changed; the client executable is unchanged.
