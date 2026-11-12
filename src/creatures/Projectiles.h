@@ -74,6 +74,9 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float beforeMs, float
 // §2.6: a healer's (class 3, specialization 1) healing burst at `at` (blocks): kind 3, element
 // 2, radius 4.
 Projectile healingBurst(const Combatant &healer, glm::dvec3 at);
+// Beam-leftovers contract §5.1: the ray case's water cloud, the same record with +0x48 from
+// the power query (stat-queries contract §5, the engine's magicBase) times 0.1.
+Projectile rayCloud(const Combatant &healer, glm::dvec3 at);
 
 // The actions whose hits travel as projectiles (§2) rather than strike at the hit moment.
 bool shootsProjectile(int32_t action);

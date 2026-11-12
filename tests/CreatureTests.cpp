@@ -2179,6 +2179,65 @@ int main() {
         }
     }
 
+    // Stat-queries contract §6: the B, C and D tables for every action 0..0x69 (R0 = B + C + D).
+    {
+        struct Entry {
+            int32_t ms;
+            bool fixed;
+        };
+        using Table = std::vector<std::pair<std::vector<int>, Entry>>;
+        const Table B = {
+            {{0x00, 0x08, 0x0B, 0x1C, 0x32, 0x37, 0x3C, 0x3D, 0x3E, 0x60, 0x62, 0x68}, {0, true}},
+            {{0x30, 0x65}, {100, true}}, {{0x47, 0x48}, {200, true}}, {{0x36}, {400, true}}, {{0x69}, {5000, true}},
+            {{0x06, 0x07, 0x17, 0x18, 0x19, 0x1B, 0x24, 0x3B, 0x3F, 0x40}, {50, false}},
+            {{0x02, 0x03, 0x04, 0x05, 0x0A, 0x0E, 0x11, 0x12, 0x13, 0x14, 0x15}, {100, false}},
+            {{0x0C, 0x0D, 0x0F, 0x10, 0x27, 0x28, 0x29, 0x2A, 0x43}, {200, false}},
+            {{0x01, 0x09, 0x1A, 0x41, 0x42, 0x44, 0x45, 0x46, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E}, {300, false}},
+            {{0x26, 0x2C, 0x5E}, {500, false}}, {{0x25, 0x2B, 0x59}, {1200, false}},
+            {{0x1E, 0x20, 0x39, 0x3A, 0x5D}, {800, false}}, {{0x5B, 0x5F}, {1000, false}}, {{0x2D, 0x2E}, {1200, false}},
+            {{0x1F, 0x21, 0x22}, {1600, false}}, {{0x57}, {5000, false}}};
+        const Table C = {
+            {{0x00, 0x31}, {0, true}}, {{0x36}, {100, true}}, {{0x0A}, {200, true}},
+            {{0x32, 0x4C, 0x4D, 0x4E, 0x60}, {500, true}}, {{0x1E, 0x20, 0x49, 0x5D}, {600, true}},
+            {{0x44, 0x45}, {1000, true}}, {{0x1F, 0x21}, {1200, true}}, {{0x5F}, {2000, true}}, {{0x47}, {3000, true}},
+            {{0x48, 0x56}, {5000, true}}, {{0x5B}, {6000, true}}, {{0x16, 0x17}, {50, false}},
+            {{0x03, 0x04, 0x25, 0x2B, 0x3E}, {100, false}}, {{0x06, 0x07, 0x12, 0x13}, {150, false}},
+            {{0x01, 0x02, 0x09, 0x0D, 0x0E, 0x0F, 0x43}, {200, false}},
+            {{0x05, 0x0C, 0x10, 0x11, 0x14, 0x15, 0x41, 0x42}, {400, false}}, {{0x2D, 0x2E, 0x37, 0x5E}, {500, false}},
+            {{0x1A, 0x22}, {1200, false}}};
+        const Table D = {
+            {{0x30}, {0, true}}, {{0x00, 0x32, 0x60}, {100, true}}, {{0x47, 0x48}, {200, true}}, {{0x36}, {400, true}},
+            {{0x0A}, {600, true}}, {{0x17}, {10, false}},
+            {{0x0B, 0x16, 0x1A, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E,
+              0x3C, 0x3D, 0x43, 0x5E, 0x5F, 0x68},
+             {100, false}},
+            {{0x07, 0x0E, 0x12, 0x41, 0x42}, {200, false}}, {{0x03, 0x04, 0x05, 0x39, 0x3A, 0x3E}, {300, false}},
+            {{0x0F}, {400, false}}, {{0x44, 0x45, 0x5D}, {800, false}}};
+        const auto lookup = [](const Table &t, int action, Entry fallback) {
+            for (const auto &[actions, e] : t)
+                if (std::find(actions.begin(), actions.end(), action) != actions.end())
+                    return e;
+            return fallback;
+        };
+        Combatant c;
+        c.multipliers[1] = 2; // halves every scaled time, so fixed and scaled differ
+        const float q = attackSpeed(c) * c.multipliers[1];
+        const auto ms = [&](Entry e) { return e.fixed ? e.ms : int32_t(float(e.ms) / q); };
+        int wrong = 0;
+        for (int action = 0; action <= 0x69; action++) {
+            const Phases p = phases(c, action);
+            const int32_t b = ms(lookup(B, action, {400, false})), cc = ms(lookup(C, action, {300, false}));
+            const int32_t d = ms(lookup(D, action, {500, false}));
+            if (p.windUp != b || p.active != cc || p.recovery != d) {
+                wrong++;
+                std::printf("  action 0x%02X: engine %d/%d/%d, contract %d/%d/%d\n", action, p.windUp, p.active,
+                            p.recovery, b, cc, d);
+            }
+        }
+        same(wrong, 0, "every action's B, C and D follow the held tables");
+        c.equipment[MAIN_HAND].subtype = BRACELET; // +0xAA9 = 12, kind not tested
+        same(phases(c, 0x25).windUp, int32_t(600.f / q), "B for 0x25 with subtype 12 in the second hand is scaled 600");
+    }
     // Fatal-disposal contract §5: the loot helper's draw counts.
     {
         const auto consumed = [](worldgen::Random used, worldgen::Random fresh, int count) {

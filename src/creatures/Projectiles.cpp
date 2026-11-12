@@ -1,6 +1,7 @@
 #include "creatures/Projectiles.h"
 #include "creatures/Names.h"
 #include "creatures/Npcs.h"
+#include "creatures/Strike.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -175,6 +176,12 @@ Projectile healingBurst(const Combatant &healer, glm::dvec3 at) {
     p.strength = 0;
     for (int k = 0; k < 3; k++)
         p.position[k] = (int64_t)(at[k] * 65536.0);
+    return p;
+}
+
+Projectile rayCloud(const Combatant &healer, glm::dvec3 at) {
+    Projectile p = healingBurst(healer, at);
+    p.damage = magicBase(healer) * 0.1f;
     return p;
 }
 

@@ -1745,3 +1745,22 @@ Two fixes:
 Still open, as in the contract: the attack routine's choice between miss,
 block and absorption, the heal power routine, and indirect writes to world
 +0xB4.
+
+### Combat stat queries (2026-11-12)
+
+The held `alpha-combat-stat-queries.md` (SHA-256 F45EF002...134A) was read whole.
+The engine already matched it on these points:
+
+- the attack-speed query (`attackSpeed`) and its per-item term (`itemSpeed`);
+- the crit base and crit chance (`criticalChance`), and the per-item crit term
+  (`itemCritical`);
+- the action-specific value and the mana-cost query (`abilityValue`,
+  `manaCost`);
+- the power query and its weapon list (`magicBase`, `weaponsOf`);
+- the weapon power multipliers (`itemDamage`);
+- the B, C and D timing tables for every action 0..0x69 (`phases`).
+
+One fix: the ray case's clouds take power x 0.1 through the new `rayCloud`.
+Before, they used the projectile helper's weapon damage. Still open: whether
+the platform's binary64 pow matches MSVCR110's precise pow for non-integer
+exponents.

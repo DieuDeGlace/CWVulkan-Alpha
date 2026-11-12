@@ -1556,3 +1556,10 @@ They also check that a boss's worn-item stage makes its r mod 4 draw: eight
 draws in all for the fixture, where the old code made seven. All 60 CTests
 pass, the player diagnostic and five live runs pass, and the six captures
 match the preceding batch.
+
+Timing tables (2026-11-12). A new data-driven CreatureTests case checks B, C
+and D for every action 0..0x69 against the held stat-queries tables, with the
+speed scale doubled so that fixed and scaled entries differ. It also checks
+B for action 0x25 with subtype 12 in the second hand. All 106 actions match.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the
+six captures match the preceding batch.

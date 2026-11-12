@@ -1840,7 +1840,7 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
     // sight point plus the aim times the length on the first crossing, even for no length.
     const bool clouds = first && attacker.characterClass == 3 && attacker.specialization == 1;
     if (clouds)
-        frame.shots.push_back(healingBurst(attacker, blocksOf(alongAim(sight))));
+        frame.shots.push_back(rayCloud(attacker, blocksOf(alongAim(sight))));
 
     std::set<uint64_t> touched;
     bool admitted = false;
@@ -1885,7 +1885,7 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
                 admitted |= landBlow(attacker, attackerBody, c, body, frame,
                                      beamInput(attacker, critical, [&] { return draw(); }), players);
                 if (clouds) // §5.2 path 2: a cloud at the sample point per admitted creature
-                    frame.shots.push_back(healingBurst(attacker, blocksOf(P)));
+                    frame.shots.push_back(rayCloud(attacker, blocksOf(P)));
             }
         };
         for (int32_t i = 0; length > float(i); i++) {
