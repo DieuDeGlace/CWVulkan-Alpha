@@ -38,6 +38,8 @@ HitInput strikeInput(const Combatant &attacker, const Body &body, const Body &ta
 
 // §1.7: the blow of a beam.
 HitInput beamInput(const Combatant &attacker, const std::function<int()> &draw);
+// The same with the critical decided by the caller (the ray case draws it before admission).
+HitInput beamInput(const Combatant &attacker, bool critical, const std::function<int()> &draw);
 
 // §1.6, §2.6: what the first target of a swing or pulse gives the attacker: the combo, and mana
 // unless the blow was an area one. `damaged`: the hit was not blocked or refused.

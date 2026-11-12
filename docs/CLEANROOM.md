@@ -1687,3 +1687,38 @@ Engine adapters, named in the module header:
 
 Not implemented: the target-id write for action 0x22, and the head-pitch pose
 sites.
+
+### Beam leftovers (2026-11-12)
+
+The held `alpha-combat-beam-leftovers.md` (SHA-256 509516200A...E6AD) was read
+whole. The beam case for actions 0x1C and 0x5F now does the following:
+
+- **Mana before the clock window:** action 0x1C drains step times 0.0002.
+  Action 0x5F pays 0.3 at its first crossing, or nothing while a kind-9 effect
+  is present, which it then resets and announces.
+- **Negative mana:** the mana is set to zero and the rest of the case is
+  skipped for that update. Action 0x5F's clock-0 deduction in the action
+  update is removed.
+- **Creature order:** creatures are visited in ascending signed id.
+- **Draws per geometric hit:** the critical draw comes before the direct draw,
+  and the critical decided there feeds the hit.
+- **Clouds:** class pair (3, 1) places clouds through the engine's healing
+  burst, which matches the record's radius 4, element 2 and 0.1-power
+  amount. One cloud goes at the sight point plus the aim times the length on
+  the first crossing, and one at the sample point for each admitted creature.
+  The strike's own healer burst no longer fires for beams.
+- **Empty loop:** the combo resets, and the clock is rescaled by the engine
+  speed query before and after the reset. An admitted pulse zeroes the combo
+  timer.
+- **Driven flag:** it now follows the contract's eight setters instead of the
+  action-72 adapter.
+- **Climbing:** creatures in the climbing state skip the facing block.
+
+Still adapters or open:
+
+- `attackSpeed` stands in for query 0x047700. Its equipment term is not the
+  contract's unclosed item query.
+- The effect record's 35-draw particle presentation is not modelled; the
+  engine sparks stand in.
+- Actions 0x5E and 0x68, and the riding id at +0x11C0 (it has no producer in
+  either image), are not handled.

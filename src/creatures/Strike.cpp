@@ -286,8 +286,13 @@ HitInput strikeInput(const Combatant &a, const Body &body, const Body &target, c
 }
 
 HitInput beamInput(const Combatant &a, const std::function<int()> &draw) {
+    const bool critical = (float)draw() / 32767.f < criticalChance(a);
+    return beamInput(a, critical, draw);
+}
+
+HitInput beamInput(const Combatant &a, bool critical, const std::function<int()> &draw) {
     HitInput in;
-    in.critical = (float)draw() / 32767.f < criticalChance(a);
+    in.critical = critical;
     in.amount = 1.5f * magicBase(a) * (1.f + 0.05f * ((float)draw() / 32767.f));
     if (in.critical)
         in.amount *= 2;

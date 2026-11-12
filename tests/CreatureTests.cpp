@@ -1473,17 +1473,25 @@ int main() {
         if (caster) {
             const Phases timing = phases(caster->fighter, 95);
             same(timing.windUp > 8 && timing.active > 300, 1, "the beam has a wind-up and an active window");
-            const auto pulse = [&](int32_t clock) {
+            const auto pulse = [&](int32_t clock, float mana = 1.f, int32_t action = 95) {
                 caster->thinkMs = 0; // no behaviour decision this update
-                caster->fighter.action = 95;
+                caster->fighter.action = action;
                 caster->fighter.actionMs = clock;
+                caster->fighter.mana = mana;
                 caster->body.look = glm::vec3(0, 10, 0);
                 return !step().bursts.empty();
             };
             same(pulse(timing.windUp - 8), 1, "the update crossing the wind-up pulses");
+            same(caster->fighter.mana < 0.71f, 1, "action 0x5F pays 0.3 mana at its first crossing");
             same(pulse(timing.windUp + 20), 0, "no pulse inside the same 200 ms period");
             same(pulse(timing.windUp + 190), 1, "the next 200 ms boundary pulses");
             same(pulse(timing.windUp + timing.active), 0, "no pulse once the active window is over");
+            // Beam-leftovers contract §1.4: mana driven below zero skips the rest of the case.
+            same(pulse(timing.windUp - 8, 0.2f), 0, "a first crossing without the mana loses its pulse");
+            same(pulse(timing.windUp + 190, 0.f), 1, "with mana at zero the 200 ms repeats still pulse");
+            const int32_t rayWindUp = phases(caster->fighter, 28).windUp;
+            same(pulse(rayWindUp - 8, 0.f, 28), 0, "action 0x1C with no mana left drains below zero and stops");
+            same(pulse(rayWindUp - 8, 1.f, 28), 1, "action 0x1C with mana pulses");
         }
     }
     // Pets §10.2 runs Companion (client 0x03ACE0, held created-companion navigation): with the

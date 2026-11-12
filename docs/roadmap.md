@@ -183,8 +183,11 @@ Differences from the Steam engine that shape the plan:
   ray from the follow anchor, creature pick on the screen centre, close-spell
   freeze, Left Shift yaw forward) and its flags block (face-aim, walking and
   climb bits). The pick's visibility range, the +0x1180 offset and the target-id
-  write remain adapters or open. Beam mana and the clock rescale (query 0x047700)
-  remain open, and now have the held beam-leftovers contract.
+  write remain adapters or open. The held beam-leftovers contract now drives beam
+  mana, ascending-id visiting, the per-hit critical draw, healer clouds, the
+  empty-loop rescale, the full "driven" list and the climbing facing bypass;
+  query 0x047700's equipment term, actions 0x5E/0x68 and the effect record's
+  client particles remain open.
   The held approach/path contract confirmed the existing search core, rebuild
   and direct-approach walk; the combat far route now uses them with the binary32
   near/far test, contract steering speed, raw lowered endpoints and the strict

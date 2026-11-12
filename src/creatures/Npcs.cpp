@@ -992,6 +992,21 @@ std::array<int64_t, 3> offsetPoint(const Body &body, float yaw, uint16_t flags) 
 
 constexpr double PI64 = 3.141592653589793;
 
+// Beam-leftovers contract §7.1: the actions and clock windows that set the "driven" flag,
+// which keeps the facing block from turning the creature. B is the wind-up, C the active
+// phase and R0 the action duration.
+bool drivenByAction(const Combatant &c, int32_t clock) {
+    const Phases p = phases(c, c.action);
+    const int32_t B = p.windUp, C = p.active, R0 = duration(c, c.action);
+    switch (c.action) {
+    case 0x44: case 0x45: case 0x5D: return clock > B && (clock < B + (3 * C) / 4 || clock < R0);
+    case 0x4C: case 0x4D: case 0x4E: return clock > B && clock < B + C;
+    case 0x47: case 0x48: return clock < R0;
+    case 0x39: case 0x4A: return clock < R0 && clock >= B;
+    default: return false;
+    }
+}
+
 // Aim-triplet contract §3.7 step 1: the heading of a nonzero horizontal vector, normalized
 // precisely (binary64 square root rounded), y clamped, arccosine rounded to binary32.
 float headingOf(float x, float y) {
@@ -1751,24 +1766,44 @@ bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &ta
     frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
     frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
     // Projectiles §2.6: a healer's swing heals round itself once more for each creature it hits.
-    if (attacker.characterClass == 3 && attacker.specialization == 1 && !out.records.empty())
+    // (The ray case places its own clouds: beam-leftovers contract §5.2.)
+    if (attacker.characterClass == 3 && attacker.specialization == 1 && !out.records.empty() &&
+        attacker.action != 28 && attacker.action != 95)
         frame.shots.push_back(healingBurst(attacker, from));
     return out.hitAccepted;
 }
 
 void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, float dt, std::span<PlayerView> players,
                     NpcFrame &frame, const BlockType &block) {
-    // Aim-triplet contract §3.1 (case 0x215C68) for actions 0x1C and 0x5F. Mana handling, the
-    // clock rescale by query 0x047700 and the water-cloud shot are not implemented here.
+    // Aim-triplet contract §3.1 (case 0x215C68) for actions 0x1C and 0x5F, with the held
+    // beam-leftovers contract: mana (§1), the empty-loop rescale (§2.2), the visiting order (§6),
+    // the per-hit critical draw (§8) and the water clouds of class pair (3, 1) (§5.2).
     if (attacker.action != 28 && attacker.action != 95)
         return;
     const Phases timing = phases(attacker, attacker.action);
     const int32_t clock = int32_t(t), step = int32_t(dt);
     const int32_t B = timing.windUp, C = timing.active;
     const int32_t after = std::bit_cast<int32_t>(uint32_t(clock) + uint32_t(step));
+    const bool first = clock <= B && B < after;
+    // §1.2: action 0x1C drains s x 0.0002 on every update the case runs, whatever the clock.
+    // §1.3: action 0x5F pays its cost on the first crossing: 0.3, or nothing while a kind-9
+    // effect is present, which is then reset (with its notice).
+    if (attacker.action == 28) {
+        attacker.mana = attacker.mana - float(step) * std::bit_cast<float>(0x3951B717u);
+    } else if (first) {
+        const bool kind9 = attacker.hasBuff(9);
+        attacker.mana = attacker.mana - (kind9 ? 0.f : std::bit_cast<float>(0x3E99999Au));
+        if (kind9)
+            if (auto consumed = consumeBuff(attacker, 9))
+                frame.buffs.push_back(*consumed);
+    }
+    // §1.4: negative mana is set to zero and the rest of the case is skipped this update.
+    if (0.f > attacker.mana) {
+        attacker.mana = 0.f;
+        return;
+    }
     if (after < B || clock >= B + C)
         return;
-    const bool first = clock <= B && B < after;
     const bool repeat = after > B && (after - B) / 200 != (clock - B) / 200;
     if (!first && !repeat)
         return;
@@ -1792,10 +1827,38 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
         length = visibility::trace({sight[0], sight[1], sight[2]}, {unit.x, unit.y, unit.z}, 200.f, 0, 1,
                                    {block, sightRecords});
     }
+    const auto blocksOf = [](const std::array<int64_t, 3> &raw) {
+        return glm::dvec3(double(raw[0]), double(raw[1]), double(raw[2])) / 65536.0;
+    };
+    const auto alongAim = [&](const std::array<int64_t, 3> &start) {
+        std::array<int64_t, 3> end{};
+        for (size_t k = 0; k < 3; k++)
+            end[k] = std::bit_cast<int64_t>(uint64_t(start[k]) + uint64_t(int64_t(unit[k] * length * 65536.f)));
+        return end;
+    };
+    // §5.2 path 1: class pair (3, 1) leaves a water cloud (the engine's healing burst) at the
+    // sight point plus the aim times the length on the first crossing, even for no length.
+    const bool clouds = first && attacker.characterClass == 3 && attacker.specialization == 1;
+    if (clouds)
+        frame.shots.push_back(healingBurst(attacker, blocksOf(alongAim(sight))));
 
     std::set<uint64_t> touched;
     bool admitted = false;
     if (length > 0.f) {
+        // §6: the world map is visited in ascending signed 64-bit id.
+        struct Visit {
+            Combatant *fighter;
+            Body *body;
+        };
+        std::vector<Visit> order;
+        order.reserve(players.size() + list.size());
+        for (PlayerView &v : players)
+            order.push_back({&v.fighter, &v.body});
+        for (Npc &n : list)
+            order.push_back({&n.fighter, &n.body});
+        std::stable_sort(order.begin(), order.end(), [](const Visit &a, const Visit &b) {
+            return std::bit_cast<int64_t>(a.fighter->id) < std::bit_cast<int64_t>(b.fighter->id);
+        });
         std::array<int64_t, 3> P = sight;
         const int64_t advance[3] = {int64_t(D.x * 65536.f), int64_t(D.y * 65536.f), int64_t(D.z * 65536.f)};
         const auto test = [&](Combatant &c, Body &body) {
@@ -1814,37 +1877,45 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
             if (!(std::fabs(double(dz)) < double(body.size.z * .5f + 1.f)))
                 return;
             touched.insert(c.id);
-            draw(); // the direct draw (0x216460) before admission; its consumer is not closed
+            // §8: the critical query's draw (0x2163E2), then the direct draw (0x216460).
+            const bool critical = (float)draw() / 32767.f < criticalChance(attacker);
+            draw(); // its consumer is not closed
             // Engine admission stand-in for routine 0x1988A0: hostility either way.
-            if (hostile(attacker, c) || hostile(c, attacker))
+            if (hostile(attacker, c) || hostile(c, attacker)) {
                 admitted |= landBlow(attacker, attackerBody, c, body, frame,
-                                     beamInput(attacker, [&] { return draw(); }), players);
+                                     beamInput(attacker, critical, [&] { return draw(); }), players);
+                if (clouds) // §5.2 path 2: a cloud at the sample point per admitted creature
+                    frame.shots.push_back(healingBurst(attacker, blocksOf(P)));
+            }
         };
         for (int32_t i = 0; length > float(i); i++) {
-            for (PlayerView &v : players)
-                test(v.fighter, v.body);
-            for (Npc &n : list)
-                test(n.fighter, n.body);
+            for (const Visit &v : order)
+                test(*v.fighter, *v.body);
             for (size_t k = 0; k < 3; k++)
                 P[k] = std::bit_cast<int64_t>(uint64_t(P[k]) + uint64_t(advance[k]));
         }
     }
-    // Open points 3 §2.2: the channel sound on the 200-ms grid of the action's own time: 37 when
-    // this tick hit an enemy, else 36.
-    if (std::trunc((t + dt) / 200) != std::trunc(t / 200))
-        frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
     if (touched.empty()) {
-        // The effect record's point: the position plus the normalized aim times the length.
-        std::array<int64_t, 3> end{};
-        for (int k = 0; k < 3; k++)
-            end[size_t(k)] = std::bit_cast<int64_t>(uint64_t(attackerBody.position[k]) +
-                                                    uint64_t(int64_t(unit[k] * length * 65536.f)));
-        const glm::dvec3 point = glm::dvec3(double(end[0]), double(end[1]), double(end[2])) / 65536.0;
-        frame.bursts.push_back(Burst::at(point, -D, {1, 0.2f, 0.5f, 1}, 0.1f, 5, FIRE));
+        // §4.1: the effect record at the position (not the sight point) plus the aim times the
+        // length, carrying -D; engine sparks present it.
+        frame.bursts.push_back(Burst::at(blocksOf(alongAim({attackerBody.position[0], attackerBody.position[1],
+                                                            attackerBody.position[2]})),
+                                         -D, {1, 0.2f, 0.5f, 1}, 0.1f, 5, FIRE));
+        // §2.2: the combo resets and the clock is rescaled by the speed query before and after
+        // (attackSpeed is the engine's query 0x047700).
+        const float q1 = attackSpeed(attacker);
         attacker.combo = 0;
+        const float q2 = attackSpeed(attacker);
+        const float scaled = (q1 / q2) * float(attacker.actionMs);
+        attacker.actionMs = scaled >= -2147483648.f && scaled < 2147483648.f ? int32_t(scaled) : INT32_MIN;
     } else if (admitted) {
         attacker.combo += 1;
+        attacker.comboElapsedMs = 0;
     }
+    // §8: the channel sound on the 200-ms grid of the action's own time, one pitch draw: 0x25
+    // when this pulse admitted a creature, else 0x24.
+    if (std::trunc((t + dt) / 200) != std::trunc(t / 200))
+        frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
 }
 
 void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std::span<PlayerView> players,
@@ -2182,12 +2253,17 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             frame.bursts.push_back(splashBurst(npc.body.blocks()));
             frame.sounds.push_back({npc.body.blocks(), 31, 0.9f + (float)draw() / 32767.f, 1});
         }
-        // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement. The native
-        // "driven" list is not closed; the engine's action-72 motion stands in for it.
-        const bool driven = c.action == 72;
-        if (driven)
+        // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement. The "driven"
+        // flag's setters are the beam-leftovers contract §7.1 list; action 0x48 also turns yaw
+        // (the engine's spin motion supplies that yaw).
+        const bool driven = drivenByAction(c, before);
+        if (driven && c.action == 0x48)
             npc.yaw = npc.body.yaw;
-        if ((npc.body.mode & AIMING) && c.hitStun <= 0) {
+        // §7.2: in the climbing state the facing block is bypassed (the original's rule from
+        // +0x11A0 is not closed; the yaw is left as it is).
+        const bool climbing = (npc.body.mode & CLIMB) && (npc.body.contact & ON_WALL) && !(npc.body.mode & GLIDER);
+        if (climbing) {
+        } else if ((npc.body.mode & AIMING) && c.hitStun <= 0) {
             const glm::vec3 drawn = npc.drawnLook;
             if (drawn.x * drawn.x + drawn.y * drawn.y > 0.f && !driven) {
                 const float heading = headingOf(drawn.x, drawn.y);

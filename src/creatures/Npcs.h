@@ -379,9 +379,10 @@ class Npcs {
     // attacker gains. True when it landed.
     bool landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, NpcFrame &frame,
                   HitInput in, std::span<PlayerView> players);
-    // Open points 1 §3: a beam (actions 28, 95) every 100 ms after its wind-up marches a ray
-    // block by block to the first solid block (200 at most) and hits the hostile creatures in
-    // it; when the ray met nobody, five fire sparks at its end and the combo goes.
+    // Aim-triplet contract §3.1 with the beam-leftovers contract: a beam (actions 28, 95) pays
+    // its mana, pulses at the wind-up crossing and on the 200-ms grid, samples the held ray in
+    // fixed point over the creatures in ascending id and hits the admitted ones; when nobody
+    // was touched, sparks at its end, the combo resets and the clock is rescaled.
     void beamTick(Combatant &attacker, const Body &attackerBody, float beforeMs, float dtMs, std::span<PlayerView> players,
                   NpcFrame &frame, const BlockType &block);
     // An NPC's swing also lands on `npcTarget` when either side is a quest ally.

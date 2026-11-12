@@ -480,6 +480,7 @@ int main() {
         const Phases timing = phases(actor, action);
         actor.actionMs = (float)(timing.windUp + (action == 28 ? 199 : timing.active / 2));
         actor.hitStun = 100;
+        actor.mana = 1; // the ray drains mana and stops when none is left (beam-leftovers §1.2, §1.4)
         actor.aim = {0, 1, 0};
         Body body;
         body.place({0, 0, 3});

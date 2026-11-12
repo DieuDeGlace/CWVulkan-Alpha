@@ -1538,3 +1538,14 @@ They also cover the aim:
 The player diagnostic now expects the face-aim bit at idle clock 0. All 60
 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Beam mana and order (2026-11-12). The beam CreatureTests case now gives its
+caster mana, and checks these cases:
+- the first crossing of 0x5F leaves at most 0.7 mana;
+- a first crossing that cannot pay loses its pulse;
+- with mana at zero, the 200 ms repeats still pulse;
+- action 0x1C with no mana stops, and with mana it pulses.
+
+The ActionPhaseTests ordering fixture now gives its ray actor mana. All 60
+CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.
