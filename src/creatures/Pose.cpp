@@ -1,6 +1,7 @@
 #include "creatures/Pose.h"
 #include "creatures/Spirits.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -11,10 +12,45 @@ constexpr double PI = 3.141592653589793;
 constexpr float PIf = 3.14159265f;
 
 glm::mat4 T(glm::mat4 m, glm::vec3 v) { return glm::translate(m, v); }
-glm::mat4 R(glm::mat4 m, float degrees, glm::vec3 axis) { return glm::rotate(m, glm::radians(degrees), axis); }
-glm::mat4 Rx(glm::mat4 m, float d) { return R(m, d, {1, 0, 0}); }
-glm::mat4 Ry(glm::mat4 m, float d) { return R(m, d, {0, 1, 0}); }
-glm::mat4 Rz(glm::mat4 m, float d) { return R(m, d, {0, 0, 1}); }
+
+// The weapon-attachment pose contract's rotation primitives (§2): the degree angle times
+// binary32 pi/180, then the binary64 cosine and sine, each narrowed.
+glm::vec2 cosSin(float degrees) {
+    const float radians = degrees * std::bit_cast<float>(0x3C8EFA35u);
+    return {(float)std::cos((double)radians), (float)std::sin((double)radians)};
+}
+// Rotation about a single axis, per row from the pre-update columns.
+glm::mat4 turnColumns(glm::mat4 m, float degrees, int a, int b, bool subtractFirst) {
+    const glm::vec2 cs = cosSin(degrees);
+    const glm::vec4 first = m[a], second = m[b];
+    m[a] = subtractFirst ? first * cs.x - second * cs.y : first * cs.x + second * cs.y;
+    m[b] = subtractFirst ? second * cs.x + first * cs.y : second * cs.x - first * cs.y;
+    return m;
+}
+glm::mat4 Rx(glm::mat4 m, float d) { return turnColumns(m, d, 1, 2, false); }
+glm::mat4 Ry(glm::mat4 m, float d) { return turnColumns(m, d, 0, 2, true); }
+glm::mat4 Rz(glm::mat4 m, float d) { return turnColumns(m, d, 0, 1, false); }
+// Axis-angle rotation (§2): the axis divided by its binary64-rooted length, unchanged
+// for a zero axis, and the current matrix multiplied by the rotation on the right.
+glm::mat4 R(glm::mat4 m, float degrees, glm::vec3 axis) {
+    const float length = (float)std::sqrt((double)((axis.x * axis.x + axis.y * axis.y) + axis.z * axis.z));
+    if (length == 0.f)
+        return m;
+    const glm::vec2 cs = cosSin(degrees);
+    const float c = cs.x, s = cs.y, t = 1.f - c;
+    const glm::vec3 u(axis.x / length, axis.y / length, axis.z / length);
+    glm::mat4 r(1.f);
+    r[0][0] = (u.x * u.x) * t + c;
+    r[1][1] = (u.y * u.y) * t + c;
+    r[2][2] = (u.z * u.z) * t + c;
+    r[0][1] = t * (u.x * u.y) + s * u.z;
+    r[1][0] = t * (u.x * u.y) - s * u.z;
+    r[0][2] = t * (u.x * u.z) - s * u.y;
+    r[2][0] = t * (u.x * u.z) + s * u.y;
+    r[1][2] = t * (u.y * u.z) + s * u.x;
+    r[2][1] = t * (u.y * u.z) - s * u.x;
+    return m * r;
+}
 glm::mat4 Rzyx(glm::mat4 m, glm::vec3 a) { return Rx(Ry(Rz(m, a.z), a.y), a.x); }
 glm::mat4 S(glm::mat4 m, float s) { return glm::scale(m, glm::vec3(s)); }
 
@@ -415,8 +451,9 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     const bool offShield = off == SHIELD;
 
     // §7.4 step 1: the swing.
-    const float s0 = (float)std::sin((double)s.phase + PI / 2);
-    float swing = s.amplitude * (float)(0.7 * PI) * s0;
+    // Pose contract §3: the argument and the sine are narrowed, the product formed in binary64.
+    const float s0 = (float)std::sin((double)(float)((double)s.phase + PI / 2));
+    float swing = (float)(((double)s.amplitude * std::bit_cast<double>(0x400197C982C286E6ull)) * (double)s0);
     if (action == 79)
         swing *= 0.5f;
     if (action == 106 || action == 107)
@@ -1534,8 +1571,12 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         glm::vec3 axis(m.velocity.y, -m.velocity.x, 0);
         if (c && c->type == 101)
             axis = m.velocity;
-        if (glm::length(axis) >= 0.01f)
-            base = R(base, (1 - m.dodgeMs / 600) * -360, glm::normalize(axis));
+        // Pose contract §6 step 3: a squared length above 0.01, the axis first scaled by the
+        // reciprocal of its narrowed root.
+        if ((axis.x * axis.x + axis.y * axis.y) + axis.z * axis.z > 0.01f) {
+            const float inverse = 1.f / (float)std::sqrt((double)((axis.x * axis.x + axis.y * axis.y) + axis.z * axis.z));
+            base = R(base, (1 - m.dodgeMs / 600) * -360, axis * inverse);
+        }
     }
     base = Rz(base, m.yawDegrees);
     base = T(base, {0, 0, s.pivot});
@@ -1641,13 +1682,22 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         s.trail[(size_t)history][0] = glm::vec3(weapon.matrix * glm::vec4(0, 0, length, 1));
         s.trail[(size_t)history + 1][0] = glm::vec3(weapon.matrix * glm::vec4(0, 0, 0, 1));
     };
+    // Pose contract §8: the carried swing turn, ((q × 0.25) × 180) ÷ pi with a binary64 divide.
+    const float carriedTurn = (float)((double)((swing * 0.25f) * 180.f) / PI);
     const size_t beforeMain = out.size();
     if (f.mainModel != NO_MODEL) {
-        if (f.mainOnBack && f.mainModel != 840)
-            part(f.mainModel, Rz(Ry(T(Rz(body, sDeg / 4), {0, -7.1f, 0.1f}), main == STAFF ? -135.f : -45.f), 90),
-                 glm::vec3(wscale * bracelet), mainGrip(f.mainModel), false, false, c ? &c->mainHand() : nullptr);
+        // Carried (§8): -45 about y for a staff, -135 otherwise, then centred; no model exception.
+        if (f.mainOnBack)
+            part(f.mainModel,
+                 R(R(T(Rz(body, carriedTurn), {0, -7.1f, 0.1f}), main == STAFF ? -45.f : -135.f, {0, 1, 0}), 90,
+                   {0, 0, 1}),
+                 glm::vec3(wscale), centred, false, false, c ? &c->mainHand() : nullptr);
+        else if (main == BRACELET && f.mainModel != 840)
+            // The hand scale, then the bracelet's own 0.6, as two scalings (§8).
+            part(f.mainModel, S(Rzyx(T(arm, Rhand), rho), wscale), glm::vec3(bracelet), mainGrip(f.mainModel), false,
+                 false, c ? &c->mainHand() : nullptr);
         else
-            part(f.mainModel, Rzyx(T(arm, Rhand), rho), glm::vec3(wscale * bracelet), mainGrip(f.mainModel), false, false,
+            part(f.mainModel, Rzyx(T(arm, Rhand), rho), glm::vec3(wscale), mainGrip(f.mainModel), false, false,
                  c ? &c->mainHand() : nullptr);
     }
     newest(beforeMain, 0);
@@ -1657,6 +1707,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         float extra = 1;
         if (f.offModel == 840)
             grip = [](glm::vec3 sz) { return glm::vec3(1 - sz.x / 2, 0.5f, 1); };
+        else if (pose == 0x47)
+            grip = centred;
         else if (off == BOW)
             grip = [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, 1.5f - sz.y, -sz.z / 2); };
         else if (off == CROSSBOW)
@@ -1668,23 +1720,30 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         else if (main == BOOMERANG)
             grip = [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -2, -4); };
         else if (off == FIST)
-            grip = [](glm::vec3 sz) { return glm::vec3(sz.x / 2, -sz.y / 2, -sz.z / 2); }; // after R_y(180)
+            grip = centred; // after the scale and R_y(180), below
         else
             grip = [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -sz.y / 2, -4); };
-        if (f.offOnBack && f.offModel != 840) {
-            glm::mat4 back = Rz(T(body, {0.5f, -0.65f, 0.5f}), sDeg / 4);
+        if (f.offOnBack) {
+            // Carried (§9), with no model exception.
+            glm::mat4 back = Rz(T(body, {0.5f, -0.65f, 0.5f}), carriedTurn);
             if (off == SHIELD)
-                back = Rz(T(back, {0, -8.2f, 0}), 180);
+                back = R(T(back, {0, -8.2f, 0}), 180, {0, 0, 1});
             else if (off == BOW || off == CROSSBOW)
-                back = Rz(Ry(T(back, {0, -6.2f, 0}), -45), 90);
+                back = R(R(T(back, {0, -6.2f, 0}), -45, {0, 1, 0}), 90, {0, 0, 1});
             else
-                back = Rz(Ry(T(back, {0, -7.2f, 0}), -225), 90);
+                back = R(R(T(back, {0, -7.2f, 0}), -225, {0, 1, 0}), 90, {0, 0, 1});
             part(f.offModel, back, glm::vec3(wscale), centred, false, false, c ? &c->offHand() : nullptr);
         } else {
-            glm::mat4 at = Rzyx(T(arm, Lhand), lambda);
-            if (off == FIST)
-                at = Ry(at, 180);
-            part(f.offModel, at, glm::vec3(wscale * extra), grip, false, false, c ? &c->offHand() : nullptr);
+            // Held (§9): selector 0x47 holds the item at the hands' midpoint, 8 higher.
+            const glm::vec3 grasp = pose == 0x47 ? 0.5f * (Rhand + Lhand) + glm::vec3(0, 0, 8) : Lhand;
+            glm::mat4 at = Rzyx(T(arm, grasp), lambda);
+            const bool special = f.offModel == 840 || pose == 0x47;
+            if (!special && off == FIST && main != BOOMERANG)
+                part(f.offModel, Ry(S(at, wscale), 180), glm::vec3(1), grip, false, false, c ? &c->offHand() : nullptr);
+            else if (!special && off == BRACELET)
+                part(f.offModel, S(at, wscale), glm::vec3(extra), grip, false, false, c ? &c->offHand() : nullptr);
+            else
+                part(f.offModel, at, glm::vec3(wscale), grip, false, false, c ? &c->offHand() : nullptr);
         }
     }
     newest(beforeOff, 2);

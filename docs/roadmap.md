@@ -573,7 +573,10 @@ Differences from the Steam engine that shape the plan:
   matrices, grip branches, initial state and the one-frame-stale light read;
   the per-selector evaluator and the mapping onto engine creature fields remain.
   The weapon lights now read the previous pose refresh's weapon points instead
-  of the main-position fallback; term-by-term pose-chain equivalence is open.
+  of the main-position fallback. Term by term, the rotation primitives, swing
+  precision, dodge axis, carried branches and held grips now follow the contract;
+  the per-selector evaluator, owner +0x58 turns, selector 0x33/0x34 swing factor,
+  lean inputs and the blend repeat count remain open.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

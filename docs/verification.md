@@ -1429,3 +1429,17 @@ owned-flag creature with owner identifier zero still starts feeding (action
 reset. The magic beam aim offset has no dedicated test. All 60 CTests pass,
 the player/controller diagnostic and the reward, health, network, save/reload
 and town runs pass, and all six reviewed captures match the preceding batch.
+Weapon pose chain, term by term against the held weapon-attachment pose
+contract (2026-11-12). The pose code's rotations now use the contract's
+primitives: binary32 degree-to-radian scaling, binary64 cosine and sine
+narrowed, single-axis rotations from the pre-update columns, and axis-angle
+rotations with a binary64-rooted axis length. The arm swing is formed in
+binary64 with narrowed sine arguments. The dodge roll axis needs a squared
+length above 0.01. A carried main-hand weapon is centred and turned -135
+degrees about y (a staff -45), so blades hang tip down; carried weapons no
+longer except model 840. Bracelet scaling is applied as two scalings, the
+off-hand fist turns after its scale, and selector 0x47 holds the off-hand item
+at the hands' midpoint 8 higher. A CreatureTests case checks the carried
+sword and staff directions at 45 degrees. All 60 CTests pass, the player
+diagnostic and the five live runs pass, and the six captures show the sword
+hilt-up over the shoulder.

@@ -1557,3 +1557,9 @@ consumers open. Still open: the section 6.4(e) step 3 cast-point swap (its
 S +0x1320 and T +0x1350 producers are unclosed), the type-118 beam's offset
 point when bit 0x04 is set, and the far route's direct-approach helper and
 path loop.
+Weapon pose chain (2026-11-12): implemented from the held
+`alpha-weapon-attachment-poses.md` only (sections 2, 3, 6, 8 and 9). Still
+open there: the per-selector evaluator, the owner +0x58 rotations of the hand
+and held-weapon matrices (no engine field mapping), the selector 0x33/0x34
+swing factor (helper 0x0C6B80 unclosed), the lean condition's native inputs,
+and the blend's repeat count in place of the engine's elapsed-time weight.

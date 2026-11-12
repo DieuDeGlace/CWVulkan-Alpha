@@ -212,6 +212,20 @@ int main() {
         same(arc.trail[0][8].y, 10, "the ring 10 blocks in front", 1e-4);
         same(arc.trail[1][8].y, 5, "its inner edge 5 blocks in front", 1e-4);
         same(arc.trail[0][0].x, -10, "starting 10 blocks to the left", 1e-4);
+
+        // Weapon pose contract §8: a carried weapon is centred and turned -135 about y, so
+        // its tip points down; a carried staff is turned -45, so its tip points up.
+        for (const uint8_t kind : {uint8_t(0), uint8_t(STAFF)}) {
+            c.equipment[MAIN_HAND] = {3, kind, 1, 0, 1, 0};
+            c.action = 0;
+            c.actionMs = 0;
+            PoseState back;
+            poseParts(back, a, m, 16, voxels);
+            const glm::vec3 along = back.trail[0][0] - back.trail[1][0];
+            const char *what = kind == STAFF ? "a carried staff points up" : "a carried sword points down";
+            same(along.z > 0, kind == STAFF, what);
+            same(std::fabs(along.z) / glm::length(along), std::sqrt(0.5), "carried at 45 degrees", 1e-3);
+        }
     }
 
     // Particles §10: a bomb burst's particle, collision coming to rest, the cap and a flame.
