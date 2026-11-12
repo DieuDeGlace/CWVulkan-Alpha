@@ -851,11 +851,11 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
         return;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
         if (!combat(npc, dtMs, players, block, frame, map))
-            companion(npc, npc.fighter.ownerId, players, dtMs, block, map);
+            companion(npc, npc.fighter.ownerId, players, int32_t(dtMs), block, map);
         return;
     }
     if (npc.behaviour == 7) { // created root: retry Combat, Companion, Wander in that order
-        if (!combat(npc, dtMs, players, block, frame, map) && !createdCompanion(npc, players, int32_t(dtMs), block, map)) {
+        if (!combat(npc, dtMs, players, block, frame, map) && !companion(npc, npc.follows, players, int32_t(dtMs), block, map)) {
             npc.fighter.mode = npc.body.mode;
             created::wander(npc.fighter, npc.body, npc.fighter.behaviorReference, npc.createdWalkMs,
                             int32_t(dtMs), [&] { return draw(); });
@@ -887,7 +887,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     if (npc.behaviour == 2 || npc.behaviour == 3) {
         if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players))
             return;
-        if (npc.behaviour == 3 && companion(npc, npc.follows, players, dtMs, block, map))
+        if (npc.behaviour == 3 && companion(npc, npc.follows, players, int32_t(dtMs), block, map))
             return;
         if (!walkPath(npc, dtMs, block))
             randomWalk(npc, dtMs);
@@ -924,7 +924,7 @@ bool Npcs::directApproach(const Npc &npc, const Body &to, float reach, const wor
     return route::direct(subject, to.position, reach, scene);
 }
 
-bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t step, const BlockType &block,
+bool Npcs::companion(Npc &npc, uint64_t followed, std::span<PlayerView> players, int32_t step, const BlockType &block,
                             const worldgen::WorldMap &map) {
     created::CompanionServices services;
     services.lookup = [&](uint64_t key) { return lookupActor(key, players).body(); };
@@ -960,7 +960,7 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
         return status;
     };
     npc.fighter.mode = npc.body.mode;
-    const bool handled = created::companion(npc.fighter, npc.body, npc.follows, step, npc.path.state, services);
+    const bool handled = created::companion(npc.fighter, npc.body, followed, step, npc.path.state, services);
     npc.body.mode = npc.fighter.mode;
     return handled;
 }

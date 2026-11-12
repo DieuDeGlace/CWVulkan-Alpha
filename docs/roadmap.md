@@ -183,8 +183,9 @@ Differences from the Steam engine that shape the plan:
   The held approach/path contract confirmed the existing search core, rebuild
   and direct-approach walk; the combat far route now uses them with the binary32
   near/far test, contract steering speed, raw lowered endpoints and the strict
-  10-round loop. The pets' companion also uses the held direct walk; the older
-  clear-route adapter is removed. The follower's unspecified parts remain open.
+  10-round loop. Pets and wildlife followers now run the same held Companion
+  routine (client 0x03ACE0) as created actors; the older engine pet companion
+  and its clear-route adapter are removed. The follower's unspecified parts remain open.
 - [x] Bounded companion direct-route geometry: private raw-coordinate simulation
   retains proximity, budget, terrain/raised-box query order, directional record
   tests and progress-only success. Resident spatial buckets use one center-selected

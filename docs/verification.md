@@ -1488,3 +1488,12 @@ walk, and the removed clear-route adapter's test went with it; the direct walk
 keeps its own RouteGeometryTests coverage. All 60 CTests pass, the player
 diagnostic and five live runs pass, and the six captures match the preceding
 batch.
+
+Held Companion for pets and followers (2026-11-12). Pets and behaviour-3
+followers now run the held companion routine. The existing pet tests still
+pass: the pet follows to within 4 blocks, comes when called and returns after
+20 s. A new CreatureTests case puts a five-block wall into the zone's columns
+between a pet and its owner. The pet then starts a search toward the owner with
+arrival radius 2 and a goal at the owner's x. All 60 CTests pass, the player
+diagnostic and five live runs pass, and the six captures match the preceding
+batch.

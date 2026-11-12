@@ -362,8 +362,10 @@ class Npcs {
                   float dtMs);
     void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block,
                NpcFrame &frame, const worldgen::WorldMap &map);
-    bool createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t step, const BlockType &block,
-                          const worldgen::WorldMap &map);
+    // Companion (client 0x03ACE0, held alpha-created-companion-navigation.md): follow the actor
+    // with key `followed`. Pets (owner), created actors and wildlife followers all run it.
+    bool companion(Npc &npc, uint64_t followed, std::span<PlayerView> players, int32_t step, const BlockType &block,
+                   const worldgen::WorldMap &map);
     bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
                 const worldgen::WorldMap &map);
     // Held alpha-combat-approach-path.md §6 (0x209480): the direct-approach walk of `npc`
@@ -393,9 +395,6 @@ class Npcs {
     uint64_t freeId() const;
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
     void petPass(std::vector<PlayerView> &players, NpcFrame &frame);
-    // Pets §10.2, wildlife §4.7: follow creature `followed`; false when not handled.
-    bool companion(Npc &n, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block,
-                   const worldgen::WorldMap &map);
     // Trails spec §4: sit a while on a free seat in sight; false when not handled.
     bool randomInteraction(Npc &n, float dtMs, const BlockType &block);
     // Behaviour §13.5, path search §3: walk to the place of the day's current stop; false

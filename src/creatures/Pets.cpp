@@ -193,54 +193,6 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
         }
     }
 }
-// §10.2: Companion: run when far, heal 10 % a second out of combat, walk up to the owner.
-bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block,
-                     const worldgen::WorldMap &map) {
-    const Body *owner = nullptr;
-    for (const PlayerView &p : players)
-        if (p.fighter.id == followed)
-            owner = &p.body;
-    if (const Npc *n = owner ? nullptr : findNpc(followed); n && n->fighter.health > 0)
-        owner = &n->body;
-    if (!owner)
-        return false;
-    const glm::dvec3 d = owner->blocks() - pet.body.blocks();
-    const double distance = glm::length(d);
-    pet.body.mode = distance > 8 ? pet.body.mode | RUN : pet.body.mode & ~RUN;
-    if (pet.fighter.controller == 5) // a pet heals out of combat
-        pet.fighter.health = std::min(maxHealth(pet.fighter), pet.fighter.health + maxHealth(pet.fighter) * 0.1f * dtMs / 1000);
-    pet.body.intent = glm::vec3(0);
-    if (distance < 4)
-        return false;
-    // Path search §3: when the straight route is blocked, search toward the ground under the
-    // owner (the first solid block within 21 down, then the first open cell within 21 up).
-    // The straight-route test is the held direct walk (approach contract §6), as for the
-    // created companion; the rest of this older companion remains an engine adapter.
-    if (!directApproach(pet, *owner, pet.body.size.x + owner->size.x, map)) {
-        const glm::dvec3 o = owner->blocks();
-        const int32_t gx = (int32_t)std::floor(o.x), gy = (int32_t)std::floor(o.y);
-        int32_t gz = (int32_t)std::floor(o.z);
-        for (int k = 0; k < 21 && !(block(gx, gy, gz) != 0 && block(gx, gy, gz) != 2); k++)
-            gz--;
-        for (int k = 0; k < 21 && block(gx, gy, gz) != 0 && block(gx, gy, gz) != 2; k++)
-            gz++;
-        const glm::dvec3 G(gx + 0.5, gy + 0.5, gz);
-        if (glm::length(G - (pet.body.blocks() - glm::dvec3(0, 0, pet.body.size.z * 0.5))) <= 4) {
-            pet.path.clear();
-            return false;
-        }
-        if (pet.path.empty() && !pet.path.searching())
-            pet.path.start(pet.body.blocks() - glm::dvec3(0, 0, pet.body.size.z * 0.5 - 0.1), G, 2, pet.body.size);
-        pet.path.rounds(pet.body.size, 2, block);
-        return true;
-    }
-    pet.path.clear();
-    glm::vec3 intent(5 * (float)d.x, 5 * (float)d.y, 0);
-    if (glm::length(intent) > 30)
-        intent = 30.f * glm::normalize(intent);
-    pet.body.intent = intent; // facing follows the movement (aim contract §3.7)
-    return true;
-}
 
 // §7.3: one bite of a creature being fed (the action-110 effect at its hit moment).
 void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {

@@ -1612,3 +1612,12 @@ millisecond); the native "driven" list is open, so the engine's action-72
 motion stands in for it; the drawn aim and head pitch start at zero, and head
 pitch has no pose consumer yet. The pets' companion now uses the held direct
 walk; the floating-point clear-route adapter and its test were removed.
+
+Companion for pets and followers (2026-11-12): the pets specification (section
+10.2) and the creatures behaviour specification (section 13.5) both name
+Companion as client 0x43ACE0. That is RVA 0x03ACE0, the routine covered by the
+held `alpha-created-companion-navigation.md`, whose discriminator-5 healing
+prefix is the pet case. Pets (owner key) and behaviour-3 followers (follow key)
+therefore now run the same held companion as created actors. The older engine
+pet companion, with its distance thresholds, healing, goal scan and adapter path
+search, is deleted.

@@ -1448,6 +1448,47 @@ int main() {
             same(gap() < 2, 1, "the creature ends up facing its drawn aim");
         }
     }
+    // Pets §10.2 runs Companion (client 0x03ACE0, held created-companion navigation): with the
+    // owner behind a wall, a pet starts a search toward the owner's ground with radius 2.
+    {
+        auto zone = std::make_shared<worldgen::Zone>();
+        // The direct walk reads zone columns: ground below z = 1, as the block lookup says.
+        for (int32_t x = 0; x < worldgen::Zone::SIZE; x++)
+            for (int32_t y = 0; y < worldgen::Zone::SIZE; y++)
+                zone->column(x, y).bottom = 1;
+        worldgen::WorldMap map;
+        map.add(zone);
+        bool wall = false;
+        auto ground = [&](int32_t x, int32_t, int32_t z) -> uint8_t {
+            return z < 1 || (wall && x == 36 && z < 6) ? 1 : 0;
+        };
+        Combatant me;
+        me.id = 1;
+        me.level = 5;
+        me.health = maxHealth(me);
+        me.equipment[12].type = 19, me.equipment[12].subtype = 19, me.equipment[12].level = 3;
+        Body body;
+        body.place({30.5, 30.5, 1 + 1.08 + 0.01});
+        Npcs npcs;
+        npcs.setNamedWorld(true);
+        auto step = [&] { return npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, ground); };
+        step();
+        same(npcs.petOf(me) != nullptr, 1, "the walled pet fixture makes a pet");
+        wall = true;
+        for (int32_t y = 0; y < worldgen::Zone::SIZE; y++)
+            zone->column(36, y).blocks.assign(5, worldgen::Block{200, 200, 200, worldgen::SOLID});
+        body.place({42.5, 30.5, 1 + 1.08 + 0.01});
+        const Npc *pet = nullptr;
+        bool searching = false;
+        for (int i = 0; i < 10 && !searching; i++) {
+            step();
+            pet = npcs.petOf(me);
+            searching = pet && pet->path.state.radius == 2.f && !pet->path.state.records.empty();
+        }
+        same(searching, 1, "a blocked pet searches toward its owner with radius 2");
+        if (pet)
+            same(pet->path.state.goal[0], body.position[0], "the search goal keeps the owner's x");
+    }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,
     // comes when called from afar, and returns 20 s after dying.
     {
