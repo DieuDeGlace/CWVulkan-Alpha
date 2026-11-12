@@ -23,6 +23,7 @@
 #include "creatures/Physics.h"
 #include "creatures/Pose.h"
 #include "creatures/Projectiles.h"
+#include "worldgen/Items.h"
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -2178,6 +2179,31 @@ int main() {
         }
     }
 
+    // Fatal-disposal contract §5: the loot helper's draw counts.
+    {
+        const auto consumed = [](worldgen::Random used, worldgen::Random fresh, int count) {
+            for (int i = 0; i < count; i++)
+                fresh.draw();
+            return used.draw() == fresh.draw() && used.draw() == fresh.draw();
+        };
+        worldgen::Random a(31), b(31);
+        worldgen::weaponItem(a, 10, 1, -1);
+        same(consumed(a, b, 16), 1, "generator P (weapons) with selector -1 makes 16 draws");
+        worldgen::Random c(32), d(32);
+        worldgen::armourItem(c, 10, 1, -1);
+        same(consumed(c, d, 24), 1, "generator Q (armour) with selector -1 makes 24 draws");
+        // L2 for a boss: the r mod 4 draw is still made. A non-hostile kind with worn gear and
+        // no listed race: L1 1, L2 1 + 2 + 1 + 1, a ground drop with no zone 1, L4 1.
+        LootVictim boss;
+        boss.controller = 2;
+        boss.type = 1;
+        boss.appearanceFlags = 0x200;
+        boss.equipment[6][0] = 4;
+        WorldItems none;
+        worldgen::Random e(33), f(33);
+        dropLoot(boss, none, 0, [](int32_t, int32_t, int32_t) { return uint8_t(1); }, e);
+        same(consumed(e, f, 8), 1, "a boss's worn-item stage still makes its r mod 4 draw");
+    }
     // Controller aim contract (alpha-controller-aim-writers.md).
     {
         namespace ca = controller_aim;

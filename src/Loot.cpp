@@ -140,7 +140,9 @@ void dropLoot(const LootVictim &v, WorldItems &items, int32_t day, const creatur
     for (int k : {6, 7, 2, 5, 4, 3, 1})
         if (v.equipment[k][0] != 0)
             slots.push_back(k);
-    if (!slots.empty() && (draw() % 4 == 0 || boss)) {
+    // Fatal-disposal contract §5.2 L2: the r mod 4 draw is made even for a boss.
+    const bool wornDrop = !slots.empty() && draw() % 4 == 0;
+    if (!slots.empty() && (wornDrop || boss)) {
         creatures::ItemRecord chosen{};
         // The slot pick sits between the offset and the angle draw; the item is dropped as it is.
         place(chosen, 1, [&] { chosen = v.equipment[slots[(uint32_t)draw() % slots.size()]]; });
@@ -208,7 +210,8 @@ void dropLoot(const LootVictim &v, WorldItems &items, int32_t day, const creatur
             float value = ((float)(draw() * 2) / 32767.f + 1.f) * (V * 10.f);
             if (boss)
                 value *= 10;
-            const int32_t total = (int32_t)value;
+            // Truncation toward zero; out of range or NaN gives 0x80000000 (§5.2 L5).
+            const int32_t total = value >= -2147483648.f && value < 2147483648.f ? (int32_t)value : INT32_MIN;
             const std::pair<int32_t, uint8_t> parts[3] = {{total % 100, 10}, {total / 100 % 100, 12}, {total / 10000, 11}};
             for (const auto &[amount, kind] : parts)
                 if (amount != 0) {

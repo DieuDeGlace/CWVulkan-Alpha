@@ -239,8 +239,11 @@ Differences from the Steam engine that shape the plan:
   regional progress, credit and shared random-stream ordering. Existing later
   death/loot adapters are not completion of that native continuation.
   The held fatal-branch order contract now confirms the engine's synchronous
-  sequence step by step; the virtual disposal routines and upstream callers
-  remain open.
+  sequence step by step. The held fatal-disposal contract closes the virtual
+  disposal (spawn records only, no draws), the fatal-loot helper's full draw
+  order (the engine now draws a boss's worn-item roll) and the eight upstream
+  call sites; the attack routine's miss/block/absorption choice and the heal
+  power routine remain open.
 - [x] Bounded fatal-context producers: core snapshots retain cached descriptor
   coordinates/ordinal and reverse ownership; the forward link stays resident.
   Ordinary descriptor activation preserves its origin across movement, while

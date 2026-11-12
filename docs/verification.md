@@ -1549,3 +1549,10 @@ caster mana, and checks these cases:
 The ActionPhaseTests ordering fixture now gives its ray actor mana. All 60
 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Loot draw order (2026-11-12). New CreatureTests cases check that generator P
+(weapons) makes 16 draws and generator Q (armour) makes 24 with selector -1.
+They also check that a boss's worn-item stage makes its r mod 4 draw: eight
+draws in all for the fixture, where the old code made seven. All 60 CTests
+pass, the player diagnostic and five live runs pass, and the six captures
+match the preceding batch.

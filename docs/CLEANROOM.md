@@ -1722,3 +1722,26 @@ Still adapters or open:
   engine sparks stand in.
 - Actions 0x5E and 0x68, and the riding id at +0x11C0 (it has no producer in
   either image), are not handled.
+
+### Fatal disposal and callers (2026-11-12)
+
+The held `alpha-fatal-disposal-callers.md` (SHA-256 BE8E01FA...9CB) was read
+whole and checked against the engine's loot and fatal code. The engine already
+matched it on these points:
+
+- the ground drop's draws and its ground search;
+- loot stages L1, L3, L4, L5 and L6, including the 16 draws of generator P
+  (weapons) and the 24 of generator Q (armour) with selector -1;
+- level variation and its ceiling;
+- F9's tail disposal, which leaves actors in place, and F11's
+  out-of-range no-op.
+
+Two fixes:
+
+- **L2:** the worn-item stage now makes its r mod 4 draw even for a boss. The
+  engine had skipped it.
+- **Coins:** the coin value truncates out-of-range or NaN values to 0x80000000.
+
+Still open, as in the contract: the attack routine's choice between miss,
+block and absorption, the heal power routine, and indirect writes to world
++0xB4.
