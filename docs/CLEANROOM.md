@@ -1572,3 +1572,10 @@ the second carried-pet pass are not implemented. Round 6 also held
 `alpha-combat-aim-triplet.md` (fef0ed13...da22) and `alpha-combat-approach-path.md`
 (a480a566...d1b6); the latter's author made a final wording edit after the full
 readback and before the status line.
+
+Aim triplet (2026-11-12): implemented from the held `alpha-combat-aim-triplet.md`
+sections 2.3, 3.1 (origin and direction), 3.3 and 3.4 only. Still open there:
+the beam's pulse timing, sampling and skip rules against section 3.1, the
+drawn-aim smoothing and facing of sections 3.7 and 3.8, the speed limit of 3.9,
+the look-at behaviour's distance-8 rule, boomerang steering by the owner's aim,
+and the client controller's aim writers.

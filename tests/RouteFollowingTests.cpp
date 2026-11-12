@@ -243,18 +243,18 @@ void worldCaller() {
     npc.path.start({276.5, 20.5, 5}, {286.5, 20.5, 5}, .1f, npc.body.size);
     npc.path.state.path = {{276, 20, 5}, {277, 20, 5}};
     tick(0);
-    check((npc.body.mode & 0x84) == 0x84 && npc.pathFallback == glm::vec3(1.25f, 0, -.5f),
+    check((npc.body.mode & 0x84) == 0x84 && npc.body.look == glm::vec3(1.25f, 0, -.5f),
           "actual world false/nonempty caller sets both flags and tail-plus-half fallback");
     npc.fighter.hitStun = 10;
-    npc.pathFallback = {7, 8, 9};
+    npc.body.look = {7, 8, 9};
     tick(1);
-    check((npc.body.mode & 0x84) == 4 && npc.pathFallback == glm::vec3(7, 8, 9),
+    check((npc.body.mode & 0x84) == 4 && npc.body.look == glm::vec3(7, 8, 9),
           "actual world stun bypass clears80 before admission while retaining4 and fallback");
     npc.fighter.hitStun = 0;
     npc.body.place({286.5, 20.5, 6});
     npc.body.mode = npc.fighter.mode = 4;
     tick(0);
-    check(npc.path.empty() && (npc.body.mode & 0x84) == 0x80 && npc.pathFallback == glm::vec3(7, 8, 9),
+    check(npc.path.empty() && (npc.body.mode & 0x84) == 0x80 && npc.body.look == glm::vec3(7, 8, 9),
           "actual world false/emptied caller sets80 without writing4 or fallback");
     npc.path.state.counter = std::numeric_limits<int32_t>::max();
     tick(1);

@@ -1689,7 +1689,9 @@ bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &ta
 
 void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, float dt, std::span<PlayerView> players,
                     NpcFrame &frame, const BlockType &block) {
-    const glm::dvec3 from = attackerBody.blocks();
+    // Aim-triplet contract §3.1: the ray starts at the sight point (routine 0x046BB0).
+    const std::array<int64_t, 3> sight = offsetPoint(attackerBody, attackerBody.yaw, attackerBody.appearanceFlags);
+    const glm::dvec3 from = glm::dvec3((double)sight[0], (double)sight[1], (double)sight[2]) / 65536.0;
     if (attacker.action != 28 && attacker.action != 95)
         return;
     const float D = (float)phases(attacker, attacker.action).windUp;
@@ -1968,9 +1970,10 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             if (npc.path.follow(npc.body, milliseconds, block)) {
                 npc.path.state.rebuild();
             } else {
+                // Aim-triplet contract §2.3 step 6: the aim points at the path's last cell centre.
                 if (!npc.path.empty()) {
                     npc.body.mode |= 4;
-                    npc.pathFallback = npc.path.fallback(npc.body);
+                    npc.body.look = npc.path.fallback(npc.body);
                 }
                 npc.body.mode |= 0x80;
             }
@@ -1981,9 +1984,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.dodgeMs = (int32_t)c.dodgeMs;
         const int32_t before = c.actionMs;
         // Projectiles §2: ranged actions charge and launch; the rest strike at their moment.
-        for (const PlayerView &p : players)
-            if (p.fighter.id == npc.target)
-                c.aim = glm::vec3(p.body.blocks() - npc.body.blocks());
+        // Aim-triplet contract §3, §4: shots, beams and close spells read the aim as the
+        // behaviour and the path follower left it this update.
+        c.aim = npc.body.look;
         createActor(actor, milliseconds);
         ShotEffects shot;
         chargeSound(c, before, milliseconds, npc.body.blocks(), shot);

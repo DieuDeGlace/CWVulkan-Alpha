@@ -91,7 +91,6 @@ struct Npc {
     uint8_t behaviour = 0;
     creation::Configuration creationConfig; // resident, independently initialized for a new actor
     int32_t createdWalkMs = 0;
-    glm::vec3 pathFallback{0}; // bounded actor +0x160 output, wider consumers unclosed
     std::vector<glm::dvec3> route;
     size_t routeIndex = 0;
     float waitMs = 0;

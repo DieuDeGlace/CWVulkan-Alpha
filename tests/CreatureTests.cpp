@@ -1340,6 +1340,23 @@ int main() {
             same(latched, 1, "the cast point copies the target's follow point");
             same(held, 1, "past the anticipation time the aim is the held cast point");
             same(body.follow[0], body.position[0], "a live player's follow point is its position after the update");
+
+            // Aim-triplet contract §3.3: a creature's shot flies along its normalized aim.
+            int shots = 0, along = 0;
+            for (int i = 0; i < 1500 && shots < 3; i++) {
+                // The player sidesteps every update, so the aim (written at the 32 ms
+                // behaviour cadence) differs from the player's current offset.
+                body.position[1] += ((i / 10) % 2 ? -1 : 1) * (1ll << 14);
+                const NpcFrame f = npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+                for (const Projectile &p : f.shots)
+                    if (p.shooter == mage->fighter.id && glm::dot(p.velocity, p.velocity) > 0) {
+                        shots++;
+                        const glm::vec3 aim = mage->body.look;
+                        along += glm::length(glm::normalize(p.velocity) - glm::normalize(aim)) < 1e-4f;
+                    }
+            }
+            same(shots > 0, 1, "the magic user shoots");
+            same(along, shots, "every shot flies along the shooter's aim");
         }
     }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,

@@ -1456,3 +1456,14 @@ aims from routine 0x046BB0's offset point whenever that action is current. A
 CreatureTests case latches a displaced follow point and checks the held aim.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Aim triplet (2026-11-12), from the held `alpha-combat-aim-triplet.md`. Creature
+shots, beams and close-spell placement now read the creature's own aim (record
+field 26) as the behaviour and the per-update path follower left it, in place
+of the engine adapter that aimed at a player target's current position. The
+path follower's tail-cell vector is that aim (section 2.3 step 6), and beams
+start at routine 0x046BB0's sight point. CreatureTests checks that a magic
+user's shots fly along its aim while the player sidesteps between behaviour
+updates; RouteFollowingTests now reads the path aim from the aim itself. All
+60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.
