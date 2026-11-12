@@ -360,7 +360,11 @@ class Npcs {
                NpcFrame &frame, const worldgen::WorldMap &map);
     bool createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t step, const BlockType &block,
                           const worldgen::WorldMap &map);
-    bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame);
+    bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
+                const worldgen::WorldMap &map);
+    // Held alpha-combat-approach-path.md §6 (0x209480): the direct-approach walk of `npc`
+    // toward `to` with reach `reach`, over resident columns and spatial records.
+    bool directApproach(const Npc &npc, const Body &to, float reach, const worldgen::WorldMap &map) const;
     bool lookAtPlayer(Npc &npc, std::vector<PlayerView> &players);
     void randomWalk(Npc &npc, float dtMs);
     // §5: `attacker` hits what is in reach at its hit moment: NPCs when a player strikes,

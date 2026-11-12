@@ -1467,3 +1467,14 @@ user's shots fly along its aim while the player sidesteps between behaviour
 updates; RouteFollowingTests now reads the path aim from the aim itself. All
 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Far-route approach and path (2026-11-12), from the held
+`alpha-combat-approach-path.md` with `alpha-created-actor-combat.md` section
+5.2. The existing search core, rebuild and direct walk already matched the
+contract; the combat far route now calls them in the contract's order. A new
+CreatureTests case lets a melee creature target the player, raises a wall that
+hides the player, and checks that the far route requests a path with an arrival
+radius of both widths and a goal lowered by half the target's height less 0.1.
+After the wall is removed, the direct walk succeeds and the search is cleared.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.

@@ -1359,6 +1359,56 @@ int main() {
             same(along, shots, "every shot flies along the shooter's aim");
         }
     }
+    // Approach-path contract §6, §8 with combat §5.2: once a wall hides the target, the far route
+    // requests a path with the lowered endpoints; when the wall goes, the direct walk drops it.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.type = 4, s.level = 1;
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        bool wall = false;
+        auto ground = [&](int32_t x, int32_t, int32_t z) -> uint8_t {
+            if (z < 1)
+                return 1;
+            return wall && x == 274 && z < 6 ? 1 : 0;
+        };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({277.5, 10.5, 1 + 1.08 + 0.01});
+        body.contact |= ON_GROUND;
+        Npcs npcs;
+        const auto step = [&] { return npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, ground); };
+        step();
+        Npc *chaser = npcs.npcs().empty() ? nullptr : &npcs.npcs().front();
+        same(chaser != nullptr, 1, "the approach fixture spawns its creature");
+        if (chaser) {
+            chaser->fighter.characterClass = 1; // melee reach, so the ledge is out of range
+            for (int i = 0; i < 1500 && chaser->target != me.id; i++)
+                step();
+            same(chaser->target, 1, "the creature targets the player");
+            wall = true;
+            const search::State &path = chaser->path.state;
+            for (int i = 0; i < 200 && path.records.empty() && path.path.empty(); i++)
+                step();
+            same(!path.records.empty() || !path.path.empty(), 1, "the blocked walk requests a path");
+            same(path.radius, chaser->body.size.x + body.size.x, "the arrival radius is both widths");
+            const int64_t lowered = int64_t((body.size.z * .5f - std::bit_cast<float>(uint32_t(0x3dcccccd))) * 65536.f);
+            same(path.goal[2], body.position[2] - lowered, "the goal is lowered by half the target height less 0.1");
+            same(path.goal[0], body.position[0], "the goal keeps the target's x");
+            wall = false;
+            bool dropped = false;
+            for (int i = 0; i < 20 && !dropped; i++) {
+                step();
+                dropped = path.records.empty() && path.path.empty();
+            }
+            same(dropped, 1, "a clear direct walk drops the search");
+        }
+    }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,
     // comes when called from afar, and returns 20 s after dying.
     {

@@ -1579,3 +1579,19 @@ the beam's pulse timing, sampling and skip rules against section 3.1, the
 drawn-aim smoothing and facing of sections 3.7 and 3.8, the speed limit of 3.9,
 the look-at behaviour's distance-8 rule, boomerang steering by the owner's aim,
 and the client controller's aim writers.
+
+Far-route approach and path (2026-11-12): compared the held
+`alpha-combat-approach-path.md` (SHA-256 a480a566...d1b6, read whole) with the
+engine's existing search state, classifier, rebuild and companion direct walk;
+they already match sections 1 to 7 term by term. The combat far route
+(`alpha-created-actor-combat.md` section 5.2) now uses them: binary32 squared
+separation against the squared reach (equality near), contract normalization
+and the 40/80 speed rule, the direct walk only when the target is visible
+(cleared path when it succeeds and contact bit 0x20 is clear), the threat entry
+created at zero before scaling, a request only when the path list is empty and
+the target touches something (raw endpoints lowered by half height less 0.1,
+radius of both widths), and the strict 10-round loop with the 50-node and
+squared-width exits. The older floating-point clear-route adapter is no longer
+used by combat; the pets caller still uses it. Engine adapters retained: the
+far route's facing write (aim contract 3.7/3.8 open). Section 9's follower
+leads remain unspecified.

@@ -849,12 +849,12 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     if (npc.fighter.controller == 6)
         return;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
-        if (!combat(npc, dtMs, players, block, frame))
+        if (!combat(npc, dtMs, players, block, frame, map))
             companion(npc, npc.fighter.ownerId, players, dtMs, block);
         return;
     }
     if (npc.behaviour == 7) { // created root: retry Combat, Companion, Wander in that order
-        if (!combat(npc, dtMs, players, block, frame) && !createdCompanion(npc, players, int32_t(dtMs), block, map)) {
+        if (!combat(npc, dtMs, players, block, frame, map) && !createdCompanion(npc, players, int32_t(dtMs), block, map)) {
             npc.fighter.mode = npc.body.mode;
             created::wander(npc.fighter, npc.body, npc.fighter.behaviorReference, npc.createdWalkMs,
                             int32_t(dtMs), [&] { return draw(); });
@@ -864,27 +864,27 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     }
     // Wildlife §4.9: the cell monster, the group leader and its members.
     if (npc.behaviour == 1) {
-        if (!combat(npc, dtMs, players, block, frame))
+        if (!combat(npc, dtMs, players, block, frame, map))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 5) { // a location's ring creature: Combat, WalkPath, RandomInteraction
-        if (!combat(npc, dtMs, players, block, frame) && !walkPath(npc, dtMs, block) && !randomInteraction(npc, dtMs, block))
+        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block) && !randomInteraction(npc, dtMs, block))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 6) { // a location's group leader: Combat, WalkPath, RandomWalk
-        if (!combat(npc, dtMs, players, block, frame) && !walkPath(npc, dtMs, block))
+        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 4) { // a shopkeeper: Combat, LookAtPlayer, WalkPath to its counter
-        if (!combat(npc, dtMs, players, block, frame) && !lookAtPlayer(npc, players))
+        if (!combat(npc, dtMs, players, block, frame, map) && !lookAtPlayer(npc, players))
             walkPath(npc, dtMs, block);
         return;
     }
     if (npc.behaviour == 2 || npc.behaviour == 3) {
-        if (combat(npc, dtMs, players, block, frame) || lookAtPlayer(npc, players))
+        if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players))
             return;
         if (npc.behaviour == 3 && companion(npc, npc.follows, players, dtMs, block))
             return;
@@ -892,7 +892,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
             randomWalk(npc, dtMs);
         return;
     }
-    if (combat(npc, dtMs, players, block, frame) || lookAtPlayer(npc, players) || spawnLocation(npc, block))
+    if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players) || spawnLocation(npc, block))
         return;
     if (npc.fighter.characterClass == 0x88 && randomInteraction(npc, dtMs, block)) // trails spec §3.6
         return;
@@ -904,28 +904,32 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     randomWalk(npc, dtMs);
 }
 
+bool Npcs::directApproach(const Npc &npc, const Body &to, float reach, const worldgen::WorldMap &map) const {
+    const route::Dimensions size{npc.body.size.x, npc.body.size.y, npc.body.size.z};
+    const route::Subject subject{npc.body.position, size, npc.fighter.appearanceFlags,
+        [&](uintptr_t identity) { return npc.path.state.exclusions.contains(identity); }};
+    route::Scene scene;
+    scene.column = [&](int32_t x, int32_t y) -> std::optional<route::Column> {
+        const auto *zone = map.zoneAt(x, y);
+        if (!zone)
+            return std::nullopt;
+        const auto &column = zone->column(x, y);
+        static_assert(sizeof(worldgen::Block) == 4);
+        return route::Column{column.bottom, int32_t(column.blocks.size()), std::as_bytes(std::span(column.blocks))};
+    };
+    scene.spatial = [&](const route::Position &position, int axis, const route::Dimensions &direction, bool terrain) {
+        return route::scanRecords(subject, position, axis, direction, terrain, routeRecords);
+    };
+    return route::direct(subject, to.position, reach, scene);
+}
+
 bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t step, const BlockType &block,
                             const worldgen::WorldMap &map) {
     created::CompanionServices services;
     services.lookup = [&](uint64_t key) { return lookupActor(key, players).body(); };
     services.maximumHealth = [&] { return maxHealth(npc.fighter); };
-    services.directRoute = [&](const Body &from, const Body &to, float width) {
-        const route::Dimensions size{from.size.x, from.size.y, from.size.z};
-        const route::Subject subject{from.position, size, npc.fighter.appearanceFlags,
-            [&](uintptr_t identity) { return npc.path.state.exclusions.contains(identity); }};
-        route::Scene scene;
-        scene.column = [&](int32_t x, int32_t y) -> std::optional<route::Column> {
-            const auto *zone = map.zoneAt(x, y);
-            if (!zone)
-                return std::nullopt;
-            const auto &column = zone->column(x, y);
-            static_assert(sizeof(worldgen::Block) == 4);
-            return route::Column{column.bottom, int32_t(column.blocks.size()), std::as_bytes(std::span(column.blocks))};
-        };
-        scene.spatial = [&](const route::Position &position, int axis, const route::Dimensions &direction, bool terrain) {
-            return route::scanRecords(subject, position, axis, direction, terrain, routeRecords);
-        };
-        return route::direct(subject, to.position, width, scene);
+    services.directRoute = [&](const Body &, const Body &to, float width) {
+        return directApproach(npc, to, width, map);
     };
     services.voxel = [&](const created::Position &position) {
         const auto coordinate = [](int64_t value) {
@@ -989,7 +993,8 @@ std::array<int64_t, 3> offsetPoint(const Body &body, float yaw, uint16_t flags) 
 void setFollowPoint(Body &body) { std::copy(body.position, body.position + 3, body.follow); }
 
 // §13.2
-bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame) {
+bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
+                  const worldgen::WorldMap &map) {
     Combatant &c = npc.fighter;
     selection::Services services;
     services.lookup = [&](uint64_t key) {
@@ -1079,9 +1084,17 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         R = 2.f * own + theirs;
     if (!seen)
         R = 1;
-    const double distance = glm::length(toTarget);
+    // §3 step 9 / §4: binary32 separation against the squared reach; equality is near.
+    glm::vec3 separation;
+    for (int axis = 0; axis < 3; axis++) {
+        const uint64_t difference = uint64_t(target.body->position[axis]) - uint64_t(npc.body.position[axis]);
+        separation[axis] = float(std::bit_cast<int64_t>(difference)) * (1.f / 65536.f);
+    }
+    const float reachSquared = R * R;
+    const float separationSquared = (separation.y * separation.y + separation.x * separation.x) +
+                                    separation.z * separation.z;
 
-    if (distance > R || !seen) {
+    if (separationSquared > reachSquared || !seen) {
         // Chase, for up to 20 s. Giving up changes neither the action nor the intent, so the
         // walk toward the target goes on until the next behaviour sets another (§8.3).
         npc.chaseMs = std::bit_cast<int32_t>(uint32_t(npc.chaseMs) + uint32_t(int32_t(dtMs)));
@@ -1094,32 +1107,61 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             npc.chaseMs = 0;
             return false;
         }
+        // Held created-actor combat contract §5.2 with alpha-combat-approach-path.md.
         if (c.action == 95 || c.action == 28)
-            c.action = 0; // (beams end; anything else runs on while it walks)
-        // Path search §3: with the target in sight and the route clear (and not stuck) the
-        // chaser walks straight; otherwise it searches toward the target's feet.
-        const bool clear = seen && !(npc.body.contact & STUCK) &&
-                           clearRoute(npc.body.size, npc.body.swimmer, self, there, R, block, objects);
-        if (clear) {
-            npc.path.clear();
-        } else {
-            const glm::dvec3 feet = self - glm::dvec3(0, 0, npc.body.size.z * 0.5 - 0.1);
-            const glm::dvec3 goal = there - glm::dvec3(0, 0, target.body->size.z * 0.5 - 0.1);
-            if (npc.path.empty() && !npc.path.searching() && (target.body->contact & 7))
-                npc.path.start(feet, goal, npc.body.size.x + target.body->size.x, npc.body.size);
-            if (feet != goal)
-                npc.path.rounds(npc.body.size, npc.body.size.x, block);
-            npc.threat *= 0.9f;
-            if (const auto it = npc.fighter.relations.threats.find(npc.target); it != npc.fighter.relations.threats.end())
-                it->second *= 0.9f;
+            c.action = 0; // the clock is kept
+        glm::vec3 steer{separation.x, separation.y, (npc.body.contact & IN_WATER) ? separation.z : 0.f};
+        const float steerSquared = steer.z * steer.z + (steer.y * steer.y + steer.x * steer.x);
+        if (steerSquared > 0) {
+            const float inverse = 1.f / float(std::sqrt(double(steerSquared)));
+            for (int axis = 0; axis < 3; axis++)
+                steer[axis] = steer[axis] * inverse;
         }
-        glm::vec3 u = glm::vec3(toTarget);
-        if (!(npc.body.contact & IN_WATER))
-            u.z = 0;
-        if (glm::dot(u, u) > 0)
-            u = glm::normalize(u);
-        npc.body.intent = (R <= 0.5f ? 80.f : 40.f) * u;
+        const float steerLength = (steer.y * steer.y + steer.x * steer.x) + steer.z * steer.z;
+        const float speed = reachSquared * 4.f > steerLength ? 40.f : 80.f;
+        for (int axis = 0; axis < 3; axis++)
+            npc.body.intent[axis] = steer[axis] * speed;
+        // Engine facing adapter: the far route itself writes no facing (aim contract §3.7/3.8 open).
         npc.yaw = yawToward(glm::vec2(toTarget));
+        if (seen && directApproach(npc, *target.body, R, map) && !(npc.body.contact & STUCK)) {
+            npc.path.clear();
+            return true;
+        }
+        // Path maintenance: the threat entry is created at zero when absent.
+        npc.threat *= 0.9f;
+        c.relations.threats[npc.target] *= std::bit_cast<float>(uint32_t(0x3f666666));
+        search::State &path = npc.path.state;
+        if (path.path.empty() && (target.body->contact & 7)) {
+            const auto lowered = [](const Body &body) {
+                const float half = body.size.z * .5f;
+                const float offset = half - std::bit_cast<float>(uint32_t(0x3dcccccd));
+                const int64_t amount = int64_t(offset * 65536.f);
+                return std::bit_cast<int64_t>(uint64_t(body.position[2]) - uint64_t(amount));
+            };
+            path.goal = {target.body->position[0], target.body->position[1], lowered(*target.body)};
+            path.start = {npc.body.position[0], npc.body.position[1], lowered(npc.body)};
+            path.radius = npc.body.size.x + target.body->size.x;
+            npc.path.setup(npc.body.size);
+        }
+        if (path.records.empty() || path.start == path.goal)
+            return true;
+        const search::Cell goalCell = search::coordinate(path.goal);
+        const float stop = npc.body.size.x * npc.body.size.x;
+        for (int work = 0; work < 10; work++) {
+            if (path.path.size() > 50)
+                return true;
+            if (!path.path.empty()) {
+                const search::Cell &tail = path.path.back();
+                uint32_t sum = 0;
+                for (int axis = 2; axis >= 0; axis--) {
+                    const uint32_t delta = uint32_t(tail[size_t(axis)]) - uint32_t(goalCell[size_t(axis)]);
+                    sum += delta * delta;
+                }
+                if (stop >= float(std::bit_cast<int32_t>(sum)))
+                    return true;
+            }
+            npc.path.round(npc.body.size, block);
+        }
         return true;
     }
 
