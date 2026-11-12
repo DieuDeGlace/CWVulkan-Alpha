@@ -1803,3 +1803,36 @@ Adapters:
 
 The local player has no head pitch yet; its facing is not the shared facing
 block.
+
+### Attack routine (2026-11-12)
+
+The held `alpha-attack-routine.md` (SHA-256 853FC768...8A50) was read whole and
+checked against `resolveHit`. The engine already matched it on these points:
+
+- the entry and ground gates, and the attackerless draw;
+- the beam's effect record;
+- the miss (immune) and block paths and their presentation draws;
+- absorption from the combo ratio;
+- the item-extension effects 0x80-0x83 with the attacker's direct heal;
+- the hit-flash stores and the type-1 buff product;
+- the kind-0x11 buff and the critical voice table with its unconditional draw;
+- the stun roll and its duration;
+- the action-0x1C marker.
+
+Fixes:
+
+- **Block drain divisor (`damage`):** it is now m x (A x m + bonus), with the
+  weapon bonuses summed first.
+- **Mitigation clamp:** it keeps negative zero and NaN.
+- **Impact presentation:** a magic (resistance) hit's presentation (39 or 42)
+  makes no draw. The weapon sound is gated on the kind argument (not 0x1C)
+  rather than on the attacker's action. Its selector is the striking list's
+  first subtype: -1 when the list is empty, which gives identifier 5. The
+  engine's inferred bare-hands case is gone.
+- **Draw rounding:** each presentation draw now uses the contract's order,
+  (draw x factor) / 32767 + offset.
+- **Striking list:** `strikingWeapons` exposes it (0x03DF60).
+
+The healing-stream (beam heal) case was implemented in the previous
+checkpoint. The area heal, site 1 (traps) and the call sites' own damage
+derivations remain open.

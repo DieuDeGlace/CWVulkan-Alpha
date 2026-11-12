@@ -190,7 +190,9 @@ int main() {
                 int draws = 0;
                 resolveHit(target, target.aim, &source, input, [&] { draws++; return 32767; });
                 const float expected = action == 28 ? (initial < .3f ? .3f : initial) : presentation ? 1.f : initial;
-                check(target.hitFlash == expected && draws == (action == 28 || presentation ? 1 : 0),
+                // Attack-routine M5: a magic (resistance) hit's presentation makes no draw; only
+                // the beam's effect record (E4) draws here.
+                check(target.hitFlash == expected && draws == (action == 28 ? 1 : 0),
                       "late flash stores distinguish beam minimum from the ordinary presentation flag");
             }
     {

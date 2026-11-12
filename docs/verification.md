@@ -1575,3 +1575,11 @@ cases check:
 FatalContextTests now checks that record +0x190 round-trips as the heal
 target. All 60 CTests pass, the player diagnostic and five live runs pass,
 and the six captures match the preceding batch.
+
+Attack routine (2026-11-12). Under the contract, a magic hit's presentation
+makes no draw, so these tests now expect one draw fewer per spell hit:
+PeriodicHitTests' flash case and RangedSchedulingTests' contact, impact,
+producer-probability, water and mode-zero cases. CreatureTests now expects
+identifier 5 for an unarmed impact, where it used to expect the inferred 7.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.

@@ -399,18 +399,22 @@ bool admitCreatureUpdate(Combatant &c) {
     return !(c.health <= 0);
 }
 
+// Attack-routine contract §5.3 (block divisor 0x03E190): m x (A x m + bonus), where the bonus
+// is the weapons' values summed first (four times the second hand's with a shield).
 float damage(const Combatant &c) {
     const float m = c.multipliers[2];
-    float d = levelPower(c.level) * m;
-    const auto &f = itemBonuses().damage;
-    if (f) {
-        const bool shield = weaponIn(c.offHand()) == SHIELD;
-        if (!shield && c.offHand().type == 3)
-            d += f(c.offHand());
-        if (c.mainHand().type == 3)
-            d += f(c.mainHand()) * (shield ? 4.f : 1.f); // ×4 as read (open question B-1)
+    float bonus = 0;
+    if (const auto &f = itemBonuses().damage) {
+        if (weaponIn(c.offHand()) == SHIELD) {
+            bonus = 4.f * f(c.mainHand());
+        } else {
+            if (c.offHand().type == 3)
+                bonus = f(c.offHand());
+            if (c.mainHand().type == 3)
+                bonus = bonus + f(c.mainHand());
+        }
     }
-    return d * m;
+    return m * (levelPower(c.level) * m + bonus);
 }
 
 float armour(const Combatant &c) {
@@ -894,7 +898,8 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
     auto r = [&] { return (float)draw() / 32767.f; };
     // Particles §5.8: a beam (action 28) throws sparks at what it hits, before anything else.
     if (attacker && attacker->action == 28)
-        out.bursts.push_back(Burst::at(in.targetPosition, {0, 0, 10}, {0.6f, 0.6f, 1, 1}, 0.1f + 0.1f * r(), 8, FIRE));
+        out.bursts.push_back(Burst::at(in.targetPosition, {0, 0, 10}, {0.6f, 0.6f, 1, 1},
+                                       (float)draw() * 0.1f / 32767.f + 0.1f, 8, FIRE)); // attack-routine E4
     auto sound = [&](int32_t id, float pitch) { out.sounds.push_back({in.targetPosition, id, pitch, 1}); };
     const auto targetPresentation = [&](int32_t kind, float scalar) {
         glm::dvec3 at;
@@ -960,7 +965,10 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
                 return out;
             }
         }
-        x = std::max(0.f, x - c * (in.magic ? resistance(target) : armour(target)));
+        // Attack-routine §4 M1: below zero becomes +0; negative zero and NaN are kept.
+        x = x - c * (in.magic ? resistance(target) : armour(target));
+        if (x < 0.f)
+            x = 0.f;
         // Step 8: with a long combo the weapons' special spirits burst at the target (§12.1,
         // visual only; drawn once spirits are drawn). The area effects of §12.2 come with
         // spirit items.
@@ -1023,18 +1031,20 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
         } else if (in.blockable) {
             target.hitFlash = 1;
         }
-        // The impact sound by weapon class.
-        if (in.blockable && attacker->action != 28) {
-            float pitch = 0.9f + 0.2f * r();
-            int sub = weaponIn(attacker->mainHand());
-            if (sub < 0)
-                sub = weaponIn(attacker->offHand());
-            if (sub < 0)
-                sub = FIST; // bare hands (inferred)
+        // Attack-routine §4 M5: with the blockable flag, the magic presentation (no draw), or,
+        // for kinds other than 0x1C, the impact sound by the first striking weapon's subtype
+        // (-1 for none, 17 for action 0x44) with one pitch draw.
+        if (in.blockable && in.magic) {
+            sound(attacker->specialization == 1 ? 42 : 39, attacker->specialization == 1 ? 1.f : 1.5f);
+        } else if (in.blockable && in.selector != 0x1C) {
+            float pitch = (float)draw() * 0.2f / 32767.f + 0.9f;
+            const Item *first = nullptr, *second = nullptr;
+            strikingWeapons(*attacker, first, second);
+            int sub = first ? first->subtype : -1;
             if (attacker->action == 68)
                 sub = 17;
             int id;
-            if (sub <= 1) {
+            if (sub == 0 || sub == 1) {
                 id = in.critical ? 2 : 1;
                 pitch += 0.1f;
             } else if (sub == 15 || sub == 16) {
@@ -1052,10 +1062,6 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
                 id = 11;
             else if (attacker->action == 10)
                 id = 5;
-            if (in.magic) {
-                id = attacker->specialization == 1 ? 42 : 39;
-                pitch = attacker->specialization == 1 ? 1.f : 1.5f;
-            }
             sound(id, pitch);
         }
     }
@@ -1097,7 +1103,7 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
         case 37: case 38: case 39: case 40: voice = 79; break;
         case 96: voice = 80; break;
         }
-        const float pitch = 1.f + 0.1f * r();
+        const float pitch = (float)draw() * 0.1f / 32767.f + 1.f; // M9: one draw, kept or not
         if (voice)
             sound(voice, pitch);
     }

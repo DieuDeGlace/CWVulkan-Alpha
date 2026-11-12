@@ -18,6 +18,9 @@ bool meleeAction(int32_t action);
 // §5.2: the strike base W, and the magic base M (W without the action's own factor).
 float strikeBase(const Combatant &c);
 float magicBase(const Combatant &c);
+// The striking list (0x03DF60, attack-routine contract §5.4): the weapons a blow counts, in
+// order; the second is empty when one is enough.
+void strikingWeapons(const Combatant &c, const Item *(&first), const Item *(&second));
 
 // §1.3: whether the action strikes in the step that starts at action time `t` and lasts `dtMs`.
 // Also forgets the targets of the last swing or pulse (§1.5) when that is due.

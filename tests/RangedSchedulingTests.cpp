@@ -54,15 +54,13 @@ int main() {
     {
         Collision c;
         c.source.action = 17;
-        const int values[] = {32767, 0, 12345, 32767, 0, 32767};
+        // Spell hits are magic: their presentation makes no draw (attack-routine M5).
+        const int values[] = {32767, 0, 32767, 0};
         int draws = 0;
-        c.step([&] {
-            if (draws == 5)
-                check(c.source.hasBuff(9) && c.effects.buffs.size() == 1,
-                      "impact proc is resident and queued before generic hit draws");
-            return draws < 6 ? values[draws++] : (++draws, 32767);
-        }, {false, &c.source});
-        check(draws == 6 && c.effects.hits.size() == 2 && c.effects.buffs.size() == 1 &&
+        c.step([&] { return draws < 4 ? values[draws++] : (++draws, 32767); }, {false, &c.source});
+        check(c.source.hasBuff(9) && c.effects.buffs.size() == 1,
+              "impact proc is resident and queued with the generic hit");
+        check(draws == 4 && c.effects.hits.size() == 2 && c.effects.buffs.size() == 1 &&
               c.effects.buffs[0].record.kind == 9,
               "contact and impact each draw critical then their own producer roll before generic resolution");
         check(c.source.buffs.size() == 1 && c.source.buffs[0].kind == 9,
@@ -75,15 +73,15 @@ int main() {
         const bool half = subtype <= 2 || subtype == BRACELET;
         const int procDraw = half || subtype == DAGGER ? 6000 : 4000;
         int draws = 0;
-        c.step([&] { return draws++ == 4 ? procDraw : 32767; }, {false, &c.source});
-        check(draws == 6 && c.source.hasBuff(9) == (subtype == DAGGER),
+        c.step([&] { return draws++ == 3 ? procDraw : 32767; }, {false, &c.source});
+        check(draws == 4 && c.source.hasBuff(9) == (subtype == DAGGER),
               "producer probability applies its weapon-pair half or three-tenths scale before the draw");
     }
     {
         Collision c;
         c.source.equipment[MAIN_HAND] = {4, STAFF};
         int draws = 0;
-        c.step([&] { return draws++ == 4 ? 4000 : 32767; }, {false, &c.source});
+        c.step([&] { return draws++ == 3 ? 4000 : 32767; }, {false, &c.source});
         check(c.source.hasBuff(9), "nonweapon raw staff subtype does not scale the proc probability");
     }
     {
@@ -99,7 +97,7 @@ int main() {
         c.world.list[0].element = 2;
         int draws = 0;
         c.step([&] { draws++; return 32767; }, {false, &c.source});
-        check(draws == 5 && c.effects.hits.size() == 1 && c.effects.hits[0].record.amount > 0,
+        check(draws == 4 && c.effects.hits.size() == 1 && c.effects.hits[0].record.amount > 0,
               "hostile water contact skips its separate event while the later impact still enters generic resolution");
     }
     for (uint8_t role : {uint8_t(0), uint8_t(6)}) {
@@ -163,7 +161,7 @@ int main() {
         c.source.mana = .2f;
         int draws = 0;
         c.step([&] { draws++; return 32767; }, {false, nullptr});
-        check(draws == 2 && c.effects.hits.size() == 1 && c.effects.buffs.empty(),
+        check(draws == 1 && c.effects.hits.size() == 1 && c.effects.buffs.empty(),
               "mode-zero nonlocal role-zero source reaches contact but leaves the later impact scan before its draws");
     }
     {

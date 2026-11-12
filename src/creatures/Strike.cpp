@@ -118,6 +118,8 @@ bool meleeAction(int32_t a) {
     }
 }
 
+void strikingWeapons(const Combatant &c, const Item *(&first), const Item *(&second)) { weaponsOf(c, first, second); }
+
 float magicBase(const Combatant &c) {
     const float P = levelPower(c.level);
     const float rank = (float)std::pow(2.0, 0.0);

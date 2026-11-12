@@ -818,7 +818,7 @@ int main() {
         same(out.records[0].kind, HIT_DAMAGE, "damage kind");
         same(v.x, 1, "stable native producer leaves motion velocity unchanged", 1e-5);
         same(out.sounds.size(), 1, "impact sound");
-        same(out.sounds[0].sound, 7, "fist impact");
+        same(out.sounds[0].sound, 5, "unarmed impact: an empty striking list selects -1, identifier 5 (attack-routine M5)");
         Body targetBody;
         targetBody.velocity = v;
         applyHit(target, targetBody, out.records[0], {&attacker});
