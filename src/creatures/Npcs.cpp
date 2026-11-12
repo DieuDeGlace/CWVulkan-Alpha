@@ -1103,8 +1103,9 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     npc.yaw = yawToward(glm::vec2(toTarget));
     npc.body.intent = glm::vec3(0);
     // Pets §7.3: fed by a player holding out its food: up to five bites (action 110), then, if
-    // still not tamed, pacified for 20 s.
-    if (!pacified && !ownedPet && tempting(*target.fighter)) {
+    // still not tamed, pacified for 20 s. Held created-actor combat contract §6.2: an owned
+    // creature without an owner identifier is fed like any other.
+    if (!pacified && !(ownedPet && c.ownerId != 0) && tempting(*target.fighter)) {
         c.relations.contact = target.fighter->id; // before the clock test
         if (actionOver(c)) {
             if (c.action != 110)
@@ -1113,9 +1114,31 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
                 c.action = 110;
                 c.actionMs = 0;
             } else {
+                // §6.2 steps 5-8: the last kind-7 record, its value and time zeroed, is
+                // applied first; then a kind-8 record (time 20000, source the feeder).
+                // Each application is also an event naming the creature twice. The
+                // native buffer's unwritten padding is stale stack; new records use zero.
+                Buff record;
+                bool feeding = false;
+                for (const Buff &present : c.buffs)
+                    if (present.kind == 7)
+                        record = present, feeding = true;
+                if (feeding) {
+                    record.value = 0;
+                    record.timeMs = 0;
+                    applyBuff(c, record);
+                    frame.buffs.push_back({c.id, c.id, record});
+                }
+                record.kind = 8;
+                record.value = 0;
+                record.timeMs = 20000;
+                record.source = target.fighter->id;
+                applyBuff(c, record);
+                frame.buffs.push_back({c.id, c.id, record});
+                // Engine adapters: the taming progress the engine keeps in place of the
+                // kind-7 producer, and the legacy continuation cache.
                 npc.tameProgress = 0;
                 npc.tameMs = 0;
-                c.buffs.push_back({8, 0, 20000});
                 npc.target = 0;
             }
         }
@@ -1201,12 +1224,25 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     // Magic users within 60 blocks: the primary attack at low mana or on an even draw, else
     // the secondary.
     if (isMagicUser(c)) {
-        if (!(distance < 60)) // the class does nothing further; no later class runs
+        // d², in binary32 as the contract forms it: (Dy·Dy + Dx·Dx) + Dz·Dz.
+        const glm::vec3 D(toTarget);
+        const float d2 = (D.y * D.y + D.x * D.x) + D.z * D.z;
+        if (!(d2 < 3600.f)) // the class does nothing further; no later class runs
             return true;
         if (c.mana <= 0.5f || draw() % 2 == 0)
             startPrimaryAttack(c);
         else
             startSecondaryAttack(c);
+        // Held contract §6.4(e) step 4: a beam (action 28) beyond five blocks sweeps its
+        // aim in a 1.5-block circle with the action clock. (Step 3's latched cast point
+        // for actions 30-33 waits on producers the contract leaves open.)
+        if (c.action == 28 && d2 > 25.f) {
+            const float angle = float(c.actionMs) * std::bit_cast<float>(0x3ba3d70au); // 0.005
+            const float cosine = float(std::cos(double(angle)));
+            const float sine = float(std::sin(double(angle)));
+            npc.body.look.x = npc.body.look.x + cosine * 1.5f;
+            npc.body.look.y = npc.body.look.y + sine * 1.5f;
+        }
         return true;
     }
     // Open points 4 §5.1: claws and jaws together hop. A hop needs only 2 s of the current action,

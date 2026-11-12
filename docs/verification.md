@@ -1419,3 +1419,13 @@ diagnostic and the reward, health, network, save/reload and town runs pass, and
 all six reviewed captures match the preceding batch. Whether the original
 mesher draws floors under natively generated water on implicit cells is
 unverified.
+Created-actor combat: CreatureTests gains two cases. In the first, a creature
+fed by a player, with five bites, no taming progress and two resident kind-7
+records, emits exactly two record events naming itself twice. The first is the
+last kind-7 record with zero value and time; the second a kind-8 record of
+20000 ms from the feeder. The creature ends pacified. In the second, an
+owned-flag creature with owner identifier zero still starts feeding (action
+110). The fixture keeps the action clock under the selection prefix's 10000 ms
+reset. The magic beam aim offset has no dedicated test. All 60 CTests pass,
+the player/controller diagnostic and the reward, health, network, save/reload
+and town runs pass, and all six reviewed captures match the preceding batch.

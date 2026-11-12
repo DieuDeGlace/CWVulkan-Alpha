@@ -1204,6 +1204,80 @@ int main() {
         same(pet && pet->fighter.controller == 5 && pet->fighter.ownerId == 1, 1, "a pet of the player");
         same(pet ? pet->fighter.multipliers[0] : 0, 100 * (1 + 0.5f * skillFactor(2)), "health multiplier 108.33", 1e-3);
     }
+    // Held created-actor combat contract §6.2: after five bites without taming, the last kind-7
+    // record is applied with zero value and time, then a kind-8 record from the feeder, each
+    // also an event; and an owned-flag creature without an owner identifier is still fed.
+    for (const bool ownerless : {false, true}) {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.type = 19;
+        s.level = 4;
+        s.controller = 1;
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.level = 3;
+        me.health = maxHealth(me);
+        me.equipment[12].type = 20, me.equipment[12].subtype = 19;
+        me.action = 82;
+        Body body;
+        body.place({274.5, 10.5, 1 + 1.08 + 0.01});
+        Npcs npcs;
+        npcs.setNamedWorld(true);
+        npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+        Npc *collie = npcs.npcs().empty() ? nullptr : &npcs.npcs().front();
+        same(collie != nullptr, 1, "the feeding fixture spawns its creature");
+        if (!collie)
+            continue;
+        if (ownerless) {
+            collie->fighter.controller = 5;
+            collie->fighter.ownerId = 0;
+            bool fed = false;
+            for (int i = 0; i < 1500 && !fed; i++) {
+                npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+                fed = collie->fighter.action == 110;
+            }
+            same(fed, 1, "an owned-flag creature without an owner identifier is fed");
+            continue;
+        }
+        bool near = false;
+        for (int i = 0; i < 1500 && !near; i++) {
+            npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+            near = collie->fighter.relations.contact == me.id;
+        }
+        same(near, 1, "the creature reaches the feeder");
+        collie->bites = 5;
+        collie->tameMs = 0;
+        collie->tameProgress = 0;
+        collie->fighter.action = 110;
+        collie->fighter.actionMs = 9000; // past recovery, under the selection prefix's 10000 ms reset
+        collie->fighter.buffs = {{7, .4f, 3000, 99}, {7, .6f, 4000, 98}};
+        // Behaviour thinks every 32 ms, so a few 16 ms steps reach the continuation.
+        std::vector<BuffEvent> records;
+        for (int i = 0; i < 4 && records.empty(); i++) {
+            const NpcFrame f = npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+            for (const BuffEvent &e : f.buffs)
+                if (e.record.kind == 7 || e.record.kind == 8)
+                    records.push_back(e);
+        }
+        same(records.size(), 2, "two record applications are emitted");
+        if (records.size() == 2) {
+            same(records[0].source == collie->fighter.id && records[0].target == collie->fighter.id, 1,
+                 "events name the creature twice");
+            same(records[0].record.kind, 7, "the kind-7 record comes first");
+            same(records[0].record.source, 98, "the last kind-7 entry wins");
+            same(records[0].record.value, 0, "its value is zeroed");
+            same(records[0].record.timeMs, 0, "its time is zeroed");
+            same(records[1].record.kind, 8, "then the kind-8 record");
+            same(records[1].record.timeMs, 20000, "lasting 20000 ms");
+            same(records[1].record.source, 1, "from the feeder");
+        }
+        same(collie->fighter.hasBuff(8), 1, "the creature is pacified");
+    }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,
     // comes when called from afar, and returns 20 s after dying.
     {

@@ -1531,3 +1531,29 @@ equivalence with the contract's creature, body, hand and grip chain has not
 been verified term by term; the per-selector pose evaluator, the reference
 shift's accumulation for weapon-less refreshes and the series update branches
 remain open.
+
+Created-actor combat open items, rechecked against the same held contract
+(SHA-256 23c4173a..., hash re-verified and read completely). The busy
+indicator of section 2 was already in place in target selection's finish
+phase: bit 0x40 set when the action is zero or the clock exceeds the halved
+first duration plus the second plus the third, and the child cooldown
+reduced. The tables behind those duration queries stay unaudited. The
+section 6.2 special-state branch now admits an owned-flag creature whose
+owner identifier is zero, as the contract's either/or condition states. After
+five bites it applies the last kind-7 record with its value and time zeroed
+(when one is present), then a kind-8 record with time 20000 and the feeder as
+source. Each application is also an output event naming the creature twice.
+The native buffer's unwritten padding bytes are stale stack contents, which the
+engine replaces with zero. The engine taming fields and the legacy
+continuation target cache remain explicit adapters for the kind-7 producer,
+which is not closed. Section 6.4(e) step 4 is now in place: a magic user
+whose action is 0x1C, at a binary32 squared separation above 25, offsets the
+first two stored aim values by 1.5 times the binary32-rounded binary64 cosine
+and sine of the clock times 0.005. The class's 60-block band now uses the
+contract's binary32 squared separation. The stored aim is the engine body's
+field-26 look vector; shot direction still comes from the engine adapter that
+aims at a player target, because the contract leaves the aim triplet's
+consumers open. Still open: the section 6.4(e) step 3 cast-point swap (its
+S +0x1320 and T +0x1350 producers are unclosed), the type-118 beam's offset
+point when bit 0x04 is set, and the far route's direct-approach helper and
+path loop.
