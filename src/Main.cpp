@@ -4145,6 +4145,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 std::fprintf(stderr, "capture failed\n");
                 status = 1;
             }
+            // Capture diagnostics: where the eye and the player were in the captured frame.
+            const glm::dvec3 eyeAt = view.worldPosition();
+            std::printf("Capture eye (%.2f, %.2f, %.2f), underwater %d\n", eyeAt.x, eyeAt.y, eyeAt.z, scene.underwater ? 1 : 0);
+            if (player) {
+                const glm::dvec3 feet = player->body().blocks();
+                std::printf("Capture player (%.2f, %.2f, %.2f), contact 0x%x, health %.1f\n", feet.x, feet.y, feet.z,
+                            unsigned(player->body().contact), double(player->combat().health));
+            }
             break;
         }
         if (framesUntilCapture > 0 && drawn && !settling)

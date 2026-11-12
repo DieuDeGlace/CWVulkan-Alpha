@@ -74,6 +74,33 @@ int main() {
         stable = first[i].typeByte == second[i].typeByte;
     check(stable, "reapplying the extension does not lower the surface again");
 
+    {
+        // A column stored only two blocks deep: carving reaches below its lowest stored
+        // cell, so the floor must become a stored block that the mesher gives a face.
+        auto thin = dryZone();
+        for (int y = 40; y <= 42; y++)
+            for (int x = 40; x <= 42; x++) {
+                Column &column = thin->column(x, y);
+                column.bottom = 3;
+                column.blocks.assign(2, Block{100, 100, 100, GRASS});
+                column.blocks.back().typeByte = LAKE_BED;
+            }
+        makeWaterSwimmable(*thin, [](int32_t, int32_t, int32_t) { return Block{90, 80, 70, ROCK}; });
+        const Column &column = thin->column(41, 41);
+        check(column.bottom == 1 && column.blocks.front().type() == ROCK,
+              "carving below the stored cells stores the supplied bed block");
+        check(thin->read(41, 41, 2).type() == WATER && thin->read(41, 41, 4).type() == WATER,
+              "the thin column still gains full swimming depth");
+        WorldMap thinMap;
+        thinMap.add(thin);
+        World thinWorld(1);
+        Terrain thinTerrain(thinWorld);
+        bool floorFace = false;
+        for (const auto &vertex : meshChunk(thinMap, thinTerrain, 32, 32).solid.vertices)
+            floorFace |= vertex.normal.z > 0 && vertex.position.z == 2; // only the pit's floor is that low
+        check(floorFace, "the stored bed under carved water has a drawn top face");
+    }
+
     // A normal player-sized body can occupy the converted volume and enters the
     // real swimming/contact path rather than landing on the former solid top.
     creatures::Body body;

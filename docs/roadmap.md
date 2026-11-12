@@ -330,14 +330,18 @@ Differences from the Steam engine that shape the plan:
   preview and 170 edited blocks across reload. Interactive menu and original-game
   save interoperability acceptance remain open.
 
-- [ ] Water extension, clarified 2026-11-07: reuse the Steam engine's shared water
+- [x] Water extension, clarified 2026-11-07: reuse the Steam engine's shared water
   surface shader, make all water swimmable (including Alpha's shallow walkable
   form), and place reeds along water banks. Verify geometry, collision, underwater
   rendering and bank placement together; retain this as an explicit extension.
-  Progress: WaterLiveTests checks seed 123's generated home lake shore and a native
-  stream bed (swimming depth, bank reeds, the real movement step), and live captures
-  show bank reeds beside the shared surface. Still open: observing the swim state
-  inside the running client, and the look of the surface from just below it.
+  WaterLiveTests checks seed 123's generated home lake shore and a native stream
+  bed (swimming depth, bank reeds, drawn floors, the real movement step). Live
+  captures show bank reeds beside the shared surface, and a swimming player
+  (client contact in-water) over a drawn floor. The extension stores the floor
+  cell under its water, which the implicit cell below a column never draws.
+  Open native question (rendering contract): natively generated water also rests
+  on implicit floors (4879 columns in zone 32801, 32798); whether the original
+  mesher draws a face there is unverified, so the native profile is unchanged.
 
 - [x] Built-in graphics on top of Alpha's look (always part of the engine, with settings):
   - [x] real-time sun and moon shadows (`Shadows.h`, `[Shadows]`, `--no-shadows`): one 4096 map around the

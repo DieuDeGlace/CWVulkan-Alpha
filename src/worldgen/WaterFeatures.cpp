@@ -27,7 +27,7 @@ bool besideWater(const WorldMap &map, int x, int y, int feet) {
 }
 }
 
-void makeWaterSwimmable(Zone &zone) {
+void makeWaterSwimmable(Zone &zone, const BedFill &bed) {
     for (int y = zone.originY(); y < zone.originY() + Zone::SIZE; y++)
         for (int x = zone.originX(); x < zone.originX() + Zone::SIZE; x++) {
             // Freeze the exposed surface heights before carving any depth. This
@@ -42,16 +42,22 @@ void makeWaterSwimmable(Zone &zone) {
             for (int top : surfaces)
                 for (int depth = 0; depth < SWIMMING_DEPTH; depth++) {
                     const int z = top - depth;
-                    const Block bed = zone.read(x, y, z);
-                    if (bed.type() == WATER)
+                    const Block cell = zone.read(x, y, z);
+                    if (cell.type() == WATER)
                         continue;
                     // Protected construction and open cavities keep their shape.
                     // This extension lowers natural beds, not every solid nearby.
-                    if (!naturalBed(bed.type()) ||
-                        (bed.type() != LAKE_BED && (bed.typeByte & (DRY_AIR | KEEP))))
+                    if (!naturalBed(cell.type()) ||
+                        (cell.type() != LAKE_BED && (cell.typeByte & (DRY_AIR | KEEP))))
                         break;
-                    zone.place(x, y, z, Block{255, 255, 255, (uint8_t)(WATER | (bed.typeByte & KEEP))});
+                    zone.place(x, y, z, Block{255, 255, 255, (uint8_t)(WATER | (cell.typeByte & KEEP))});
                 }
+            // Water resting on the implicit cell under the column has no drawn
+            // floor (implicit cells have no faces), whether this pass carved it
+            // or it was already deep: store that floor cell.
+            const Column &after = zone.column(x, y);
+            if (!surfaces.empty() && !after.blocks.empty() && after.blocks.front().type() == WATER)
+                zone.place(x, y, after.bottom - 1, bed ? bed(x, y, after.bottom - 1) : IMPLICIT_SOLID);
         }
 }
 

@@ -1398,3 +1398,24 @@ capture at the swimming spot (8397217, 8396312) puts the camera just under the
 surface, showing a flat saturated-blue underside without a visible player model.
 That view is unreviewed against any intended look. The client's own swim state
 was not logged. All 60 CTests pass.
+Water extension floors: the earlier swim-spot capture's flat saturated-blue
+underside was the underwater sky colour seen through missing floor faces. When
+the extension deepens water through a column's lowest stored cell, or water
+already rests on the implicit cell below a column, the mesher draws no floor,
+because implicit cells have no faces. makeWaterSwimmable now stores that floor
+cell, using the terrain's gap block, under every water column it handles. The
+native profile is unchanged. WaterTests covers a thin column, checking for a
+stored bed and a drawn top face. WaterLiveTests now requires no water over an
+undrawn floor: it finds 0 at the lake and stream sites, where the native
+generator has 0 and 4879. Live recaptures at the stream (Omega and Alpha looks)
+show a lit, fogged floor under the water. From a spot 4 blocks along, the
+swimming player is visible, tinted by the water. Captures now print the eye and
+player positions, contact and health. In the running client the swimming player
+reports contact 0x2 (in water), eye 0.33 below the surface, health unchanged. A
+deep-lake start point (8389378, 8401922) killed the player in under a second, but
+the cause was three creature hits (108 to 140 each) from one attacker in the
+lake location, not the water. All 60 CTests pass, the player/controller
+diagnostic and the reward, health, network, save/reload and town runs pass, and
+all six reviewed captures match the preceding batch. Whether the original
+mesher draws floors under natively generated water on implicit cells is
+unverified.

@@ -108,6 +108,16 @@ void site(const World &world, const Terrain &native, const Terrain &extended, in
         }
     std::printf("%s zone (%d, %d): native surfaces with swimming depth %d, kept %d\n", label, zx, zy, deepened, kept);
     check(deepened > 0, "native surfaces of the site gain swimming depth");
+    // Rendering: water resting on an implicit cell has no drawn floor.
+    int floorless = 0, nativeFloorless = 0;
+    for (int32_t y = centre->originY(); y < centre->originY() + Zone::SIZE; y++)
+        for (int32_t x = centre->originX(); x < centre->originX() + Zone::SIZE; x++) {
+            const Column &column = centre->column(x, y), &before = plain->column(x, y);
+            floorless += !column.blocks.empty() && column.blocks.front().type() == WATER && column.bottom > 1;
+            nativeFloorless += !before.blocks.empty() && before.blocks.front().type() == WATER && before.bottom > 1;
+        }
+    std::printf("  water columns over an implicit floor above sea level: %d (native %d)\n", floorless, nativeFloorless);
+    check(floorless == 0, "the extension leaves no water over an undrawn floor");
 
     const auto reeds = bankReeds(map, *centre, world.seed());
     int dryFeet = 0, besideWater = 0;

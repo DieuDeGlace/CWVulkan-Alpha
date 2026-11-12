@@ -468,7 +468,7 @@ std::unique_ptr<Zone> Terrain::generate(int32_t zx, int32_t zy) const {
             item.z--;
     av::modules::applyTerrainPasses(*zone, *this);
     if (swimmableWater)
-        makeWaterSwimmable(*zone);
+        makeWaterSwimmable(*zone, [&](int32_t x, int32_t y, int32_t z) { return gapBlock(x, y, z, *zone); });
     blockLight(*zone);
     return zone;
 }
