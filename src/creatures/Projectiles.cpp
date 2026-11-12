@@ -512,16 +512,27 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 removed[index] = true;
                 continue;
             }
-            const glm::dvec3 home = shooter->body->blocks();
-            const glm::dvec3 here = p.blocks();
+            // Aim-triplet contract §3.6: fixed-point differences, each converted to binary32
+            // (one rounding) and times 2^-16; outbound, the owner's aim is an offset point.
+            const auto separation = [&](const int64_t offset[3]) {
+                glm::vec3 out;
+                for (int k = 0; k < 3; k++) {
+                    const uint64_t to = uint64_t(shooter->body->position[k]) + uint64_t(offset[k]);
+                    out[k] = float(std::bit_cast<int64_t>(to - uint64_t(p.position[k]))) * (1.f / 65536.f);
+                }
+                return out;
+            };
             if (p.age > 1100) {
                 const double f = (p.age - 1100) / 100.0;
                 for (int k = 0; k < 3; k++)
                     p.position[k] += (int64_t)((double)(shooter->body->position[k] - p.position[k]) * f * f);
             } else if (p.age > 800) {
-                p.velocity = glm::vec3(home - here) * 10.f;
+                const int64_t none[3] = {0, 0, 0};
+                p.velocity = separation(none) * 10.f;
             } else {
-                const glm::vec3 target = glm::vec3(home + glm::dvec3(shooter->fighter->aim) - here) * 5.f;
+                const glm::vec3 aim = shooter->fighter->aim;
+                const int64_t offset[3] = {int64_t(aim.x * 65536.f), int64_t(aim.y * 65536.f), int64_t(aim.z * 65536.f)};
+                const glm::vec3 target = separation(offset) * 5.f;
                 for (int32_t i = 0; i < dt; i++)
                     p.velocity += (target - p.velocity) * 0.05f;
             }

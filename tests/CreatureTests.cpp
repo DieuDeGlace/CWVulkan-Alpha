@@ -1448,6 +1448,43 @@ int main() {
             same(gap() < 2, 1, "the creature ends up facing its drawn aim");
         }
     }
+    // Aim-triplet contract §3.1: a beam's first pulse comes on the update that crosses the
+    // wind-up, then every 200 ms of (clock - wind-up). A pulse that meets nobody leaves sparks.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.type = 4, s.level = 1;
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({300.5, 10.5, 1 + 1.08 + 0.01}); // far off the beam's line
+        Npcs npcs;
+        const auto step = [&] { return npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor); };
+        step();
+        Npc *caster = npcs.npcs().empty() ? nullptr : &npcs.npcs().front();
+        same(caster != nullptr, 1, "the beam fixture spawns its creature");
+        if (caster) {
+            const Phases timing = phases(caster->fighter, 95);
+            same(timing.windUp > 8 && timing.active > 300, 1, "the beam has a wind-up and an active window");
+            const auto pulse = [&](int32_t clock) {
+                caster->thinkMs = 0; // no behaviour decision this update
+                caster->fighter.action = 95;
+                caster->fighter.actionMs = clock;
+                caster->body.look = glm::vec3(0, 10, 0);
+                return !step().bursts.empty();
+            };
+            same(pulse(timing.windUp - 8), 1, "the update crossing the wind-up pulses");
+            same(pulse(timing.windUp + 20), 0, "no pulse inside the same 200 ms period");
+            same(pulse(timing.windUp + 190), 1, "the next 200 ms boundary pulses");
+            same(pulse(timing.windUp + timing.active), 0, "no pulse once the active window is over");
+        }
+    }
     // Pets §10.2 runs Companion (client 0x03ACE0, held created-companion navigation): with the
     // owner behind a wall, a pet starts a search toward the owner's ground with radius 2.
     {
@@ -1486,8 +1523,12 @@ int main() {
             searching = pet && pet->path.state.radius == 2.f && !pet->path.state.records.empty();
         }
         same(searching, 1, "a blocked pet searches toward its owner with radius 2");
-        if (pet)
+        if (pet) {
             same(pet->path.state.goal[0], body.position[0], "the search goal keeps the owner's x");
+            // The held goal scan moves the owner's raw height by whole blocks (down to ground,
+            // then up to the first open cell), keeping its fraction; it is not a cell floor.
+            same(pet->path.state.goal[2], body.position[2] - 65536, "the goal is one block below the owner, fraction kept");
+        }
     }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,
     // comes when called from afar, and returns 20 s after dying.

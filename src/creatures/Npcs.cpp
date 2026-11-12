@@ -1758,57 +1758,91 @@ bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &ta
 
 void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, float dt, std::span<PlayerView> players,
                     NpcFrame &frame, const BlockType &block) {
-    // Aim-triplet contract §3.1: the ray starts at the sight point (routine 0x046BB0).
-    const std::array<int64_t, 3> sight = offsetPoint(attackerBody, attackerBody.yaw, attackerBody.appearanceFlags);
-    const glm::dvec3 from = glm::dvec3((double)sight[0], (double)sight[1], (double)sight[2]) / 65536.0;
+    // Aim-triplet contract §3.1 (case 0x215C68) for actions 0x1C and 0x5F. Mana handling, the
+    // clock rescale by query 0x047700 and the water-cloud shot are not implemented here.
     if (attacker.action != 28 && attacker.action != 95)
         return;
-    const float D = (float)phases(attacker, attacker.action).windUp;
-    // (Open points 3 §2.3: every 200 ms, not 100.)
-    if (!(t + dt > D) || std::trunc((t + dt - D) / 200) == std::trunc((t - D) / 200))
+    const Phases timing = phases(attacker, attacker.action);
+    const int32_t clock = int32_t(t), step = int32_t(dt);
+    const int32_t B = timing.windUp, C = timing.active;
+    const int32_t after = std::bit_cast<int32_t>(uint32_t(clock) + uint32_t(step));
+    if (after < B || clock >= B + C)
         return;
-    glm::vec3 u = attacker.aim;
-    if (glm::dot(u, u) > 0)
-        u = glm::normalize(u);
-    // The ray's length: to the first solid block, 200 at most.
-    float length = 0;
-    const auto solid = [&](glm::dvec3 p) {
-        const uint8_t type = block((int32_t)std::floor(p.x), (int32_t)std::floor(p.y), (int32_t)std::floor(p.z)) & 31;
-        return type != 0 && type != 2;
+    const bool first = clock <= B && B < after;
+    const bool repeat = after > B && (after - B) / 200 != (clock - B) / 200;
+    if (!first && !repeat)
+        return;
+
+    const auto normalized = [](glm::vec3 v) {
+        const float squared = (v.x * v.x + v.y * v.y) + v.z * v.z;
+        const float inverse = 1.f / float(std::sqrt(double(squared)));
+        return glm::vec3(v.x * inverse, v.y * inverse, v.z * inverse);
     };
-    while (length < 200 && !solid(from + glm::dvec3(u * length)))
-        length += 0.25f;
+    const glm::vec3 aim = attacker.aim;
+    const float aimSquared = (aim.x * aim.x + aim.y * aim.y) + aim.z * aim.z;
+    const glm::vec3 D = aimSquared > 0.f ? normalized(aim) : aim;
+    const std::array<int64_t, 3> sight = offsetPoint(attackerBody, attackerBody.yaw, attackerBody.appearanceFlags);
+    const glm::dvec3 from = glm::dvec3((double)sight[0], (double)sight[1], (double)sight[2]) / 65536.0;
+    // Ray routine 0x1A35D0 with the unconditionally normalized aim, maximum 200, flags 0 and 1.
+    // A zero aim is outside the contract; the engine gives it no length.
+    glm::vec3 unit(0);
+    float length = 0;
+    if (aimSquared > 0.f) {
+        unit = normalized(aim);
+        length = visibility::trace({sight[0], sight[1], sight[2]}, {unit.x, unit.y, unit.z}, 200.f, 0, 1,
+                                   {block, sightRecords});
+    }
+
     std::set<uint64_t> touched;
-    bool hit = false;
-    for (int i = 0; (float)i < length; i++) {
-        const glm::dvec3 p = from + glm::dvec3(u * (float)i);
+    bool admitted = false;
+    if (length > 0.f) {
+        std::array<int64_t, 3> P = sight;
+        const int64_t advance[3] = {int64_t(D.x * 65536.f), int64_t(D.y * 65536.f), int64_t(D.z * 65536.f)};
         const auto test = [&](Combatant &c, Body &body) {
-            if (c.id == attacker.id || c.health <= 0 || touched.count(c.id) || c.dodgeMs > 0)
+            if (c.id == attacker.id || !(c.health > 0) || touched.count(c.id) || c.dodgeMs != 0)
                 return;
-            const glm::dvec3 d = body.blocks() - p;
-            const double r = 0.5 * body.size.x + 1;
-            if (d.x * d.x + d.y * d.y >= r * r || std::abs(d.z) >= 0.5 * body.size.z + 1)
-                return;
-            touched.insert(c.id); // (friend or foe: either stops the sparks)
-            if (hostile(attacker, c) || hostile(c, attacker)) {
-                landBlow(attacker, attackerBody, c, body, frame, beamInput(attacker, [&] { return draw(); }), players);
-                hit = true;
+            const float r = body.size.x * .5f + 1.f;
+            int64_t horizontal = 0;
+            for (int k = 0; k < 2; k++) {
+                const uint64_t d = uint64_t(P[size_t(k)]) - uint64_t(body.position[k]);
+                horizontal = std::bit_cast<int64_t>(uint64_t(horizontal) +
+                                                    uint64_t(std::bit_cast<int64_t>(d * d) / 65536));
             }
+            if (!(horizontal < int64_t(r * r * 65536.f)))
+                return;
+            const float dz = float(std::bit_cast<int64_t>(uint64_t(P[2]) - uint64_t(body.position[2]))) * (1.f / 65536.f);
+            if (!(std::fabs(double(dz)) < double(body.size.z * .5f + 1.f)))
+                return;
+            touched.insert(c.id);
+            draw(); // the direct draw (0x216460) before admission; its consumer is not closed
+            // Engine admission stand-in for routine 0x1988A0: hostility either way.
+            if (hostile(attacker, c) || hostile(c, attacker))
+                admitted |= landBlow(attacker, attackerBody, c, body, frame,
+                                     beamInput(attacker, [&] { return draw(); }), players);
         };
-        for (PlayerView &v : players)
-            test(v.fighter, v.body);
-        for (Npc &n : list)
-            test(n.fighter, n.body);
+        for (int32_t i = 0; length > float(i); i++) {
+            for (PlayerView &v : players)
+                test(v.fighter, v.body);
+            for (Npc &n : list)
+                test(n.fighter, n.body);
+            for (size_t k = 0; k < 3; k++)
+                P[k] = std::bit_cast<int64_t>(uint64_t(P[k]) + uint64_t(advance[k]));
+        }
     }
     // Open points 3 §2.2: the channel sound on the 200-ms grid of the action's own time: 37 when
     // this tick hit an enemy, else 36.
     if (std::trunc((t + dt) / 200) != std::trunc(t / 200))
-        frame.sounds.push_back({from, hit ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
+        frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
     if (touched.empty()) {
-        Burst b = Burst::at(from + glm::dvec3(u * length), -u, {1, 0.2f, 0.5f, 1}, 0.1f, 5, FIRE);
-        frame.bursts.push_back(b);
+        // The effect record's point: the position plus the normalized aim times the length.
+        std::array<int64_t, 3> end{};
+        for (int k = 0; k < 3; k++)
+            end[size_t(k)] = std::bit_cast<int64_t>(uint64_t(attackerBody.position[k]) +
+                                                    uint64_t(int64_t(unit[k] * length * 65536.f)));
+        const glm::dvec3 point = glm::dvec3(double(end[0]), double(end[1]), double(end[2])) / 65536.0;
+        frame.bursts.push_back(Burst::at(point, -D, {1, 0.2f, 0.5f, 1}, 0.1f, 5, FIRE));
         attacker.combo = 0;
-    } else if (hit) {
+    } else if (admitted) {
         attacker.combo += 1;
     }
 }
@@ -2177,8 +2211,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             const float share = approach(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
             for (int axis = 0; axis < 3; axis++)
                 npc.drawnLook[axis] = npc.drawnLook[axis] + (npc.body.look[axis] - npc.drawnLook[axis]) * share;
-            const int32_t recovery = phases(c, c.action).recovery;
-            if (c.action == 0 || c.actionMs == 0 || c.actionMs > recovery)
+            // R0 (query 0x03D1A0) is the engine's action duration, as in actionOver.
+            if (c.action == 0 || c.actionMs == 0 || actionOver(c))
                 npc.drawnLook = npc.body.look;
         }
         // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher

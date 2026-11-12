@@ -1497,3 +1497,16 @@ between a pet and its owner. The pet then starts a search toward the owner with
 arrival radius 2 and a goal at the owner's x. All 60 CTests pass, the player
 diagnostic and five live runs pass, and the six captures match the preceding
 batch.
+
+Beam pulses, boomerang and the pet goal (2026-11-12). A new CreatureTests case
+sets a creature's beam clock directly and checks four updates:
+- the update that crosses the wind-up pulses (the earlier engine missed it);
+- an update inside the same 200 ms period does not pulse;
+- the next 200 ms boundary pulses;
+- nothing pulses once the active window is over.
+
+The walled-pet case now also checks that the search goal lies exactly one block
+below the owner and keeps its fraction. The old pet code would have failed
+that, because it snapped the goal to a block floor. All 60 CTests pass, the
+player diagnostic and five live runs pass, and the six captures match the
+preceding batch.

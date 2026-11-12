@@ -178,7 +178,8 @@ Differences from the Steam engine that shape the plan:
   the type-118 beam's offset aim point. The held aim-triplet contract drives
   shot, beam and path aim, the look-at rule, facing (yaw and head pitch from the
   drawn aim, or from movement), drawn-aim smoothing and the walking-away speed
-  limit; beam pulse rules, boomerang steering and the client controller's aim
+  limit, beam pulse timing and sampling, and boomerang steering in fixed point.
+  Beam mana, the clock rescale (query 0x047700) and the client controller's aim
   writers remain open.
   The held approach/path contract confirmed the existing search core, rebuild
   and direct-approach walk; the combat far route now uses them with the binary32

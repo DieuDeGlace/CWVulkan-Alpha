@@ -1621,3 +1621,30 @@ prefix is the pet case. Pets (owner key) and behaviour-3 followers (follow key)
 therefore now run the same held companion as created actors. The older engine
 pet companion, with its distance thresholds, healing, goal scan and adapter path
 search, is deleted.
+
+Beam pulses and boomerang (2026-11-12), from the held `alpha-combat-aim-triplet.md`
+sections 3.1 and 3.6:
+- **Pulse timing:** a creature beam (actions 0x1C and 0x5F) is gated to clock
+  plus step at least B and clock below B + C, with C the engine's active phase.
+  It pulses first on the update that crosses B, then whenever the truncating
+  quotient by 200 of the clock minus B changes.
+- **Ray:** the direction is the precisely normalized aim. The length now comes
+  from the held ray routine (`visibility::trace`, flags 0 and 1, maximum 200)
+  instead of the engine's quarter-block march.
+- **Sampling:** samples step in fixed point from the sight point. The skip
+  rules follow the contract, with health strictly positive and any nonzero
+  lockout skipping. The hit tests use the fixed-point horizontal sum and the
+  binary32 vertical test.
+- **Draws and admission:** every creature that passes the geometry gets the
+  direct draw before admission. Hostility stands in for admission routine
+  0x1988A0.
+- **Sparks:** the no-hit sparks start at the creature's position plus the aim
+  times the length.
+- **Boomerang:** steering uses fixed-point differences, with the owner's aim as
+  a fixed offset.
+- **Drawn aim:** the drawn aim's recovery threshold is corrected to R0, which is
+  the engine's action duration, the same as `actionOver`.
+
+Not implemented: beam mana handling, the creature-map iteration order, the
+id at +0x11C0, the clock rescale by query 0x047700, the water-cloud shot, and
+the +0x74 reset.
