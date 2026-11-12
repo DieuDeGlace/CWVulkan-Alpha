@@ -179,8 +179,12 @@ Differences from the Steam engine that shape the plan:
   shot, beam and path aim, the look-at rule, facing (yaw and head pitch from the
   drawn aim, or from movement), drawn-aim smoothing and the walking-away speed
   limit, beam pulse timing and sampling, and boomerang steering in fixed point.
-  Beam mana, the clock rescale (query 0x047700) and the client controller's aim
-  writers remain open.
+  The held controller-aim contract now drives the local player's aim (camera
+  ray from the follow anchor, creature pick on the screen centre, close-spell
+  freeze, Left Shift yaw forward) and its flags block (face-aim, walking and
+  climb bits). The pick's visibility range, the +0x1180 offset and the target-id
+  write remain adapters or open. Beam mana and the clock rescale (query 0x047700)
+  remain open, and now have the held beam-leftovers contract.
   The held approach/path contract confirmed the existing search core, rebuild
   and direct-approach walk; the combat far route now uses them with the binary32
   near/far test, contract steering speed, raw lowered endpoints and the strict

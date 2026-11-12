@@ -44,6 +44,10 @@ class FollowCamera {
     // Camera-relative input directions: forward f and right r.
     glm::vec3 forward() const;
     glm::vec3 right() const;
+    // The raw follow anchor (F0) and eye (E), and the render origin the view is rebased on.
+    const camera_view::Fixed3 &followAnchor() const { return anchor; }
+    const camera_view::Fixed3 &eyeFixed() const { return eye; }
+    const camera_view::Fixed3 &rebaseOrigin() const { return origin; }
 
   private:
     camera_follow::State state() const;
@@ -51,7 +55,7 @@ class FollowCamera {
 
     // The anchor is constructed as zero; the first update's distance snap moves
     // it to the followed creature.
-    camera_view::Fixed3 anchor{}, eye{};
+    camera_view::Fixed3 anchor{}, eye{}, origin{};
     camera_view::Matrix rebased = camera_view::identity();
 };
 

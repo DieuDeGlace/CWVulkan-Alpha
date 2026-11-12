@@ -1519,3 +1519,22 @@ arrive once each, frames run with the world steps, and Alice's "hi" reaches the
 chat event. That event's handler then calls back into the server (her name, the
 creature list, a tell), and the told line reaches her client from id 0.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures match the preceding batch.
+
+Controller aim and flags (2026-11-12). New CreatureTests cases cover the flags block:
+- idle under 300 ms sets the face-aim bit and walking, and past 300 ms the bits
+  follow the keys;
+- Left Shift and the excluded and sustained actions;
+- action 0x58 walks without facing the aim;
+- Left Ctrl, and the gliding lift.
+
+They also cover the aim:
+- free aim with and without Left Shift;
+- the pick, with a view along +y: the creature on the screen centre is hovered
+  and moves the aim to its depth, while those behind or aside do not;
+- a friendly creature is hovered but keeps the ray point;
+- a creature behind the player does not move the aim;
+- the close-spell freeze.
+
+The player diagnostic now expects the face-aim bit at idle clock 0. All 60
+CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.

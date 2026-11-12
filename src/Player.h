@@ -7,6 +7,8 @@
 #include "WorldView.h"
 #include "creatures/Abilities.h"
 #include "creatures/Combat.h"
+#include "creatures/ControllerAim.h"
+#include <span>
 #include <utility>
 #include "creatures/FollowCamera.h"
 
@@ -25,9 +27,17 @@ class Player {
     void advance(int32_t dtMs, bool replica = false);
     void refreshAbilityBindings() { bindings.refresh(fighter); }
     std::span<const int32_t> abilityBindings() const { return bindings.values(); }
+    // A creature the aim may pick under the screen centre (controller aim contract §3.2): its
+    // +0x1350 point (the follow point, or a received position) and size.
+    using AimCandidate = creatures::controller_aim::Candidate;
     // Called once after all world pieces; leaves intent/actions for the next call.
+    // `records` and `candidates` feed the aim ray and the creature pick.
     void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr,
-                   const std::array<bool, 2> *mouseButtons = nullptr);
+                   const std::array<bool, 2> *mouseButtons = nullptr,
+                   const creatures::visibility::RecordLookup *records = nullptr,
+                   std::span<const AimCandidate> candidates = {});
+    // The nearest creature whose box straddles the screen centre (C+0x800A70), 0 for none.
+    uint64_t hoveredCreature() const { return hovered; }
     void finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
                      const creatures::visibility::RecordLookup &records); // camera, once per rendered frame
     // Adds the player's creature to the draw list.
@@ -95,4 +105,8 @@ class Player {
     int32_t actionMsBefore = 0;
     bool replicaWorld = false;
     glm::dvec3 start{0}; // where the player entered the world, blocks
+    // Controller aim contract §3.2: the close spell's held aim point (P0 +0x1320) and the
+    // hovered creature.
+    camera_view::Fixed3 spellPoint{};
+    uint64_t hovered = 0;
 };

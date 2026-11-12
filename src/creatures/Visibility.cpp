@@ -135,7 +135,9 @@ float trace(const Position &start, const Direction &direction, float maximum,
     return parameter;
 }
 
-bool visible(const Position &start, const Position &end, const Scene &scene) {
+bool visible(const Position &start, const Position &end, const Scene &scene) { return visible(start, end, 1, 200.f, scene); }
+
+bool visible(const Position &start, const Position &end, uint8_t option, float maximum, const Scene &scene) {
     Direction direction;
     for (size_t axis = 0; axis < 3; axis++) {
         const float difference = float(subtract(end[axis], start[axis]));
@@ -146,12 +148,12 @@ bool visible(const Position &start, const Position &end, const Scene &scene) {
     const float squared = horizontal + z2;
     if (squared < std::bit_cast<float>(uint32_t(0x38d1b717)))
         return true;
-    if (squared > 200.f * 200.f)
+    if (squared > maximum * maximum)
         return false;
     const float length = float(std::sqrt(double(squared)));
     for (float &component : direction)
         component = component / length;
-    const float reached = trace(start, direction, length, 0, 1, scene);
+    const float reached = trace(start, direction, length, 0, option, scene);
     const float threshold = length - std::bit_cast<float>(uint32_t(0x3c23d70a));
     return reached >= threshold;
 }

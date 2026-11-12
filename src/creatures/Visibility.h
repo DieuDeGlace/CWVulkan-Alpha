@@ -34,5 +34,7 @@ float trace(const Position &start, const Direction &direction, float maximum,
 
 // The bounded target-selection visibility caller, with a supplied scene.
 bool visible(const Position &start, const Position &end, const Scene &scene);
+// The same routine (0x19EE90) with the caller's option and maximum distance.
+bool visible(const Position &start, const Position &end, uint8_t option, float maximum, const Scene &scene);
 
 } // namespace creatures::visibility

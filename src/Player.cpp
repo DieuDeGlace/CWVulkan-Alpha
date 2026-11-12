@@ -1,4 +1,5 @@
 #include "Player.h"
+#include "creatures/ControllerAim.h"
 #include "creatures/Projectiles.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -36,7 +37,8 @@ void Player::revive() {
 }
 
 void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, const Gamepad *pad,
-                       const std::array<bool, 2> *mouseButtons) {
+                       const std::array<bool, 2> *mouseButtons, const creatures::visibility::RecordLookup *records,
+                       std::span<const AimCandidate> candidates) {
     using namespace creatures;
     const float dtMs = (float)milliseconds;
     const bool usePad = controls && pad && pad->connected && pad->context() == Gamepad::Context::Gameplay;
@@ -73,13 +75,14 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         state.intent = (1 - w) * state.intent + w * 10.f * ahead;
         state.intent -= 0.05f * state.bank * side;
     }
-    // Travel §2.2: run unless Left Shift is held (with the glider in the air, Space lifts
-    // instead), and hold on to walls with Left Ctrl.
-    if ((state.mode & GLIDER) && !onGround)
-        state.mode = held(GLFW_KEY_SPACE) && state.stamina > 0 ? state.mode | RUN : state.mode & ~RUN;
-    else
-        state.mode = held(GLFW_KEY_LEFT_SHIFT) ? state.mode & ~RUN : state.mode | RUN;
-    state.mode = held(GLFW_KEY_LEFT_CONTROL) ? state.mode | CLIMB : state.mode & ~CLIMB;
+    // Controller aim contract §4: the flags block. Bit 0x40 runs unless Left Shift is held (with
+    // the glider in the air, Space lifts instead), the face-aim bit follows the action and its
+    // clock, and Left Ctrl holds on to walls. While stunned (§5's gate) every bit keeps its value.
+    const bool shift = held(GLFW_KEY_LEFT_SHIFT);
+    if (fighter.hitStun <= 0)
+        state.mode = controller_aim::flags(state.mode, fighter,
+            {shift, held(GLFW_KEY_LEFT_CONTROL), (state.mode & GLIDER) && !onGround,
+             held(GLFW_KEY_SPACE) && state.stamina > 0});
     // Travel §3.1, §4.1: G opens or folds the glider, or boards or leaves the boat.
     const bool gDown = held(GLFW_KEY_G);
     if (gDown && !gWasDown) {
@@ -173,20 +176,20 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         (mouse && secondary) || controller.abilities[1],
         held(GLFW_KEY_1) || controller.abilities[2], held(GLFW_KEY_2) || controller.abilities[3],
         held(GLFW_KEY_3) || controller.abilities[4], held(GLFW_KEY_4) || controller.abilities[5]};
-    // §16.1: the aim, from the player to the first solid block under the crosshair (or 100
-    // blocks out), in half-block steps.
-    const glm::dvec3 eye = camera.position(), me = state.blocks();
-    const glm::dvec3 ray = glm::dvec3(camera.direction());
-    glm::dvec3 target = eye + ray * 100.0;
-    for (double t = 0.5; t < 100; t += 0.5) {
-        const glm::dvec3 q = eye + ray * t;
-        const uint8_t type = blockType((int32_t)std::floor(q.x), (int32_t)std::floor(q.y), (int32_t)std::floor(q.z));
-        if (type != worldgen::AIR && type != worldgen::WATER) {
-            target = q;
-            break;
-        }
+    // Controller aim contract §3: the aim point from the camera ray and the creature pick, the
+    // close spell's held point, then the free-control write of the aim (record field 26).
+    {
+        static const visibility::RecordLookup noRecords = [](int32_t, int32_t, const visibility::RecordVisitor &) {};
+        const visibility::Scene scene{[&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); },
+                                      records ? *records : noRecords};
+        const controller_aim::CameraState cameraState{camera.direction(), camera.followAnchor(), camera.eyeFixed(),
+                                                      camera.rebaseOrigin(), camera.view()};
+        const camera_view::Fixed3 me{state.position[0], state.position[1], state.position[2]};
+        controller_aim::AimPoint aim = controller_aim::aimPoint(cameraState, me, fighter, candidates, scene);
+        hovered = aim.hovered;
+        controller_aim::freezeSpellPoint(aim.point, spellPoint, fighter, milliseconds);
+        fighter.aim = state.look = controller_aim::freeAim(shift, yaw, aim.point, me);
     }
-    fighter.aim = glm::vec3(target - me); // record field 26, what projectiles fly towards
     // Pets §7.1: with pet food in the Pet slot the player holds it out (action 82) half a second
     // after the last action ends, unless busy or holding the right button.
     {

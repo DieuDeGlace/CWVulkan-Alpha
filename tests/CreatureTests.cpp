@@ -10,6 +10,7 @@
 #include "creatures/Abilities.h"
 #include "creatures/Appearance.h"
 #include "creatures/Combat.h"
+#include "creatures/ControllerAim.h"
 #include "creatures/Crafting.h"
 #include "creatures/Skills.h"
 #include "creatures/Spirits.h"
@@ -2167,6 +2168,88 @@ int main() {
                 world.step(16, {}, nullptr, air, [] { return 0; }, fx);
             same(world.list.size(), 0, "the arrow times out after 313 steps");
         }
+    }
+
+    // Controller aim contract (alpha-controller-aim-writers.md).
+    {
+        namespace ca = controller_aim;
+        Combatant me;
+        me.id = 1;
+        me.controller = 0;
+        // §4: the flags block. Idle (action 0, R0 100): face-aim and walking for 300 ms.
+        me.action = 0;
+        me.actionMs = 299;
+        uint32_t m = ca::flags(RUN, me, {});
+        same((m & AIMING) != 0 && !(m & RUN), 1, "idle under R0+200: face-aim set, bit 0x40 cleared");
+        me.actionMs = 301;
+        m = ca::flags(AIMING, me, {});
+        same(!(m & AIMING) && (m & RUN) != 0, 1, "idle past R0+200: face-aim cleared, running");
+        me.actionMs = 50;
+        m = ca::flags(0, me, {true, true});
+        same(!(m & AIMING) && !(m & RUN) && (m & CLIMB) != 0, 1, "Left Shift: no face-aim, walking; Left Ctrl: bit 0x01");
+        me.action = 0x22; // excluded
+        m = ca::flags(0, me, {});
+        same(!(m & AIMING) && (m & RUN) != 0, 1, "an excluded action keeps the face-aim bit clear");
+        me.action = 0x1C, me.actionMs = 100000; // sustained
+        same((ca::flags(0, me, {}) & AIMING) != 0, 1, "a sustained action keeps the face-aim bit past R0+200");
+        me.action = 0x58, me.actionMs = 0;
+        m = ca::flags(RUN, me, {});
+        same(!(m & AIMING) && !(m & RUN), 1, "action 0x58: no face-aim, but bit 0x40 cleared");
+        me.action = 0, me.actionMs = 5000;
+        same((ca::flags(0, me, {false, false, true, false}) & RUN) == 0 && (ca::flags(0, me, {false, false, true, true}) & RUN) != 0,
+             1, "gliding route: bit 0x40 is the lift");
+
+        // §3.4: free control.
+        const ca::Fixed3 at{10 << 16, 20 << 16, 3 << 16};
+        const glm::vec3 offset = ca::freeAim(false, 0, {13 << 16, 16 << 16, 3 << 16}, at);
+        same(offset.x == 3 && offset.y == -4 && offset.z == 0, 1, "free aim: the offset to the aim point");
+        const glm::vec3 forward = ca::freeAim(true, 90, {}, at);
+        same(forward.x, -1, "Left Shift aim: forward of yaw 90, x", 1e-6);
+        same(forward.y, 0, "Left Shift aim: forward of yaw 90, y", 1e-6);
+
+        // §3.2: the pick. A view looking along +y from the origin (view x = x, y = z, depth = y).
+        ca::CameraState cam;
+        cam.forward = {0, 1, 0};
+        cam.view = camera_view::identity();
+        cam.view[1] = {0, 0, 1, 0};
+        cam.view[2] = {0, 1, 0, 0};
+        const visibility::Scene empty{[](int32_t, int32_t, int32_t) { return uint8_t(0); },
+                                      [](int32_t, int32_t, const visibility::RecordVisitor &) {}};
+        Combatant ahead, behind, aside, friendly;
+        ahead.id = 2, ahead.controller = 1;
+        behind.id = 3, behind.controller = 1;
+        aside.id = 4, aside.controller = 1;
+        friendly.id = 5, friendly.controller = 3;
+        const auto fixed = [](double x, double y, double z) {
+            return ca::Fixed3{int64_t(x * 65536), int64_t(y * 65536), int64_t(z * 65536)};
+        };
+        const ca::Fixed3 player = fixed(0, -2, 0);
+        me.action = 0, me.actionMs = 0;
+        const std::vector<ca::Candidate> crowd = {{&behind, fixed(0, -20, 0), glm::vec3(1)},
+                                                   {&aside, fixed(10, 20, 0), glm::vec3(1)},
+                                                   {&ahead, fixed(0, 20, 0), glm::vec3(1)}};
+        const ca::AimPoint picked = ca::aimPoint(cam, player, me, crowd, empty);
+        same(picked.hovered, 2, "the pick hovers the creature on the screen centre, not behind or aside");
+        same(picked.point == fixed(0, 20, 0), 1, "the aim point moves to its depth from the eye");
+        const float L = visibility::trace(cam.anchor, {0, 1, 0}, 60.f, 0, 1, empty);
+        const ca::Fixed3 rayPoint = L >= 0.f ? camera_view::toFixed(glm::vec3(0, L, 0)) : fixed(0, 100, 0);
+        const std::vector<ca::Candidate> calm = {{&friendly, fixed(0, 20, 0), glm::vec3(1)}};
+        const ca::AimPoint unpicked = ca::aimPoint(cam, player, me, calm, empty);
+        same(unpicked.hovered == 5 && unpicked.point == rayPoint, 1, "an unadmitted creature is hovered but keeps the ray point");
+        const ca::AimPoint behindPlayer = ca::aimPoint(cam, fixed(0, 30, 0), me, crowd, empty);
+        same(behindPlayer.point == rayPoint, 1, "a creature behind the player along the view does not move the aim");
+
+        // §3.2: the close spell's point is held once clock - elapsed passes the wind-up.
+        me.action = 0x1E;
+        const float B = float(phases(me, 0x1E).windUp);
+        ca::Fixed3 held{}, point = fixed(1, 1, 1);
+        me.actionMs = B;
+        ca::freezeSpellPoint(point, held, me, 16);
+        same(held == fixed(1, 1, 1), 1, "spell point stored up to the wind-up");
+        point = fixed(2, 2, 2);
+        me.actionMs = B + 17;
+        ca::freezeSpellPoint(point, held, me, 16);
+        same(point == fixed(1, 1, 1), 1, "spell point held after the wind-up");
     }
 
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

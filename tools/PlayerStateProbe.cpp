@@ -38,6 +38,16 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
     auto &body = player.body();
     const std::array<bool, 2> noMouse{};
 
+    // Controller aim contract §4: at idle clock 0 (under R0 + 200 = 300 ms) the flags block
+    // sets the face-aim bit and clears bit 0x40.
+    actor.action = 0;
+    actor.actionMs = 0;
+    actor.mode = 0xa620;
+    body.mode = creatures::CLIMB;
+    player.readInput(window, 20, false, nullptr, &noMouse);
+    require(actor.mode == 0xa624 && body.mode == actor.mode, "Idle clock 0 did not set face-aim and walking");
+    // Past 300 ms of idle the bits are as the keys leave them.
+    actor.actionMs = 1000;
     actor.mode = 0xa620;
     body.mode = creatures::CLIMB;
     player.readInput(window, 20, false, nullptr, &noMouse);

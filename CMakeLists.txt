@@ -157,6 +157,7 @@ add_library(engine STATIC
     src/creatures/Particles.cpp
     src/creatures/Physics.cpp
     src/creatures/Visibility.cpp
+    src/creatures/ControllerAim.cpp
     src/creatures/TargetSelection.cpp
     src/creatures/ActorCreation.cpp
     src/creatures/DescriptorRefresh.cpp

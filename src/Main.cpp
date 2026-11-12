@@ -2371,8 +2371,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     applyReceivedRelationships();
                     simulationInputFrames++;
                     const std::array<bool, 2> mouseButtons{input.pointerButtons.held(0), input.pointerButtons.held(1)};
+                    // Controller aim contract §3.2: the creatures the aim may pick, at their +0x1350
+                    // point (offline the follow point; online the received position).
+                    std::vector<Player::AimCandidate> aimCandidates;
+                    if (!client.connected())
+                        for (const creatures::Npc &n : npcs.all())
+                            aimCandidates.push_back({&n.fighter, {n.body.follow[0], n.body.follow[1], n.body.follow[2]}, n.body.size});
+                    for (const auto &[id, record] : receivedActors)
+                        aimCandidates.push_back({&otherFighters[id].fighter,
+                                                 {record.position(0), record.position(1), record.position(2)},
+                                                 record.appearance().box});
                     player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
-                                      interface.mapOpen ? nullptr : &pad, &mouseButtons);
+                                      interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates);
                     updatePlayerInterface();
                     publishPlayerEffects();
                     // Held initial-state contract: the front-end rotation assigns

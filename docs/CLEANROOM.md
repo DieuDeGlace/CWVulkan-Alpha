@@ -1648,3 +1648,42 @@ sections 3.1 and 3.6:
 Not implemented: beam mana handling, the creature-map iteration order, the
 id at +0x11C0, the clock rescale by query 0x047700, the water-cloud shot, and
 the +0x74 reset.
+
+### Round 7 contracts and the controller aim (2026-11-12)
+
+Round 7's source authors held three contracts, each read whole and hash-verified
+before use:
+
+- `alpha-controller-aim-writers.md` (SHA-256 2DAAF0AC...7E25);
+- `alpha-combat-beam-leftovers.md` (SHA-256 509516200A...E6AD);
+- `alpha-fatal-disposal-callers.md` (SHA-256 BE8E01FA...9CB).
+
+The new `creatures/ControllerAim` module implements the controller aim contract,
+and the player's input phase calls it after the frame's world calls and before
+the attack input, as in the original update:
+
+- **Aim ray:** 100 units along the unshaken camera forward from the follow
+  anchor, or the end of a 60-unit ray from that anchor.
+- **Creature pick:** the nearest admitted creature whose size+1 box straddles
+  the screen centre, taken at its depth from the eye when in front of the
+  player. The hovered creature is kept as well.
+- **Close spell:** actions 0x1E-0x21 hold their aim point once clock minus
+  elapsed passes the wind-up.
+- **Free control:** with Left Shift the aim is the forward of the yaw. Otherwise
+  it is the float offset to the aim point, written to both the record aim and
+  the body's look.
+- **Flags block:** the face-aim bit is cleared, then set again for
+  non-excluded actions under R0+200 and for the sustained list, with bit 0x40
+  cleared alongside; Left Ctrl sets bit 0x01. The whole block is skipped while
+  stunned.
+
+Engine adapters, named in the module header:
+
+- the pick's visibility maximum is 200 (the original derives it from a column
+  query);
+- the creature +0x1180 adjustment is zero;
+- the projection is treated as sign-preserving;
+- hostility stands in for admission.
+
+Not implemented: the target-id write for action 0x22, and the head-pitch pose
+sites.
