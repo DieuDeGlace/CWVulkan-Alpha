@@ -1563,3 +1563,12 @@ open there: the per-selector evaluator, the owner +0x58 rotations of the hand
 and held-weapon matrices (no engine field mapping), the selector 0x33/0x34
 swing factor (helper 0x0C6B80 unclosed), the lean condition's native inputs,
 and the blend's repeat count in place of the engine's elapsed-time weight.
+
+Cast points (2026-11-12): implemented from the held `alpha-combat-cast-points.md`
+(SHA-256 d8bf7afa...dacd) and `alpha-created-actor-combat.md` sections 6.4(b)
+and 6.4(e) only. The engine's cast point starts at zero where native storage
+is unestablished; the client controller's local-actor latch, airship riders and
+the second carried-pet pass are not implemented. Round 6 also held
+`alpha-combat-aim-triplet.md` (fef0ed13...da22) and `alpha-combat-approach-path.md`
+(a480a566...d1b6); the latter's author made a final wording edit after the full
+readback and before the status line.

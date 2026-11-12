@@ -1443,3 +1443,16 @@ at the hands' midpoint 8 higher. A CreatureTests case checks the carried
 sword and staff directions at 45 degrees. All 60 CTests pass, the player
 diagnostic and the five live runs pass, and the six captures show the sword
 hilt-up over the shoulder.
+
+Cast points (2026-11-12), from the held `alpha-combat-cast-points.md`. Bodies
+carry a fixed-point follow point, zero at construction, set to the position
+after each live creature's step (a carried pet takes its owner's follow point
+plus the binary32 height offset, its position likewise in fixed point) and,
+as an engine adapter for their place in the actor order, after the update for
+live players. During actions 0x1E-0x21 a magic user copies its target's follow
+point into its cast point while (clock - step) is at most the anticipation
+time, and aims at the held cast point afterwards. The type-118 beam (0x5F)
+aims from routine 0x046BB0's offset point whenever that action is current. A
+CreatureTests case latches a displaced follow point and checks the held aim.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.

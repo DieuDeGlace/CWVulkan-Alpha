@@ -960,6 +960,34 @@ bool Npcs::createdCompanion(Npc &npc, std::span<PlayerView> players, int32_t ste
     return handled;
 }
 
+namespace {
+// The separation conversion: a fixed-point difference to binary32, then times 2^-16.
+glm::vec3 separationOf(const int64_t to[3], const int64_t from[3]) {
+    glm::vec3 out;
+    for (int k = 0; k < 3; k++)
+        out[k] = (float)std::bit_cast<int64_t>(uint64_t(to[k]) - uint64_t(from[k])) * std::bit_cast<float>(0x37800000u);
+    return out;
+}
+
+// Cast-point contract §4 (routine 0x046BB0): the subject's position, or with appearance bit
+// 0x04 a point half its width ahead of it at 0.35 of its height, added in fixed point.
+std::array<int64_t, 3> offsetPoint(const Body &body, float yaw, uint16_t flags) {
+    std::array<int64_t, 3> point{body.position[0], body.position[1], body.position[2]};
+    if (!(flags & 0x04))
+        return point;
+    const float a = yaw * std::bit_cast<float>(0x3C8EFA35u);
+    const float cosine = (float)std::cos((double)a);
+    const float sine = (float)std::sin((double)a);
+    const float h = body.size.y * 0.5f, v = body.size.z * std::bit_cast<float>(0x3EB33333u);
+    const float offset[3] = {-(h * sine), h * cosine, v};
+    for (int k = 0; k < 3; k++)
+        point[(size_t)k] = std::bit_cast<int64_t>(uint64_t(point[(size_t)k]) + uint64_t((int64_t)(offset[k] * 65536.f)));
+    return point;
+}
+}
+
+void setFollowPoint(Body &body) { std::copy(body.position, body.position + 3, body.follow); }
+
 // §13.2
 bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame) {
     Combatant &c = npc.fighter;
@@ -1162,8 +1190,17 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     // the weapon rules).
     const bool golem = c.type == 47 || (c.type >= 111 && c.type <= 113);
     if (c.type == 116 || c.type == 118 || c.type == 119 || golem) {
-        if (!actionOver(c))
+        // Held contract §6.4(b) step 2, whether or not a new action was drawn: the type-118
+        // beam (0x5F) aims at the target from the offset point (cast-point contract §4).
+        const auto beamAim = [&] {
+            if (c.type == 118 && c.action == 0x5F) {
+                const std::array<int64_t, 3> from = offsetPoint(npc.body, npc.yaw, npc.looks.flags);
+                npc.body.look = separationOf(target.body->position, from.data());
+            }
             return true;
+        };
+        if (!actionOver(c))
+            return beamAim();
         std::vector<int32_t> pool;
         if (c.type == 116) {
             pool = {69, 74, 73};
@@ -1195,7 +1232,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             npc.body.velocity = 2.f * glm::vec3(toTarget);
             npc.body.velocity.z = 15;
         }
-        return true;
+        return beamAim();
     }
     // §1.7: a dragon (no magic user) casts between 8 and 60 blocks; closer it leaps or lunges.
     if (c.type == 101 && !isMagicUser(c)) {
@@ -1233,9 +1270,19 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
             startPrimaryAttack(c);
         else
             startSecondaryAttack(c);
-        // Held contract §6.4(e) step 4: a beam (action 28) beyond five blocks sweeps its
-        // aim in a 1.5-block circle with the action clock. (Step 3's latched cast point
-        // for actions 30-33 waits on producers the contract leaves open.)
+        // Held contract §6.4(e) step 3 with the cast-point contract §1.1: during actions
+        // 0x1E-0x21, until (clock - step) passes the anticipation time, the cast point
+        // latches the target's follow point; after that the aim is the held point.
+        if (c.action >= 0x1E && c.action <= 0x21) {
+            const int32_t B = phases(c, c.action).windUp;
+            const int32_t past = std::bit_cast<int32_t>(uint32_t(int32_t(c.actionMs)) - uint32_t(int32_t(dtMs)));
+            if (past > B)
+                npc.body.look = separationOf(npc.castPoint, npc.body.position);
+            else
+                std::copy(target.body->follow, target.body->follow + 3, npc.castPoint);
+        }
+        // Step 4: a beam (action 28) beyond five blocks sweeps its aim in a 1.5-block
+        // circle with the action clock.
         if (c.action == 28 && d2 > 25.f) {
             const float angle = float(c.actionMs) * std::bit_cast<float>(0x3ba3d70au); // 0.005
             const float cosine = float(std::cos(double(angle)));
@@ -2035,15 +2082,32 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             npc.yaw = yawToward(glm::vec2(npc.body.intent));
         // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher
         // than their shared floor, turned as the owner.
+        // Cast-point contract §2.2 step 3: the follow point is the position after the step,
+        // or for the carried pet the owner's follow point plus the same fixed offset.
+        bool carried = false;
         if (c.controller == 5)
             for (const PlayerView &p : players)
                 if (p.fighter.id == npc.fighter.ownerId && p.fighter.action == 106) {
-                    npc.body.place(p.body.blocks() + glm::dvec3(0, 0, 0.5 * npc.body.size.z - 0.5 * p.body.size.z + 0.01));
+                    const float z = (npc.body.size.z * 0.5f - p.body.size.z * 0.5f) + std::bit_cast<float>(0x3C23D70Au);
+                    const uint64_t lift = uint64_t((int64_t)(z * 65536.f));
+                    for (int k = 0; k < 3; k++) {
+                        const uint64_t add = k == 2 ? lift : 0;
+                        npc.body.position[k] = std::bit_cast<int64_t>(uint64_t(p.body.position[k]) + add);
+                        npc.body.follow[k] = std::bit_cast<int64_t>(uint64_t(p.body.follow[k]) + add);
+                    }
                     npc.body.velocity = npc.body.intent = glm::vec3(0);
                     npc.yaw = p.yaw;
+                    carried = true;
                 }
+        if (!carried)
+            setFollowPoint(npc.body);
     }
 
+    // Cast-point contract §2.2 step 3 for players, whose own steps run outside this pass
+    // (engine adapter for their place in the actor order): the position after this update.
+    for (const PlayerView &p : players)
+        if (p.fighter.health > 0)
+            setFollowPoint(p.body);
     actorPassActive = false;
     actorLookupActive = false; // later corpse removal can move deque elements
     // §9.4, §12.3, server §6.2: deaths. At the moment of death the spawn's countdown starts and

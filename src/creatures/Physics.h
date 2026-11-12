@@ -45,6 +45,9 @@ using IgnoredStatics = std::set<StaticRef>;
 
 struct Body {
     int64_t position[3] = {0, 0, 0}; // centre of the box, 1/65536 blocks
+    // Cast-point contract §2: the follow point (object +0x1350), zero at construction and
+    // set after each world step of a live actor; combat copies a target's into its cast point.
+    int64_t follow[3] = {0, 0, 0};
     glm::vec3 velocity{0}, intent{0}, push{0};
     glm::vec3 separate{0}; // §4.4: the push from overlapping creatures this frame, blocks/s
     glm::vec3 size{0.96f, 0.96f, 2.16f}; // collision box, blocks

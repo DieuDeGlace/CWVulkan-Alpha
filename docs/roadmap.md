@@ -173,7 +173,10 @@ Differences from the Steam engine that shape the plan:
   companion and wander in order. The bounded selection, companion caller and
   third-child counter/draw relations are implemented; later combat, wider endpoint
   producers, universal reference initialization and complete
-  native scheduling/gameplay acceptance remain open.
+  native scheduling/gameplay acceptance remain open. The held cast-point
+  contract now drives the close-spell cast-point latch, the follow point and
+  the type-118 beam's offset aim point; the held aim-triplet and approach/path
+  contracts await their implementation passes.
 - [x] Bounded companion direct-route geometry: private raw-coordinate simulation
   retains proximity, budget, terrain/raised-box query order, directional record
   tests and progress-only success. Resident spatial buckets use one center-selected

@@ -1292,6 +1292,56 @@ int main() {
         }
         same(collie->fighter.hasBuff(8), 1, "the creature is pacified");
     }
+    // Cast-point contract §1.1, §2.2: during a close spell (0x1E-0x21) a magic user latches its
+    // target's follow point while (clock - step) <= the anticipation time, then aims at it.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.type = 4, s.level = 1; // the hunting fixture's creature
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({270.5, 10.5, 1 + 1.08 + 0.01});
+        Npcs npcs;
+        npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+        Npc *mage = npcs.npcs().empty() ? nullptr : &npcs.npcs().front();
+        same(mage != nullptr, 1, "the cast-point fixture spawns its creature");
+        if (mage) {
+            mage->fighter.characterClass = 3;
+            mage->fighter.mana = 1;
+            for (int i = 0; i < 1500 && mage->target != me.id; i++)
+                npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+            same(mage->target, 1, "the magic user targets the player");
+            bool latched = false, held = false;
+            const int64_t sentinel[3] = {body.position[0] + (5ll << 16), body.position[1], body.position[2]};
+            for (int i = 0; i < 400 && !(latched && held); i++) {
+                const bool late = latched;
+                if (!late) {
+                    std::copy(sentinel, sentinel + 3, body.follow);
+                    mage->fighter.action = 30, mage->fighter.actionMs = 0;
+                } else {
+                    mage->fighter.action = 30;
+                    mage->fighter.actionMs = (float)phases(mage->fighter, 30).windUp + 40;
+                }
+                npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+                if (!late && mage->castPoint[0] == sentinel[0])
+                    latched = true;
+                if (late && mage->fighter.action == 30 && mage->target == me.id) {
+                    const float dx = (float)(mage->castPoint[0] - mage->body.position[0]) / 65536.f;
+                    held = std::fabs(mage->body.look.x - dx) < 1e-3f;
+                }
+            }
+            same(latched, 1, "the cast point copies the target's follow point");
+            same(held, 1, "past the anticipation time the aim is the held cast point");
+            same(body.follow[0], body.position[0], "a live player's follow point is its position after the update");
+        }
+    }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,
     // comes when called from afar, and returns 20 s after dying.
     {

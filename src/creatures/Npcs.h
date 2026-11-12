@@ -76,6 +76,9 @@ struct Npc {
     int32_t bites = 0;
     float tameProgress = 0, tameMs = 0;
     uint64_t tamer = 0;
+    // Cast-point contract §1.1: the latched cast point (object +0x1320), fixed point. Never
+    // set at construction natively (allocation contents); zero here.
+    int64_t castPoint[3] = {0, 0, 0};
 
     // §13: behaviour state.
     float thinkMs = 0;         // accumulated until a decision (every ≥ 32 ms)
