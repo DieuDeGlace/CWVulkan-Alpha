@@ -15,8 +15,6 @@ namespace {
 
 constexpr int PET_SLOT = 12;
 
-float yawTo(glm::vec2 d) { return (float)(std::atan2(-d.x, d.y) * 180.0 / 3.141592653589793); }
-
 } // namespace
 
 bool rideable(int32_t type) {
@@ -196,7 +194,8 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
     }
 }
 // §10.2: Companion: run when far, heal 10 % a second out of combat, walk up to the owner.
-bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block) {
+bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block,
+                     const worldgen::WorldMap &map) {
     const Body *owner = nullptr;
     for (const PlayerView &p : players)
         if (p.fighter.id == followed)
@@ -215,8 +214,9 @@ bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &playe
         return false;
     // Path search §3: when the straight route is blocked, search toward the ground under the
     // owner (the first solid block within 21 down, then the first open cell within 21 up).
-    if (!clearRoute(pet.body.size, pet.body.swimmer, pet.body.blocks(), owner->blocks(), pet.body.size.x + owner->size.x,
-                    block, objects)) {
+    // The straight-route test is the held direct walk (approach contract §6), as for the
+    // created companion; the rest of this older companion remains an engine adapter.
+    if (!directApproach(pet, *owner, pet.body.size.x + owner->size.x, map)) {
         const glm::dvec3 o = owner->blocks();
         const int32_t gx = (int32_t)std::floor(o.x), gy = (int32_t)std::floor(o.y);
         int32_t gz = (int32_t)std::floor(o.z);
@@ -238,8 +238,7 @@ bool Npcs::companion(Npc &pet, uint64_t followed, std::vector<PlayerView> &playe
     glm::vec3 intent(5 * (float)d.x, 5 * (float)d.y, 0);
     if (glm::length(intent) > 30)
         intent = 30.f * glm::normalize(intent);
-    pet.body.intent = intent;
-    pet.yaw = yawTo(glm::vec2(d));
+    pet.body.intent = intent; // facing follows the movement (aim contract §3.7)
     return true;
 }
 

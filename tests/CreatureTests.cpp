@@ -989,16 +989,11 @@ int main() {
         same(inContact({0.96f, 0.96f, 2.16f}, {0, 0, 0}, {0.96f, 0.96f, 2.16f}, {2.5, 0, 0}), 1, "2.5 blocks is in contact");
         same(inContact({0.96f, 0.96f, 2.16f}, {0, 0, 0}, {0.96f, 0.96f, 2.16f}, {2.7, 0, 0}), 0, "2.7 is not");
     }
-    // Path search §2.1: open ground, a one-block ledge and a two-block wall.
+    // Path search §5: the search on flat ground from (0, 0, 10) to (3, 2, 10). (The direct
+    // walk is covered by RouteGeometryTests against the held approach contract.)
     {
         const glm::vec3 box(0.96f, 0.96f, 2.16f);
         auto flat = [](int32_t, int32_t, int32_t z) -> uint8_t { return z <= 9 ? 1 : 0; };
-        same(clearRoute(box, false, {0.5, 0.5, 11.08}, {10.5, 0.5, 11.08}, 2.88f, flat), 1, "open ground is clear");
-        auto ledge = [](int32_t x, int32_t, int32_t z) -> uint8_t { return z <= 9 || (z == 10 && x >= 103) ? 1 : 0; };
-        same(clearRoute(box, false, {100.5, 100.5, 11.08}, {106.5, 100.5, 12.08}, 2.88f, ledge), 1, "a one-block ledge");
-        auto wall = [](int32_t x, int32_t, int32_t z) -> uint8_t { return z <= 9 || ((z == 10 || z == 11) && x >= 103) ? 1 : 0; };
-        same(clearRoute(box, false, {100.5, 100.5, 11.08}, {106.5, 100.5, 13.08}, 2.88f, wall), 0, "a two-block wall is not");
-        // §5: the search on flat ground from (0, 0, 10) to (3, 2, 10).
         PathSearch search;
         search.start({0.5, 0.5, 10.1}, {3.5, 2.5, 10.1}, 2, box);
         search.round(box, flat);
@@ -1407,6 +1402,50 @@ int main() {
                 dropped = path.records.empty() && path.path.empty();
             }
             same(dropped, 1, "a clear direct walk drops the search");
+        }
+    }
+    // Aim-triplet contract §3.7, §3.8: an aiming creature turns toward its drawn aim at rate 0.1
+    // per millisecond (16 ms closes about 81% of a small gap) instead of snapping to it.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.type = 4, s.level = 1;
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({268.4, 10.5, 1 + 1.08 + 0.01});
+        Npcs npcs;
+        const auto step = [&] { return npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor); };
+        step();
+        Npc *turner = npcs.npcs().empty() ? nullptr : &npcs.npcs().front();
+        same(turner != nullptr, 1, "the facing fixture spawns its creature");
+        if (turner) {
+            turner->fighter.characterClass = 1;
+            for (int i = 0; i < 1500 && !(turner->target == me.id && (turner->body.mode & AIMING)); i++)
+                step();
+            same((turner->body.mode & AIMING) != 0, 1, "the creature in reach aims at the player");
+            const auto heading = [&] {
+                const glm::vec3 d = turner->drawnLook;
+                return float(std::atan2(-double(d.x), double(d.y)) * 180.0 / 3.141592653589793);
+            };
+            const auto gap = [&] {
+                float g = turner->yaw - heading();
+                while (g > 180) g -= 360;
+                while (g < -180) g += 360;
+                return std::fabs(g);
+            };
+            turner->yaw = heading() + 60;
+            step();
+            same(gap() > 5 && gap() < 20, 1, "one 16 ms update closes most, not all, of a 60 degree gap");
+            for (int i = 0; i < 60; i++)
+                step();
+            same(gap() < 2, 1, "the creature ends up facing its drawn aim");
         }
     }
     // Pets §9.3, §10.2, §13, §11.1: a pet item in the slot makes a pet at the player that follows,

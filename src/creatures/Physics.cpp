@@ -266,11 +266,21 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         S *= 0.5f;
     if (b.hastened)
         S *= 1.5f;
-    // Walking away from where it aims slows a fighter: straight back halves the limit.
+    // Aim-triplet contract §3.9: walking away from the aim slows a fighter (straight back
+    // halves the limit). Both vectors are normalized precisely in two dimensions.
     if ((b.mode & AIMING) && b.dodgeMs < 1 && !((b.action == 50 || b.action == 96) && t <= 1000)) {
-        const glm::vec2 aim(b.look), v(b.velocity);
-        if (glm::dot(aim, aim) > 0 && glm::dot(v, v) > 0 && glm::dot(aim, v) < 0)
-            S *= 1 + 0.5f * glm::dot(glm::normalize(aim), glm::normalize(v));
+        glm::vec2 aim(b.look), v(b.velocity);
+        if (v.y * aim.y + v.x * aim.x < 0.f) {
+            const auto normalize = [](glm::vec2 &value) {
+                const float squared = value.x * value.x + value.y * value.y;
+                const float inverse = 1.f / float(std::sqrt(double(squared)));
+                value = {value.x * inverse, value.y * inverse};
+            };
+            normalize(aim);
+            normalize(v);
+            const float dot = v.y * aim.y + v.x * aim.x;
+            S *= dot * 0.5f + 1.f;
+        }
     }
     // §3.3: a melee lunge with nobody in reach surges along the facing (no dt factor); the cap
     // then holds it at S.

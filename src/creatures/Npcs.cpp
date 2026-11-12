@@ -4,6 +4,7 @@
 #include "creatures/TargetSelection.h"
 #include "creatures/CreatedBehavior.h"
 #include "creatures/DescriptorEquipment.h"
+#include "creatures/CameraView.h"
 #include <cassert>
 #include <bit>
 #include "BlockEdits.h"
@@ -850,7 +851,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
         return;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
         if (!combat(npc, dtMs, players, block, frame, map))
-            companion(npc, npc.fighter.ownerId, players, dtMs, block);
+            companion(npc, npc.fighter.ownerId, players, dtMs, block, map);
         return;
     }
     if (npc.behaviour == 7) { // created root: retry Combat, Companion, Wander in that order
@@ -886,7 +887,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     if (npc.behaviour == 2 || npc.behaviour == 3) {
         if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players))
             return;
-        if (npc.behaviour == 3 && companion(npc, npc.follows, players, dtMs, block))
+        if (npc.behaviour == 3 && companion(npc, npc.follows, players, dtMs, block, map))
             return;
         if (!walkPath(npc, dtMs, block))
             randomWalk(npc, dtMs);
@@ -987,6 +988,34 @@ std::array<int64_t, 3> offsetPoint(const Body &body, float yaw, uint16_t flags) 
     for (int k = 0; k < 3; k++)
         point[(size_t)k] = std::bit_cast<int64_t>(uint64_t(point[(size_t)k]) + uint64_t((int64_t)(offset[k] * 65536.f)));
     return point;
+}
+
+constexpr double PI64 = 3.141592653589793;
+
+// Aim-triplet contract §3.7 step 1: the heading of a nonzero horizontal vector, normalized
+// precisely (binary64 square root rounded), y clamped, arccosine rounded to binary32.
+float headingOf(float x, float y) {
+    const float squared = x * x + y * y;
+    const float inverse = 1.f / float(std::sqrt(double(squared)));
+    x = x * inverse;
+    y = std::clamp(y * inverse, -1.f, 1.f);
+    const float angle = float(std::acos(double(y)));
+    const float signedAngle = x > 0 ? -angle : angle;
+    return float(double(signedAngle) / PI64 * 180.0);
+}
+
+// Routine 0x023F70: `from` turned toward `to` by at most a quarter turn (larger differences fold).
+float interpolateAngle(float from, float to, float factor) {
+    const double a = double(from) / 180.0 * PI64, b = double(to) / 180.0 * PI64;
+    const double sa = double(float(std::sin(a))), ca = double(float(std::cos(a)));
+    const double sb = double(float(std::sin(b))), cb = double(float(std::cos(b)));
+    const double s = std::clamp(sb * ca - cb * sa, -1.0, 1.0);
+    return float(double(from) + std::asin(s) * (double(factor) * 180.0 / PI64));
+}
+
+// "Blended over the step at rate r": the held camera recurrence, one approach per millisecond.
+float approach(float value, float target, int32_t step, float rate) {
+    return camera_view::blend(value, target, camera_view::weight(step, rate));
 }
 }
 
@@ -1121,8 +1150,6 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         const float speed = reachSquared * 4.f > steerLength ? 40.f : 80.f;
         for (int axis = 0; axis < 3; axis++)
             npc.body.intent[axis] = steer[axis] * speed;
-        // Engine facing adapter: the far route itself writes no facing (aim contract §3.7/3.8 open).
-        npc.yaw = yawToward(glm::vec2(toTarget));
         if (seen && directApproach(npc, *target.body, R, map) && !(npc.body.contact & STUCK)) {
             npc.path.clear();
             return true;
@@ -1165,12 +1192,11 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         return true;
     }
 
-    // In range: it faces the target and aims at it (flag 0x04, field 26).
-    // Held created-actor combat contract, near prefix: clear the give-up
-    // counter, clear the path, then zero the movement.
+    // In range: it aims at the target (flag 0x04, field 26); the facing turn follows the
+    // drawn aim after movement (aim contract §3.7). Held created-actor combat contract,
+    // near prefix: clear the give-up counter, clear the path, then zero the movement.
     npc.chaseMs = 0;
     npc.path.clear();
-    npc.yaw = yawToward(glm::vec2(toTarget));
     npc.body.intent = glm::vec3(0);
     // Pets §7.3: fed by a player holding out its food: up to five bites (action 110), then, if
     // still not tamed, pacified for 20 s. Held created-actor combat contract §6.2: an owned
@@ -1473,26 +1499,27 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     return true;
 }
 
-// §13.3: face the nearest living player within 8 blocks.
+// Aim-triplet contract §2.2 (0x0C8140): aim at the nearest player with health not below zero
+// whose binary32 squared separation is strictly below 64 (ties keep the earlier one).
 bool Npcs::lookAtPlayer(Npc &npc, std::vector<PlayerView> &players) {
     const PlayerView *nearest = nullptr;
-    double best = 64;
+    glm::vec3 offset{0};
+    float best = 64.f;
     for (const PlayerView &p : players) {
         if (p.fighter.health < 0)
             continue;
-        const glm::dvec3 d = p.body.blocks() - npc.body.blocks();
-        if (glm::dot(d, d) < best)
-            best = glm::dot(d, d), nearest = &p;
+        const glm::vec3 d = separationOf(p.body.position, npc.body.position);
+        const float squared = (d.y * d.y + d.x * d.x) + d.z * d.z;
+        if (squared < best)
+            best = squared, nearest = &p, offset = d;
     }
-    if (!nearest)
+    npc.body.mode &= ~AIMING;
+    if (!nearest || npc.fighter.action == 83 || npc.fighter.action == 84)
         return false;
-    if (npc.fighter.action == 83 || npc.fighter.action == 84)
-        return false;
-    npc.yaw = yawToward(glm::vec2(nearest->body.blocks() - npc.body.blocks()));
     npc.body.mode |= AIMING;
-    npc.body.look = glm::vec3(nearest->body.blocks() - npc.body.blocks());
+    npc.body.look = offset;
     npc.body.intent = glm::vec3(0);
-    npc.path.clear(); // (wildlife §4.5: it resumes with a fresh search)
+    npc.path.clear();
     return true;
 }
 
@@ -2121,10 +2148,39 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             frame.bursts.push_back(splashBurst(npc.body.blocks()));
             frame.sounds.push_back({npc.body.blocks(), 31, 0.9f + (float)draw() / 32767.f, 1});
         }
-        if (c.action == 72)
+        // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement. The native
+        // "driven" list is not closed; the engine's action-72 motion stands in for it.
+        const bool driven = c.action == 72;
+        if (driven)
             npc.yaw = npc.body.yaw;
-        if (glm::dot(glm::vec2(npc.body.intent), glm::vec2(npc.body.intent)) > 0 && npc.target == 0)
-            npc.yaw = yawToward(glm::vec2(npc.body.intent));
+        if ((npc.body.mode & AIMING) && c.hitStun <= 0) {
+            const glm::vec3 drawn = npc.drawnLook;
+            if (drawn.x * drawn.x + drawn.y * drawn.y > 0.f && !driven) {
+                const float heading = headingOf(drawn.x, drawn.y);
+                npc.yaw = approach(npc.yaw, interpolateAngle(npc.yaw, heading, 1.f), milliseconds, .1f);
+            }
+            const float squared = (drawn.x * drawn.x + drawn.y * drawn.y) + drawn.z * drawn.z;
+            if (squared > 0.f) {
+                const float inverse = 1.f / float(std::sqrt(double(squared)));
+                const float tilt = float(std::asin(double(drawn.z * inverse)) / PI64 * 180.0);
+                npc.headPitch = approach(npc.headPitch, interpolateAngle(npc.headPitch, tilt, 1.f), milliseconds,
+                                         std::bit_cast<float>(0x3BA3D70Au));
+            }
+        } else if (npc.body.dodgeMs == 0 && !driven) {
+            const glm::vec3 v = npc.body.velocity;
+            const float horizontal = v.x * v.x + v.y * v.y;
+            const float along = (v.x * npc.body.intent.x + v.y * npc.body.intent.y) + v.z * npc.body.intent.z;
+            if (horizontal > std::bit_cast<float>(0x3CA3D70Au) && along > 0.f)
+                npc.yaw = headingOf(v.x, v.y);
+        }
+        {
+            const float share = approach(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
+            for (int axis = 0; axis < 3; axis++)
+                npc.drawnLook[axis] = npc.drawnLook[axis] + (npc.body.look[axis] - npc.drawnLook[axis]) * share;
+            const int32_t recovery = phases(c, c.action).recovery;
+            if (c.action == 0 || c.actionMs == 0 || c.actionMs > recovery)
+                npc.drawnLook = npc.body.look;
+        }
         // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher
         // than their shared floor, turned as the owner.
         // Cast-point contract §2.2 step 3: the follow point is the position after the step,

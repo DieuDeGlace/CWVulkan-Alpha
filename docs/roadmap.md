@@ -176,11 +176,15 @@ Differences from the Steam engine that shape the plan:
   native scheduling/gameplay acceptance remain open. The held cast-point
   contract now drives the close-spell cast-point latch, the follow point and
   the type-118 beam's offset aim point. The held aim-triplet contract drives
-  shot, beam and path aim (facing, smoothing and beam pulse rules remain open).
+  shot, beam and path aim, the look-at rule, facing (yaw and head pitch from the
+  drawn aim, or from movement), drawn-aim smoothing and the walking-away speed
+  limit; beam pulse rules, boomerang steering and the client controller's aim
+  writers remain open.
   The held approach/path contract confirmed the existing search core, rebuild
   and direct-approach walk; the combat far route now uses them with the binary32
   near/far test, contract steering speed, raw lowered endpoints and the strict
-  10-round loop. The follower's unspecified parts and the pets caller remain open.
+  10-round loop. The pets' companion also uses the held direct walk; the older
+  clear-route adapter is removed. The follower's unspecified parts remain open.
 - [x] Bounded companion direct-route geometry: private raw-coordinate simulation
   retains proximity, budget, terrain/raised-box query order, directional record
   tests and progress-only success. Resident spatial buckets use one center-selected

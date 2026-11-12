@@ -79,6 +79,10 @@ struct Npc {
     // Cast-point contract §1.1: the latched cast point (object +0x1320), fixed point. Never
     // set at construction natively (allocation contents); zero here.
     int64_t castPoint[3] = {0, 0, 0};
+    // Aim-triplet contract §3.7, §3.8: the drawn (smoothed) aim the facing turn reads, and the
+    // head pitch (+0x58) it blends. Native initial values are unestablished; zero here.
+    glm::vec3 drawnLook{0};
+    float headPitch = 0;
 
     // §13: behaviour state.
     float thinkMs = 0;         // accumulated until a decision (every ≥ 32 ms)
@@ -390,7 +394,8 @@ class Npcs {
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
     void petPass(std::vector<PlayerView> &players, NpcFrame &frame);
     // Pets §10.2, wildlife §4.7: follow creature `followed`; false when not handled.
-    bool companion(Npc &n, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block);
+    bool companion(Npc &n, uint64_t followed, std::vector<PlayerView> &players, float dtMs, const BlockType &block,
+                   const worldgen::WorldMap &map);
     // Trails spec §4: sit a while on a free seat in sight; false when not handled.
     bool randomInteraction(Npc &n, float dtMs, const BlockType &block);
     // Behaviour §13.5, path search §3: walk to the place of the day's current stop; false

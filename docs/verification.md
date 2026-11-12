@@ -1478,3 +1478,13 @@ radius of both widths and a goal lowered by half the target's height less 0.1.
 After the wall is removed, the direct walk succeeds and the search is cleared.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Facing and drawn aim (2026-11-12), from the held `alpha-combat-aim-triplet.md`
+sections 2.2 and 3.7 to 3.9. A new CreatureTests case turns an aiming creature
+60 degrees off its drawn aim. One 16 ms update leaves a gap between 5 and 20
+degrees: it turns most of the way, and does not snap. Within 60 more updates it
+faces the aim to within 2 degrees. The pets' companion now uses the held direct
+walk, and the removed clear-route adapter's test went with it; the direct walk
+keeps its own RouteGeometryTests coverage. All 60 CTests pass, the player
+diagnostic and five live runs pass, and the six captures match the preceding
+batch.

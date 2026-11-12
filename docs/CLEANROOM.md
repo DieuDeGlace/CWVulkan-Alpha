@@ -1592,6 +1592,23 @@ created at zero before scaling, a request only when the path list is empty and
 the target touches something (raw endpoints lowered by half height less 0.1,
 radius of both widths), and the strict 10-round loop with the 50-node and
 squared-width exits. The older floating-point clear-route adapter is no longer
-used by combat; the pets caller still uses it. Engine adapters retained: the
-far route's facing write (aim contract 3.7/3.8 open). Section 9's follower
+used by combat (the pets caller moved later the same day; see below). The far
+route's interim facing write was removed with the facing work below. Section 9's follower
 leads remain unspecified.
+
+Facing and drawn aim (2026-11-12): implemented from the held
+`alpha-combat-aim-triplet.md` sections 2.2, 3.7, 3.8 and 3.9. Behaviours no
+longer set the yaw directly. After movement, an aiming creature (face-aim bit,
+no stun) turns its yaw toward the drawn aim's heading at rate 0.1 through the
+quarter-turn angle interpolation, and its head pitch toward the drawn aim's
+tilt at rate 0.005. Otherwise, with no lockout, a horizontal speed above 0.02
+and velocity along the movement, the yaw is set to the velocity heading. The
+drawn aim then approaches the aim by the rate-0.025 share, or copies it when
+the action or clock is zero or the clock is past the recovery time. The look-at
+behaviour now uses binary32 squared separation below 64 and clears the bit
+first. The speed limit normalizes precisely. Engine choices recorded: "blended
+over the step" uses the held camera weight recurrence (one approach per
+millisecond); the native "driven" list is open, so the engine's action-72
+motion stands in for it; the drawn aim and head pitch start at zero, and head
+pitch has no pose consumer yet. The pets' companion now uses the held direct
+walk; the floating-point clear-route adapter and its test were removed.

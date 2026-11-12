@@ -3,10 +3,6 @@
 
 namespace creatures {
 
-// Retained block-coordinate clear-route adapter for unverified older callers.
-bool clearRoute(glm::vec3 size, bool swimmer, glm::dvec3 from, glm::dvec3 to, float radius,
-                const BlockType &block, const ObjectTest &objects = {}, const IgnoredStatics *ignored = nullptr);
-
 // Engine services around the held supplied-input search and route consumer.
 class PathSearch {
   public:
