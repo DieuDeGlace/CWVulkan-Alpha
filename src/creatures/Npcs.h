@@ -385,6 +385,11 @@ class Npcs {
     // was touched, sparks at its end, the combo resets and the clock is rescaled.
     void beamTick(Combatant &attacker, const Body &attackerBody, float beforeMs, float dtMs, std::span<PlayerView> players,
                   NpcFrame &frame, const BlockType &block);
+    // Head-pitch-and-pick contract §3.1 (world case 0x214C32): the healing stream (action 0x22).
+    // A wind-up sound every 100 ms, then eight pulses over the active window, each paying its
+    // mana and healing the caster's target id (or the caster) by power x -2 x roll.
+    void healStream(Combatant &caster, const Body &casterBody, float beforeMs, float dtMs, std::span<PlayerView> players,
+                    NpcFrame &frame);
     // An NPC's swing also lands on `npcTarget` when either side is a quest ally.
     void strike(Combatant &attacker, const Body &attackerBody, float yaw, std::span<PlayerView> players,
                 bool byPlayer, NpcFrame &frame, const BlockType &block, uint64_t npcTarget = 0, bool attackerAlly = false);

@@ -1589,6 +1589,10 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     const glm::mat4 lifted = T(T(base, {0, 0, bob}), s.shift);
     const glm::mat4 body = Rx(Ry(Rz(lifted, s.torso.z), s.torso.y), a.bodyPitch + s.torso.x);
     glm::mat4 arm = lifted;
+    // Head-pitch-and-pick §1.4: the arm matrix pitches by twice the head pitch, unless climbing
+    // (flags bit 0x0001 with +0x5C bit 0x04) or the pose selector is 2, 3 or 0x25.
+    if (!m.climbing && pose != 2 && pose != 3 && pose != 0x25)
+        arm = Rx(arm, m.headPitch * 2.f);
     if (m.sitting)
         arm = Rx(arm, 60);
     arm = T(Ry(T(arm, {0, 0, -4}), s.roll.y), {0, 0, 4});
@@ -1648,7 +1652,9 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     head = Ry(head, -s.torso.y);
     head = Rz(head, s.head.z - s.torso.z);
     head = Ry(head, s.head.y);
-    head = Rx(head, s.head.x);
+    // Head-pitch-and-pick §1.3 step 8: (pitch - drawn X rotation) + head angle; the engine's
+    // drawn X rotation is zero (see Motion::headPitch).
+    head = Rx(head, m.headPitch + s.head.x);
     head = T(head, {0, 0, 3});
     part(a.model(Part::Head), head, glm::vec3(a.headScale), centred);
     part(a.model(Part::Hair), head, glm::vec3(a.headScale), centred, false, true);
@@ -1694,11 +1700,11 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
                  glm::vec3(wscale), centred, false, false, c ? &c->mainHand() : nullptr);
         else if (main == BRACELET && f.mainModel != 840)
             // The hand scale, then the bracelet's own 0.6, as two scalings (§8).
-            part(f.mainModel, S(Rzyx(T(arm, Rhand), rho), wscale), glm::vec3(bracelet), mainGrip(f.mainModel), false,
-                 false, c ? &c->mainHand() : nullptr);
-        else
-            part(f.mainModel, Rzyx(T(arm, Rhand), rho), glm::vec3(wscale), mainGrip(f.mainModel), false, false,
-                 c ? &c->mainHand() : nullptr);
+            part(f.mainModel, S(R(Rzyx(T(arm, Rhand), rho), m.headPitch * 0.5f, {1, 0, 0}), wscale), glm::vec3(bracelet),
+                 mainGrip(f.mainModel), false, false, c ? &c->mainHand() : nullptr);
+        else // §1.5: the held branch adds half the head pitch about x
+            part(f.mainModel, R(Rzyx(T(arm, Rhand), rho), m.headPitch * 0.5f, {1, 0, 0}), glm::vec3(wscale),
+                 mainGrip(f.mainModel), false, false, c ? &c->mainHand() : nullptr);
     }
     newest(beforeMain, 0);
     const size_t beforeOff = out.size();
@@ -1736,7 +1742,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         } else {
             // Held (§9): selector 0x47 holds the item at the hands' midpoint, 8 higher.
             const glm::vec3 grasp = pose == 0x47 ? 0.5f * (Rhand + Lhand) + glm::vec3(0, 0, 8) : Lhand;
-            glm::mat4 at = Rzyx(T(arm, grasp), lambda);
+            // §1.5: the held branch adds half the head pitch about x (the hand turns are zero).
+            glm::mat4 at = R(Rzyx(T(arm, grasp), lambda), m.headPitch * 0.5f, {1, 0, 0});
             const bool special = f.offModel == 840 || pose == 0x47;
             if (!special && off == FIST && main != BOOMERANG)
                 part(f.offModel, Ry(S(at, wscale), 180), glm::vec3(1), grip, false, false, c ? &c->offHand() : nullptr);

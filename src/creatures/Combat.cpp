@@ -725,10 +725,9 @@ void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent
     c.hasteMs = std::max(0, std::bit_cast<int32_t>((uint32_t)c.hasteMs - (uint32_t)milliseconds));
     if (c.recoveryPenalty < 0)
         c.recoveryPenalty = std::min(0.f, c.recoveryPenalty + (dtMs * 0.001f) / 180.f);
-    // Healing and projectile bodies have separate resource boundaries. (Action 0x5F pays at
-    // its first crossing in the ray case: beam-leftovers contract §1.3.)
-    if (c.actionMs == 0 && c.action == 34)
-        c.mana = std::max(0.f, c.mana - manaCost(c, c.action));
+    // Healing and projectile bodies have separate resource boundaries: action 0x5F pays at its
+    // first crossing in the ray case (beam-leftovers §1.3), action 0x22 at each heal pulse
+    // (head-pitch-and-pick §3.1).
     if (meleeAction(c.action)) {
         if (c.actionMs == 0 && c.characterClass == 4 && c.specialization == 1 &&
             (c.action == 5 || c.action == 17 || c.action == 20))

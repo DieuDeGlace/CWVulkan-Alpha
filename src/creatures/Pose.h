@@ -22,6 +22,10 @@ struct Motion {
     bool sitting = false;   // mode 0x400
     bool lantern = false;   // mode 0x200
     float yawDegrees = 0;   // displayed body rotation about z
+    // Head pitch (creature +0x58, degrees) for the head, arm and held-weapon chains
+    // (head-pitch-and-pick contract §1). The drawn X rotation it is corrected by is zero here:
+    // the engine's creature matrix turns about z only.
+    float headPitch = 0;
     float height = 0;       // displayed z in blocks (weapon trails stay at the heights they were made)
     float dodgeMs = 0;      // record field 15
     bool knockedDown = false; // record field 16 > 0

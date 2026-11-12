@@ -121,6 +121,7 @@ creatures::Combatant CreatureRecord::fighter() const {
     c.level = get<int32_t>(bytes, 0x180);
     c.experience = get<int32_t>(bytes, 0x184);
     c.ownerId = get<uint64_t>(bytes, 0x188);
+    c.healTarget = get<uint64_t>(bytes, 0x190);
     c.powerTier = bytes[0x198];
     c.backing = {get<int32_t>(bytes, 0x1a0), get<int32_t>(bytes, 0x1a4), get<int32_t>(bytes, 0x1a8)};
     for (size_t axis = 0; axis < c.behaviorReference.size(); axis++)
@@ -167,6 +168,7 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     put<int32_t>(bytes, 0x180, c.level);
     put<int32_t>(bytes, 0x184, c.experience);
     put<uint64_t>(bytes, 0x188, c.ownerId);
+    put<uint64_t>(bytes, 0x190, c.healTarget);
     bytes[0x198] = c.powerTier;
     put<int32_t>(bytes, 0x1a0, c.backing.x);
     put<int32_t>(bytes, 0x1a4, c.backing.y);

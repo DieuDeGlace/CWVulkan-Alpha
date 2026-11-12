@@ -44,8 +44,30 @@ bool oneOf(int32_t action, std::initializer_list<int32_t> list) {
 
 } // namespace
 
+float daylight(int32_t timeOfDayMs) {
+    const float v = ((float(timeOfDayMs) * 2.f) / 86400000.f) - 1.f;
+    const float p = float(std::pow(double(v), 4.0));
+    return float(std::pow(double(1.f - p), 5.0));
+}
+
+float pickRange(uint8_t light, float daylightFactor) {
+    const float s = (float(light) / 255.f) * daylightFactor;
+    if (0.3f > s)
+        return (((s * std::bit_cast<float>(0x3F666666u)) / std::bit_cast<float>(0x3E99999Au)) * 256.f) +
+               std::bit_cast<float>(0x41CCCCCDu);
+    return 256.f;
+}
+
+void writeHealTarget(Combatant &player, const AimPoint &aim, bool shift) {
+    if (player.action == 0x22 && player.actionMs < float(phases(player, 0x22).windUp) && aim.nearest != 0)
+        player.healTarget = aim.nearest;
+    if (shift)
+        player.healTarget = player.id;
+}
+
 AimPoint aimPoint(const CameraState &camera, const Fixed3 &playerPosition, const Combatant &player,
-                  std::span<const Candidate> candidates, const visibility::Scene &scene) {
+                  std::span<const Candidate> candidates, const visibility::Scene &scene, float daylightFactor,
+                  const LightQuery &light) {
     const glm::vec3 V = normalized(camera.forward);
     AimPoint out;
     // §3.1: 100 units along V from the follow anchor, or where the 60-unit ray stops.
@@ -56,26 +78,33 @@ AimPoint aimPoint(const CameraState &camera, const Fixed3 &playerPosition, const
 
     // §3.2: the creatures whose box straddles the screen centre.
     const float R0 = float(duration(player, player.action));
-    float hovered = -1.f, admitted = -1.f;
+    float hovered = -1.f, admitted = -1.f, nearest = -1.f;
     for (const Candidate &k : candidates) {
         if (!k.fighter || k.fighter->id == player.id)
             continue;
         if (player.action == 0x22 && player.actionMs < R0 && (k.fighter->controller == 6 || k.fighter->controller == 1))
             continue;
-        if (!visibility::visible(camera.eye, k.point, 0, 200.f, scene))
+        // Head-pitch-and-pick §2.1: the reach from the light at the entity position.
+        float reach = 256.f;
+        if (light) {
+            const auto block = [](int64_t raw) { return int32_t(uint32_t(uint64_t(raw / 65536))); };
+            reach = pickRange(light(block(k.position[0]), block(k.position[1]), block(k.position[2])), daylightFactor);
+        }
+        if (!visibility::visible(camera.eye, k.point, 0, reach, scene))
             continue;
-        const glm::vec3 centre = toFloat(subtract(k.point, camera.origin));
-        const glm::vec3 half = (k.size + 1.f) * 0.5f;
+        // §4.1: corners (x outermost, z innermost) at point + offset + rebasing, in fixed point.
         bool negX = false, negY = false, posX = false, posY = false;
+        const glm::vec3 h = k.size + 1.f;
+        const auto offset = [](int side, float extent) { return float(side) * extent - extent * 0.5f; };
         for (int a = 0; a < 2; a++)
             for (int b = 0; b < 2; b++)
                 for (int c = 0; c < 2; c++) {
-                    const glm::vec3 corner(a ? centre.x + half.x : centre.x - half.x, b ? centre.y + half.y : centre.y - half.y,
-                                           c ? centre.z + half.z : centre.z - half.z);
+                    const Fixed3 o = toFixed(glm::vec3(offset(a, h.x), offset(b, h.y), offset(c, h.z)));
+                    const glm::vec3 corner = toFloat(subtract(add(k.point, o), camera.origin));
                     const glm::vec3 v = transformPoint(camera.view, corner);
                     if (!(v.z > 0.f))
                         continue;
-                    negX |= v.x < 0.f, negY |= v.y < 0.f, posX |= v.x > 0.f, posY |= v.y > 0.f;
+                    negX |= 0.f > v.x, negY |= 0.f > v.y, posX |= v.x > 0.f, posY |= v.y > 0.f;
                 }
         if (!(negX && negY && posX && posY))
             continue;
@@ -83,6 +112,12 @@ AimPoint aimPoint(const CameraState &camera, const Fixed3 &playerPosition, const
         if (hovered < 0.f || d2 < hovered) {
             hovered = d2;
             out.hovered = k.fighter->id;
+        }
+        // The third id pair: the straddling creature nearest the player's position.
+        const float toPlayer = squaredDistance(playerPosition, k.point);
+        if (nearest < 0.f || toPlayer < nearest) {
+            nearest = toPlayer;
+            out.nearest = k.fighter->id;
         }
         if ((hostile(player, *k.fighter) || hostile(*k.fighter, player)) && (admitted < 0.f || d2 < admitted))
             admitted = d2;

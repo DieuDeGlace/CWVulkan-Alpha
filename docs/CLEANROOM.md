@@ -1764,3 +1764,42 @@ One fix: the ray case's clouds take power x 0.1 through the new `rayCloud`.
 Before, they used the projectile helper's weapon damage. Still open: whether
 the platform's binary64 pow matches MSVCR110's precise pow for non-integer
 exponents.
+
+### Head pitch, pick reach and the healing stream (2026-11-12)
+
+The held `alpha-head-pitch-and-pick.md` (SHA-256 E0994DB4...03A2) was read
+whole. Implemented:
+
+- **Head pitch:** NPC head pitch now reaches the pose. The head turns by
+  (pitch + head angle) about x. The arm matrix turns by twice the pitch,
+  except while climbing or for pose selectors 2, 3 and 0x25. Held weapons add
+  half the pitch about x.
+- **Pick reach:** the pick's reach comes from the block light at the
+  creature's position and the daylight of the world clock: 256 in light,
+  falling to 25.6 in darkness.
+- **Pick box:** its corners are built in fixed point (point + offset +
+  rebasing), x outermost and z innermost, and the comparisons are ordered.
+- **Healing-stream target:** the controller writes the healing stream's
+  target, record +0x190: the nearest straddling creature while action 0x22 is
+  before its wind-up end, or the player itself with Left Shift.
+  `Combatant::healTarget` carries it, and the creature codec reads and writes
+  it.
+- **Healing stream:** the stream (world case 0x214C32) is new gameplay:
+  - a wind-up sound every 100 ms;
+  - eight pulses over the active window;
+  - each pulse pays the action cost, and is skipped when the mana falls short;
+  - each pulse heals the target id, or the caster, by power x -2 x roll, then
+    makes the critical draw;
+  - the old clock-0 mana deduction is removed.
+
+Adapters:
+
+- the drawn X rotation and the +0x1180 height lag are zero, because the
+  engine keeps neither;
+- the light byte is the engine's propagated light;
+- the projection is treated as a centred perspective;
+- the third id pair takes the player-distance minimum over the straddling
+  creatures, the contract's reading.
+
+The local player has no head pitch yet; its facing is not the shared facing
+block.

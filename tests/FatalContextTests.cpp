@@ -27,11 +27,12 @@ int main() {
         original.ownerId = 0x80000000fedcba98ull;
         original.linkedId = 123;
         original.backing = {INT32_MIN, 65535, -17};
+        original.healTarget = 0x0102030405060708ull; // record +0x190 (head-pitch-and-pick §3)
         record.setFighter(original);
         const auto decoded = record.fighter();
         check(decoded.ownerId == original.ownerId && decoded.linkedId == 0 &&
               decoded.backing.x == INT32_MIN && decoded.backing.y == 65535 && decoded.backing.index == -17 &&
-              record.bytes[0x190] == 0xcc && record.bytes[0x1ac] == 0xcc,
+              decoded.healTarget == original.healTarget && record.bytes[0x198 + 1] == 0xcc && record.bytes[0x1ac] == 0xcc,
               "core codec copies reverse ID and all three signed association words while retaining neighboring bytes and excluding the forward link");
         auto baseline = net::CreatureRecord::nativeDefaults();
         net::CreatureRecord position = baseline;

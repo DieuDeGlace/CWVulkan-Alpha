@@ -185,8 +185,30 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         const controller_aim::CameraState cameraState{camera.direction(), camera.followAnchor(), camera.eyeFixed(),
                                                       camera.rebaseOrigin(), camera.view()};
         const camera_view::Fixed3 me{state.position[0], state.position[1], state.position[2]};
-        controller_aim::AimPoint aim = controller_aim::aimPoint(cameraState, me, fighter, candidates, scene);
+        // Head-pitch-and-pick §2.1: the pick's reach from the light at each creature and the
+        // daylight of the world clock.
+        const controller_aim::LightQuery light = [&](int32_t x, int32_t y, int32_t z) -> uint8_t {
+            const worldgen::Zone *zone = view.held().zoneAt(x, y);
+            if (!zone || x < 0 || y < 0)
+                return 0;
+            const worldgen::Column &column = zone->column(x, y);
+            if (z < column.bottom)
+                return 0;
+            if (z >= column.top())
+                return 255;
+            const worldgen::Block b = column.blocks[size_t(z - column.bottom)];
+            if (b.type() == worldgen::AIR && z <= 0 && !(b.typeByte & worldgen::DRY_AIR))
+                return 255;
+            if (b.type() == worldgen::GLOWING)
+                return 255;
+            if (b.type() != worldgen::AIR && b.type() != worldgen::WATER)
+                return 0;
+            return std::max<uint8_t>(zone->light(x, y, z), 5);
+        };
+        const float day = timeOfDay ? controller_aim::daylight(timeOfDay()) : 1.f;
+        controller_aim::AimPoint aim = controller_aim::aimPoint(cameraState, me, fighter, candidates, scene, day, light);
         hovered = aim.hovered;
+        controller_aim::writeHealTarget(fighter, aim, shift);
         controller_aim::freezeSpellPoint(aim.point, spellPoint, fighter, milliseconds);
         fighter.aim = state.look = controller_aim::freeAim(shift, yaw, aim.point, me);
     }

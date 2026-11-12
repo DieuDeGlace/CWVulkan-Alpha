@@ -2179,6 +2179,64 @@ int main() {
         }
     }
 
+    // Head-pitch-and-pick contract: the pick's light-scaled reach, the heal target and the
+    // healing stream's world case.
+    {
+        namespace ca = controller_aim;
+        same(ca::daylight(43200000), 1, "noon gives full daylight");
+        same(ca::daylight(0) < 1e-6f, 1, "midnight gives no daylight");
+        same(ca::pickRange(255, 1.f), 256, "full light reaches 256");
+        same(ca::pickRange(0, 1.f), std::bit_cast<float>(0x41CCCCCDu), "darkness reaches 25.6");
+        same(ca::pickRange(51, 1.f) < 256.f && ca::pickRange(51, 1.f) > 25.6f, 1, "dim light reaches between");
+        Combatant caster;
+        caster.id = 7;
+        caster.action = 0x22, caster.actionMs = 0;
+        ca::AimPoint aim;
+        aim.nearest = 9;
+        ca::writeHealTarget(caster, aim, false);
+        same(caster.healTarget, 9, "action 0x22 before its wind-up end targets the nearest straddling creature");
+        ca::writeHealTarget(caster, aim, true);
+        same(caster.healTarget, 7, "Left Shift targets the caster itself");
+        caster.actionMs = float(phases(caster, 0x22).windUp) + 1;
+        caster.healTarget = 0;
+        ca::writeHealTarget(caster, aim, false);
+        same(caster.healTarget, 0, "after the wind-up the target is kept");
+
+        // The world case: a pulse on an eighth boundary of the active window heals the target and
+        // pays the action cost.
+        Combatant healer;
+        healer.id = 1;
+        healer.characterClass = 3, healer.specialization = 1;
+        healer.health = maxHealth(healer);
+        healer.mana = 1;
+        healer.action = 0x22;
+        const Phases t = phases(healer, 0x22);
+        const int32_t period = int32_t(float(t.active) * 0.125f);
+        healer.actionMs = t.windUp + period - 8;
+        Body body;
+        body.place({0, 0, 3});
+        Npcs npcs;
+        Npc friendNpc;
+        friendNpc.fighter.id = 2;
+        friendNpc.fighter.controller = 3;
+        friendNpc.fighter.health = maxHealth(friendNpc.fighter) * 0.5f;
+        friendNpc.body.place({1, 0, 3});
+        friendNpc.home = friendNpc.body.blocks();
+        npcs.npcs().push_back(friendNpc);
+        healer.healTarget = 2;
+        PlayerView view{healer, body, 0, healer.actionMs};
+        NpcFrame frame;
+        const float before = npcs.all()[0].fighter.health;
+        npcs.dispatchPlayerActions({&view, 1}, 16, [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); },
+                                   frame);
+        same(npcs.all()[0].fighter.health > before, 1, "the healing stream heals its target on a pulse");
+        same(healer.mana, 1.f - manaCost(healer, 0x22), "the pulse pays the action cost", 1e-6);
+        const float healed = npcs.all()[0].fighter.health;
+        view.actionMsBefore = healer.actionMs = t.windUp + period + 20;
+        npcs.dispatchPlayerActions({&view, 1}, 16, [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); },
+                                   frame);
+        same(npcs.all()[0].fighter.health, healed, "no heal inside the same period");
+    }
     // Stat-queries contract §6: the B, C and D tables for every action 0..0x69 (R0 = B + C + D).
     {
         struct Entry {

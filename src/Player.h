@@ -38,6 +38,8 @@ class Player {
                    std::span<const AimCandidate> candidates = {});
     // The nearest creature whose box straddles the screen centre (C+0x800A70), 0 for none.
     uint64_t hoveredCreature() const { return hovered; }
+    // The world's time of day in milliseconds, for the pick's daylight factor (none: full day).
+    std::function<int32_t()> timeOfDay;
     void finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
                      const creatures::visibility::RecordLookup &records); // camera, once per rendered frame
     // Adds the player's creature to the draw list.

@@ -98,6 +98,9 @@ struct EquipmentSources {
 struct Combatant {
     uint64_t id = 0;
     uint64_t ownerId = 0, linkedId = 0; // reverse core identifier and resident forward identifier
+    // Record +0x190 (creature +0x1A0): the healing stream's target id (head-pitch-and-pick
+    // contract §3), written by the local controller for action 0x22.
+    uint64_t healTarget = 0;
     BackingReference backing;
     int32_t type = 2;       // creature type
     uint8_t controller = 0; // 0 player, 1 hostile NPC, …

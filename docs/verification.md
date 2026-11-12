@@ -1563,3 +1563,15 @@ speed scale doubled so that fixed and scaled entries differ. It also checks
 B for action 0x25 with subtype 12 in the second hand. All 106 actions match.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the
 six captures match the preceding batch.
+
+Head pitch, pick reach and the healing stream (2026-11-12). New CreatureTests
+cases check:
+- the daylight factor at noon and at midnight;
+- the pick's reach in light, in darkness and in between;
+- the heal-target write before the wind-up end, with Left Shift, and after;
+- a player's healing-stream pulse heals a wounded townsperson and pays the
+  action cost, and a second update inside the same period does not heal.
+
+FatalContextTests now checks that record +0x190 round-trips as the heal
+target. All 60 CTests pass, the player diagnostic and five live runs pass,
+and the six captures match the preceding batch.

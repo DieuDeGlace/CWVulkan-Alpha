@@ -1918,6 +1918,48 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
         frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
 }
 
+void Npcs::healStream(Combatant &caster, const Body &casterBody, float t, float dt, std::span<PlayerView> players,
+                      NpcFrame &frame) {
+    if (caster.action != 0x22)
+        return;
+    const Phases timing = phases(caster, 0x22);
+    const int32_t clock = int32_t(t), step = int32_t(dt), T1 = timing.windUp, T2 = timing.active;
+    const int32_t after = std::bit_cast<int32_t>(uint32_t(clock) + uint32_t(step));
+    const glm::dvec3 at = casterBody.blocks();
+    // Step 1: the wind-up sound on each 100 ms boundary before T1, one pitch draw.
+    if (clock < T1 && after / 100 != clock / 100)
+        frame.sounds.push_back({at, 0x24, (float(draw()) * 0.25f) / 32767.f + 1.f, 1});
+    // Step 3: eight periods over (T1, T1 + T2]. (A zero period is unguarded in the original.)
+    if (!(T1 < clock && clock <= T1 + T2))
+        return;
+    const int32_t period = int32_t(float(T2) * 0.125f);
+    if (period == 0 || (after - T1) / period == (clock - T1) / period)
+        return;
+    // Step 4: the mana cost (action-cost query), paid only when it can be.
+    if (!(caster.mana >= manaCost(caster, 0x22)))
+        return;
+    caster.mana = caster.mana - manaCost(caster, 0x22);
+    // Step 5: the target by id, else the caster.
+    if (!actorLookupActive)
+        refreshActors(players);
+    const ActorEntry found = caster.healTarget ? lookupActor(caster.healTarget, players) : ActorEntry{};
+    const Combatant *target = found.combat() ? found.combat() : &caster;
+    const Body *targetBody = found.combat() ? found.body() : &casterBody;
+    // Step 6: the heal record: one roll draw, then the critical query's draw.
+    HitRecord heal;
+    heal.attacker = caster.id;
+    heal.target = target->id;
+    std::copy_n(targetBody->position, 3, heal.position.begin());
+    const float roll = 1.25f - (float(draw()) * 0.5f) / 32767.f;
+    heal.amount = (magicBase(caster) * -2.f) * roll;
+    heal.critical = (float)draw() / 32767.f < criticalChance(caster);
+    frame.emittedHits.push_back(heal);
+    frame.sounds.push_back({at, 0x29, 1, 1});
+    // Step 7: applied through the world's hit application.
+    frame.seen.push_back({heal, targetBody->blocks()});
+    applyWorldHit(heal, players, frame);
+}
+
 void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std::span<PlayerView> players,
                   bool byPlayer, NpcFrame &frame, const BlockType &block, uint64_t npcTarget, bool attackerAlly) {
     const glm::dvec3 from = attackerBody.blocks();
@@ -2005,6 +2047,9 @@ void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, co
     for (PlayerView &p : players)
         if (p.strikes && p.fighter.health > 0)
             beamTick(p.fighter, p.body, p.actionMsBefore, (float)dtMs, players, frame, block);
+    for (PlayerView &p : players)
+        if (p.strikes && p.fighter.health > 0)
+            healStream(p.fighter, p.body, p.actionMsBefore, (float)dtMs, players, frame);
 }
 
 NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
@@ -2177,6 +2222,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             bite(npc, players, frame); // pets §7.3: a bite of the food held out
         } else if (c.action == 28 || c.action == 95) {
             beamTick(c, npc.body, before, dtMs, players, frame, block);
+        } else if (c.action == 0x22) {
+            healStream(c, npc.body, before, dtMs, players, frame);
         } else if (meleeAction(c.action) && strikeWindow(c, before, dtMs)) {
             strike(c, npc.body, npc.yaw, players, false, frame, block, npc.target,
                    npc.questRole == 3);

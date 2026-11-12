@@ -2376,11 +2376,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     std::vector<Player::AimCandidate> aimCandidates;
                     if (!client.connected())
                         for (const creatures::Npc &n : npcs.all())
-                            aimCandidates.push_back({&n.fighter, {n.body.follow[0], n.body.follow[1], n.body.follow[2]}, n.body.size});
-                    for (const auto &[id, record] : receivedActors)
-                        aimCandidates.push_back({&otherFighters[id].fighter,
-                                                 {record.position(0), record.position(1), record.position(2)},
-                                                 record.appearance().box});
+                            aimCandidates.push_back({&n.fighter, {n.body.follow[0], n.body.follow[1], n.body.follow[2]}, n.body.size,
+                                                     {n.body.position[0], n.body.position[1], n.body.position[2]}});
+                    for (const auto &[id, record] : receivedActors) {
+                        const camera_view::Fixed3 at{record.position(0), record.position(1), record.position(2)};
+                        aimCandidates.push_back({&otherFighters[id].fighter, at, record.appearance().box, at});
+                    }
+                    player->timeOfDay = [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); };
                     player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
                                       interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates);
                     updatePlayerInterface();
@@ -2589,6 +2591,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             motion.onGround = (npc.body.contact & creatures::ON_GROUND) != 0;
             motion.inWater = (npc.body.contact & creatures::IN_WATER) != 0;
             motion.yawDegrees = npc.yaw;
+            motion.headPitch = npc.headPitch; // aim contract §3.7, drawn by head-pitch-and-pick §1
             motion.intent = npc.body.intent;
             motion.running = (npc.body.mode & 0x40) != 0;
             motion.dodgeMs = (float)npc.body.dodgeMs;
