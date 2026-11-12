@@ -1,5 +1,6 @@
 #include "CreatureLights.h"
 #include "creatures/Combat.h"
+#include "creatures/Pose.h"
 #include "creatures/Spirits.h"
 #include <bit>
 #include <cmath>
@@ -114,6 +115,15 @@ std::array<std::optional<Candidate>, 2> bodySources(
         sources[1] = Candidate{renderedPosition, colour, 16, 0};
     }
     return sources;
+}
+
+std::array<std::optional<FixedPosition>, 2> weaponPoints(const creatures::PoseState &pose, glm::dvec3 displayed) {
+    // Trail histories 0 and 2 hold the main and off tips, x/y relative to the
+    // displayed position and z relative to the refresh height.
+    const auto at = [&](const glm::vec3 &p) {
+        return fromBlocks({displayed.x + double(p.x), displayed.y + double(p.y), double(pose.trailHeight) + double(p.z)});
+    };
+    return {at(pose.trail[0][0]), at(pose.trail[2][0])};
 }
 
 std::array<std::optional<Candidate>, 4> equipmentSources(

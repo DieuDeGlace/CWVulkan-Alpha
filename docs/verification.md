@@ -1374,3 +1374,13 @@ the feeder as the creature's contact, per the held created-actor combat
 contract. All 59 CTests pass; the player/controller diagnostic and the reward,
 health, network, save/reload and town runs pass, and all six reviewed captures
 match the preceding batch. The other combat corrections have no dedicated test.
+
+The two weapon light sites now read the main-hand and off-hand weapon points
+from the previous pose refresh, cached per creature, instead of the main-position
+fallback. This reproduces the held contract's one-refresh-stale read.
+CreatureLightTests' new weaponPointLights case checks the conversion from pose
+trail tips to absolute fixed positions. All 59 CTests pass; the player/controller
+diagnostic and the reward, health, network, save/reload and town runs pass, and
+all six reviewed captures match the preceding batch. The weapon matrices still
+come from the engine pose producer; term-by-term equivalence with the native pose
+chain is not verified.

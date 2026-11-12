@@ -563,8 +563,9 @@ Differences from the Steam engine that shape the plan:
   freshness remain dependencies; production retains its documented fallback.
   The held weapon-attachment pose contract now closes the default-selector
   matrices, grip branches, initial state and the one-frame-stale light read;
-  the per-selector evaluator and the mapping onto engine creature fields remain
-  before the fallback can be replaced.
+  the per-selector evaluator and the mapping onto engine creature fields remain.
+  The weapon lights now read the previous pose refresh's weapon points instead
+  of the main-position fallback; term-by-term pose-chain equivalence is open.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

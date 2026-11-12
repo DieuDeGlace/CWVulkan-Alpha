@@ -445,6 +445,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Timed lights: materials §1.5's critical-hit flashes, particles §7.2's bomb flash.
     terrain_lights::FadingSources flashes;
     std::set<uint64_t> shattered; // particles §7.2: dead creatures already broken up
+    // Held weapon-attachment contract: the weapon points of each creature's last
+    // pose refresh. Lights read them before this frame's refresh replaces them.
+    std::map<uint64_t, std::array<std::optional<terrain_lights::FixedPosition>, 2>> weaponPoints;
     std::pair<int32_t, int32_t> missionRegionAsked{INT32_MIN, INT32_MIN}; // online: the region last asked for
     std::optional<MissionArea> questRemembered; // missions §8.2: the mission the quest tag shows
     // Mod SDK v5: missions to read and block edits to make, while this world runs.
@@ -2534,14 +2537,25 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // inputs. Native rendered-angle following remains separate.
                 append(std::array{terrain_lights::actionSource(creature, *rendered, yaw)});
             }
-            // Native float weapon attachments are not supplied by the engine pose
-            // yet. Keep an explicit main-position fallback for those two sites.
-            append(terrain_lights::equipmentSources(creature, main, {main, main}));
+            // Weapon sites read the points of the previous pose refresh. A creature
+            // never refreshed keeps the main-position adapter (native storage there
+            // is uninitialised).
+            std::array<terrain_lights::FixedPosition, 2> hands{main, main};
+            if (const auto points = weaponPoints.find(creature.id); points != weaponPoints.end())
+                for (size_t hand = 0; hand < 2; ++hand)
+                    if (points->second[hand])
+                        hands[hand] = *points->second[hand];
+            append(terrain_lights::equipmentSources(creature, main, hands));
+        };
+        const auto refreshWeaponPoints = [&](uint64_t id, const creatures::PoseState &pose, glm::dvec3 displayed) {
+            weaponPoints[id] = terrain_lights::weaponPoints(pose, displayed);
         };
         if (player) {
             const creatures::Body &body = player->body();
+            const glm::dvec3 displayed = body.blocks() - glm::dvec3(0, 0, body.bob);
             creatureLights(player->combat(), {body.position[0], body.position[1], body.position[2]},
-                           body.blocks() - glm::dvec3(0, 0, body.bob), player->appearance().box.z, player->facing());
+                           displayed, player->appearance().box.z, player->facing());
+            refreshWeaponPoints(player->combat().id, player->poseState(), displayed);
         }
         for (creatures::Npc &npc : npcs.npcs()) {
             creatures::Motion motion;
@@ -2572,6 +2586,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             actionFlames(npc.fighter, npc.looks.box.x, at);
             creatureLights(npc.fighter, {npc.body.position[0], npc.body.position[1], npc.body.position[2]},
                            at, npc.looks.box.z, npc.yaw);
+            refreshWeaponPoints(npc.fighter.id, npc.pose, at);
         }
         // Quests: the icon each giver shows (none when it has nothing for this player).
         // (Online the giver is one of the server's creatures: its home is its spawn's place.)

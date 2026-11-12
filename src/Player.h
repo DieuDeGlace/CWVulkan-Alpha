@@ -58,6 +58,8 @@ class Player {
         creatures::receiveHit(fighter, state, hit, updates);
     }
     const creatures::Combatant &combat() const { return fighter; }
+    // The pose of the last draw (weapon trails and attachment points).
+    const creatures::PoseState &poseState() const { return pose; }
     // Mouse look settings (options window, screens §6.4).
     creatures::CameraOptions &cameraOptions() { return camera.options; }
     creatures::FollowCamera &followCamera() { return camera; }

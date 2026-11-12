@@ -1,5 +1,6 @@
 #include "CreatureLights.h"
 #include "creatures/Combat.h"
+#include "creatures/Pose.h"
 #include "net/Protocol.h"
 #include <bit>
 #include <cstdio>
@@ -220,7 +221,28 @@ static void actionLights() {
           "the production default queries the stat once and visits qualifying equipment in the held order");
 }
 
+// Held weapon-attachment contract: weapon points are the drawn weapons' tips of a
+// pose refresh, made absolute from that refresh's displayed position and height.
+static void weaponPointLights() {
+    PoseState pose;
+    pose.trailHeight = 12.5f;
+    pose.trail[0][0] = {1.5f, -2.f, 3.f};
+    pose.trail[1][0] = {9.f, 9.f, 9.f};
+    pose.trail[2][0] = {-0.5f, 0.25f, -1.f};
+    const auto points = weaponPoints(pose, {100.f, 200.f, 50.f});
+    check(points[0] && points[1], "both weapon points convert");
+    if (points[0] && points[1]) {
+        check((*points[0])[0] == int64_t(101.5 * 65536) && (*points[0])[1] == int64_t(198 * 65536) &&
+                  (*points[0])[2] == int64_t(15.5 * 65536),
+              "main point is the main tip at the refresh position, with height from the refresh");
+        check((*points[1])[0] == int64_t(99.5 * 65536) && (*points[1])[1] == int64_t(200.25 * 65536) &&
+                  (*points[1])[2] == int64_t(11.5 * 65536),
+              "off point is the off tip, not a butt point");
+    }
+}
+
 int main() {
+    weaponPointLights();
     bodyLights();
     receivedLights();
     yawLights();

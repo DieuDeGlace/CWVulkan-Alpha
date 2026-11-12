@@ -1514,3 +1514,20 @@ not yet closed, so that write remains an engine adapter. The busy indicator,
 the kind-7 record handling, the magic class's aim adjustments, the 118 offset
 aim, the far route's direct-approach and path-loop details and every helper
 the contract leaves unaudited remain open.
+
+The weapon light sites no longer use the main-position fallback. The engine pose
+producer already keeps, for each creature, the point at the top centre of each
+drawn weapon model through that weapon's full matrix: the counterpart of the
+held weapon-attachment contract's main-hand and off-hand points, which are the
+transform of the top centre of the weapon's box through the matrix built after
+its grip translation (engine meshes are already centred, so no grip offset is
+added). After each creature's lights are collected, the frame stores those two
+points as absolute fixed positions; the weapon light sites read the stored
+points, so lights see the previous refresh's points as the contract establishes
+and later geometry sees the current ones. A creature never refreshed keeps the
+main position as an explicit adapter for the contract's uninitialised storage.
+The weapon matrices themselves still come from the engine pose producer, whose
+equivalence with the contract's creature, body, hand and grip chain has not
+been verified term by term; the per-selector pose evaluator, the reference
+shift's accumulation for weapon-less refreshes and the series update branches
+remain open.
