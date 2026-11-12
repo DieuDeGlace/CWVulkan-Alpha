@@ -1384,3 +1384,17 @@ diagnostic and the reward, health, network, save/reload and town runs pass, and
 all six reviewed captures match the preceding batch. The weapon matrices still
 come from the engine pose producer; term-by-term equivalence with the native pose
 chain is not verified.
+Water extension on generated terrain: the new WaterLiveTests generates seed 123
+with and without the extension. At the home region's first lake location
+(centre 8389628, 8401925), the native water surfaces gain swimming depth, eleven
+bank reeds stand in air beside surface water, and a player-sized body in the
+real movement step stays in the swimming state for 150 of 150 steps without
+standing. The nearest home-area zone with native walkable wet ground (zone
+32801, 32798, a stream bed) converts 3532 wet surfaces to three-deep liquid,
+receives 48 bank reeds, and a body there floats at the surface (154.35 to 154.44)
+without ground contact. Live client captures at the stream bank (8397224,
+8396332) show cattail reeds beside the shared water surface with lily pads. A
+capture at the swimming spot (8397217, 8396312) puts the camera just under the
+surface, showing a flat saturated-blue underside without a visible player model.
+That view is unreviewed against any intended look. The client's own swim state
+was not logged. All 60 CTests pass.

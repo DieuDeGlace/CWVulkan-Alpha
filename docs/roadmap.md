@@ -334,6 +334,10 @@ Differences from the Steam engine that shape the plan:
   surface shader, make all water swimmable (including Alpha's shallow walkable
   form), and place reeds along water banks. Verify geometry, collision, underwater
   rendering and bank placement together; retain this as an explicit extension.
+  Progress: WaterLiveTests checks seed 123's generated home lake shore and a native
+  stream bed (swimming depth, bank reeds, the real movement step), and live captures
+  show bank reeds beside the shared surface. Still open: observing the swim state
+  inside the running client, and the look of the surface from just below it.
 
 - [x] Built-in graphics on top of Alpha's look (always part of the engine, with settings):
   - [x] real-time sun and moon shadows (`Shadows.h`, `[Shadows]`, `--no-shadows`): one 4096 map around the
