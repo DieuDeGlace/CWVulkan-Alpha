@@ -67,6 +67,24 @@ What each version added:
 | 7 | `spawnParticles` (a burst of particle cubes, shown on this machine only) | |
 | 8 | `getQuestCount` / `getQuest` (the local player's quests: kind, state, giver, progress, place) | `onQuestComplete` (a quest handed in to its giver) |
 | 9 | `say` (a chat line as the player), `showChat` (a line on this machine only) | `onChat` (a line arrived or was said), `onItemReceived` (an item into the bags) |
+| 10 | `tell` (a chat line to one player), `getPlayerName` (a player's character name) | `onPlayerJoin` / `onPlayerLeave` (the dedicated server), `onCreatureTamed` (a creature tamed, with its owner) |
+
+### On the dedicated server
+
+AlphaServer loads the mods in its own `AlphaVulkan.ini` [Mods] Load the same way. From version
+10 every callback there runs on the server's simulation thread with no engine lock held, so a
+callback may call any host function:
+
+- callbacks: `onFrame` (once per world step, about every 20 ms), `onPlayerJoin`,
+  `onPlayerLeave`, `onChat` (each player's line, with the sender's id), `onCreatureDeath`,
+  `onMissionComplete`, `onCreatureTamed`; events of a step reach the mods in the order they
+  happened, after the step;
+- host functions: `log`, `readContent`, `getTimeOfDay` / `setTimeOfDay` (the world clock all
+  players get), `getBlock` / `setBlock` (a block edit sent to every player and saved with its
+  zone), `getCreatureCount` / `getCreature` (connected players first, then the NPCs),
+  `say` (a line to everyone, from the server), `tell` (a line to one player) and
+  `getPlayerName`. The others (the local player, the screen, sound, particles, quests,
+  missions) answer 0 on the server.
 
 Inside the engine, `creatures::itemBonuses()` is the hook for item stat formulas (what a
 weapon or armour piece adds to health, damage, armour, resistance, speed and critical
@@ -160,5 +178,5 @@ outside content/world workers.
 ## Further API coverage
 
 Further typed source services and C SDK services for creatures, items, the interface
-and network messages remain work in progress,
+and custom network messages remain work in progress,
 each as new members at the end of `AvHost` and `AvMod`.

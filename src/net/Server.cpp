@@ -277,6 +277,53 @@ int Server::players() const {
     return (int)connections.size();
 }
 
+std::vector<ServerCreature> Server::creatureList() const {
+    std::lock_guard guard(lock);
+    std::vector<ServerCreature> out;
+    for (const auto &[id, c] : connections)
+        if (c->alive)
+            out.push_back({id, c->creature.fighter(),
+                           glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0});
+    for (const creatures::Npc &n : npcs.all())
+        out.push_back({n.fighter.id, n.fighter, n.body.blocks()});
+    return out;
+}
+
+std::optional<std::string> Server::playerName(uint64_t player) const {
+    std::lock_guard guard(lock);
+    const auto it = connections.find(player);
+    return it == connections.end() ? std::nullopt : std::optional(it->second->creature.name());
+}
+
+void Server::broadcast(const std::string &line) {
+    std::lock_guard guard(lock);
+    const std::vector<uint16_t> units = toUtf16(line);
+    for (auto &[id, c] : connections)
+        c->chat.emplace_back(0, units);
+}
+
+bool Server::tellPlayer(uint64_t player, const std::string &line) {
+    std::lock_guard guard(lock);
+    if (!connections.count(player))
+        return false;
+    tell(player, line);
+    return true;
+}
+
+std::optional<worldgen::Block> Server::block(int32_t x, int32_t y, int32_t z) const {
+    std::lock_guard guard(lock);
+    const worldgen::Zone *zone = zones.zoneAt(x, y);
+    return zone ? std::optional(zone->read(x, y, z)) : std::nullopt;
+}
+
+bool Server::editBlock(int32_t x, int32_t y, int32_t z, worldgen::Block b) {
+    std::lock_guard guard(lock);
+    if (!zones.zoneAt(x, y))
+        return false;
+    writeBlocks({{x, y, z, b.r, b.g, b.b, b.typeByte, (int32_t)clockDay.load()}});
+    return true;
+}
+
 void Server::acceptLoop() {
     while (running) {
         Socket s = listener.accept();
@@ -331,6 +378,13 @@ void Server::handshake(Socket socket) {
         return;
     }
     say("Player " + std::to_string(c->id) + " joined.");
+    {
+        std::lock_guard guard(lock);
+        tellMods([this, id = c->id] {
+            if (options.modEvents.playerJoin)
+                options.modEvents.playerJoin(id);
+        });
+    }
     c->socket.setReadTimeout(0);
     c->receiver = std::thread([this, c] { receiveLoop(*c); });
     c->sender = std::thread([this, c] { sendLoop(*c); });
@@ -411,6 +465,10 @@ void Server::receiveLoop(Connection &c) {
                 } else {
                     for (auto &[pid, other] : connections)
                         other->chat.emplace_back(c.id, units);
+                    tellMods([this, sender = c.id, text = fromUtf16(units)] {
+                        if (options.modEvents.chat)
+                            options.modEvents.chat(sender, text);
+                    });
                 }
             }
             break;
@@ -506,11 +564,16 @@ void Server::sendLoop(Connection &c) {
         npcs.removeQuest(q.id);
     questBooks.erase(c.id), questBooksLoaded.erase(c.id), questBooksChanged.erase(c.id);
     connections.erase(c.id); // others stop seeing it; their next packet 2 removes it
+    tellMods([this, id = c.id] {
+        if (options.modEvents.playerLeave)
+            options.modEvents.playerLeave(id);
+    });
 }
 
 void Server::simulationLoop() {
     auto last = Clock::now(), lastSave = last;
     double leftoverMs = 0;
+    std::vector<std::function<void()>> events;
     while (running) {
         std::this_thread::sleep_for(std::chrono::milliseconds(TICK_MS));
         const auto now = Clock::now();
@@ -536,7 +599,14 @@ void Server::simulationLoop() {
                 for (const auto &s : shoots)
                     c->outgoing.sections[4].emplace_back(s.begin(), s.end());
             shoots.clear();
+            events.swap(modOutbox);
         }
+        // Mod SDK: this step's events and the frame, told without the lock.
+        for (const auto &event : events)
+            event();
+        events.clear();
+        if (options.modEvents.frame)
+            options.modEvents.frame(dt / 1000.0);
         if (now - lastSave > std::chrono::seconds(10)) {
             saveClock();
             lastSave = now;
@@ -948,6 +1018,26 @@ void Server::stepWorld(float dtMs) {
                                                block, onNpcs, {}, buffInput);
     for (const auto &grant : frame.grants)
         gifts.push_back(grant.serialize());
+    for (const creatures::NpcFrame::Death &death : frame.deaths) // mod SDK v6
+        tellMods([this, id = death.fighter.id, type = death.fighter.type, level = death.fighter.level,
+                  credited = death.credited] {
+            if (options.modEvents.creatureDeath)
+                options.modEvents.creatureDeath(id, type, level, credited);
+        });
+    for (const auto &t : frame.tamed) // mod SDK v10
+        tellMods([this, t] {
+            if (options.modEvents.creatureTamed)
+                options.modEvents.creatureTamed(t.creature, t.type, t.owner);
+        });
+    const auto missionDone = [&](int32_t cx, int32_t cy) { // mod SDK v5
+        tellMods([this, cx, cy] {
+            if (options.modEvents.missionComplete)
+                options.modEvents.missionComplete(cx, cy);
+        });
+    };
+    for (const auto &progress : frame.missions)
+        if (progress.completed())
+            missionDone(progress.x, progress.y);
     for (const creatures::NpcFrame::Death &death : frame.deaths) // quests: hunts and battles
         if (death.quest)
             for (auto &[who, book] : questBooks)
@@ -978,6 +1068,7 @@ void Server::stepWorld(float dtMs) {
         if (death.regionApplied)
             continue;
         if (const auto done = missions.kill(death.zone, death.appearanceFlags, death.boss)) {
+            missionDone(done->first, done->second);
             for (int32_t zx = 8 * done->first; zx < 8 * done->first + 8; zx++)
                 for (int32_t zy = 8 * done->second; zy < 8 * done->second + 8; zy++)
                     if (const worldgen::Zone *zone = zones.zone(zx, zy))

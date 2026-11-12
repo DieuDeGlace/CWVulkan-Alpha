@@ -587,7 +587,25 @@ int main() {
               "real server fixture stores a synthetic regional target without owner saves");
     }
     options.bindAddress = "127.0.0.1";
+    // Mod SDK v10 on the server: events arrive without the lock, so a hook may call back in.
+    Server *modServer = nullptr;
+    std::mutex modMutex;
+    std::vector<std::string> modSeen;
+    std::atomic<int> modFrames{0};
+    options.modEvents.frame = [&](double) { modFrames++; };
+    options.modEvents.playerJoin = [&](uint64_t id) {
+        std::lock_guard guard(modMutex);
+        modSeen.push_back("join " + std::to_string(id));
+    };
+    options.modEvents.chat = [&](uint64_t sender, const std::string &text) {
+        const std::string name = modServer->playerName(sender).value_or("?");
+        if (text == "hi")
+            modServer->tellPlayer(sender, "mod heard " + name);
+        std::lock_guard guard(modMutex);
+        modSeen.push_back("chat " + name + " " + text + " creatures " + std::to_string(modServer->creatureList().size() > 0));
+    };
     Server server(options);
+    modServer = &server;
     std::string error;
     check(server.start(&error), "server starts: " + error);
     const uint16_t port = server.port();
@@ -690,6 +708,20 @@ int main() {
     std::vector<std::pair<uint64_t, std::string>> heard;
     check(waitFor([&] { for (auto &l : b.takeChat()) heard.push_back(l); return !heard.empty(); }), "b hears chat");
     check(!heard.empty() && heard[0].first == 1 && heard[0].second == "hi", "chat from Alice says hi");
+    {
+        std::vector<std::pair<uint64_t, std::string>> told;
+        const auto fromServer = [&] {
+            return std::find_if(told.begin(), told.end(), [](const auto &l) { return l.first == 0; });
+        };
+        check(waitFor([&] { for (auto &l : a.takeChat()) told.push_back(l); return fromServer() != told.end(); }),
+              "mod SDK v10: the server mod's tell reaches Alice");
+        check(fromServer() != told.end() && fromServer()->second == "mod heard Alice", "told from 0 with her name");
+        std::lock_guard guard(modMutex);
+        check(std::count(modSeen.begin(), modSeen.end(), "join 1") == 1 && std::count(modSeen.begin(), modSeen.end(), "join 2") == 1,
+              "server mod events: both joins, once each");
+        check(std::count(modSeen.begin(), modSeen.end(), "chat Alice hi creatures 1") == 1, "server mod chat event, list read back");
+        check(modFrames > 0, "server mod frames run per world step");
+    }
     // Quests (docs/design/quests.md): an AlphaVulkan client's hello is not passed on as chat, and
     // the server answers it with the player's quest book.
     a.say("\x01" "AV1");

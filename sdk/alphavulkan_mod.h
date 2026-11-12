@@ -13,6 +13,10 @@
  * an older header keeps working with a newer engine. AV_API_VERSION goes up when members are
  * added; an engine never removes or reorders them.
  *
+ * The dedicated server (AlphaServer) loads the same mods. There, from version 10, every
+ * callback runs on the server's simulation thread with no engine lock held, once per world
+ * step for onFrame; the host functions about the local player, the screen or sound return 0.
+ *
  * Mods are opt-in: the engine only loads the mods listed in AlphaVulkan.ini [Mods] Load.
  * The SDK is AlphaVulkan's own; it contains nothing from Cube World. */
 #ifndef ALPHAVULKAN_MOD_H
@@ -24,7 +28,7 @@
 extern "C" {
 #endif
 
-#define AV_API_VERSION 9
+#define AV_API_VERSION 10
 
 #if defined(_WIN32)
 #define AV_EXPORT __declspec(dllexport)
@@ -159,6 +163,16 @@ typedef struct AvHost {
     int (*say)(void *context, const char *text);
     /* Adds a line to this machine's chat box only, in (r, g, b) (0..255). */
     int (*showChat)(void *context, const char *text, float r, float g, float b);
+
+    /* Version 10. */
+    /* A chat line to one player only: on a server, to that connected player; on a client, the
+     * local player's own chat box when `player` is 0 or its id. Returns 0 otherwise. */
+    int (*tell)(void *context, uint64_t player, const char *text);
+    /* The character name of a player this engine knows (the local player, a player the server
+     * lists, or, on a server, a connected player), UTF-8. Copies up to `capacity` bytes
+     * (always terminated when capacity > 0) and returns the full length, or -1 when the id is
+     * not a known player. */
+    int32_t (*getPlayerName)(void *context, uint64_t id, char *buffer, uint32_t capacity);
 } AvHost;
 
 /* What a mod gives the engine. The engine zeroes it and sets `size` before avModLoad. */
@@ -209,6 +223,13 @@ typedef struct AvMod {
     void (*onChat)(void *user, uint64_t sender, const char *text);
     /* The local player received an item in its bags (loot, a gift, a purchase is not one). */
     void (*onItemReceived)(void *user, int32_t type, int32_t subtype, int32_t level);
+
+    /* Version 10. */
+    /* A player joined or left the game this engine serves (the dedicated server only). */
+    void (*onPlayerJoin)(void *user, uint64_t id);
+    void (*onPlayerLeave)(void *user, uint64_t id);
+    /* A creature this engine runs was tamed by `owner` (offline play, or the server). */
+    void (*onCreatureTamed)(void *user, uint64_t id, int32_t type, uint64_t owner);
 } AvMod;
 
 typedef int (*AvModLoadFunction)(const AvHost *host, AvMod *mod);

@@ -965,6 +965,11 @@ Differences from the Steam engine that shape the plan:
 - [x] Mod SDK v8: `getQuestCount`/`getQuest`, `onQuestComplete` (offline at the hand-in, online
   when the server's book shows it handed in).
 - [x] Mod SDK v9: `say`, `showChat`, `onChat`, `onItemReceived`.
+- [x] Mod SDK v10 (net): the dedicated server now runs mods' callbacks (`onFrame` per step,
+  `onPlayerJoin`/`onPlayerLeave`, `onChat`, `onCreatureDeath`, `onMissionComplete`) on its
+  simulation thread with its lock released, and offers the clock, blocks, creatures, `say` to
+  everyone, `tell` and `getPlayerName`; `onCreatureTamed` offline and on the server. ModTests
+  (probe plugin) and NetTests (a live server mod tells a player who chatted) check them.
 - [x] Compiled source modules: explicit CMake registry, shared load order with DLL
   mods, C++ terrain passes before water/light, and the opt-in StoneTint example.
   EngineModuleTests covers direct terrain changes, pipeline invocation, ordering,

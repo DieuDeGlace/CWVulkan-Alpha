@@ -65,6 +65,26 @@ struct ServerOptions {
     // Where a new player's first record puts it, in blocks (0, 0: the world's home point).
     // Original Alpha clients keep their own start (seen in a test on 2026-11-02).
     int32_t spawnX = 0, spawnY = 0;
+
+    // Mod SDK (docs/modding.md): what happened, told by the simulation thread after each world
+    // step with the server's lock released, in the order it happened. A hook may call the
+    // Server's mod functions below. Each may be left empty.
+    struct ModEvents {
+        std::function<void(double seconds)> frame; // once per world step
+        std::function<void(uint64_t player)> playerJoin, playerLeave;
+        std::function<void(uint64_t sender, const std::string &text)> chat; // UTF-8
+        std::function<void(uint64_t id, int32_t type, int32_t level, uint64_t credited)> creatureDeath;
+        std::function<void(int32_t cellX, int32_t cellY)> missionComplete;
+        std::function<void(uint64_t id, int32_t type, uint64_t owner)> creatureTamed;
+    };
+    ModEvents modEvents;
+};
+
+// A creature as the server's mod functions report it.
+struct ServerCreature {
+    uint64_t id = 0;
+    creatures::Combatant fighter;
+    glm::dvec3 at{0}; // centre, blocks
 };
 
 class Server {
@@ -80,7 +100,19 @@ class Server {
     uint32_t day() const { return clockDay; }
     uint32_t timeOfDayMs() const { return clockMs; }
 
+    // Mod functions (each takes the lock; never call them while holding it).
+    void setTimeOfDay(uint32_t milliseconds) { clockMs = milliseconds % 86400000u; }
+    std::vector<ServerCreature> creatureList() const; // connected players, then NPCs
+    std::optional<std::string> playerName(uint64_t player) const;
+    void broadcast(const std::string &line);                   // a chat line to everyone, from 0
+    bool tellPlayer(uint64_t player, const std::string &line); // false: no such player
+    std::optional<worldgen::Block> block(int32_t x, int32_t y, int32_t z) const; // none: zone not held
+    bool editBlock(int32_t x, int32_t y, int32_t z, worldgen::Block block); // a saved block edit
+
   private:
+    // Mod SDK: events collected under the lock, told by the simulation thread without it.
+    std::vector<std::function<void()>> modOutbox;
+    void tellMods(std::function<void()> event) { modOutbox.push_back(std::move(event)); } // under the lock
     struct Connection;
     void acceptLoop();
     void handshake(Socket socket);

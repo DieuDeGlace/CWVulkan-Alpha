@@ -19,6 +19,7 @@
 #include "GenerationProfile.h"
 #include "net/Server.h"
 #include "worldgen/Random.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -115,7 +116,49 @@ int main(int argc, char **argv) {
         return 1;
     }
     options.generationProfile = generationProfile(options.swimmableWater, mods.loaded());
+    // Mod SDK on the dedicated server (docs/modding.md): events come from the simulation thread
+    // with the server's lock released, so mods may call the host functions below.
+    options.modEvents.frame = [&](double seconds) { mods.frame(seconds); };
+    options.modEvents.playerJoin = [&](uint64_t id) { mods.playerJoin(id); };
+    options.modEvents.playerLeave = [&](uint64_t id) { mods.playerLeave(id); };
+    options.modEvents.chat = [&](uint64_t sender, const std::string &text) { mods.chat(sender, text); };
+    options.modEvents.creatureDeath = [&](uint64_t id, int32_t type, int32_t level, uint64_t credited) {
+        mods.creatureDeath(id, type, level, credited);
+    };
+    options.modEvents.missionComplete = [&](int32_t cx, int32_t cy) { mods.missionComplete(cx, cy); };
+    options.modEvents.creatureTamed = [&](uint64_t id, int32_t type, uint64_t owner) { mods.creatureTamed(id, type, owner); };
     net::Server server(options);
+    ModHost &host = mods.hooks();
+    host.getTimeOfDay = [&] { return (double)server.timeOfDayMs(); };
+    host.setTimeOfDay = [&](double ms) { server.setTimeOfDay((uint32_t)std::clamp(ms, 0.0, 86399999.0)); };
+    host.getCreatures = [&] {
+        std::vector<AvCreature> out;
+        for (const net::ServerCreature &c : server.creatureList())
+            out.push_back({c.id, c.fighter.type, c.fighter.controller, c.fighter.level, c.fighter.health,
+                           creatures::maxHealth(c.fighter), c.at.x, c.at.y, c.at.z});
+        return out;
+    };
+    host.getBlock = [&](int32_t x, int32_t y, int32_t z, uint8_t out[4]) {
+        const auto b = server.block(x, y, z);
+        if (!b)
+            return false;
+        out[0] = b->r, out[1] = b->g, out[2] = b->b, out[3] = b->type();
+        return true;
+    };
+    host.setBlock = [&](int32_t x, int32_t y, int32_t z, const uint8_t block[4]) {
+        return server.editBlock(x, y, z, {block[0], block[1], block[2], block[3]});
+    };
+    host.say = [&](const std::string &text) {
+        server.broadcast(text);
+        return true;
+    };
+    host.tell = [&](uint64_t player, const std::string &text) { return server.tellPlayer(player, text); };
+    host.playerName = [&](uint64_t id) { return server.playerName(id); };
+    struct HookReset { // the mods outlive the server: their shutdown must not reach it
+        ModHost &host;
+        ~HookReset() { host.getTimeOfDay = {}, host.setTimeOfDay = {}, host.getCreatures = {}, host.getBlock = {},
+                       host.setBlock = {}, host.say = {}, host.tell = {}, host.playerName = {}; }
+    } hookReset{host};
     std::string error;
     if (!server.start(&error)) {
         std::printf("%s\n", error.c_str());

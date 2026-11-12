@@ -97,10 +97,21 @@ int main() {
     check(content.removeOverride(externalLayer) && !content.removeOverride(externalLayer) && !content.read("thing.cub"),
           "external override lifetime remains independent");
     write(mods / "Startup" / "content" / "startup.txt", "Y");
+    std::vector<std::pair<uint64_t, std::string>> told;
+    host.tell = [&](uint64_t player, const std::string &line) {
+        told.push_back({player, line});
+        return true;
+    };
+    host.playerName = [](uint64_t id) { return id == 7 ? std::optional<std::string>("Ada") : std::nullopt; };
     {
         ModLoader loader(host);
         loader.load(mods, {"Startup"}, content);
         check(loader.loaded().size() == 1 && text(content.read("startup.txt")) == "Y", "successful startup retains its content");
+        // SDK version 10: join, leave and taming reach the plugin; tell and getPlayerName reach the host.
+        loader.playerJoin(7);
+        loader.playerLeave(7);
+        loader.creatureTamed(5, 44, 7);
+        check(told.size() == 1 && told[0].first == 7 && told[0].second == "welcome Ada", "v10 join hook tells the player");
         loader.shutdown();
         check(!content.read("startup.txt"), "successful shutdown removes its content");
     }
@@ -140,6 +151,8 @@ int main() {
     check(logged("TimeLapse: goodbye (2 zones seen)"), "plugin shut down on unload, having seen two zones");
     check(logged("Startup: startup content present") && logged("Startup: shutdown content present"),
           "DLL lifecycle sees its layer before decline and through shutdown");
+    check(logged("Startup: name 3 cut 3 'Ad' unknown -1"), "v10 getPlayerName: full length, terminated cut, unknown -1");
+    check(logged("Startup: left 7") && logged("Startup: tamed 5 type 44 by 7"), "v10 leave and taming hooks");
     for (const auto &l : log)
         std::printf("  log  %s\n", l.c_str());
 

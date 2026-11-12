@@ -473,6 +473,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             mods.hooks().getMission = {}, mods.hooks().setBlock = {}, mods.hooks().getCreatures = {};
             mods.hooks().spawnParticles = {}, mods.hooks().getQuests = {};
             mods.hooks().say = {}, mods.hooks().showChat = {};
+            mods.hooks().tell = {}, mods.hooks().playerName = {};
         }
     } hookReset{mods};
     // Screens §5.2.4 item 2: a discovered mission's target zone is drawn undimmed on the map.
@@ -649,6 +650,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const auto &[id, other] : receivedActors)
             add(id, other.fighter(), glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
         return out;
+    };
+    mods.hooks().playerName = [&](uint64_t id) -> std::optional<std::string> { // mod SDK v10
+        if (id == 0 || (client.connected() && id == client.id()))
+            return own.name();
+        if (const auto it = receivedActors.find(id); it != receivedActors.end() && it->second.fighter().controller == 0)
+            return it->second.name();
+        return std::nullopt;
     };
     npcs.descriptorContext = [&](int32_t zx, int32_t zy) {
         return missions.descriptorContext(zx, zy, [&](int32_t rx, int32_t ry) {
@@ -858,6 +866,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     };
     mods.hooks().showChat = [&](const std::string &text, float r, float g, float b) {
         interface.chatAdd(text + "\n", {r, g, b});
+        return true;
+    };
+    mods.hooks().tell = [&](uint64_t to, const std::string &text) { // mod SDK v10: the local player only
+        if (to != 0 && !(client.connected() && to == client.id()))
+            return false;
+        interface.chatAdd(text + "\n", {255, 255, 255});
         return true;
     };
     interface.worldPreview = [&](size_t index) {
@@ -2212,6 +2226,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         };
                         // Pets §7.4: a creature tamed by this player turns the food in the Pet slot into
                         // its pet item; §12: the pet item follows the pet's level and experience.
+                        for (const auto &t : happened.tamed) // mod SDK v10
+                            mods.creatureTamed(t.creature, t.type, t.owner);
                         for (const auto &t : happened.tamed)
                             if (t.owner == c.id && creatures::itemType(inventory.equipment[12]) == 20) {
                                 creatures::ItemRecord pet{};

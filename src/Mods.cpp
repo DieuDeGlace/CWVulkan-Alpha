@@ -158,6 +158,24 @@ int hostShowChat(void *context, const char *text, float r, float g, float b) {
     return c.host->showChat && text && c.host->showChat(text, r, g, b) ? 1 : 0;
 }
 
+int hostTell(void *context, uint64_t player, const char *text) {
+    const CallerContext &c = caller(context);
+    return c.host->tell && text && c.host->tell(player, text) ? 1 : 0;
+}
+
+int32_t hostGetPlayerName(void *context, uint64_t id, char *buffer, uint32_t capacity) {
+    const CallerContext &c = caller(context);
+    const std::optional<std::string> name = c.host->playerName ? c.host->playerName(id) : std::nullopt;
+    if (!name)
+        return -1;
+    if (buffer && capacity > 0) {
+        const size_t n = std::min<size_t>(capacity - 1, name->size());
+        std::memcpy(buffer, name->data(), n);
+        buffer[n] = 0;
+    }
+    return (int32_t)std::min<size_t>(name->size(), INT32_MAX);
+}
+
 uint32_t hostGetCreatureCount(void *context) {
     const CallerContext &c = caller(context);
     return c.host->getCreatures ? (uint32_t)c.host->getCreatures().size() : 0;
@@ -310,7 +328,8 @@ void ModLoader::load(const std::filesystem::path &modsFolder, const std::vector<
                              hostPlaySound, hostGetTimeOfDay, hostSetTimeOfDay, hostGetBlock, hostGetPlayer,
                              hostShowText, hostShowBanner, hostGetStaticCount, hostGetStatic,
                              hostGetMission, hostSetBlock, hostGetCreatureCount, hostGetCreature,
-                             hostSpawnParticles, hostGetQuestCount, hostGetQuest, hostSay, hostShowChat};
+                             hostSpawnParticles, hostGetQuestCount, hostGetQuest, hostSay, hostShowChat,
+                             hostTell, hostGetPlayerName};
             plugin->mod.size = sizeof(AvMod);
             if (!entry(&plugin->table, &plugin->mod)) {
                 report(info.name, "plugin declined to load");
@@ -383,6 +402,24 @@ void ModLoader::itemReceived(int32_t type, int32_t subtype, int32_t level) {
     for (const auto &p : plugins)
         if (p->mod.onItemReceived)
             p->mod.onItemReceived(p->mod.user, type, subtype, level);
+}
+
+void ModLoader::playerJoin(uint64_t id) {
+    for (const auto &p : plugins)
+        if (p->mod.onPlayerJoin)
+            p->mod.onPlayerJoin(p->mod.user, id);
+}
+
+void ModLoader::playerLeave(uint64_t id) {
+    for (const auto &p : plugins)
+        if (p->mod.onPlayerLeave)
+            p->mod.onPlayerLeave(p->mod.user, id);
+}
+
+void ModLoader::creatureTamed(uint64_t id, int32_t type, uint64_t owner) {
+    for (const auto &p : plugins)
+        if (p->mod.onCreatureTamed)
+            p->mod.onCreatureTamed(p->mod.user, id, type, owner);
 }
 
 void ModLoader::shutdown() {

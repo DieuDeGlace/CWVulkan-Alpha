@@ -1510,3 +1510,12 @@ below the owner and keeps its fraction. The old pet code would have failed
 that, because it snapped the goal to a block floor. All 60 CTests pass, the
 player diagnostic and five live runs pass, and the six captures match the
 preceding batch.
+
+Mod SDK v10, the server's mod events (2026-11-12). ModTests' probe plugin now
+receives a join, a leave and a taming. From the join it calls `getPlayerName`
+(full length, a terminated cut-down copy, -1 for an unknown id) and `tell`, and
+both reach the host. NetTests gives its live server mod events. The two joins
+arrive once each, frames run with the world steps, and Alice's "hi" reaches the
+chat event. That event's handler then calls back into the server (her name, the
+creature list, a tell), and the told line reaches her client from id 0.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures match the preceding batch.

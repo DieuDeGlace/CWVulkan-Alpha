@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,9 @@ struct ModHost {
     // (version 9) says a chat line, or shows one here only: false when no game is showing.
     std::function<bool(const std::string &text)> say;
     std::function<bool(const std::string &text, float r, float g, float b)> showChat;
+    // (version 10) a chat line to one player, and a player's character name (none: unknown).
+    std::function<bool(uint64_t player, const std::string &text)> tell;
+    std::function<std::optional<std::string>(uint64_t id)> playerName;
 };
 
 struct ModInfo {
@@ -91,6 +95,10 @@ class ModLoader {
     void chat(uint64_t sender, const std::string &text);
     // Calls every plugin's onItemReceived.
     void itemReceived(int32_t type, int32_t subtype, int32_t level);
+    // Calls every plugin's onPlayerJoin / onPlayerLeave / onCreatureTamed.
+    void playerJoin(uint64_t id);
+    void playerLeave(uint64_t id);
+    void creatureTamed(uint64_t id, int32_t type, uint64_t owner);
     // Calls every plugin's onShutdown and unloads them (also done by the destructor).
     void shutdown();
 
