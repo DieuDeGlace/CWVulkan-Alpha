@@ -98,6 +98,7 @@ void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibilit
     inputs.eye = eye;
     inputs.anchor = {renderOrigin[0], renderOrigin[1], 0};
     origin = inputs.anchor;
+    hasPlaced = true;
     inputs.angles = s.angles;
     inputs.amplitude = shake;
     rebased = camera_view::construct(inputs, clock, trig).rebased;

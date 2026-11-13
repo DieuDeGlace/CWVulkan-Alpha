@@ -1,5 +1,6 @@
 #include "Player.h"
 #include "creatures/ControllerAim.h"
+#include "creatures/Npcs.h"
 #include "creatures/Projectiles.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -178,7 +179,9 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         held(GLFW_KEY_3) || controller.abilities[4], held(GLFW_KEY_4) || controller.abilities[5]};
     // Controller aim contract §3: the aim point from the camera ray and the creature pick, the
     // close spell's held point, then the free-control write of the aim (record field 26).
-    {
+    // Engine adapter: the contract leaves the first update after construction open (the view
+    // matrix is not built yet); here the aim is left as it was until the camera is placed.
+    if (camera.placed()) {
         static const visibility::RecordLookup noRecords = [](int32_t, int32_t, const visibility::RecordVisitor &) {};
         const visibility::Scene scene{[&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); },
                                       records ? *records : noRecords};
@@ -273,8 +276,6 @@ void Player::advance(int32_t dt, bool replica) {
     }
     if (state.action == 0 && (fighter.action == 106 || fighter.action == 107))
         fighter.action = 0, fighter.actionMs = 0; // the step ended the ride or the voyage
-    if (fighter.action == 72)
-        yaw = state.yaw; // the spin turns the player
     // Travel §3.2: the glider folds when the Special slot no longer holds it.
     if (fighter.equipment[11].type != 23 || fighter.equipment[11].subtype == 1)
         state.mode &= ~GLIDER;
@@ -301,9 +302,10 @@ void Player::advance(int32_t dt, bool replica) {
             const float turn = (float)(std::asin(std::sin(glm::radians(theta - yaw))) * 180.0 / 3.141592653589793);
             yaw += turn * (1 - std::pow(1 - 0.005f, dtMs));
         }
-    } else if (glm::dot(wish, wish) > 0) {
-        // The creature turns to where it is going (facing(ψc) = Rz(ψc)(0, 1, 0), §3.9).
-        yaw = (float)(std::atan2(-wish.x, wish.y) * 180.0 / 3.141592653589793);
+    } else if (dt > 0) {
+        // Aim-triplet contract §3.7/§3.8: the shared facing and drawn-aim block after movement
+        // (toward the drawn aim while facing it, else along a walk that follows the intent).
+        faceAfterStep(yaw, headPitch, drawnLook, state, fighter, actionMsBefore, dt);
     }
 
 }
@@ -331,6 +333,7 @@ void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, floa
     motion.onGround = (state.contact & creatures::ON_GROUND) != 0;
     motion.inWater = (state.contact & creatures::IN_WATER) != 0;
     motion.yawDegrees = yaw;
+    motion.headPitch = headPitch;
     motion.intent = state.intent;
     motion.running = (state.mode & 0x40) != 0;
     motion.climbing = (state.mode & creatures::CLIMB) && (state.contact & creatures::ON_WALL);

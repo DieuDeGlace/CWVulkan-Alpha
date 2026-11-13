@@ -1583,3 +1583,10 @@ producer-probability, water and mode-zero cases. CreatureTests now expects
 identifier 5 for an unarmed impact, where it used to expect the inferred 7.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Local player facing (2026-11-12). The shared facing block keeps the existing
+NPC facing tests. A first live run showed the player turned 45 degrees toward
+the world origin. A temporary debug print traced this to the camera's zero
+anchor on the first update. The adapter that holds the aim until the camera is
+placed fixes it, and the captures again match the preceding batch. All 60
+CTests pass, and the player diagnostic and five live runs pass.

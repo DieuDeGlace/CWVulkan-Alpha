@@ -101,6 +101,8 @@ class Player {
     creatures::AbilityBindings bindings;
     creatures::Combatant fighter;
     float yaw = 0;
+    float headPitch = 0;      // aim contract §3.7 (+0x58)
+    glm::vec3 drawnLook{0};   // aim contract §3.8 (+0x138C)
     float jumpHeld = 0, jumpLock = 0; // §4, milliseconds
     bool gWasDown = false;            // travel §3.1: G acts on the press
     glm::vec3 wish{0}; // most recently published movement input

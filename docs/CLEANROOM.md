@@ -1836,3 +1836,20 @@ Fixes:
 The healing-stream (beam heal) case was implemented in the previous
 checkpoint. The area heal, site 1 (traps) and the call sites' own damage
 derivations remain open.
+
+### Local player facing (2026-11-12)
+
+The held aim contract (§3.7, §3.8), with the beam-leftovers contract §7 (every
+live creature, the local player included, reaches the facing and drawn-aim
+blocks), now drives the local player too. The NPC block was moved into
+`faceAfterStep`, shared by the NPC step and `Player::advance`. It covers the
+driven list, the action-0x48 spin yaw, the climbing bypass, the turn toward
+the drawn aim with head pitch, the velocity heading and the drawn-aim
+smoothing.
+
+The player's own climbing turn toward the wall (travel §6.4) stays in place of
+the unclosed +0x11A0 rule. The player's head pitch reaches the pose.
+
+Engine adapter: the controller writes no aim until the follow camera has been
+placed once. The contract leaves the first update after construction open; an
+unplaced zero anchor would aim at the world origin.

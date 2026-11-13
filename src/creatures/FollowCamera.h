@@ -48,6 +48,8 @@ class FollowCamera {
     const camera_view::Fixed3 &followAnchor() const { return anchor; }
     const camera_view::Fixed3 &eyeFixed() const { return eye; }
     const camera_view::Fixed3 &rebaseOrigin() const { return origin; }
+    // Whether update() has run once (the anchor and view exist).
+    bool placed() const { return hasPlaced; }
 
   private:
     camera_follow::State state() const;
@@ -56,6 +58,7 @@ class FollowCamera {
     // The anchor is constructed as zero; the first update's distance snap moves
     // it to the followed creature.
     camera_view::Fixed3 anchor{}, eye{}, origin{};
+    bool hasPlaced = false;
     camera_view::Matrix rebased = camera_view::identity();
 };
 

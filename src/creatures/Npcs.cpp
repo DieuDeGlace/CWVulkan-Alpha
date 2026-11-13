@@ -1918,6 +1918,44 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
         frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
 }
 
+void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+                   int32_t clockBefore, int32_t milliseconds) {
+    // The "driven" flag's setters are the beam-leftovers contract §7.1 list; action 0x48 also
+    // turns yaw (the engine's spin motion supplies that yaw).
+    const bool driven = drivenByAction(c, clockBefore);
+    if (driven && c.action == 0x48)
+        yaw = body.yaw;
+    // §7.2: in the climbing state the facing block is bypassed (the original's rule from
+    // +0x11A0 is not closed; the caller's climbing turn stands in).
+    const bool climbing = (body.mode & CLIMB) && (body.contact & ON_WALL) && !(body.mode & GLIDER);
+    if (climbing) {
+    } else if ((body.mode & AIMING) && c.hitStun <= 0) {
+        const glm::vec3 drawn = drawnLook;
+        if (drawn.x * drawn.x + drawn.y * drawn.y > 0.f && !driven) {
+            const float heading = headingOf(drawn.x, drawn.y);
+            yaw = approach(yaw, interpolateAngle(yaw, heading, 1.f), milliseconds, .1f);
+        }
+        const float squared = (drawn.x * drawn.x + drawn.y * drawn.y) + drawn.z * drawn.z;
+        if (squared > 0.f) {
+            const float inverse = 1.f / float(std::sqrt(double(squared)));
+            const float tilt = float(std::asin(double(drawn.z * inverse)) / PI64 * 180.0);
+            headPitch = approach(headPitch, interpolateAngle(headPitch, tilt, 1.f), milliseconds,
+                                 std::bit_cast<float>(0x3BA3D70Au));
+        }
+    } else if (body.dodgeMs == 0 && !driven) {
+        const glm::vec3 v = body.velocity;
+        const float horizontal = v.x * v.x + v.y * v.y;
+        const float along = (v.x * body.intent.x + v.y * body.intent.y) + v.z * body.intent.z;
+        if (horizontal > std::bit_cast<float>(0x3CA3D70Au) && along > 0.f)
+            yaw = headingOf(v.x, v.y);
+    }
+    const float share = approach(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
+    for (int axis = 0; axis < 3; axis++)
+        drawnLook[axis] = drawnLook[axis] + (body.look[axis] - drawnLook[axis]) * share;
+    // R0 (query 0x03D1A0) is the engine's action duration, as in actionOver.
+    if (c.action == 0 || c.actionMs == 0 || actionOver(c))
+        drawnLook = body.look;
+}
 void Npcs::healStream(Combatant &caster, const Body &casterBody, float t, float dt, std::span<PlayerView> players,
                       NpcFrame &frame) {
     if (caster.action != 0x22)
@@ -2300,44 +2338,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             frame.bursts.push_back(splashBurst(npc.body.blocks()));
             frame.sounds.push_back({npc.body.blocks(), 31, 0.9f + (float)draw() / 32767.f, 1});
         }
-        // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement. The "driven"
-        // flag's setters are the beam-leftovers contract §7.1 list; action 0x48 also turns yaw
-        // (the engine's spin motion supplies that yaw).
-        const bool driven = drivenByAction(c, before);
-        if (driven && c.action == 0x48)
-            npc.yaw = npc.body.yaw;
-        // §7.2: in the climbing state the facing block is bypassed (the original's rule from
-        // +0x11A0 is not closed; the yaw is left as it is).
-        const bool climbing = (npc.body.mode & CLIMB) && (npc.body.contact & ON_WALL) && !(npc.body.mode & GLIDER);
-        if (climbing) {
-        } else if ((npc.body.mode & AIMING) && c.hitStun <= 0) {
-            const glm::vec3 drawn = npc.drawnLook;
-            if (drawn.x * drawn.x + drawn.y * drawn.y > 0.f && !driven) {
-                const float heading = headingOf(drawn.x, drawn.y);
-                npc.yaw = approach(npc.yaw, interpolateAngle(npc.yaw, heading, 1.f), milliseconds, .1f);
-            }
-            const float squared = (drawn.x * drawn.x + drawn.y * drawn.y) + drawn.z * drawn.z;
-            if (squared > 0.f) {
-                const float inverse = 1.f / float(std::sqrt(double(squared)));
-                const float tilt = float(std::asin(double(drawn.z * inverse)) / PI64 * 180.0);
-                npc.headPitch = approach(npc.headPitch, interpolateAngle(npc.headPitch, tilt, 1.f), milliseconds,
-                                         std::bit_cast<float>(0x3BA3D70Au));
-            }
-        } else if (npc.body.dodgeMs == 0 && !driven) {
-            const glm::vec3 v = npc.body.velocity;
-            const float horizontal = v.x * v.x + v.y * v.y;
-            const float along = (v.x * npc.body.intent.x + v.y * npc.body.intent.y) + v.z * npc.body.intent.z;
-            if (horizontal > std::bit_cast<float>(0x3CA3D70Au) && along > 0.f)
-                npc.yaw = headingOf(v.x, v.y);
-        }
-        {
-            const float share = approach(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
-            for (int axis = 0; axis < 3; axis++)
-                npc.drawnLook[axis] = npc.drawnLook[axis] + (npc.body.look[axis] - npc.drawnLook[axis]) * share;
-            // R0 (query 0x03D1A0) is the engine's action duration, as in actionOver.
-            if (c.action == 0 || c.actionMs == 0 || actionOver(c))
-                npc.drawnLook = npc.body.look;
-        }
+        // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement.
+        faceAfterStep(npc.yaw, npc.headPitch, npc.drawnLook, npc.body, c, before, milliseconds);
         // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher
         // than their shared floor, turned as the owner.
         // Cast-point contract §2.2 step 3: the follow point is the position after the step,

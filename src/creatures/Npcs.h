@@ -460,6 +460,10 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole = true
 
 // §13.2 step 7: whether `a` would fight `b` (0x596ca0).
 bool hostile(const Combatant &a, const Combatant &b);
+// Aim-triplet contract §3.7 facing and §3.8 drawn aim, after a creature's movement step, for
+// NPCs and the local player alike (beam-leftovers §7: every live creature reaches them).
+void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+                   int32_t clockBefore, int32_t milliseconds);
 
 // §5 with the attack range of §13.2: whether an attack from `from`, facing `yaw` degrees, by a
 // creature of collision box `box` reaches `target` (in front, within reach; inferred for the
