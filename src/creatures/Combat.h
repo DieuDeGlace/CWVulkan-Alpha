@@ -128,6 +128,9 @@ struct Combatant {
     float spentCharge = 0; // the charge a ranged action took when it fired (projectiles §2.3)
     float spentPower = 0;  // what a melee blow spent (open points 6 §2.2, s)
     std::vector<uint64_t> struck; // who this swing or pulse has hit (§1.5)
+    // Strike-call-sites contract S7/S9/K5: dodging creatures in reach (+0x11B4), and the
+    // keys a deferred-key pass left for the counter callback (engine hand-off to the world).
+    std::vector<uint64_t> deferred, counterPending;
     glm::vec3 aim{0};     // field 26: from the creature to what it aims at, blocks
     float mana = 0;       // field 28, 0..1 (§11.2)
     float blockGauge = 0; // field 29
@@ -250,6 +253,11 @@ void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},
                      const std::function<void(const Buff &)> &periodic = {});
 // Convenience for callers with no action effects to dispatch.
 void stepAction(Combatant &c, float dtMs);
+// Strike-call-sites S7/S9: the deferred-key pass. Deferred keys not struck since go to
+// counterPending (ascending key) for the world to run the counter callback on.
+void deferredPass(Combatant &c);
+// The counter callback (0x03CF20 / 0x008230) on a creature that dodged a strike.
+void counterDodge(Combatant &target, std::vector<BuffEvent> *events);
 // The current action's hit connected: the chain goes on (combo + 1, inferred).
 void landHit(Combatant &c);
 // Whether the action's wind-up ends inside (before, before + dt]: when the hit happens.

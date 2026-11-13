@@ -71,6 +71,98 @@ int main() {
         same(reachesTarget(guard, {0, 0, 0}, 0, box, {0, 3.6, 0}, box), 0, "out of reach ahead");
     }
 
+    // Strike-call-sites S6/S7: the periodic window, its area-heal flag and the deferred-key pass.
+    {
+        Combatant healer;
+        healer.characterClass = 3, healer.specialization = 1;
+        healer.action = 0x20;
+        const Phases p = phases(healer, healer.action);
+        const int32_t B = p.windUp, I = p.active / 6;
+        healer.struck = {7};
+        StrikeWindow w = strikeWindow(healer, float(B + 5), 16);
+        same(w.strikes, 1, "the interval's first 100 units strike");
+        same(w.areaHeal, 0, "no heal flag inside the 100-unit window");
+        same((double)healer.struck.size(), 1, "the struck set stays within the interval");
+        w = strikeWindow(healer, float(B + I - 10), 16);
+        same(w.areaHeal, 1, "entering the next interval sets the heal flag");
+        same((double)healer.struck.size(), 0, "and clears the struck set");
+        w = strikeWindow(healer, float(B + 90), 16);
+        same(w.areaHeal, 1, "the 100-unit window ending sets the heal flag");
+
+        Combatant striker;
+        striker.action = 1;
+        striker.deferred = {5, 3, 9};
+        striker.struck = {5};
+        strikeWindow(striker, 0, 16);
+        same((double)striker.counterPending.size(), 2, "deferred keys not struck since are passed on");
+        same((double)striker.counterPending[0], 3, "in ascending key order");
+        same((double)striker.deferred.size() + striker.struck.size(), 0, "the wind-up clears both sets");
+    }
+
+    // Strike-call-sites K2: the strike centre is the position plus the fixed rotated forward
+    // offset; action 0x45 lowers it by half the height above the width.
+    {
+        Combatant a;
+        a.action = 0x45;
+        Body body;
+        body.size = {1, 1, 3};
+        body.position[0] = 100 * 65536, body.position[1] = 200 * 65536, body.position[2] = 50 * 65536;
+        const StrikeGeometry g = strikeGeometry(a, body, 0);
+        same((double)(g.centre[1] - body.position[1]), 98304, "forward by 1.5 widths");
+        same((double)(g.centre[2] - body.position[2]), -65536, "lowered by (3 - 1) x 0.5");
+        same((double)(g.centre[0] - body.position[0]), 0, "no sideways offset at yaw 0");
+        same(g.reach, 1.5, "R = 1.5 widths");
+    }
+
+    // Strike-call-sites §5: the swing count on the first target, mana on the frame's first
+    // success only (two draws), none for a charged blow, whose charge feeds pair (4, 0).
+    {
+        Combatant a;
+        a.action = 1;
+        a.characterClass = 1;
+        int draws = 0;
+        const auto rolls = [&] { draws++; return 16383; };
+        bool hitAny = false;
+        afterStrike(a, true, hitAny, rolls);
+        same(a.combo, 1, "the first target counts a swing");
+        same(draws, 2, "two mana draws");
+        same(a.mana > 0, 1, "mana gained");
+        same(hitAny, 1, "the hit-any flag is set");
+        const float mana = a.mana;
+        afterStrike(a, false, hitAny, rolls);
+        same(a.combo, 1, "a later target counts no swing");
+        same(draws, 2, "no draw after the frame's first success");
+        same(a.mana, mana, "no more mana");
+
+        Combatant rogue;
+        rogue.action = 1;
+        rogue.characterClass = 4, rogue.specialization = 0;
+        rogue.spentPower = 0.5f;
+        bool none = false;
+        draws = 0;
+        afterStrike(rogue, true, none, rolls);
+        same(draws, 0, "a charged blow gains no mana");
+        same(rogue.stealth, 0.5, "its charge feeds the crit charge");
+    }
+
+    // Strike-call-sites §6 and B4: the area heal record (roll, then critical) and the beam's
+    // S4 = (heal power x 1.5) x (scaled unit draw (0.05) + 1), one draw.
+    {
+        Combatant healer;
+        healer.characterClass = 3, healer.specialization = 1;
+        healer.action = 0x21;
+        int draws = 0;
+        const auto rolls = [&] { draws++; return 32767; };
+        const HitRecord heal = areaHealRecord(healer, 4, {1, 2, 3}, rolls);
+        same(draws, 2, "the heal makes two draws");
+        same(heal.amount, (magicBase(healer) * 0.75f) * -0.1f, "a tenth of the heal power, negative", 1e-5);
+        same((double)heal.target, 4, "the heal names its target");
+        draws = 0;
+        const HitInput beam = beamInput(healer, false, rolls);
+        same(draws, 1, "the beam amount makes one draw");
+        same(beam.amount, (magicBase(healer) * 1.5f) * 1.05f, "S4 at the top of its spread", 1e-4);
+    }
+
     // Open points 4 §9.4: a crow in the ground comes clear, its bottom 1.1 over a layer;
     // cells of unloaded zones lift nothing.
     {

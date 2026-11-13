@@ -154,68 +154,141 @@ float strikeBase(const Combatant &c) {
     }
 }
 
-bool strikeWindow(Combatant &c, float t, float dtMs) {
+StrikeWindow strikeWindow(Combatant &c, float tMs, float dtMs) {
+    // Strike-call-sites contract S5-S9 (integer clock arithmetic, truncating division).
     const Phases p = phases(c, c.action);
-    const float P1 = (float)p.windUp, P2 = (float)p.active;
-    if (t <= P1)
-        c.struck.clear();
-    float from, to;
-    if (const Pulse pulse = pulseOf(p, c.action); pulse.pulsing && pulse.length > 0) {
-        const float T = (float)pulse.length;
-        const bool running = P1 <= t && t < P1 + P2;
-        from = to = P1;
-        if (running) {
-            from = P1 + std::trunc((t - P1) / T) * T;
-            to = from + 100;
+    const int32_t B = p.windUp, C = p.active, t = int32_t(tMs), dt = int32_t(dtMs);
+    StrikeWindow out;
+    // S5: the window, with the variants of actions 0x44/0x45 and 0x5D.
+    int32_t start = std::max(C / 2 - 100 + B, B), end = C / 2 + B;
+    if (end >= B + C)
+        end = B + C - 1;
+    if (c.action == 0x44 || c.action == 0x45)
+        start = C / 3 + B;
+    if (c.action == 0x5D)
+        start = C / 5 + B, end = B + C;
+    // S6: the periodic actions strike once per interval, in a 100-unit window.
+    if (const Pulse pulse = pulseOf(p, c.action); pulse.pulsing) {
+        const int32_t I = pulse.length;
+        start = end = B;
+        // A zero interval (division by zero) is outside the contract; the engine never strikes.
+        if (B <= t && t < B + C && I > 0) {
+            start = B + ((t - B) / I) * I;
+            end = start + 100;
+            const int32_t next = B + ((t + dt - B) / I) * I;
+            if (next != start && next < B + C) {
+                out.areaHeal = true;
+                c.struck.clear();
+                c.deferred.clear();
+            }
+            if (t + dt > end)
+                out.areaHeal = true;
         }
-        const float next = P1 + std::trunc((t + dtMs - P1) / T) * T;
-        if (running && next != from && next < P1 + P2)
-            c.struck.clear();
-    } else if (c.action == 93) {
-        from = P1 + (float)(p.active / 5);
-        to = P1 + P2;
-    } else {
-        const float middle = P1 + (float)(p.active / 2);
-        from = c.action == 68 || c.action == 69 ? P1 + (float)(p.active / 3) : std::max(P1, middle - 100);
-        to = middle >= P1 + P2 ? P1 + P2 - 1 : middle;
     }
-    return from < t && t <= to;
+    // S7: the wind-up runs the deferred-key pass and clears both sets.
+    if (t <= B) {
+        deferredPass(c);
+        c.deferred.clear();
+        c.struck.clear();
+        c.hitLanded = false;
+    }
+    // S9: at the window's end the deferred-key pass runs and only the deferred set is cleared.
+    if (t >= end) {
+        deferredPass(c);
+        c.deferred.clear();
+    }
+    out.strikes = start < t && t <= end;
+    return out;
+}
+
+StrikeGeometry strikeGeometry(const Combatant &a, const Body &body, float yaw) {
+    // Strike-call-sites contract K2.
+    const float x = body.size.x;
+    float R = x * 1.5f, F = 1.5f;
+    switch (a.action) {
+    case 0x0D: case 0x0E: case 0x02: case 0x01: case 0x09: case 0x04: case 0x03: case 0x07: case 0x06:
+    case 0x12: case 0x13:
+        R = x * 2.f, F = 1.f;
+        break;
+    default: break;
+    }
+    switch (a.action) {
+    case 0x14: case 0x15: R *= 2.f; break;
+    case 0x44: case 0x46: F = 0; break;
+    case 0x56: case 0x5D: case 0x68: R *= 2.f, F = 0; break;
+    case 0x57: case 0x58: R = 8, F = 0; break;
+    case 0x1E: case 0x20: R = 3, F = 0; break;
+    case 0x1F: case 0x21: R = 5, F = 0; break;
+    case 0x5B: case 0x4A: R = 20, F = 0; break;
+    case 0x48: case 0x4E: case 0x4D: case 0x4C: R *= 1.2f, F = 0; break;
+    default: break;
+    }
+    const auto fixed = [](float v) { return int64_t(v * 65536.f); };
+    const auto add = [](int64_t a, int64_t b) { return std::bit_cast<int64_t>(uint64_t(a) + uint64_t(b)); };
+    // Step 4: the rotation of (0, d, 0) about the vertical axis by +0x30 degrees.
+    const float d = x * F;
+    const float angle = yaw * 0.0174532924f;
+    const float cosine = float(std::cos(double(angle))), sine = float(std::sin(double(angle)));
+    StrikeGeometry g;
+    g.reach = R;
+    const float offset[3] = {-sine * d, cosine * d, 0.f};
+    for (size_t k = 0; k < 3; k++)
+        g.centre[k] = add(body.position[k], fixed(offset[k]));
+    g.start = {body.position[0], body.position[1], body.position[2]};
+    if (a.action >= 0x1E && a.action <= 0x21) { // step 5, and the geometric test's start point
+        for (size_t k = 0; k < 3; k++)
+            g.centre[k] = add(body.position[k], fixed(a.aim[int(k)]));
+        g.start = g.centre;
+        g.start[2] = add(g.start[2], fixed(R));
+    }
+    if (a.action == 0x4B || a.action == 0x45) // step 6: subtracted from the centre's z
+        g.centre[2] = std::bit_cast<int64_t>(uint64_t(g.centre[2]) - uint64_t(fixed((body.size.z - x) * 0.5f)));
+    if (a.action == 0x0B || a.action == 0x3D || a.action == 0x36) { // step 7
+        g.centre = {body.position[0], body.position[1], body.position[2]};
+        g.reach = R * 3.f;
+    }
+    return g;
+}
+
+bool strikeReaches(const StrikeGeometry &g, const Body &striker, const Body &target) {
+    // K5 steps 2 and 3: the fixed-point horizontal reach and the binary32 vertical test.
+    const float r = target.size.x * 0.7f + g.reach;
+    int64_t horizontal = 0;
+    for (size_t k = 0; k < 2; k++) {
+        const uint64_t d = uint64_t(g.centre[k]) - uint64_t(target.position[k]);
+        horizontal = std::bit_cast<int64_t>(uint64_t(horizontal) + uint64_t(std::bit_cast<int64_t>(d * d) / 65536));
+    }
+    if (!(horizontal < int64_t((r * r) * 65536.f)))
+        return false;
+    const float dz = float(std::bit_cast<int64_t>(uint64_t(g.centre[2]) - uint64_t(target.position[2]))) *
+                     (1.f / 65536.f);
+    return ((target.size.z * 0.5f) + striker.size.z) + g.reach > float(std::fabs(double(dz)));
 }
 
 bool reachesTarget(const Combatant &a, glm::dvec3 position, float yaw, glm::vec3 box, glm::dvec3 target,
                    glm::vec3 targetBox, glm::dvec3 *sightFrom) {
-    float r = 1.5f * box.x, f = 1.5f;
-    switch (a.action) {
-    case 1: case 2: case 3: case 4: case 6: case 7: case 9: case 13: case 14: case 18: case 19:
-        r = 2.f * box.x, f = 1;
-        break;
-    case 20: case 21: r *= 2; break;
-    case 68: case 70: f = 0; break;
-    case 86: case 93: case 104: r *= 2, f = 0; break;
-    case 87: case 88: r = 8, f = 0; break;
-    case 30: case 32: r = 3, f = 0; break;
-    case 31: case 33: r = 5, f = 0; break;
-    case 72: case 76: case 77: case 78: r *= 1.2f, f = 0; break;
-    case 74: case 91: r = 20, f = 0; break;
-    case 11: case 54: case 61: r *= 3; break;
-    default: break;
+    Body striker, struck;
+    for (int k = 0; k < 3; k++) {
+        striker.position[k] = int64_t(position[k] * 65536.0);
+        struck.position[k] = int64_t(target[k] * 65536.0);
     }
-    const float turn = yaw * PI / 180.f;
-    glm::dvec3 origin = position + glm::dvec3(-std::sin(turn) * box.x * f, std::cos(turn) * box.x * f, 0);
-    glm::dvec3 sightPoint = position;
-    if (a.action >= 30 && a.action <= 33) {
-        origin = position + glm::dvec3(a.aim);
-        sightPoint = origin + glm::dvec3(0, 0, r);
-    }
-    if (a.action == 69 || a.action == 75)
-        origin.z += 0.5f * (box.z - box.x);
-    if (a.action == 11 || a.action == 54 || a.action == 61)
-        origin = position;
+    striker.size = box;
+    struck.size = targetBox;
+    const StrikeGeometry g = strikeGeometry(a, striker, yaw);
     if (sightFrom)
-        *sightFrom = sightPoint;
-    const glm::dvec3 d = origin - target;
-    const double reach = 0.7 * targetBox.x + r;
-    return d.x * d.x + d.y * d.y < reach * reach && std::abs(d.z) < 0.5 * targetBox.z + box.z + r;
+        *sightFrom = glm::dvec3(double(g.start[0]), double(g.start[1]), double(g.start[2])) / 65536.0;
+    return strikeReaches(g, striker, struck);
+}
+
+bool procChance(const Combatant &source, float probability, const std::function<int()> &draw) {
+    // Roll Cw (0x0441A0 / 0x00F220): scaled by the main-hand weapon's subtype.
+    if (source.mainHand().type == 3)
+        switch (source.mainHand().subtype) {
+        case 0: case 1: case 2: case BRACELET: probability *= .5f; break;
+        case BOOMERANG: case STAFF: probability *= .3f; break;
+        default: break;
+        }
+    return (float)draw() / 32767.f < probability;
 }
 
 namespace {
@@ -293,9 +366,11 @@ HitInput beamInput(const Combatant &a, const std::function<int()> &draw) {
 }
 
 HitInput beamInput(const Combatant &a, bool critical, const std::function<int()> &draw) {
+    // Strike-call-sites B4 steps 6-7: m = scaled unit draw (0.05) + 1, S4 = (heal power x 1.5) x m.
     HitInput in;
     in.critical = critical;
-    in.amount = 1.5f * magicBase(a) * (1.f + 0.05f * ((float)draw() / 32767.f));
+    const float m = ((float)draw() * 0.05f) / 32767.f + 1.f;
+    in.amount = (magicBase(a) * 1.5f) * m;
     if (in.critical)
         in.amount *= 2;
     in.magic = true;
@@ -304,18 +379,54 @@ HitInput beamInput(const Combatant &a, bool critical, const std::function<int()>
     return in;
 }
 
-void afterFirstTarget(Combatant &a, bool area, const std::function<int()> &draw) {
-    if (a.hitStun <= 0)
+StrikeAftermath afterStrike(Combatant &a, bool first, bool &hitAny, const std::function<int()> &draw) {
+    // Strike-call-sites §5, only when the attack routine returned 1.
+    StrikeAftermath out;
+    // 1. Action 0x1E: Cw(0.25); class pair (_, 0) gains a kind-9 effect and record 47.
+    if (a.action == 0x1E && procChance(a, .25f, draw) && a.specialization == 0) {
+        const Buff record{9, 0, 30000, 0};
+        applyBuff(a, record);
+        out.buff = BuffEvent{a.id, a.id, record};
+        out.upgradeSound = true;
+    }
+    // 2. The swing count, when this was the swing's first target.
+    if (first) {
         a.combo += 1;
-    if (area && a.characterClass == 4 && a.specialization == 0)
-        a.stealth = std::min(1.f, a.stealth + a.spentPower);
-    if (area || a.action == 30 || a.action == 32)
-        return;
-    float gain = 0.1f + 0.05f * (1.f - 2.f * ((float)draw() / 32767.f));
-    gain *= (float)duration(a, a.action) / 500.f;
-    if (draw() % 8 == 0)
-        gain *= 1.5f;
-    a.mana = std::min(1.f, a.mana + gain);
+        a.comboElapsedMs = 0;
+    }
+    // 3. The crit charge (+0x1190) of class pair (4, 0).
+    const bool B3 = a.spentPower > 0.f || a.action == 0x0B;
+    if (B3 && a.characterClass == 4 && a.specialization == 0) {
+        a.stealth = a.stealth + a.spentPower;
+        if (a.stealth > 1.f)
+            a.stealth = 1.f;
+    }
+    // 4. Mana on the frame's first success, unless charged or a heal action.
+    if (!hitAny && !B3 && a.action != 0x1E && a.action != 0x20) {
+        float g = (1.f - ((float)draw() * 2.f) / 32767.f) * 0.05f + 0.1f;
+        g = ((float)duration(a, a.action) / 500.f) * g;
+        if (draw() % 8 == 0)
+            g *= 1.5f;
+        a.mana = a.mana + g;
+        if (a.mana > 1.f)
+            a.mana = 1.f;
+    }
+    // 5.
+    hitAny = true;
+    return out;
+}
+
+HitRecord areaHealRecord(const Combatant &a, uint64_t target, const std::array<int64_t, 3> &position,
+                         const std::function<int()> &draw) {
+    // Strike-call-sites §6 steps 2-5: the roll, the heal power, then the critical query's draw.
+    const float roll = 1.25f - ((float)draw() * 0.5f) / 32767.f;
+    HitRecord heal;
+    heal.attacker = a.id;
+    heal.target = target;
+    heal.amount = ((magicBase(a) * roll) * (0.f + 1.f)) * -0.1f;
+    heal.critical = (float)draw() / 32767.f < criticalChance(a);
+    heal.position = position;
+    return heal;
 }
 
 } // namespace creatures

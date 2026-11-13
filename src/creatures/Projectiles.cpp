@@ -118,16 +118,6 @@ void gainBuff(Combatant &c, uint8_t kind, glm::dvec3 at, ShotEffects &out) {
     out.sounds.push_back({at, 47, 1, 1}); // upgrade2.wav
 }
 
-bool procChance(const Combatant &source, float probability, const std::function<int()> &draw) {
-    if (source.mainHand().type == 3)
-        switch (source.mainHand().subtype) {
-        case 0: case 1: case 2: case BRACELET: probability *= .5f; break;
-        case BOOMERANG: case STAFF: probability *= .3f; break;
-        default: break;
-        }
-    return (float)draw() / 32767.f < probability;
-}
-
 // §4 step 4: the chain ends; the action clock keeps the share of the action that has run.
 void endChain(Combatant &c) {
     const float before = attackSpeed(c);

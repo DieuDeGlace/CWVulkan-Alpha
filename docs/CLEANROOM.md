@@ -1890,3 +1890,43 @@ Still open:
 - Site 1's zone traps (type 7, generation routine 0x100300 / client 0x1CC510).
   No engine generation pass maps to that routine yet, and adding the trap
   draws would change world generation.
+
+## Strike call sites (round 10, held 2026-11-13)
+
+Held contract `docs/specs/alpha-strike-call-sites.md` (SHA-256 8849C420...43E7), written by
+a fresh source author after the round 9 author was stopped, read whole by the implementer.
+
+Implemented:
+- `strikeWindow` now returns the window and the area-heal flag (S5-S9) with integer clock
+  arithmetic. The periodic interval clears both sets on entering a new interval; the wind-up
+  and the window end run the deferred-key pass. A zero interval never strikes (engine guard;
+  the contract leaves division by zero open).
+- `strikeGeometry` / `strikeReaches` (K2, K5): the precise-trig rotated forward offset in
+  fixed point, the aim centre of 0x1E-0x21 and their raised start point, action 0x45/0x4B
+  centres lowered (the engine had raised them), the fixed-point horizontal and binary32
+  vertical reach tests. The geometric test takes option 1 and maximum 200.
+- `Npcs::strike` visits the creatures in ascending signed id. Order per target: health
+  (NaN continues), struck set, reach, geometric test, admission, then a dodging creature
+  (+0x128 nonzero) is deferred instead of struck. Admission keeps the engine's sides as the
+  stand-in for the unaudited hostility routine 0x1988A0.
+- The deferred-key pass leaves keys in `Combatant::counterPending`; `Npcs::counterPass` runs
+  the counter callback (`counterDodge`, shared with the type-4 hit application) and appends a
+  damage-0 type-4 record without the hit routine. Online, the client sends the type-4 record
+  and the target's owner runs the counter.
+- `afterStrike` (§5): action 0x1E's Cw(0.25) kind-9 effect and record 47, the swing count on
+  the first target (struck set empty and not stunned), the pair (4, 0) crit charge on every
+  charged success, and mana on the frame's first uncharged success with the contract's
+  rounding. Action 0x1F's kind-9 reset moved from the action update to the strike (K4).
+- Area heal (§6) for 0x20/0x21 of class pair (_, 1) on flagged frames, after every target
+  that reached admission: roll, heal power x -0.1, then the critical draw; record 42; the hit
+  routine. Role-6 targets are left out (engine stand-in, as the projectile heal does).
+- Beam (B4-B6): the second per-target draw is S4 = (heal power x 1.5) x (draw x 0.05 / 32767
+  + 1), so `beamInput` no longer draws a third time; class pair (_, 2) drains (a self record
+  of -S4 and a direct health gain up to the maximum); the swing count follows every target
+  that reached the call.
+- The healer swing's extra healing burst (older open-points inference) is removed: the
+  contract's post-hit work places no cloud.
+
+Still open: the true hostility routine (target sets), block breaking at K3 (the engine's
+crater pass from the block-edits contract stands; its sound draw is still taken after the
+step), the 0x1314 field, the online client's area heal and geometric test.

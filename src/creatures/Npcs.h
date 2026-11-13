@@ -398,9 +398,13 @@ class Npcs {
     // mana and healing the caster's target id (or the caster) by power x -2 x roll.
     void healStream(Combatant &caster, const Body &casterBody, float beforeMs, float dtMs, std::span<PlayerView> players,
                     NpcFrame &frame);
-    // An NPC's swing also lands on `npcTarget` when either side is a quest ally.
+    // Strike-call-sites contract K2-K8, §5, §6: one strike frame. An NPC's swing also lands on
+    // `npcTarget` when either side is a quest ally. `areaHeal` is the window's area-heal flag.
     void strike(Combatant &attacker, const Body &attackerBody, float yaw, std::span<PlayerView> players,
-                bool byPlayer, NpcFrame &frame, const BlockType &block, uint64_t npcTarget = 0, bool attackerAlly = false);
+                bool byPlayer, bool areaHeal, NpcFrame &frame, const BlockType &block, uint64_t npcTarget = 0,
+                bool attackerAlly = false);
+    // S7/S9: the counter callback and type-4 record for the striker's pending deferred keys.
+    void counterPass(Combatant &striker, std::span<PlayerView> players, NpcFrame &frame);
     // Server §6.1 step 3: a hit landing on an NPC (threat, then damage).
     // Pets and bombs §4.2: the blast of `bomb` hits every live creature in reach.
     void blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame);

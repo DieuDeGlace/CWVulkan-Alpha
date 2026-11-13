@@ -1602,3 +1602,9 @@ kept pitch equals the draw taken right after the query, before any victim. With
 it answering no, there is no pitch and no draw. Each blast asks once, at the
 bomb. All 60 CTests pass, the player diagnostic and five live runs pass, and
 the six captures match the preceding batch.
+Strike call sites (2026-11-13). New CreatureTests cases cover the periodic window and its
+area-heal flag, the deferred-key pass order, the strike centre (forward offset and the 0x45
+lowering), the post-hit swing count and mana draws (none after the frame's first success,
+none for a charged blow, whose charge feeds the crit charge), the area-heal record's two
+draws and amount, and the beam's single S4 draw. All 60 CTests pass, the player diagnostic
+and five live runs pass, and the six captures match the preceding batch.

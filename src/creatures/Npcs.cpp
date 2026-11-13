@@ -1800,11 +1800,8 @@ bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &ta
     frame.buffs.insert(frame.buffs.end(), out.buffs.begin(), out.buffs.end());
     frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
     frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
-    // Projectiles §2.6: a healer's swing heals round itself once more for each creature it hits.
-    // (The ray case places its own clouds: beam-leftovers contract §5.2.)
-    if (attacker.characterClass == 3 && attacker.specialization == 1 && !out.records.empty() &&
-        attacker.action != 28 && attacker.action != 95)
-        frame.shots.push_back(healingBurst(attacker, from));
+    // The strike case's work after the call (strike-call-sites §5) places no cloud; the ray
+    // case places its own (beam-leftovers §5.2).
     return out.hitAccepted;
 }
 
@@ -1912,15 +1909,28 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
             if (!(std::fabs(double(dz)) < double(body.size.z * .5f + 1.f)))
                 return;
             touched.insert(c.id);
-            // §8: the critical query's draw (0x2163E2), then the direct draw (0x216460).
+            // Strike-call-sites B4: the critical query's draw, then the S4 draw (whose consumer
+            // the beam-leftovers contract left open), both before admission.
             const bool critical = (float)draw() / 32767.f < criticalChance(attacker);
-            draw(); // its consumer is not closed
+            const HitInput in = beamInput(attacker, critical, [&] { return draw(); });
             // Engine admission stand-in for routine 0x1988A0: hostility either way.
             if (hostile(attacker, c) || hostile(c, attacker)) {
-                admitted |= landBlow(attacker, attackerBody, c, body, frame,
-                                     beamInput(attacker, critical, [&] { return draw(); }), players);
-                if (clouds) // §5.2 path 2: a cloud at the sample point per admitted creature
+                const bool accepted = landBlow(attacker, attackerBody, c, body, frame, in, players);
+                // B6.1: class pair (_, 2) drains: a self record of -S4 and a direct health gain.
+                if (accepted && attacker.specialization == 2) {
+                    HitRecord drain;
+                    drain.attacker = drain.target = attacker.id;
+                    std::copy_n(attackerBody.position, 3, drain.position.begin());
+                    drain.critical = in.critical;
+                    drain.amount = std::bit_cast<float>(std::bit_cast<uint32_t>(in.amount) ^ 0x80000000u);
+                    frame.emittedHits.push_back(drain);
+                    attacker.health = attacker.health - drain.amount;
+                    if (attacker.health > maxHealth(attacker))
+                        attacker.health = maxHealth(attacker);
+                }
+                if (clouds) // §5.2 path 2 / B6.2: a cloud per creature that reached the call
                     frame.shots.push_back(rayCloud(attacker, blocksOf(P)));
+                admitted = true; // B6.3: the hit-any flag, whatever the call returned
             }
         };
         for (int32_t i = 0; length > float(i); i++) {
@@ -2033,40 +2043,119 @@ void Npcs::healStream(Combatant &caster, const Body &casterBody, float t, float 
     applyWorldHit(heal, players, frame);
 }
 
+void Npcs::counterPass(Combatant &striker, std::span<PlayerView> players, NpcFrame &frame) {
+    // Strike-call-sites S7: the counter callback, then a damage-0 type-4 record appended to
+    // the hit list without calling the hit routine. No draws.
+    if (striker.counterPending.empty())
+        return;
+    if (!actorLookupActive)
+        refreshActors(players);
+    const std::vector<uint64_t> keys = std::move(striker.counterPending);
+    striker.counterPending.clear();
+    for (const uint64_t key : keys) {
+        const ActorEntry found = lookupActor(key, players);
+        Combatant *target = found.combat();
+        if (!target)
+            continue;
+        counterDodge(*target, &frame.buffs);
+        HitRecord record;
+        record.attacker = striker.id;
+        record.target = key;
+        record.amount = 0;
+        record.kind = 4;
+        std::copy_n(found.body()->position, 3, record.position.begin());
+        frame.emittedHits.push_back(record);
+    }
+}
+
 void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std::span<PlayerView> players,
-                  bool byPlayer, NpcFrame &frame, const BlockType &block, uint64_t npcTarget, bool attackerAlly) {
-    const glm::dvec3 from = attackerBody.blocks();
-    const glm::vec3 box = attackerBody.size;
-    // Open points 6 §1.5: every creature in reach, each once per swing or pulse.
-    auto hit = [&](Combatant &target, Body &body) {
-        if (std::find(attacker.struck.begin(), attacker.struck.end(), target.id) != attacker.struck.end())
+                  bool byPlayer, bool areaHeal, NpcFrame &frame, const BlockType &block, uint64_t npcTarget,
+                  bool attackerAlly) {
+    // Strike-call-sites contract K2-K8, §5 and §6.
+    const auto rolls = [&] { return draw(); };
+    // K4: action 0x1F resets a kind-9 effect (with its notice).
+    if (attacker.action == 0x1F)
+        if (auto consumed = consumeBuff(attacker, 9))
+            frame.buffs.push_back(*consumed);
+    const StrikeGeometry geometry = strikeGeometry(attacker, attackerBody, yaw);
+    bool hitAny = false;
+    // Engine admission stand-in for the hostility routine 0x1988A0: the engine's sides.
+    // Players strike creatures other than role 6; creatures strike players and their quest
+    // battle's other side.
+    const auto admits = [&](const Combatant &target, const Npc *npc) {
+        if (&target == &attacker)
+            return false;
+        if (byPlayer)
+            return npc && npc->fighter.controller != 6;
+        if (!npc)
+            return true;
+        return npcTarget && target.id == npcTarget && (attackerAlly || npc->questRole == 3);
+    };
+    // §6: actions 0x20/0x21 of class pair (_, 1) heal the creatures they do not attack on a
+    // flagged frame. Role-6 targets are left out, as the projectile heal does.
+    const auto healCheck = [&](Combatant &target, Body &body, const Npc *npc) {
+        if ((attacker.action != 0x21 && attacker.action != 0x20) || !areaHeal || admits(target, npc) ||
+            attacker.specialization != 1 || target.controller == 6)
             return;
-        glm::dvec3 sightFrom;
-        if (!reachesTarget(attacker, from, yaw, box, body.blocks(), body.size, &sightFrom) ||
-            !sight(sightFrom, body.blocks(), block, sightRecords) || target.dodgeMs > 0)
+        std::array<int64_t, 3> at;
+        std::copy_n(body.position, 3, at.begin());
+        const HitRecord heal = areaHealRecord(attacker, target.id, at, rolls);
+        frame.emittedHits.push_back(heal);
+        frame.sounds.push_back({attackerBody.blocks(), 42, 1, 1});
+        frame.seen.push_back({heal, body.blocks()});
+        applyWorldHit(heal, players, frame);
+    };
+    const auto visit = [&](Combatant &target, Body &body, const Npc *npc) {
+        if (!(target.health > 0 || std::isnan(target.health)) ||
+            std::find(attacker.struck.begin(), attacker.struck.end(), target.id) != attacker.struck.end())
             return;
-        const bool first = attacker.struck.empty();
+        if (!strikeReaches(geometry, attackerBody, body))
+            return;
+        // K5 step 4: the geometric test with option 1 and maximum 200.
+        const visibility::Position end{body.position[0], body.position[1], body.position[2]};
+        if (!visibility::visible(geometry.start, end, 1, 200.f, {block, sightRecords}))
+            return;
+        if (!admits(target, npc)) {
+            healCheck(target, body, npc);
+            return;
+        }
+        // K5 step 6: a dodging creature is deferred, with no heal check.
+        if (target.dodgeMs != 0) {
+            if (std::find(attacker.deferred.begin(), attacker.deferred.end(), target.id) == attacker.deferred.end())
+                attacker.deferred.push_back(target.id);
+            return;
+        }
+        // K8: the first-target flag, the struck set and the swing byte, then the call.
+        const bool first = attacker.struck.empty() && attacker.hitStun <= 0;
         attacker.struck.push_back(target.id);
         attacker.hitLanded = true;
-        const auto rolls = [&] { return draw(); };
         const HitInput in = strikeInput(attacker, attackerBody, body, rolls);
-        if (landBlow(attacker, attackerBody, target, body, frame, in, players) && first)
-            afterFirstTarget(attacker, in.area, rolls);
+        if (landBlow(attacker, attackerBody, target, body, frame, in, players)) {
+            const StrikeAftermath after = afterStrike(attacker, first, hitAny, rolls);
+            if (after.buff)
+                frame.buffs.push_back(*after.buff);
+            if (after.upgradeSound)
+                frame.sounds.push_back({attackerBody.blocks(), 47, 1, 1});
+        }
+        healCheck(target, body, npc);
     };
-    if (byPlayer) {
-        for (Npc &n : list)
-            if (n.fighter.controller != 6 && n.fighter.health > 0)
-                hit(n.fighter, n.body);
-    } else {
-        for (PlayerView &p : players)
-            if (p.fighter.health > 0)
-                hit(p.fighter, p.body);
-        // Quests: a battle's two sides strike each other.
-        if (npcTarget)
-            for (Npc &n : list)
-                if (n.fighter.id == npcTarget && n.fighter.health > 0 && (attackerAlly || n.questRole == 3))
-                    hit(n.fighter, n.body);
-    }
+    // K5: the world's creatures in ascending signed id (players and creatures merged).
+    struct Visit {
+        Combatant *fighter;
+        Body *body;
+        const Npc *npc;
+    };
+    std::vector<Visit> order;
+    order.reserve(players.size() + list.size());
+    for (PlayerView &p : players)
+        order.push_back({&p.fighter, &p.body, nullptr});
+    for (Npc &n : list)
+        order.push_back({&n.fighter, &n.body, &n});
+    std::stable_sort(order.begin(), order.end(), [](const Visit &a, const Visit &b) {
+        return std::bit_cast<int64_t>(a.fighter->id) < std::bit_cast<int64_t>(b.fighter->id);
+    });
+    for (const Visit &v : order)
+        visit(*v.fighter, *v.body, v.npc);
 }
 
 void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::span<PlayerView> players, NpcFrame &frame,
@@ -2114,9 +2203,12 @@ void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, co
             if (player.strikes && player.fighter.health > 0)
                 createActor({nullptr, &player}, dtMs);
     for (PlayerView &p : players)
-        if (p.strikes && p.fighter.health > 0 && meleeAction(p.fighter.action) &&
-            strikeWindow(p.fighter, p.actionMsBefore, (float)dtMs))
-            strike(p.fighter, p.body, p.yaw, players, true, frame, block);
+        if (p.strikes && p.fighter.health > 0 && meleeAction(p.fighter.action)) {
+            const StrikeWindow window = strikeWindow(p.fighter, p.actionMsBefore, (float)dtMs);
+            counterPass(p.fighter, players, frame);
+            if (window)
+                strike(p.fighter, p.body, p.yaw, players, true, window.areaHeal, frame, block);
+        }
     for (PlayerView &p : players)
         if (p.strikes && p.fighter.health > 0)
             beamTick(p.fighter, p.body, p.actionMsBefore, (float)dtMs, players, frame, block);
@@ -2297,9 +2389,12 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             beamTick(c, npc.body, before, dtMs, players, frame, block);
         } else if (c.action == 0x22) {
             healStream(c, npc.body, before, dtMs, players, frame);
-        } else if (meleeAction(c.action) && strikeWindow(c, before, dtMs)) {
-            strike(c, npc.body, npc.yaw, players, false, frame, block, npc.target,
-                   npc.questRole == 3);
+        } else if (meleeAction(c.action)) {
+            const StrikeWindow window = strikeWindow(c, before, dtMs);
+            counterPass(c, players, frame);
+            if (window)
+                strike(c, npc.body, npc.yaw, players, false, window.areaHeal, frame, block, npc.target,
+                       npc.questRole == 3);
         }
         if (c.action != 0 && !shootsProjectile(c.action) && c.action != 110 && hitMoment(c, before, dtMs)) {
             // Block edits §9: the impact point, in front of the creature by its reach.

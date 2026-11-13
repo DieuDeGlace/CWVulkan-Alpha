@@ -1399,8 +1399,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 auto &c = actor;
                 // Server simulation §1, §6.1: online the player's own client decides its hits on
                 // the creatures the server lists and sends them as packet 7.
-                if (c.health > 0 && creatures::meleeAction(c.action) &&
-                    creatures::strikeWindow(c, beforeMs, (float)dtMs)) {
+                const bool melee = c.health > 0 && creatures::meleeAction(c.action);
+                const creatures::StrikeWindow window =
+                    melee ? creatures::strikeWindow(c, beforeMs, (float)dtMs) : creatures::StrikeWindow{};
+                // Strike-call-sites S7/S9 online: the counter is the target owner's (its
+                // type-4 record application), so only the damage-0 record is sent.
+                for (const uint64_t key : std::exchange(c.counterPending, {}))
+                    if (const auto other = receivedActors.find(key); other != receivedActors.end()) {
+                        creatures::HitRecord counter;
+                        counter.attacker = c.id, counter.target = key, counter.kind = 4;
+                        for (int axis = 0; axis < 3; axis++)
+                            counter.position[axis] = other->second.position(axis);
+                        client.sendHit(net::Hit::from(counter));
+                    }
+                bool hitAny = false;
+                if (melee && window) {
+                    const creatures::StrikeGeometry geometry =
+                        creatures::strikeGeometry(c, player->body(), player->facing());
+                    if (c.action == 0x1F)
+                        if (auto consumed = creatures::consumeBuff(c, 9))
+                            sendBuff(*consumed);
                     for (const auto &[id, other] : receivedActors) {
                         creatures::Combatant target = other.fighter();
                         target.id = id;
@@ -1419,10 +1437,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         body.intent = other.intent();
                         body.push = other.response();
                         if (std::find(c.struck.begin(), c.struck.end(), id) != c.struck.end() ||
-                            !creatures::reachesTarget(c, player->body().blocks(), player->facing(), player->body().size,
-                                                      body.blocks(), body.size))
+                            !creatures::strikeReaches(geometry, player->body(), body))
                             continue;
-                        const bool first = c.struck.empty();
+                        if (target.dodgeMs != 0) { // K5 step 6: deferred
+                            if (std::find(c.deferred.begin(), c.deferred.end(), id) == c.deferred.end())
+                                c.deferred.push_back(id);
+                            continue;
+                        }
+                        const bool first = c.struck.empty() && c.hitStun <= 0;
                         c.struck.push_back(id);
                         c.hitLanded = true;
                         const auto rolls = [&] { return worldRandom.draw(); };
@@ -1447,8 +1469,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (const creatures::SoundEvent &e : out.sounds)
                             playAt(e.sound, e.position, e.volume, e.pitch);
                         bursts.insert(bursts.end(), out.bursts.begin(), out.bursts.end());
-                        if (first && out.hitAccepted)
-                            creatures::afterFirstTarget(c, in.area, rolls);
+                        if (out.hitAccepted) {
+                            const creatures::StrikeAftermath after = creatures::afterStrike(c, first, hitAny, rolls);
+                            if (after.buff)
+                                sendBuff(*after.buff);
+                            if (after.upgradeSound)
+                                playAt(47, player->body().blocks(), 1, 1);
+                        }
                     }
                 }
             }

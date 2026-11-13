@@ -737,7 +737,9 @@ void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent
             (c.action == 5 || c.action == 17 || c.action == 20))
             c.dodgeMs = 600;
         const Phases timing = phases(c, c.action);
-        if (c.actionMs <= timing.windUp) {
+        if (c.actionMs <= timing.windUp) { // strike-call-sites S7
+            deferredPass(c);
+            c.deferred.clear();
             c.struck.clear();
             c.hitLanded = false;
         }
@@ -789,9 +791,30 @@ void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent
         c.charge = 0;
         if (c.mana < 0)
             c.mana = 0;
-        if (c.action == 31 && c.actionMs >= phases(c, c.action).windUp)
-            if (auto consumed = consumeBuff(c, 9); consumed && events)
-                events->push_back(*consumed);
+        // Action 0x1F's kind-9 reset belongs to the strike itself (strike-call-sites K4).
+    }
+}
+
+void deferredPass(Combatant &c) {
+    // S7/S9: the deferred keys not struck since, in set order (ascending key).
+    for (const uint64_t key : c.deferred)
+        if (std::find(c.struck.begin(), c.struck.end(), key) == c.struck.end() &&
+            std::find(c.counterPending.begin(), c.counterPending.end(), key) == c.counterPending.end())
+            c.counterPending.push_back(key);
+    std::sort(c.counterPending.begin(), c.counterPending.end());
+}
+
+void counterDodge(Combatant &target, std::vector<BuffEvent> *events) {
+    // Counter callback 0x03CF20 / 0x008230: a dodging class pair (4, 1) gains a quarter of
+    // its mana and a kind-11 effect (value 0, 30000 ms) with its notice.
+    if (target.dodgeMs != 0 && target.characterClass == 4 && target.specialization == 1) {
+        target.mana += .25f;
+        if (target.mana > 1)
+            target.mana = 1;
+        const Buff critical{SURE_CRITICAL, 0, 30000, 0};
+        applyBuff(target, critical);
+        if (events)
+            events->push_back({target.id, target.id, critical});
     }
 }
 
@@ -1203,15 +1226,7 @@ HitApplicationPhase applyPreparedHit(Combatant &target, Body &body, const HitRec
         return HitApplicationPhase::stopped;
     }
     if (hit.kind == 4) {
-        if (target.dodgeMs != 0 && target.characterClass == 4 && target.specialization == 1) {
-            target.mana += .25f;
-            if (target.mana > 1)
-                target.mana = 1;
-            const Buff critical{SURE_CRITICAL, 0, 30000, 0};
-            applyBuff(target, critical);
-            if (events)
-                events->push_back({target.id, target.id, critical});
-        }
+        counterDodge(target, events);
         return HitApplicationPhase::stopped;
     }
     if (hit.stun > 0)
