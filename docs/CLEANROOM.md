@@ -1930,3 +1930,25 @@ Implemented:
 Still open: the true hostility routine (target sets), block breaking at K3 (the engine's
 crater pass from the block-edits contract stands; its sound draw is still taken after the
 step), the 0x1314 field, the online client's area heal and geometric test.
+## Trap generation and trap ticks (round 10, held 2026-11-13)
+
+Held contract `docs/specs/alpha-trap-generation.md` (SHA-256 3E0195FE...4199), read whole.
+It identifies server 0x100300 / client 0x1CC510 as the dungeon generation pass. The engine's
+dungeon builder (`worldgen/Dungeon.cpp`, `furnish`) already produces the type-7 objects at
+the contract's point: after the openings and the floor fill, gated by the entrance kind, the
+vertical-step flag and the large-layout byte, with the mod-40 gate draw, the mod-4 rotation
+draw and the mod-4000 phase draw, then straight to the arches. No generation change was
+needed; the earlier note that no engine pass mapped to 0x100300 was wrong.
+
+With the traps known to exist, `StaticStates::traps` now follows hazards-blast-ticks §3:
+- the firing tick is the 200 ms quotient of the world clock (+0x8000BC), kept by the traps
+  as a 32-bit counter advanced by each frame's time (the engine had used 100 ms of the time
+  of day);
+- creatures are visited in ascending signed id, the range test first, then role 1;
+- P1 and D use the contract's binary32 order (normalisation by the rounded double root,
+  x 20, z 5, type 8 x 2; 2^((L - 1) x 0.25) as a double power rounded, x 10, then x 5).
+
+Still open: the hits still bypass the attack routine (attackerless path with its E2 draw,
+the type-6 resistance / type-7/8 armour mitigation and the hit routine's draws); zone
+selection near role-0 creatures; the contract's level-at-position routine (the engine's
+level adapter stands in).

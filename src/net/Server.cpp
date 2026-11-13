@@ -871,7 +871,7 @@ void Server::stepWorld(float dtMs) {
         for (const creatures::Npc &n : npcs.all())
             if (n.fighter.health > 0)
                 here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
-        statics.traps((int32_t)dtMs, clockMs, here, held,
+        statics.traps((int32_t)dtMs, here, held,
                       [this](glm::dvec3 at) { return world->levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
                       trapHits, itemSounds);
         for (const creatures::HitRecord &h : trapHits)

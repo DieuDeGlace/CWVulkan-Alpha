@@ -1608,3 +1608,7 @@ lowering), the post-hit swing count and mana draws (none after the frame's first
 none for a charged blow, whose charge feeds the crit charge), the area-heal record's two
 draws and amount, and the beam's single S4 draw. All 60 CTests pass, the player diagnostic
 and five live runs pass, and the six captures match the preceding batch.
+Trap ticks (2026-11-13). The spike-trap CreatureTests case now runs 25 frames of 16 ms after
+activation and expects exactly two passes (the 200 ms world-clock quotient), the player hurt
+20 at level 5 and thrown 20 away, and the role-1 creature spared. All 60 CTests pass, the
+player diagnostic and five live runs pass, and the six captures match the preceding batch.

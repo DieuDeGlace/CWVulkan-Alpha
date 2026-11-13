@@ -539,21 +539,22 @@ int main() {
         std::vector<SoundEvent> sounds;
         const std::vector<StaticStates::Creature> nobody;
         states.step(16, none, held);
-        states.traps(16, 1000, nobody, held, level5, hits, sounds);
+        states.traps(16, nobody, held, level5, hits, sounds);
         same((*states.zone(0, 0))[0].state, 0, "retracted after 2 s");
         const std::vector<StaticStates::Creature> here{{1, {8, 5, 1.91}, 0}, {2, {5, 7, 1.91}, 1}};
-        double clock = 1016;
-        for (int i = 0; i < 130 && (*states.zone(0, 0))[0].state == 0; i++, clock += 16) {
+        for (int i = 0; i < 130 && (*states.zone(0, 0))[0].state == 0; i++) {
             states.step(16, none, held);
-            states.traps(16, clock, here, held, level5, hits, sounds);
+            states.traps(16, here, held, level5, hits, sounds);
         }
         same((*states.zone(0, 0))[0].state, 1, "up for the player");
         same(std::any_of(sounds.begin(), sounds.end(), [](const SoundEvent &e) { return e.sound == 52; }), 1, "with sound 52");
         hits.clear();
-        for (int i = 0; i < 7; i++, clock += 16) {
+        // Hazards-blast-ticks §3.3 step 7: one pass per 200 ms quotient of the trap world clock.
+        for (int i = 0; i < 25; i++) {
             states.step(16, none, held);
-            states.traps(16, clock, here, held, level5, hits, sounds);
+            states.traps(16, here, held, level5, hits, sounds);
         }
+        same((double)hits.size(), 2, "two passes in 400 ms");
         same(!hits.empty() && hits[0].target == 1, 1, "the player is hurt");
         same(hits.empty() ? 0 : hits[0].amount, 20, "20 a pass at level 5", 1e-4);
         same(hits.empty() ? 0 : hits[0].knockBack.x, 20, "thrown away from it", 1e-4);

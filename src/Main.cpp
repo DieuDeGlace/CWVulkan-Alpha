@@ -1996,7 +1996,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             std::vector<creatures::HitRecord> trapHits;
                             std::vector<creatures::SoundEvent> trapSounds;
                             const worldgen::World &world = view.terrainWorld();
-                            statics.traps(dt, scene.timeOfDayMs, here, held,
+                            statics.traps(dt, here, held,
                                           [&](glm::dvec3 at) { return world.levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
                                           trapHits, trapSounds);
                             for (const creatures::HitRecord &h : trapHits) {

@@ -186,19 +186,30 @@ void StaticStates::appendUpdates(const worldgen::WorldMap &map, std::span<const 
     }
 }
 
-void StaticStates::traps(int32_t dtMs, double clockMs, const std::vector<Creature> &creatures,
+void StaticStates::traps(int32_t dtMs, const std::vector<Creature> &unordered,
                          const std::map<Key, const worldgen::Zone *> &held, const std::function<int32_t(glm::dvec3)> &level,
                          std::vector<creatures::HitRecord> &hits, std::vector<creatures::SoundEvent> &sounds) {
-    // §1.4: squared distance in blocks below `n`, in whole 1/65536 steps.
-    const auto within = [](glm::dvec3 a, glm::dvec3 b, int64_t n) {
-        int64_t sum = 0;
-        for (int k = 0; k < 3; k++) {
-            const int64_t d = (int64_t)(a[k] * 65536.0) - (int64_t)(b[k] * 65536.0);
-            sum += d * d / 65536;
-        }
-        return sum < n * 65536;
+    // Hazards-blast-ticks contract §3 (site 1). The world creature collection is visited in
+    // ascending signed id.
+    std::vector<Creature> creatures = unordered;
+    std::stable_sort(creatures.begin(), creatures.end(), [](const Creature &a, const Creature &b) {
+        return std::bit_cast<int64_t>(a.id) < std::bit_cast<int64_t>(b.id);
+    });
+    const auto raw = [](double blocks) { return (int64_t)(blocks * 65536.0); };
+    const auto wrapSub = [](int64_t a, int64_t b) { return std::bit_cast<int64_t>(uint64_t(a) - uint64_t(b)); };
+    // The raw squared length of object minus creature below n blocks squared (signed 64-bit).
+    const auto within = [&](const worldgen::StaticObject &o, glm::dvec3 c, int64_t n) {
+        const int64_t d[3] = {wrapSub(o.x, raw(c.x)), wrapSub(o.y, raw(c.y)), wrapSub(o.z, raw(c.z))};
+        uint64_t sum = 0;
+        for (int k = 0; k < 3; k++)
+            sum += uint64_t(std::bit_cast<int64_t>(uint64_t(d[k]) * uint64_t(d[k])) / 65536);
+        return std::bit_cast<int64_t>(sum) < n * 65536;
     };
-    const bool tick = std::floor((clockMs + dtMs) / 100) != std::floor(clockMs / 100);
+    // §3.1/§3.3 step 7: types 6 and 7 fire when the advanced world clock and the clock one
+    // frame later lie in different 200 ms quotients (32-bit, truncating).
+    hazardClockMs = std::bit_cast<int32_t>(uint32_t(hazardClockMs) + uint32_t(dtMs));
+    const int32_t later = std::bit_cast<int32_t>(uint32_t(hazardClockMs) + uint32_t(dtMs));
+    const bool tick = later / 200 != hazardClockMs / 200;
     for (auto &[key, list] : zones) {
         const auto z = held.find(key);
         if (z == held.end())
@@ -215,7 +226,7 @@ void StaticStates::traps(int32_t dtMs, double clockMs, const std::vector<Creatur
                 changed.insert(key);
             } else if (s.timerMs > 2000) {
                 for (const Creature &c : creatures)
-                    if (c.controller == 0 && within(c.at, at, 900)) {
+                    if (c.controller == 0 && within(o, c.at, 900)) {
                         set(o, s, 1, sounds);
                         changed.insert(key);
                         break;
@@ -224,16 +235,26 @@ void StaticStates::traps(int32_t dtMs, double clockMs, const std::vector<Creatur
             // §1.3: the hits.
             if (s.state == 0 || !(o.kind == 8 ? s.timerMs == 0 : tick))
                 continue;
-            const float amount = (o.kind == 8 ? 50.f : 10.f) * std::pow(2.f, (level(at) - 1) / 4.f);
+            // Step 8.5: D = binary32(2^((L - 1) x 0.25)) x 10, then x 5 for type 8.
+            const float exponent = float(std::bit_cast<int32_t>(uint32_t(level(at)) - 1u)) * 0.25f;
+            float amount = float(std::pow(2.0, double(exponent))) * 10.f;
+            if (o.kind == 8)
+                amount *= 5.f;
             for (const Creature &c : creatures) {
-                if (c.controller == 1 || !within(c.at, at, 25))
+                if (!within(o, c.at, 25) || c.controller == 1) // range first, then role 1
                     continue;
-                glm::vec2 u = glm::vec2(c.at - at);
-                if (glm::dot(u, u) > 0)
-                    u = glm::normalize(u);
-                glm::vec3 k(20 * u.x, 20 * u.y, 5);
+                // Step 8.4: P1 = (creature - object) in presentation units, z 0, normalised
+                // above 0, x 20, z 5; type 8 doubles the whole vector.
+                glm::vec3 u(float(wrapSub(raw(c.at.x), o.x)) * (1.f / 65536.f),
+                            float(wrapSub(raw(c.at.y), o.y)) * (1.f / 65536.f), 0.f);
+                const float squared = (u.x * u.x + u.y * u.y) + u.z * u.z;
+                if (squared > 0.f) {
+                    const float inverse = 1.f / float(std::sqrt(double(squared)));
+                    u = {u.x * inverse, u.y * inverse, u.z * inverse};
+                }
+                glm::vec3 k(u.x * 20.f, u.y * 20.f, 5.f);
                 if (o.kind == 8)
-                    k *= 2;
+                    k *= 2.f;
                 creatures::HitRecord h;
                 h.target = c.id;
                 h.amount = amount;

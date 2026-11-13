@@ -88,19 +88,19 @@ class StaticStates {
     void step(int32_t dtMs, const std::function<bool(uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &)> &where,
               const std::map<Key, const worldgen::Zone *> &held);
 
-    // Traps (alpha-open-points-1.md §1), where the world is run (offline, the server), after
-    // `step`: an extended trap retracts after 2 s; a retracted one extends after 2 s when a
-    // player is within 30 blocks; an extended spike or unseen trap hurts every non-hostile
-    // creature within 5 blocks each time the world clock passes 100 ms, a stomp trap once as
-    // it slams. `creatures` are (id, position, controller) in the world's order; `level(at)`
-    // is the level of the typed location a trap stands in (1 outside). Hits are kind-0
-    // records with no attacker.
+    // Traps (hazards-blast-ticks contract §3, site 1), where the world is run (offline, the
+    // server), after `step`: an active trap goes inactive after 2 s; an inactive one activates
+    // after 2 s when a role-0 creature is within 30 blocks; an active type 6 or 7 hurts every
+    // creature but role 1 within 5 blocks each time the trap world clock crosses a 200 ms
+    // quotient, a type 8 once as it activates. `creatures` are (id, position, controller) and
+    // are visited in ascending signed id; `level(at)` is the engine's level-at-position
+    // adapter. Hits are kind-0 records with no attacker (the attack-routine path is open).
     struct Creature {
         uint64_t id = 0;
         glm::dvec3 at{0};
         uint8_t controller = 0;
     };
-    void traps(int32_t dtMs, double clockMs, const std::vector<Creature> &creatures,
+    void traps(int32_t dtMs, const std::vector<Creature> &creatures,
                const std::map<Key, const worldgen::Zone *> &held, const std::function<int32_t(glm::dvec3)> &level,
                std::vector<creatures::HitRecord> &hits, std::vector<creatures::SoundEvent> &sounds);
 
@@ -108,6 +108,8 @@ class StaticStates {
     // §6.3: the one state setter (the hook a mod would use for new usable kinds).
     void set(const worldgen::StaticObject &o, StaticState &s, uint8_t to, std::vector<creatures::SoundEvent> &sounds);
     std::map<Key, std::vector<StaticState>> zones;
+    // §3.1: the world clock (+0x8000BC), zero at start and advanced by each frame's time.
+    int32_t hazardClockMs = 0;
     struct IndexedSpatial {
         std::weak_ptr<const worldgen::Zone> source;
         const worldgen::Zone *address = nullptr;
