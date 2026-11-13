@@ -1878,9 +1878,15 @@ matched it:
 
 The bomb's role 6 makes the admission test pass for every victim, as before.
 
+The block-removal sound draw (§4.2) now precedes the victims. The engine
+adapter `Npcs::blastRemovesBlocks` asks, read-only, whether the 8-block
+natural sphere holds a removable block. When it does, the pitch
+0.5 + 0.4 x draw/32767 is drawn before the first victim and kept on the
+explosion record. The client and server still remove the blocks after the
+step and play the sound with that kept pitch. The removal itself running after
+the step is an engine ordering adapter; it makes no draws.
+
 Still open:
-- The block-removal sound draw that precedes the victims; the engine's block
-  removal runs after the step.
 - Site 1's zone traps (type 7, generation routine 0x100300 / client 0x1CC510).
   No engine generation pass maps to that routine yet, and adding the trap
   draws would change world generation.

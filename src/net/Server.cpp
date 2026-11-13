@@ -908,6 +908,11 @@ void Server::stepWorld(float dtMs) {
         };
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
+        npcs.blastRemovesBlocks = [this](glm::dvec3 centre) {
+            return !naturalSphere(centre, 8, (int32_t)clockDay,
+                                  [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); })
+                        .empty();
+        };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };
         npcs.sit = [this](creatures::Npc &n, const creatures::Seat &s) {
             if (const worldgen::Zone *zone = zones.zone(s.zx, s.zy)) {
@@ -1102,7 +1107,8 @@ void Server::stepWorld(float dtMs) {
             continue;
         blockBursts(removed);
         writeBlocks(removed);
-        itemSounds.push_back({blast.centre, 1, 0.5f + 0.4f * (float)draw() / 32767.f, 1});
+        if (blast.removes) // pitch drawn before the victims (hazards-blast-ticks §4.2)
+            itemSounds.push_back({blast.centre, 1, blast.pitch, 1});
     }
     // Block edits §9: big creatures' blows take the natural ground away.
     for (const auto &impact : frame.craters) {

@@ -813,6 +813,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     view.setLook(options.lookGiven ? options.yaw : 30.f, options.lookGiven ? options.pitch : 15.f);
     Scene scene;
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
+    npcs.blastRemovesBlocks = [&](glm::dvec3 centre) {
+        return !naturalSphere(centre, 8, scene.day, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); })
+                    .empty();
+    };
     if (session) {
         scene.timeOfDayMs = session->clock.timeOfDayMs;
         scene.day = (int)session->clock.day;
@@ -2256,7 +2260,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             view.applyEdits(removed, false);
                             for (const BlockEdit &e : removed)
                                 blockEdits.add(e);
-                            playAt(1, blast.centre, 1, 0.5f + 0.4f * (float)worldRandom.draw() / 32767.f);
+                            if (blast.removes) // pitch drawn before the victims (hazards-blast-ticks §4.2)
+                                playAt(1, blast.centre, 1, blast.pitch);
                         }
                         // Block edits §9: big creatures' blows take the natural ground away.
                         for (const auto &impact : happened.craters) {

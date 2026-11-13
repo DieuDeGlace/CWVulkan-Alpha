@@ -1595,3 +1595,10 @@ Bomb blast (2026-11-12). The existing bomb CreatureTests (fuse, one blast,
 hit and push) pass with the contract's reach tests, victim order and damage.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+
+Blast removal-sound draw (2026-11-13). A new CreatureTests case runs one bomb
+with a shared generator. With the block query answering yes, the explosion's
+kept pitch equals the draw taken right after the query, before any victim. With
+it answering no, there is no pitch and no draw. Each blast asks once, at the
+bomb. All 60 CTests pass, the player diagnostic and five live runs pass, and
+the six captures match the preceding batch.

@@ -27,6 +27,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 #include <string>
 
 using namespace creatures;
@@ -925,6 +926,48 @@ int main() {
         }
         same(blasts, 1, "one blast");
         same(hits, 1, "the player 5 blocks away is hit once");
+    }
+
+    // Hazards-blast-ticks §4.2: a blast that removes blocks draws its sound pitch first,
+    // before any victim draw; one that removes none makes no such draw.
+    for (const bool removes : {true, false}) {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({15.5, 10.5, 1 + 1.08 + 0.01});
+        worldgen::Random random{7};
+        Npcs npcs{random};
+        const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 3);
+        int asked = 0;
+        std::optional<worldgen::Random> atQuery;
+        npcs.blastRemovesBlocks = [&](glm::dvec3 centre) {
+            asked++;
+            same(centre.x == 10.5 && centre.y == 10.5, 1, "asked at the bomb");
+            atQuery = random; // the generator state just before the pitch draw
+            return removes;
+        };
+        int blasts = 0;
+        for (int i = 0; i < 20000 && blasts == 0; i++) {
+            const NpcFrame f = npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
+            for (const auto &e : f.explosions)
+                if (e.bomb == bomb) {
+                    blasts++;
+                    same(e.removes, removes, "the removal flag follows the block query");
+                    if (removes) {
+                        const float expected = 0.5f + 0.4f * (float)atQuery->draw() / 32767.f;
+                        same(e.pitch, expected, "the pitch is the draw right after the block query");
+                    } else {
+                        same(e.pitch, 0, "no pitch without removed blocks");
+                    }
+                }
+        }
+        same(blasts, 1, "one blast");
+        same(asked, 1, "one block query per blast");
     }
 
     // Physics §4.5: a crate (a static 2 x 2 x 1 at x 5..7) stops a walker, which may stand on it;

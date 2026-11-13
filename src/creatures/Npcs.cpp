@@ -2446,7 +2446,13 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 state.deathDay = day;
             }
             if (n.fighter.type == 144 && n.fighter.controller == 6) {
-                frame.explosions.push_back({n.body.blocks(), n.fighter.id, n.fighter.level});
+                NpcFrame::Explosion explosion{n.body.blocks(), n.fighter.id, n.fighter.level};
+                // §4.2: the removal-sound draw comes before every victim's draws.
+                if (blastRemovesBlocks && blastRemovesBlocks(explosion.centre)) {
+                    explosion.removes = true;
+                    explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
+                }
+                frame.explosions.push_back(explosion);
                 blast(n, players, frame);
             }
             if (!n.fatalPresented)

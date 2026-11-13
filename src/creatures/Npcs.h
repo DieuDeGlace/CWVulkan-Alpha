@@ -163,6 +163,10 @@ struct NpcFrame {
         glm::dvec3 centre{0}; // blocks
         uint64_t bomb = 0;
         int32_t level = 1;
+        // Hazards-blast-ticks §4.2: the removal sound's pitch, drawn before the victims;
+        // set only when the blast removes blocks.
+        bool removes = false;
+        float pitch = 0;
     };
     std::vector<Explosion> explosions;
     // Pets §7.3: a creature tamed this step (the owner's client turns the food into the pet
@@ -263,6 +267,10 @@ class Npcs {
     std::function<void(const ItemRecord &)> onFatalItem;
     // Final backing admission/write follows every recipient and completion grant.
     std::function<void(const Combatant &)> onFatalBacking;
+    // Engine block adapter (hazards-blast-ticks §4.2): whether a blast at this centre
+    // (blocks) removes at least one block. Read-only; the caller removes the blocks
+    // after the step. Unset means no removal sound and no draw.
+    std::function<bool(glm::dvec3 centre)> blastRemovesBlocks;
     bool markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day);
     // Existing engine descriptor-tail adapter; retains live actors. Native
     // virtual destruction and descriptor lifetime remain separate contracts.
