@@ -1590,3 +1590,8 @@ the world origin. A temporary debug print traced this to the camera's zero
 anchor on the first update. The adapter that holds the aim until the camera is
 placed fixes it, and the captures again match the preceding batch. All 60
 CTests pass, and the player diagnostic and five live runs pass.
+
+Bomb blast (2026-11-12). The existing bomb CreatureTests (fuse, one blast,
+hit and push) pass with the contract's reach tests, victim order and damage.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.

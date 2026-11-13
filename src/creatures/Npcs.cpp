@@ -609,21 +609,44 @@ void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
     FlagScope indexScope{actorLookupActive};
     const glm::dvec3 P = bomb.body.blocks();
     frame.bursts.push_back(bombBurst(P)); // particles §5.1
+    // Hazards-blast-ticks contract §4.3/§4.4 (site 2). The bomb has role 6, so the admission
+    // test passes for every victim; dodgers (+0x128) are skipped.
     auto hit = [&](Combatant &target, Body &body, glm::vec3 box) {
-        if (&target == &bomb.fighter || target.health <= 0 || target.dodgeMs > 0 || body.dodgeMs > 0)
+        if (&target == &bomb.fighter || !(target.health > 0 || std::isnan(target.health)) || target.dodgeMs != 0)
             return;
-        const glm::dvec3 d = body.blocks() - P;
-        const double reach = 8 + 0.7 * box.x;
-        if (d.x * d.x + d.y * d.y >= reach * reach || std::abs(d.z) >= 8 + bomb.looks.box.z + 0.5 * box.z)
+        // Horizontal reach: the raw horizontal squared length below trunc(((0.7 x + 8)^2) x 65536).
+        int64_t horizontal = 0;
+        for (int k = 0; k < 2; k++) {
+            const uint64_t d = uint64_t(bomb.body.position[k]) - uint64_t(body.position[k]);
+            horizontal = std::bit_cast<int64_t>(uint64_t(horizontal) + uint64_t(std::bit_cast<int64_t>(d * d) / 65536));
+        }
+        const float reach = box.x * 0.7f + 8.f;
+        if (!(horizontal < int64_t((reach * reach) * 65536.f)))
             return;
+        // Vertical reach: ((victim height x 0.5) + bomb height) + 8 above |dz|.
+        const float dz = float(std::bit_cast<int64_t>(uint64_t(bomb.body.position[2]) - uint64_t(body.position[2]))) *
+                         (1.f / 65536.f);
+        if (!(((box.z * 0.5f) + bomb.looks.box.z) + 8.f > float(std::fabs(double(dz)))))
+            return;
+        // P2: (victim - bomb) with z = 0, normalised above 0.01, z = 0.25, then one draw for A,
+        // then x 10. D = attack power x 25, doubled when A.
+        glm::vec3 u;
+        for (int k = 0; k < 3; k++) // presentation units: binary32 rounding, then x 2^-16
+            u[k] = float(std::bit_cast<int64_t>(uint64_t(body.position[k]) - uint64_t(bomb.body.position[k]))) *
+                   (1.f / 65536.f);
+        u.z = 0;
+        if ((u.x * u.x + u.y * u.y) + u.z * u.z > 0.01f) {
+            const float inverse = 1.f / float(std::sqrt(double((u.x * u.x + u.y * u.y) + u.z * u.z)));
+            u = {u.x * inverse, u.y * inverse, u.z * inverse};
+        }
+        u.z = 0.25f;
         HitInput in;
         in.critical = draw() % 4 == 0;
-        in.amount = 25 * levelPower(bomb.fighter.level) * (in.critical ? 2 : 1);
+        in.amount = strikeBase(bomb.fighter) * 25.f;
+        if (in.critical)
+            in.amount *= 2.f;
         in.area = in.magic = true;
-        glm::vec2 u(d.x, d.y);
-        if (glm::dot(u, u) > 0.01f)
-            u = glm::normalize(u);
-        in.knockBack = 10.f * glm::vec3(u, 0.25f);
+        in.knockBack = u * 10.f;
         in.targetOnGround = (body.contact & ON_GROUND) != 0;
         in.targetPosition = body.blocks();
         std::copy_n(body.position, in.targetRecordPosition.size(), in.targetRecordPosition.begin());
@@ -644,10 +667,22 @@ void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
         frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
         frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
     };
+    // §4.3: the world collection is visited in ascending signed id.
+    struct Visit {
+        Combatant *fighter;
+        Body *body;
+        glm::vec3 box;
+    };
+    std::vector<Visit> order;
     for (PlayerView &p : players)
-        hit(p.fighter, p.body, p.body.size);
+        order.push_back({&p.fighter, &p.body, p.body.size});
     for (Npc &n : list)
-        hit(n.fighter, n.body, n.looks.box);
+        order.push_back({&n.fighter, &n.body, n.looks.box});
+    std::stable_sort(order.begin(), order.end(), [](const Visit &a, const Visit &b) {
+        return std::bit_cast<int64_t>(a.fighter->id) < std::bit_cast<int64_t>(b.fighter->id);
+    });
+    for (const Visit &v : order)
+        hit(*v.fighter, *v.body, v.box);
 }
 
 // Schedules §3.2: the last entry (in list order) whose time has come, else the first.

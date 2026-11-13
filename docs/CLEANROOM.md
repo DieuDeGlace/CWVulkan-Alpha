@@ -1853,3 +1853,34 @@ the unclosed +0x11A0 rule. The player's head pitch reaches the pose.
 Engine adapter: the controller writes no aim until the follow camera has been
 placed once. The contract leaves the first update after construction open; an
 unplaced zero anchor would aim at the world origin.
+
+### Hazards, blast and ticks (2026-11-12)
+
+The held `alpha-hazards-blast-ticks.md` (SHA-256 136BC339...4A96) was read
+whole.
+
+**Site 5 (type-4 buff ticks):** `tickBuffs` and `periodicHit` already
+matched it:
+- the 400 ms quotient of the buff's own remaining duration;
+- expiry without a tick;
+- the type-1 stun clear;
+- resistance mitigation, no block, a zero vector and the source lookup.
+
+**Site 2 (bomb blast):** `Npcs::blast` now follows it:
+- victims in ascending signed id;
+- dodgers skipped (+0x128), and NaN health passes;
+- the fixed-point horizontal reach, trunc(((0.7 size x + 8)^2) x 65536);
+- the binary32 vertical test, ((victim height x 0.5) + bomb height) + 8 > |dz|;
+- the knock-back vector (presentation-unit direction, z 0, normalised above
+  0.01, z 0.25, x 10);
+- one doubling draw per victim;
+- D = attack power (`strikeBase`) x 25, doubled.
+
+The bomb's role 6 makes the admission test pass for every victim, as before.
+
+Still open:
+- The block-removal sound draw that precedes the victims; the engine's block
+  removal runs after the step.
+- Site 1's zone traps (type 7, generation routine 0x100300 / client 0x1CC510).
+  No engine generation pass maps to that routine yet, and adding the trap
+  draws would change world generation.
