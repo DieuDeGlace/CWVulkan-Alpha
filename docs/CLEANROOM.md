@@ -1952,3 +1952,26 @@ Still open: the hits still bypass the attack routine (attackerless path with its
 the type-6 resistance / type-7/8 armour mitigation and the hit routine's draws); zone
 selection near role-0 creatures; the contract's level-at-position routine (the engine's
 level adapter stands in).
+## Drawn-height offset, shield release and beam particles (round 10, held 2026-11-13)
+
+Held contract `docs/specs/alpha-beam-height-leftovers.md` (SHA-256 B0961250...0B86), read
+whole. The engine's landing offset (`Body::bob`, subtracted from the drawn height by the
+renderer and the follow camera) plays the role of creature +0x1180. Now per §1:
+- step-up snap: the new z is 65536 x layer(z - T(h)) + T(h) + 66191, with layer the
+  truncating quotient minus one for negatives; the offset becomes F(new - (old - T(offset)));
+- step-down snap: layer(z - T(h) - T(1.2)) on the terrain grid, same lift and offset rule;
+  the ground probe one layer at z - T(h) - T(0.2) uses the same layer rule;
+- a static-object hit withdraws step-up and step-down for the rest of the update;
+- decay once per millisecond of the step in binary32, 0.01 below zero, 0.02 otherwise
+  (NaN included; the engine had used a power form and sent NaN to 0.01);
+- the unstuck lift still sets the offset to 0.
+
+Already in the engine and matching: the player's bar entry 1 = 8 with a shield, its release
+to 0x68 at clock 0 with no further test (§2.2); NPCs' 0x68 from the charged block (§2.3); the
+N = 0 NaN path (§3); the particle consumer's seven draws per particle (r1..r6, u), 35 for a
+beam record, with received records after local ones (§4).
+
+Engine extensions / not modelled: the world-object base term b of §1.2 (no world-object voxel
+models, so b = 0); the attachment copy and the interpolation zeroing of §1.6 (no attachment
+or remote-interpolation counter in the engine). Contract note: §1.3 condition 5 reads both
+"0.0 > d.z is false" and "d.z <= 0.0; a NaN fails"; the engine keeps d.z <= 0.

@@ -1611,4 +1611,10 @@ and five live runs pass, and the six captures match the preceding batch.
 Trap ticks (2026-11-13). The spike-trap CreatureTests case now runs 25 frames of 16 ms after
 activation and expects exactly two passes (the 200 ms world-clock quotient), the player hurt
 20 at level 5 and thrown 20 away, and the role-1 creature spared. All 60 CTests pass, the
-player diagnostic and five live runs pass, and the six captures match the preceding batch.
+player diagnostic and five live runs pass, and the six captures match the preceding batch.Drawn-height offset (2026-11-13). A CreatureTests case walks a body up and off a one-block
+ledge: the step-up lands 1.01 above the bottom's layer (within the frame's later gravity
+sub-steps), the step-down exactly on its fixed target, the drawn height stays within the
+frame's decay of its previous value, and the decay is bit-exact for both rates and does
+nothing at 0 ms. New cases check the shield bar entry 8 and its release to 104 at clock 0,
+and a beam record's 35 draws in particle order. All 60 CTests pass, the player diagnostic and
+five live runs pass, and the six captures match the preceding batch.

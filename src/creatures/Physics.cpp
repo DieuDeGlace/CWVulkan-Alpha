@@ -12,6 +12,14 @@ bool solid(uint8_t type) { return type != 0 && type != 2; }
 int32_t blockOf(int64_t fx) { return (int32_t)(fx >= 0 ? fx / 65536 : -((-fx + 65535) / 65536)); }
 int64_t fixedOf(double blocks) { return (int64_t)(blocks * ONE); } // trunc toward zero
 
+// Drawn-height terms (alpha-beam-height-leftovers.md, terms and §1). T: a binary32 times
+// 65536 in binary32, truncated. F: a fixed value as binary32, times 2^-16. snapLayer: the
+// truncating quotient by 65536, one less when negative (so exact negatives go one lower).
+int64_t fixedT(float blocks) { return (int64_t)(blocks * 65536.f); }
+float floatF(int64_t fixed) { return (float)fixed * (1.f / 65536.f); }
+int64_t snapLayer(int64_t fixed) { return fixed / 65536 - (fixed < 0 ? 1 : 0); }
+constexpr int64_t SNAP_LIFT = 66191; // -trunc(1.01 * -65536.0), both snaps' lift above the layer
+
 // "Relax x toward t at rate r per ms", dt times.
 float relax(float x, float t, float r, int32_t dt) { return t + (x - t) * std::pow(1.f - r, (float)dt); }
 glm::vec3 relax(glm::vec3 x, glm::vec3 t, float r, int32_t dt) {
@@ -381,6 +389,10 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     d *= reciprocal;
     const uint32_t old = b.contact;
     bool touchedObject = false, onObject = false;
+    // Height §1.2 step 1: a static-object hit withdraws the step-up (and step-down) for the
+    // rest of this update.
+    bool stepAllowed = true;
+    const int64_t halfHeight = fixedT(b.size.z * 0.5f);
     const auto objectHere = [&](int axis, int64_t move) {
         if (!objects)
             return false;
@@ -397,6 +409,7 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
                 if (move != 0 && objectHere(k, move)) {
                     b.position[k] -= move;
                     touchedObject = true;
+                    stepAllowed = false;
                     if (k == 2 && move < 0) {
                         onObject = true;
                         b.velocity.z = 0;
@@ -422,11 +435,13 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
                 continue;
             }
             // §4.3: step up onto a ledge, else undo this axis only (velocity kept).
-            if (!b.swimmer && !any(cellsOf(b.position, b.size, {0, 0, 1.01f}), blocks)) {
-                const double bottom = std::floor((double)b.position[2] / ONE - b.size.z * 0.5);
-                const int64_t before = b.position[2];
-                b.position[2] = fixedOf(bottom + 1.01 + b.size.z * 0.5);
-                b.bob += (float)((double)(b.position[2] - before) / ONE);
+            // Height §1.2 step 8: the snap keeps the drawn height (z - offset) continuous. The
+            // object base term is 0 (the engine has no world-object voxel models).
+            if (stepAllowed && !b.swimmer && !any(cellsOf(b.position, b.size, {0, 0, 1.01f}), blocks)) {
+                const int64_t zBefore = b.position[2];
+                const int64_t raised = 65536 * snapLayer(zBefore - halfHeight) + halfHeight + SNAP_LIFT;
+                b.bob = floatF(raised - (zBefore - fixedT(b.bob)));
+                b.position[2] = raised;
             } else {
                 b.position[k] -= move;
             }
@@ -469,20 +484,23 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // §5.4: ground, then the step-down snap.
     if (!wet) {
         Cells g = box;
-        g.lo[2] = g.hi[2] = (int32_t)std::floor((double)b.position[2] / ONE - b.size.z * 0.5 - 0.2);
+        g.lo[2] = g.hi[2] = (int32_t)snapLayer(b.position[2] - halfHeight - fixedT(0.2f));
         if (any(g, [&](int32_t x, int32_t y, int32_t zc) { return solid(block(x, y, zc)); }))
             b.contact |= ON_GROUND;
     }
     const glm::vec2 dh(d);
-    if ((old & ON_GROUND) && glm::dot(dh, dh) > 0 && !(b.contact & (ON_GROUND | IN_WATER)) && d.z <= 0) {
+    // Height §1.3: on the terrain grid only, at most once an update, and not after a static hit.
+    if ((old & ON_GROUND) && stepAllowed && glm::dot(dh, dh) > 0 && !(b.contact & (ON_GROUND | IN_WATER)) &&
+        d.z <= 0) {
         Cells g = box;
-        const int32_t zs = (int32_t)std::floor((double)b.position[2] / ONE - b.size.z * 0.5 - 1.2);
-        g.lo[2] = g.hi[2] = zs;
+        const int64_t zBefore = b.position[2];
+        const int64_t layer = snapLayer(zBefore - halfHeight - fixedT(1.2f));
+        g.lo[2] = g.hi[2] = (int32_t)layer;
         if (any(g, [&](int32_t x, int32_t y, int32_t zc) { return solid(block(x, y, zc)); })) {
             b.contact |= ON_GROUND;
-            const int64_t before = b.position[2];
-            b.position[2] = fixedOf(zs + 1.01 + b.size.z * 0.5);
-            b.bob += (float)((double)(b.position[2] - before) / ONE);
+            const int64_t lowered = 65536 * layer + SNAP_LIFT + halfHeight;
+            b.bob = floatF(lowered - (zBefore - fixedT(b.bob)));
+            b.position[2] = lowered;
         }
     }
     // §6: friction, then the push.
@@ -547,7 +565,11 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     if (b.local && b.dodgeMs > 500 && b.dodgeMs - dt <= 500)
         b.rolled = true;
     b.dodgeMs = std::max(0, b.dodgeMs - dt);
-    b.bob = relax(b.bob, 0.f, b.bob >= 0 ? 0.02f : 0.01f, dt);
+    // Height §1.5: the offset approaches 0 once per millisecond of the step, each operation in
+    // binary32; 0.01 when below zero, 0.02 otherwise (NaN included).
+    const float bobRate = 0.f > b.bob ? 0.01f : 0.02f;
+    for (int32_t elapsed = 0; elapsed < dt; elapsed++)
+        b.bob = (0.f - b.bob) * bobRate + b.bob;
 }
 
 } // namespace creatures

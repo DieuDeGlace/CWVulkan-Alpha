@@ -637,6 +637,56 @@ int main() {
         same(b.velocity.y, 6 * std::pow(1 - 0.0025, 16), "stored speed after friction", 1e-3);
     }
 
+    // Height §1.2, §1.3, §1.5: the step-up and step-down snaps land on the exact fixed targets
+    // and keep the drawn height (z - offset) continuous; the offset then decays per millisecond.
+    {
+        // Ground below z = 1, a one-block ledge from y = 3 to y = 5, ground again beyond.
+        auto ledge = [](int32_t, int32_t y, int32_t z) -> uint8_t { return z < 1 || (z < 2 && y >= 3 && y < 5) ? 1 : 0; };
+        Body b;
+        b.place({0.5, 0.5, 1 + 1.08 + 0.01});
+        step(b, 16, ledge);
+        b.intent = {0, 80, 0};
+        const int64_t half = (int64_t)(b.size.z * 0.5f * 65536.f);
+        bool up = false, down = false;
+        for (int i = 0; i < 200 && !(up && down); i++) {
+            const int64_t z0 = b.position[2];
+            const double drawn0 = (double)z0 / 65536.0 - b.bob;
+            step(b, 16, ledge);
+            const int64_t moved = b.position[2] - z0;
+            if (!up && moved > 32768) {
+                up = true;
+                // (later sub-steps of the frame may still fall a little before landing)
+                same((double)b.position[2], 1 * 65536 + half + 66191 - 512, "step-up lands 1.01 above the bottom's layer", 512);
+                same(b.bob > 0.6f, 1, "step-up offset carries the rise (after 16 ms of decay)");
+                same((double)b.position[2] / 65536.0 - b.bob, drawn0, "drawn height near-continuous over step-up", 0.3);
+            } else if (up && !down && moved < -32768) {
+                down = true;
+                same(b.position[2], 0 * 65536 + half + 66191, "step-down lands 1.01 above the layer 1.2 below");
+                same(b.bob < -0.6f, 1, "step-down offset carries the drop (after 16 ms of decay)");
+                same((double)b.position[2] / 65536.0 - b.bob, drawn0, "drawn height near-continuous over step-down", 0.3);
+            }
+        }
+        same(up, 1, "walked up the ledge");
+        same(down, 1, "walked down the ledge");
+        // Decay: below zero at 0.01, otherwise 0.02, once per millisecond in binary32.
+        Body still;
+        still.place({0.5, 0.5, 1 + 1.08 + 0.01});
+        step(still, 16, ledge);
+        for (const float start : {-0.5f, 0.75f}) {
+            still.bob = start;
+            float want = start;
+            const float rate = 0.f > start ? 0.01f : 0.02f;
+            for (int ms = 0; ms < 16; ms++)
+                want = (0.f - want) * rate + want;
+            step(still, 16, ledge);
+            same(std::bit_cast<uint32_t>(still.bob), std::bit_cast<uint32_t>(want), "offset decay bit-exact");
+        }
+        // A step of 0 ms makes no repetition.
+        still.bob = 0.25f;
+        step(still, 0, ledge);
+        same(still.bob, 0.25, "zero step keeps the offset", 0);
+    }
+
     // Travel §0, §3.5: the skill factor and the wind's noise.
     same(skillFactor(1), 0.090909, "v(1)", 1e-5);
     same(skillFactor(10), 0.5, "v(10)", 1e-6);
@@ -1855,6 +1905,38 @@ int main() {
         npcs.npcs()[0].target = 0;
         step(16);
         same(npcs.all().empty(), 1, "despawned beyond 220 blocks");
+    }
+
+    // Beam-height §2.2: with a shield in the second hand, bar entry 1 is 8; holding it starts the
+    // block at clock 0 and letting go turns it into 0x68 (104) at clock 0, with no further test.
+    {
+        Combatant s;
+        s.characterClass = 1, s.level = 5;
+        s.equipment[MAIN_HAND] = Item{3, 0, 1, 0, 5, 0};
+        s.equipment[OFF_HAND] = Item{3, SHIELD, 1, 0, 5, 0};
+        same(abilitySlots(s)[1], 8, "shield bar entry 1 is 8");
+        Body body;
+        useAbilities(s, body, {false, true, false, false, false, false}, glm::vec3(0));
+        same(s.action, 8, "holding entry 8 blocks");
+        s.actionMs = 900;
+        s.mana = 0;
+        useAbilities(s, body, {false, false, false, false, false, false}, glm::vec3(0));
+        same(s.action, 104, "release becomes 0x68");
+        same(s.actionMs, 0, "release clock 0");
+    }
+
+    // Beam-height §4.1: a beam effect record (kind 1, 5 repetitions) makes 5 particles from 35
+    // draws, in the order r1..r6, u per particle.
+    {
+        Burst beam = Burst::at({0, 0, 0}, {0, 0, 0}, {1, 0.2f, 0.5f, 1}, 0.1f, 5, FIRE);
+        int calls = 0;
+        Particles list;
+        list.expand(beam, [&] { return (calls++ * 1009) % 32768; });
+        same(calls, 35, "beam record draws 35");
+        same(list.list.size(), 5, "five beam particles");
+        const auto r = [](int k) { return (float)((k * 1009) % 32768) / 32767.f; };
+        same(list.list[1].velocity.z, (r(7) - 0.5f) * 6.f, "second particle z from draw 8", 1e-6);
+        same(list.list[1].colour.g, r(13), "second particle green from draw 14", 1e-7);
     }
 
     // Behaviour §16.9: the worked examples of the ability bar.
