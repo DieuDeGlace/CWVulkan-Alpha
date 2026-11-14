@@ -154,6 +154,28 @@ float strikeBase(const Combatant &c) {
     }
 }
 
+void updateSwingCount(Combatant &c, int32_t t, int32_t dt) {
+    const Phases p = phases(c, c.action);
+    const int32_t B = p.windUp, C = p.active;
+    const auto add = [](int32_t a, int32_t b) { return std::bit_cast<int32_t>(uint32_t(a) + uint32_t(b)); };
+    const auto sub = [](int32_t a, int32_t b) { return std::bit_cast<int32_t>(uint32_t(a) - uint32_t(b)); };
+    const int32_t end = add(B, C);
+    // Writer 1 (0x212E9B): the pulse periods are the strike pulses' (S6). A zero period is a
+    // division fault in the original; the engine writes nothing then.
+    if (const Pulse pulse = pulseOf(p, c.action); pulse.pulsing && B <= t && t < end && pulse.length > 0) {
+        const int32_t P = pulse.length;
+        const auto boundary = [&](int32_t clock) {
+            return add(std::bit_cast<int32_t>(uint32_t(sub(clock, B) / P) * uint32_t(P)), B);
+        };
+        const int32_t K1 = boundary(t), K2 = boundary(add(t, dt));
+        if (K2 != K1 && K2 < end)
+            c.swingCount = c.combo;
+    }
+    // Writer 2 (0x213077).
+    if (t <= B)
+        c.swingCount = c.combo;
+}
+
 StrikeWindow strikeWindow(Combatant &c, float tMs, float dtMs) {
     // Strike-call-sites contract S5-S9 (integer clock arithmetic, truncating division).
     const Phases p = phases(c, c.action);

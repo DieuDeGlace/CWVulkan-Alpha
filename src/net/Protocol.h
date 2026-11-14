@@ -19,7 +19,7 @@ constexpr uint32_t VERSION = 3;
 constexpr int MAX_PLAYERS = 10; // player ids are 1..10
 constexpr int TICK_MS = 20;
 
-// Packet ids (packets Â§0, transport Â§2).
+// Packet ids (packets §0, transport §2).
 enum Packet : uint32_t {
     CREATURE = 0,
     END_OF_BATCH = 2,
@@ -36,10 +36,10 @@ enum Packet : uint32_t {
     ACCEPTED = 16,
     HELLO = 17,
     FULL = 18,
-    WRONG_VERSION = 3, // what an Alpha server sends a wrong version (transport Â§2.2)
+    WRONG_VERSION = 3, // what an Alpha server sends a wrong version (transport §2.2)
 };
 
-// Packets Â§2.1: a creature as the network sees it, 4456 bytes, cut into 48 fields.
+// Packets §2.1: a creature as the network sees it, 4456 bytes, cut into 48 fields.
 struct CreatureRecord {
     static constexpr size_t SIZE = 0x1168;
     std::array<uint8_t, SIZE> bytes{};
@@ -69,14 +69,14 @@ struct CreatureRecord {
         std::memcpy(&bytes[0x30], &intent, sizeof intent);
         std::memcpy(&bytes[0x3c], &response, sizeof response);
     }
-    // Field 13 (offset 0x68): the 172-byte appearance (alpha-creatures-models.md Â§3).
+    // Field 13 (offset 0x68): the 172-byte appearance (alpha-creatures-models.md §3).
     creatures::Appearance appearance() const { return creatures::Appearance::parse(&bytes[0x68]); }
     void setAppearance(const creatures::Appearance &a) { a.serialize(&bytes[0x68]); }
     float health() const;
     void setHealth(float value) { std::memcpy(bytes.data() + 0x15c, &value, 4); }
-    // The fighting state other clients draw and the server relays (behaviour spec Â§1): type,
+    // The fighting state other clients draw and the server relays (behaviour spec §1): type,
     // controller, action and its time, combo, class, charge, health, mana, level, experience,
-    // the stat multipliers and the equipment (models spec Â§6.4).
+    // the stat multipliers and the equipment (models spec §6.4).
     creatures::Combatant fighter() const;
     void setFighter(const creatures::Combatant &c);
     std::string name() const;
@@ -90,25 +90,25 @@ struct CreatureRecord {
     }
 };
 
-// Packets Â§2.1: one field of the record.
+// Packets §2.1: one field of the record.
 struct CreatureField {
     uint16_t offset, size;
-    enum Kind : uint8_t { BYTES, FLOATS, NAME } kind; // how a change is detected (Â§2.2)
+    enum Kind : uint8_t { BYTES, FLOATS, NAME } kind; // how a change is detected (§2.2)
 };
 extern const std::array<CreatureField, 48> CREATURE_FIELDS;
 constexpr uint64_t ALL_FIELDS = 0x0000FFFFFFFFFFFFull;
 
-// Â§2.2: the fields of `now` that differ from `before` (all of them when `before` is null).
+// §2.2: the fields of `now` that differ from `before` (all of them when `before` is null).
 uint64_t changedFields(const CreatureRecord &now, const CreatureRecord *before);
 // The plain payload: u64 id, u64 mask, the masked fields' new bytes.
 std::vector<uint8_t> encodeDelta(uint64_t id, const CreatureRecord &now, uint64_t mask);
 // Applies a plain payload to `record`; returns the id, or nothing if it is malformed.
 std::optional<uint64_t> applyDelta(const std::vector<uint8_t> &plain, CreatureRecord &record);
 
-// Transport Â§4: u32 compressed length + zlib stream (never empty).
+// Transport §4: u32 compressed length + zlib stream (never empty).
 std::vector<uint8_t> compressed(const std::vector<uint8_t> &plain);
 
-// Packets Â§3.4: the thirteen lists of a world update. Sections 7 and 8 are keyed lists.
+// Packets §3.4: the thirteen lists of a world update. Sections 7 and 8 are keyed lists.
 struct WorldUpdate {
     static constexpr uint32_t RECORD_SIZE[13] = {20, 72, 72, 24, 112, 88, 328, 16, 288, 24, 24, 40, 56};
     struct KeyedList {
@@ -123,7 +123,7 @@ struct WorldUpdate {
     static std::optional<WorldUpdate> decode(const std::vector<uint8_t> &plain);
 };
 
-// Packets Â§5.1: the fields of a hit this code reads.
+// Packets §5.1: the fields of a hit this code reads.
 struct Hit {
     std::array<uint8_t, 72> bytes{};
     uint64_t attacker() const;
@@ -139,7 +139,7 @@ struct Hit {
     static Hit make(uint64_t attacker, uint64_t target, float amount, int32_t stun, glm::vec3 knockBack, uint8_t kind);
 };
 
-// UTF-16 chat text (packets Â§3.9, Â§4.3) to and from UTF-8.
+// UTF-16 chat text (packets §3.9, §4.3) to and from UTF-8.
 // AlphaVulkan's own messages, riding on chat lines whose first unit is 1 (no Alpha client sends
 // or shows such a line, docs/design/quests.md): a client's hello, which tells the server it
 // may send the rest, and the server's copy of that player's quest book (one byte per unit).

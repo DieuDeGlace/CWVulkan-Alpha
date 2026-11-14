@@ -1,4 +1,5 @@
 #include "net/RemoteFighter.h"
+#include "creatures/Strike.h"
 #include <bit>
 #include <utility>
 
@@ -21,7 +22,9 @@ void RemoteFighter::refresh(creatures::Combatant snapshot, int32_t elapsedMs) {
     for (size_t slot = 0; slot < padding.size(); slot++)
         for (size_t gap = 0; gap < gaps.size(); gap++)
             padding[slot][gap] = fighter.equipmentSource(slot)[gaps[gap]];
+    const int32_t swingCount = fighter.swingCount, clockBefore = changedClock ? clock : fighter.actionMs;
     fighter = std::move(snapshot);
+    fighter.swingCount = swingCount; // client-local (pose owner-inputs §8)
     fighter.buffs = std::move(residentBuffs); // Resident events are outside core snapshots.
     fighter.relations = std::move(relations);
     fighter.linkedId = linkedId; // This identifier is outside the native core state copy.
@@ -32,6 +35,7 @@ void RemoteFighter::refresh(creatures::Combatant snapshot, int32_t elapsedMs) {
         for (size_t gap = 0; gap < gaps.size(); gap++)
             fighter.equipmentSource(slot)[gaps[gap]] = padding[slot][gap];
     fighter.actionMs = displayedClock;
+    creatures::updateSwingCount(fighter, clockBefore, changedClock ? 0 : elapsedMs);
     receivedAction = action;
     receivedClock = clock;
 }

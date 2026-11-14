@@ -32,6 +32,11 @@ struct StrikeWindow {
     operator bool() const { return strikes; }
 };
 StrikeWindow strikeWindow(Combatant &c, float t, float dtMs);
+// Pose owner-inputs §8: the world update's two writers of the swing count (+0x1314), for any
+// action, from the clock before the update 	 and its step dt. Writer 1: a pulsing action
+// crossing into a new pulse inside its active phase takes the combo; writer 2: a clock not
+// past the wind-up takes the combo. No draws.
+void updateSwingCount(Combatant &c, int32_t t, int32_t dt);
 
 // K2: the reach R, the strike centre and the geometric test's start point (raw units).
 struct StrikeGeometry {

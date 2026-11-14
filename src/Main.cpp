@@ -1418,6 +1418,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         };
         player->onActionEffects = [&](int32_t beforeMs, int32_t dtMs) {
             auto &actor = player->combat();
+            creatures::updateSwingCount(actor, beforeMs, dtMs);
             creatures::chargeSound(actor, beforeMs, dtMs, player->body().blocks(), playerShot);
             creatures::actionSounds(actor, beforeMs, (float)dtMs, player->body().blocks(),
                                     [&] { return worldRandom.draw(); }, playerShot.sounds);

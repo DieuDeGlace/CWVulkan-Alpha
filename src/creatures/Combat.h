@@ -125,6 +125,13 @@ struct Combatant {
     int32_t actionLockMs = 0;
     float recoveryPenalty = 0;
     float charge = 0;     // field 23
+    // Pose owner-inputs §4: owner +0x148 and +0x154 (record fields 24, 25), the hand-turn
+    // sources the pose selectors read late and early in an action. Only received records set
+    // them; constructed creatures keep zero.
+    glm::vec3 handTurnLate{0}, handTurnEarly{0};
+    // Pose owner-inputs §8: owner +0x1314, client-local; the combo copied at each pulse
+    // boundary and through the wind-up (updateSwingCount). Selects the pose spin variants.
+    int32_t swingCount = 0;
     float spentCharge = 0; // the charge a ranged action took when it fired (projectiles §2.3)
     float spentPower = 0;  // what a melee blow spent (open points 6 §2.2, s)
     std::vector<uint64_t> struck; // who this swing or pulse has hit (§1.5)

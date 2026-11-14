@@ -561,9 +561,20 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     //   turn  flag byte (L27)      rate  blend-rate slot (L10)      offScale  off-hand weapon scale
     //   mainModel, offModel  C +0xDC / C +0xE0      cleared  selector C +0x8 := 0
     // B, Cq, Ar and R0 are the wind-up, active, recovery and total helpers; P is twoHanded(main).
-    // Owner +0x148 / +0x154 (hand-turn sources) and +0x1314 (spin variants) are not kept by the
-    // engine: those hand turns stay zero and the spin variants are never taken (open).
+    // Owner +0x148 / +0x154 are the hand-turn sources (late, early) and +0x1314 the swing count
+    // whose half, modulo 3, picks the spin variants (pose owner-inputs §4, §8).
     bool cleared = false;
+    const glm::vec3 turnLate = c ? c->handTurnLate : glm::vec3(0), turnEarly = c ? c->handTurnEarly : glm::vec3(0);
+    const int32_t spinVariant = c ? (c->swingCount / 2) % 3 : 0;
+    // 01-18 §6 spin term: the creature angle turns once over the active phase.
+    const auto spinTurn = [&](int32_t variant) {
+        if (spinVariant == variant) {
+            f.B.z = clampUnit((float)sub32(clock, B) / (float)Cq) * -360;
+            f.rate = 0.03f;
+        } else {
+            f.B.z = 0;
+        }
+    };
     const int mainSub = c ? c->mainHand().subtype : -1, offSub = c ? c->offHand().subtype : -1;
     const auto upperArm = [&] { f.armL.y += 10; f.armL.z -= 4; };
     const auto offFromMain = [&](float dx) { f.L = f.Rh; f.L.x += dx; };
@@ -846,11 +857,18 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         }
         f.rate = 0.005f;
         break;
-    case 0x07: // 01-18 §5; its hand-turn target blends owner +0x148 and +0x154 (open: not kept)
-        if (clock < R0 / 2)
+    case 0x07: // 01-18 §5: the hand turn goes from the early source to the late one
+        if (clock < R0 / 2) {
+            f.U = turnEarly;
             f.rate = 0.005f;
-        else if (clock < R0)
+        } else if (clock < R0) {
+            const float m = (float)sub32(clock, R0 / 2) / (float)(R0 / 2);
+            const float k = clampHigh(((m * m) * m) * 15);
+            f.U = turnLate * k + turnEarly * (1 - k);
             f.rate = 0.03f;
+        } else {
+            f.U = turnLate;
+        }
         f.rR = {0, 90, 0};
         if (twoHanded(main)) {
             offFromMain(2);
@@ -909,8 +927,9 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.rL = {-45, -45, 0};
         }
         break;
-    case 0x0F: // 01-18 §6 (the spin variant, remainder 2, is open; its CA.Z is then 0)
-        f.B.z = 0;
+    case 0x0F: // 01-18 §6
+        spinTurn(2);
+        f.U = turnLate;
         if (clock < B) {
             f.T.z = 40;
             f.rL = {0, -90, 30};
@@ -930,8 +949,9 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         if (offSub == SHIELD)
             f.rL = {0, 0, 90};
         break;
-    case 0x10: // 01-18 §6 (the spin variant, remainder 1, is open; its CA.Z is then 0)
-        f.B.z = 0;
+    case 0x10: // 01-18 §6
+        f.U = turnLate;
+        spinTurn(1);
         if (clock < B) {
             f.T.z = 90;
             f.rR = {0, -90, 0};
@@ -1200,7 +1220,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         }
         break;
     // 19-24 §5.6-§5.9. Their p × 10 (stack +0x30) has no traced reader (open); the engine keeps
-    // it as the foot spread. The spin terms on owner +0x1314 are open (never taken).
+    // it as the foot spread. Swing-count variant 2 adds a turn in the first half of the active
+    // phase (0x1E forward, 0x1F back).
     case 0x1E:
         if (clock < B) {
             const float r = t / (float)B;
@@ -1209,6 +1230,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.T.z = -45;
             f.B.z = r * -20;
             f.E.x = r * 0.f;
+            if (spinVariant == 2 && clock < add32(B, Cq / 2))
+                f.B.z += r * 360;
             f.rate = 0.04f;
         } else if (clock < add32(add32(B, Cq), Ar)) {
             const float p = clampHigh((float)sub32(clock, B) * 1.2f / (float)Cq), q = 1 - p;
@@ -1235,6 +1258,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.rate = 0.05f;
             f.E.x = -0.f;
             f.B.z = 20;
+            if (spinVariant == 2 && clock < add32(B, Cq / 2))
+                f.B.z = f.B.z - (t / (float)B) * 360;
         } else if (clock < R0) {
             const float p = clampHigh((float)sub32(clock, B) * 1.2f / (float)Cq), q = 1 - p;
             f.E.x = p * 0.8f + q * -0.f;
@@ -1451,7 +1476,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.T.y = -30 * side, f.rL.y = f.rR.y = 30 * side;
         break;
     }
-    case 0x30: { // 25-30 §7.4 (its hand-turn target is owner +0x148: open, not kept)
+    case 0x30: { // 25-30 §7.4
+        f.U = turnLate;
         const int32_t halfB = B / 2;
         const auto stepR = [&](float dx) {
             offFromMain(dx);
@@ -1485,7 +1511,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         f.rL = f.rR;
         break;
     }
-    case 0x31: // 31-49 §6 (its hand-turn target is owner +0x148: open, not kept)
+    case 0x31: // 31-49 §6
+        f.U = turnLate;
         if (clock < B) {
             f.B.z = 30;
             f.T = {0, 0, 90};

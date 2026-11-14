@@ -2242,3 +2242,23 @@ moves toward the aim and is replaced by it between actions. Remote creatures are
 that head pitch. Engine choices: a new creature's drawn aim starts at its aim; the received
 action clock stands for the clock before the step (whether a remote clock advances locally
 is not closed). Still open: the driven-flag list, the attachment copy path.
+## Pose owner inputs (round 17, held 2026-11-14)
+
+Held contract `docs/specs/alpha-pose-owner-inputs.md` (SHA-256 14B1999F...EEB3), read whole.
+- Owner +0x148 / +0x154 (record fields 24, 25) are now `Combatant::handTurnLate` /
+  `handTurnEarly`, decoded and encoded with the record. Constructed creatures keep zero (the
+  contract finds no nonzero local writer); received creatures carry the sender's values.
+  Selectors 7, 0x0F, 0x10, 0x30 and 0x31 now take their hand-turn targets from them.
+- Owner +0x1314 is `Combatant::swingCount`, client-local. `updateSwingCount` holds the
+  world update's two writers: a pulsing action (the strike pulses' set and periods) crossing a
+  pulse boundary inside its active phase takes the combo; a clock not past the wind-up takes
+  the combo. It runs for NPCs and the local player before the action effects, and for received
+  fighters on each refresh (keeping the value across snapshots; a new clock counts as a zero
+  step, an engine choice). Selectors 0x0F/0x10 (variants 2/1) and 0x1E/0x1F (variant 2) now
+  take their spin terms from half the swing count modulo 3.
+- Already matching: owner +0x144 (charge) and +0x13B4 (spent power) writers as used by the
+  held strike and attack contracts.
+Open: the traced-path gates before the swing-count block (0x212CB2), resets A/B in the engine,
+the blend repeat count, models entries 840 and 2101.
+Repair: comments in `Protocol.h` and `RemoteCreatures.*` (pushed in dfdbfa1) had been
+double-encoded by a PowerShell 5.1 read; they are restored to UTF-8 (text unchanged).

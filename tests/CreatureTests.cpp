@@ -318,6 +318,52 @@ int main() {
             same(std::any_of(parts71.begin(), parts71.end(), [](const PartDraw &d) { return d.model == 2101; }), 1,
                  "selector 0x47 draws model 2101");
         }
+        // Pose owner-inputs §4: selector 0x30 takes the late hand-turn source (owner +0x148).
+        c.handTurnLate = {10, 20, 30};
+        {
+            auto [sh, partsh] = pose(c, 65, p65.windUp + 1);
+            same(sh.roll == glm::vec3(10, 20, 30), true, "selector 0x30: hand turn from owner +0x148");
+        }
+        c.handTurnLate = glm::vec3(0);
+        // Pose owner-inputs §8 / 01-18 §6: selector 0x0F turns the creature angle by -360 over
+        // the active phase only when half the swing count leaves remainder 2 modulo 3.
+        int32_t spinAction = -1;
+        for (int32_t k = 1; k < 256 && spinAction < 0; k++) {
+            c.action = k;
+            if (poseOf(c) == 0x0F)
+                spinAction = k;
+        }
+        same(spinAction > 0, true, "an action uses selector 0x0F");
+        {
+            const Phases ps = phases(c, spinAction);
+            c.swingCount = 4;
+            // A quarter of the active phase: -90 (a target of -180 would fold to no turn).
+            auto [sa, partsa] = pose(c, spinAction, ps.windUp + ps.active / 4);
+            same(sa.tilt.z, -360.f * float(ps.active / 4) / float(ps.active), "selector 0x0F spins on variant 2", 1e-2);
+            c.swingCount = 2;
+            auto [sb, partsb] = pose(c, spinAction, ps.windUp + ps.active / 4);
+            same(sb.tilt.z, 0, "selector 0x0F does not spin on variant 1", 1e-6);
+            c.swingCount = 0;
+        }
+        // Pose owner-inputs §8 writers: the combo is taken through the wind-up and at each pulse
+        // boundary of a pulsing action (0x1E: a sixth of the active phase), not in between. The
+        // phases depend on the combo (attack speed), so they are taken after it is set.
+        {
+            Combatant w = c;
+            w.action = 0x1E;
+            w.combo = 7;
+            const Phases p7 = phases(w, 0x1E);
+            updateSwingCount(w, p7.windUp - 10, 5);
+            same(w.swingCount, 7, "writer 2: the wind-up takes the combo");
+            w.combo = 9;
+            const Phases p9 = phases(w, 0x1E);
+            const int32_t P = p9.active / 6;
+            same(P > 2, true, "action 0x1E pulses");
+            updateSwingCount(w, p9.windUp + 1, 1);
+            same(w.swingCount, 7, "inside a pulse nothing is written");
+            updateSwingCount(w, p9.windUp + P - 1, 2);
+            same(w.swingCount, 9, "writer 1: a pulse boundary takes the combo");
+        }
         // Weapon pose contract §5: knocked down, a biped's creature offset Z is (box y - box z) / 2.
         Motion down;
         down.knockedDown = true;

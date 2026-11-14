@@ -113,6 +113,10 @@ creatures::Combatant CreatureRecord::fighter() const {
     c.characterClass = bytes[0x130];
     c.specialization = bytes[0x131];
     c.charge = get<float>(bytes, 0x134);
+    for (int axis = 0; axis < 3; axis++) {
+        c.handTurnLate[axis] = get<float>(bytes, 0x138 + 4 * axis);
+        c.handTurnEarly[axis] = get<float>(bytes, 0x144 + 4 * axis);
+    }
     c.health = get<float>(bytes, 0x15c);
     c.mana = get<float>(bytes, 0x160);
     c.blockGauge = get<float>(bytes, 0x164);
@@ -160,6 +164,10 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     bytes[0x130] = c.characterClass;
     bytes[0x131] = c.specialization;
     put<float>(bytes, 0x134, c.charge);
+    for (int axis = 0; axis < 3; axis++) {
+        put<float>(bytes, 0x138 + 4 * axis, c.handTurnLate[axis]);
+        put<float>(bytes, 0x144 + 4 * axis, c.handTurnEarly[axis]);
+    }
     put<float>(bytes, 0x15c, c.health);
     put<float>(bytes, 0x160, c.mana);
     put<float>(bytes, 0x164, c.blockGauge);

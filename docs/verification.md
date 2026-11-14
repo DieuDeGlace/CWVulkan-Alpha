@@ -1692,4 +1692,8 @@ the player diagnostic and five live runs pass, and the six captures show the sam
 creatures and the player posed normally.Remote facing (2026-11-14). CreatureTests: a received creature keeps its received head pitch;
 with the face-aim bit and action 0 one 16 ms update sets the drawn aim to the aim and turns
 the yaw and head pitch toward it. All 60 CTests pass, the player diagnostic and five live
-runs (including the connected client) pass, and the six captures match the preceding batch.
+runs (including the connected client) pass, and the six captures match the preceding batch.Pose owner inputs (2026-11-14). CreatureTests: selector 0x30 takes its hand turn from owner
++0x148; selector 0x0F turns the creature angle on swing-count variant 2 and not on variant 1;
+the swing count takes the combo through the wind-up and at a pulse boundary of action 0x1E,
+not inside a pulse. All 60 CTests pass, the player diagnostic and five live runs pass, and the
+six captures match the preceding batch.

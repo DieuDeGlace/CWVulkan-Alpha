@@ -2390,6 +2390,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         // behaviour and the path follower left it this update.
         c.aim = npc.body.look;
         createActor(actor, milliseconds);
+        updateSwingCount(c, before, milliseconds); // pose owner-inputs §8
         ShotEffects shot;
         chargeSound(c, before, milliseconds, npc.body.blocks(), shot);
         actionSounds(c, before, dtMs, npc.body.blocks(), [&] { return draw(); }, shot.sounds);

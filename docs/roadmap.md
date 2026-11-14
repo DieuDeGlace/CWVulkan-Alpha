@@ -601,8 +601,9 @@ Differences from the Steam engine that shape the plan:
   precision, dodge axis, carried branches and held grips now follow the contract.
   The four held pose-selector contracts now drive the per-selector evaluator
   (every case, the 0x33/0x34 swing factor and the model-slot writes). Owner
-  +0x58 turns, lean inputs, the blend repeat count, the owner hand-turn and spin
-  fields (+0x148/+0x154/+0x1314) and the post-evaluator consumers remain open.
+  +0x58 turns, lean inputs, the blend repeat count and the post-evaluator
+  consumers remain open; the held owner-inputs contract now drives the hand-turn
+  sources (+0x148/+0x154) and the swing count (+0x1314) with its spin variants.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look
