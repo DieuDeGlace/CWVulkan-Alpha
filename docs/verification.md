@@ -1696,4 +1696,9 @@ runs (including the connected client) pass, and the six captures match the prece
 +0x148; selector 0x0F turns the creature angle on swing-count variant 2 and not on variant 1;
 the swing count takes the combo through the wind-up and at a pulse boundary of action 0x1E,
 not inside a pulse. All 60 CTests pass, the player diagnostic and five live runs pass, and the
-six captures match the preceding batch.
+six captures match the preceding batch.Provenance batches 1-2 (2026-11-14). New regressions: RelationshipTests (kind 89 with every
+bit outside the mask), HitApplicationTests (NaN amount writes nothing; NaN and negative-zero
+differences kept), LinkedItemTests (orphaned role 5: health 0, role 3, clock 5000, reverse 0),
+ItemIdentityTests (zero hand count swaps; hand count 1 with category 20 swaps). All 60 CTests
+pass, the player diagnostic and five live runs pass, and the six captures match the
+preceding batch.

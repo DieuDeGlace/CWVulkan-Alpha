@@ -1,24 +1,69 @@
+Status: FINAL / STABLE / HELD
 # Alpha hit scalar-reduction arithmetic order
 
-This original-only, code-free clarification covers the client hit-applier block at RVAs `0x195b57–0x195bd5`. The supported image is `binary/Cube.exe`, SHA256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, image base `0x00400000`. All addresses below are RVAs; evidence paths are relative to the original Alpha evidence root. Earlier held artifacts remained unopened and unchanged. No replacement code, tests, captures, probes, implementation history, SDK, reconstruction or other contract supplied facts.
+Scope: one block of the client hit applier, RVA 0x195B57–0x195BD5, together with its entry test at 0x195B3E–0x195B55. Supported image: `binary/Cube.exe`, SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, image base 0x00400000. All addresses are RVAs; evidence paths are relative to the original Alpha evidence root. The facts below come from the original image and its instruction listing (`decompiled/client/assembly.txt`), whose bytes for the whole scoped range were compared with the image file and matched. No replacement code, tests, captures, other contracts or reconstruction supplied facts.
 
-This block is entered after earlier target/source lookup work when the binary32 amount at hit `+0x10` compares strictly greater than positive zero. Zero and negative ordinary finite amounts bypass the entire block, including its action/timer writes. Earlier hit admission is outside this clarification. Creature `+0x1190` is the affected binary32 scalar; it is distinct from health and from the input hit amount.
+## Entry
 
-The following stages describe the native evaluation and storage order. Binary32 and binary64 identify the operand/result precision at the stated boundary; they do not assign an untraced global floating-point rounding mode.
+The block runs only when the binary32 hit amount at hit+0x10 compares strictly greater than positive zero. A zero or negative amount skips everything below, including the action and timer writes; an unordered comparison (a NaN amount) also skips it. How the hit and its target were admitted before this point is outside scope. The value reduced here is the binary32 scalar at creature+0x1190, which is a different field from both health and the hit amount.
 
-1. The unsigned byte at creature `+0x1a8` is loaded and zero-extended to a 32-bit integer. The 32-bit word at creature `+0x190` is loaded separately. That second word is decremented by one in 32-bit integer arithmetic first. The zero-extended byte is then added to that decremented word in 32-bit integer arithmetic. Both operations retain their low 32 bits, including wrap modulo `2^32`; there is no widened integer sum, floating-point decrement or floating-point addition at this stage. The resulting 32-bit bit pattern is interpreted as signed for the following conversion.
-2. That signed 32-bit result is converted to binary32. It is then multiplied by binary32 exactly 0.25, producing the binary32 exponent. The already rounded binary32 exponent is promoted to binary64 for the power call. Thus conversion of the complete integer result precedes quarter scaling; the level and byte are not converted independently before their combination.
-3. The imported precise-power routine is called with binary64 base exactly 2 and the promoted exponent. Its result returns as binary64. This completes the exponent/power calculation before the hit amount is reloaded for the numerator calculation.
-4. After the power call returns, the hit amount is reloaded as binary32 and multiplied by binary32 exactly 0.25. This produces a binary32 numerator. Only after that multiplication is the binary64 power result narrowed to binary32, producing the denominator.
-5. The quartered binary32 numerator is divided by that narrowed binary32 denominator. The quotient is binary32. This is a division of the already quartered amount by the narrowed power result; the amount is not first divided by the power and subsequently quartered. The block does not form a reciprocal of the power and multiply by it.
-6. Only after the division, the old scalar at creature `+0x1190` is loaded as binary32. The binary32 quotient is subtracted from that scalar with a binary32 result. Neither the numerator nor the subtraction is carried through in binary64. The input hit amount itself is not rewritten by this block.
-7. Positive binary32 zero is formed and compared against the subtraction result. The subtraction result is then unconditionally stored to creature `+0x1190` before the conditional clamp branch. For an ordinary finite result below zero, a second store overwrites the scalar with the all-zero 32-bit representation, positive zero. Results above zero and either sign of zero retain the first stored representation. The test is strict negativity, not nonpositivity: a provisional negative zero is not independently replaced by the clamp.
-8. After the scalar store and any clamp overwrite, creature action byte `+0x68` is compared with `0x54`, decimal 84. If equal, the action byte is written to zero first, then the signed 32-bit timer at creature `+0x12c` is written to 3000, bit pattern `0x00000bb8`. If the action was not 84, neither of these two writes occurs here. The block then joins subsequent hit-applier processing at `0x195bd5`.
+## Evaluation and store order
 
-The constants have independently checked original image bytes. Binary64 base 2 is image RVA `0x345e18`, bit pattern `0x4000000000000000`, stored little-endian as `00 00 00 00 00 00 00 40`. Binary32 quarter is image RVA `0x345d98`, bit pattern `0x3e800000`, stored as `00 00 80 3e`. The same binary32 quarter constant is used in both the exponent multiplication and the amount multiplication. Positive zero for the finite clamp is the all-zero 32-bit word.
+The precision names below describe operand and result widths at each step. They do not fix a global rounding mode, which this contract does not trace.
 
-Original instruction evidence is `decompiled/client/assembly.txt`: byte/word loads and 32-bit decrement/add at `0x195b57–0x195b6d`; signed-integer-to-binary32 conversion, quarter multiplication and binary64 exponent promotion at `0x195b6f–0x195b7e`; power call at `0x195b81`; amount reload/quarter multiplication at `0x195b86–0x195b8b`; power-result narrowing and binary32 division at `0x195b93–0x195b97`; scalar load/subtraction at `0x195b9b–0x195ba3`; zero comparison, unconditional provisional store and conditional overwrite at `0x195ba7–0x195bb7`; action test and ordered byte/timer writes at `0x195bc1–0x195bcb`. These instruction bytes were independently confirmed directly in `binary/Cube.exe` for the scoped block. The preceding amount load, positive-zero setup and entry comparison are at `0x195b3e–0x195b55` in the same original export.
+1. Integer exponent input. The byte at creature+0x1A8 is zero-extended to 32 bits, and the 32-bit word at creature+0x190 is read separately. One is subtracted from that word first, using 32-bit integer arithmetic; the zero-extended byte is then added to the result, again in 32-bit integer arithmetic. Both steps keep only the low 32 bits (wrap modulo 2^32). There is no wider sum and no floating-point step here. The final 32-bit pattern is treated as a signed integer by the next step.
+2. Exponent. That signed integer is converted to binary32 and multiplied by binary32 0.25, giving a binary32 exponent, which is then widened to binary64. The whole integer is converted once, after the decrement and addition; the two inputs are never converted separately.
+3. Power. The runtime's precise power routine is called with binary64 base 2.0 and the widened exponent, returning a binary64 result. This finishes before the hit amount is read again.
+4. Numerator and denominator. The hit amount is read again as binary32 and multiplied by binary32 0.25 to form a binary32 numerator. Only afterwards is the binary64 power result narrowed to binary32 to form the denominator.
+5. Quotient. The quartered numerator is divided by the narrowed denominator, producing binary32. The amount is quartered before division, not after, and no reciprocal of the power is formed.
+6. Subtraction. Only now is the old binary32 scalar at creature+0x1190 read; the quotient is subtracted from it with a binary32 result. Nothing in steps 4–6 is carried in binary64. The hit amount itself is not modified.
+7. Store and clamp. Positive zero is compared with the difference; the difference is then written to creature+0x1190 unconditionally, before the branch that uses the comparison. If the difference is ordered and strictly below zero, a second write replaces it with the all-zero 32-bit pattern (positive zero). A positive difference, either signed zero, or an unordered (NaN) difference keeps the first write. Because the test is strict, a negative-zero difference is not rewritten as positive zero.
+8. Action and timer. After the scalar write and any clamp, the action byte at creature+0x68 is compared with 0x54 (decimal 84). When equal, that byte is first set to zero and then the 32-bit word at creature+0x12C is set to 3000 (bit pattern 0x00000BB8). When not equal, neither write happens. Processing then continues at 0x195BD5.
 
-The original import stub at RVA `0x28d8d4` transfers to `MSVCR110.DLL`'s precise-power entry, identified in `decompiled/client/functions/0068d8d4.c` and by its original indirect jump in `decompiled/client/assembly.txt`. This clarification establishes the binary64 call boundary and its surrounding native conversions; it does not re-specify the DLL's internal power approximation. It also does not establish global SIMD rounding controls, denormal handling, exception masks, nonfinite-input recovery, concurrent mutation, or successful behavior when the narrowed power becomes zero or nonfinite. The integer widths and wrap order above remain instruction facts independently of those arithmetic limits.
+## Constants
 
-Status: FINAL / STABLE / HELD after full prose readback. Earlier held artifacts remain unopened and unchanged.
+Read directly from the image file:
+
+- Binary64 base 2.0 at RVA 0x345E18, pattern 0x4000000000000000, bytes `00 00 00 00 00 00 00 40`.
+- Binary32 0.25 at RVA 0x345D98, pattern 0x3E800000, bytes `00 00 80 3E`. The same constant serves both the exponent and the numerator multiplications.
+- The clamp value is the all-zero 32-bit word.
+
+## Instruction evidence
+
+From `decompiled/client/assembly.txt`, each range re-checked against `binary/Cube.exe`:
+- entry amount read, zero setup and comparison: 0x195B3E–0x195B55;
+- byte and word reads, 32-bit decrement and addition: 0x195B57–0x195B6D (the base-2.0 load is interleaved at 0x195B64 and does not affect the integer order);
+- signed integer to binary32 conversion, quarter multiplication and widening: 0x195B6F–0x195B7E;
+- power call: 0x195B81;
+- amount reread and quarter multiplication: 0x195B86–0x195B8B;
+- narrowing of the power result and division: 0x195B93–0x195B97;
+- scalar read and subtraction: 0x195B9B–0x195BA3;
+- zero comparison, unconditional write and conditional overwrite: 0x195BA7–0x195BB7;
+- action test and ordered byte and timer writes: 0x195BC1–0x195BCB.
+
+The call target at RVA 0x28D8D4 is an import stub whose indirect jump reads import address slot VA 0x006FC454. In the image's import table that slot belongs to `MSVCR110.dll`, entry `_libm_sse2_pow_precise`. This contract fixes the binary64 call boundary and the conversions around it. It does not describe the DLL's internal power approximation.
+
+## Limits
+
+Not established here: global SIMD rounding control, denormal treatment, exception masks, recovery from nonfinite inputs other than the comparison outcomes stated above, concurrent mutation, and behaviour when the narrowed power result is zero or nonfinite. The integer widths and wrap order in step 1 hold as instruction facts regardless of those limits. The signedness with which other code interprets the timer word at +0x12C is not established by this block.
+
+## Re-certification (2026-11-14)
+
+Re-checked by a source-side author against the original client image, its instruction listing and its import table; listing bytes for 0x195B30–0x195BE0 and the import stub were compared with the file and matched. The Infinite-Cubes reconstruction was not consulted.
+
+Confirmed:
+- Entry test (strictly greater than zero), field offsets +0x10, +0x190, +0x1A8, +0x1190, +0x68, +0x12C.
+- Integer order (decrement, then add the zero-extended byte; 32-bit wrap), signed conversion, quarter scaling, widening, power call, reread and quartering of the amount, narrowing after the numerator, binary32 division and subtraction.
+- Unconditional provisional store before the strict-negative clamp; negative zero retained.
+- Action 0x54 test, byte cleared before the timer is set to 0xBB8.
+- Constants and their RVAs and byte patterns; the import slot resolves to `_libm_sse2_pow_precise`.
+
+Corrected:
+- The timer at +0x12C was called a "signed 32-bit timer"; the block only writes a 32-bit word, so its signedness is now left unestablished.
+- The closing status line was at the end of the document; it is now the first line. The earlier provenance sentence about "held artifacts" has been replaced with this author's own evidence statement.
+- Added (newly confirmed, not previously stated): a NaN amount also skips the block, and a NaN difference keeps the provisional write.
+- Prose rewritten in independent wording.
+
+Unresolved:
+- DLL power-routine internals, rounding and exception state, denormals, zero or nonfinite power results, concurrency.
+- Meaning of the fields at +0x190, +0x1A8 and +0x1190 beyond their arithmetic roles here.

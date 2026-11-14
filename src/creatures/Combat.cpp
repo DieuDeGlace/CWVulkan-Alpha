@@ -1209,6 +1209,8 @@ void applyHit(Combatant &target, Body &body, const HitRecord &hit, HitApplicatio
 }
 
 void prepareHitApplication(Combatant &target, const HitRecord &hit) {
+    // alpha-hit-scalar-reduction-order.md: a NaN amount fails the strict entry
+    // test; the strict clamp keeps a NaN or negative-zero difference.
     if (hit.amount > 0) {
         const uint32_t combined = (uint32_t)target.level - 1u + (uint32_t)target.powerTier;
         const float exponent = (float)std::bit_cast<int32_t>(combined) * .25f;
@@ -1219,7 +1221,7 @@ void prepareHitApplication(Combatant &target, const HitRecord &hit) {
         target.stealth -= reduction;
         if (target.stealth < 0)
             target.stealth = 0;
-        if (target.action == 84) {
+        if (uint8_t(target.action) == 84) { // §Evaluation 8: the action byte
             target.action = 0;
             target.hitStun = 3000;
         }

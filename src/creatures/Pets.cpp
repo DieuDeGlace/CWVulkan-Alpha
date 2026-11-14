@@ -75,16 +75,13 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     if (c.type == 104)
         c.characterClass = 2, c.specialization = 1;
     std::copy(m, m + 5, c.multipliers);
-    c.level = std::min(c.level, owner.level);
-    c.multipliers[0] *= 1 + 0.5f * skillFactor(owner.skills[0]);
     c.actionMs = 1000000;
     c.linkedItem.source.fill(0); // native reset differs from fresh item construction
     c.equipment[PET_SLOT].level = 0;
     c.linkedItem.retained = pet.fighter.linkedItem.retained;
     c.behaviorReference = pet.fighter.behaviorReference; // the held body reset preserves field40
     pet.fighter = c;
-    pet.body.mode = c.mode;
-    pet.fighter.ownerId = owner.id;
+    pet.body.mode = c.mode; // the reset leaves the reverse ID zero (alpha-fatal-context-field-producers.md)
     pet.spawn = Npc::NO_SPAWN;
     pet.fighter.relations.threats.clear();
     pet.target = 0;
@@ -96,8 +93,15 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     pet.fatalRegionApplied = false;
     pet.fatalRecipientsApplied = false;
     pet.fatalBackingApplied = false;
-    if (Combatant *mappedOwner = lookupActor(owner.id, {}).combat())
-        mappedOwner->linkedId = c.id;
+    // Owner helper (alpha-forward-link-zero-gates.md, "Owner helper"): its own
+    // unguarded search by the owner's ID; only a found owner caps the level,
+    // rewrites the reverse ID, rescales the first multiplier and takes the link.
+    if (Combatant *mappedOwner = lookupActor(owner.id, {}).combat()) {
+        pet.fighter.level = std::min(pet.fighter.level, mappedOwner->level);
+        pet.fighter.ownerId = owner.id;
+        pet.fighter.multipliers[0] *= 1 + 0.5f * skillFactor(mappedOwner->skills[0]);
+        mappedOwner->linkedId = pet.fighter.id;
+    }
 }
 
 // §9: each player's pet, found, rebuilt, made or removed by the Pet slot; §11.2 stale pets.
@@ -141,6 +145,7 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
                     plain.characterClass = 0;
                     child.fighter.health = maxHealth(plain);
                     makePet(child, slot, owner);
+                    child.fighter.ownerId = owner.id; // creation's reverse ID, independent of the helper's lookup
                     child.body.place(p.body.blocks());
                     child.yaw = p.yaw;
                     appendNpc(std::move(child));
@@ -186,6 +191,7 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
                 current->linkedId = 0;
                 current->health = 0;
                 current->controller = 3;
+                current->actionMs = 5000; // "Later pass over all creatures": +0x6C before the reverse clear
                 current->ownerId = 0;
                 if (actor.npc)
                     actor.npc->deadMs = 5000; // retained engine corpse-disposal adapter

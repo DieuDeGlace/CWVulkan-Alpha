@@ -211,11 +211,33 @@ static void lateMirror() {
           "later controlled mirroring updates current source even with maintenance skipped, without refreshing comparison state");
 }
 
+// alpha-forward-link-zero-gates.md, later pass: a role-five actor whose found
+// owner links elsewhere is reset to role three with +0x6C = 5000.
+static void orphanedRoleFive() {
+    PetFixture f;
+    f.npcs.setNamedWorld(false);
+    Npc child;
+    child.fighter.id = 77;
+    child.fighter.controller = 5;
+    child.fighter.ownerId = f.owner.id;
+    child.fighter.health = 17;
+    child.fighter.actionMs = 12;
+    child.spawn = Npc::NO_SPAWN;
+    child.body.place({20, 20, 3});
+    f.npcs.npcs().push_back(child);
+    f.owner.linkedId = 78;
+    f.step();
+    const Combatant &after = f.npcs.all()[0].fighter;
+    check(after.health == 0 && after.controller == 3 && after.actionMs == 5000 && after.ownerId == 0 &&
+          f.owner.linkedId == 78, "an owner linked elsewhere orphans the role-five actor with the 5000 action timer");
+}
+
 int main() {
     storageAndWire();
     actualCreditStorage();
     maintenancePublication();
     lateMirror();
+    orphanedRoleFive();
     if (!failures) std::puts("LinkedItemTests passed");
     return failures ? 1 : 0;
 }

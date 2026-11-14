@@ -1019,9 +1019,10 @@ Differences from the Steam engine that shape the plan:
   the engine, server, AlphaSetup, examples, SDK, player docs and licences, with
   SHA-256 sums, into a new timestamped directory/archive under `dist/`. Existing
   packages are retained. Release acceptance/provenance gates remain open.
-- [ ] Specification provenance gate (`docs/provenance-audit.md`): 60 held and recorded, 65
-  held without a recorded hash, 91 inherited without a held status. Each B/C document is
-  re-certified by a fresh source-only author and re-read by the implementer before release.
+- [ ] Specification provenance gate (`docs/provenance-audit.md`): 75 held and recorded, 62
+  held without a recorded hash, 79 inherited without a held status (12 re-certified so
+  far). Each B/C document is re-certified by a fresh source-only author and re-read by the
+  implementer before release.
 - [x] Setup: when no Alpha install is found, a folder picker asks for it (checked for Cube.exe and
   the data files) and the choice is written to [Game] Path in AlphaVulkan.ini.
 - [x] Owner-content tool: AlphaSetup identifies the supported executable, checks

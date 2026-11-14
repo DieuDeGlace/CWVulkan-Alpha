@@ -1,6 +1,8 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha yaw trigonometric scalar ABI
 
-This addendum establishes the scalar call boundary used by original client rotation helper RVA `0x024610`. Evidence is limited to the original files below, relative to `disassembled alpha cube world`. All prior held artifacts remained unopened and unchanged. No reconstruction, project implementation, runtime execution or other contract was used.
+This addendum establishes the scalar call boundary used by original client rotation helper RVA `0x024610`. Evidence is limited to the original files below, relative to `disassembled alpha cube world`; runtime instructions were read by disassembling the bundled runtime image directly. No runtime execution was used.
 
 | Original file | Size | SHA-256 |
 |---|---:|---|
@@ -24,7 +26,7 @@ Evidence: client `binary/Cube.exe` import descriptors/name records, thunks `0x28
 
 ## What the original rotation caller supplies and consumes
 
-The caller first loads a binary32 angle from memory into XMM0's low 32 bits. That memory load clears the rest of the register. It multiplies the low scalar by binary32 literal `0.01745329238474369` (`0x3C8EFA35`) and stores the rounded binary32 product. The packed promotion then produces the argument binary64 in XMM0's low 64 bits and positive zero in its upper 64 bits, because its second binary32 source component is zero.
+The caller first loads its binary32 angle, which is its first stack argument, into XMM0's low 32 bits. That memory load clears the rest of the register. It multiplies the low scalar by the binary32 constant at client RVA `0x2FCDA4`, bit pattern `0x3C8EFA35` (decimal value `0.01745329238474369`), and stores the rounded binary32 product back over the same argument slot. The cosine argument is promoted from the register product itself, not from that stored copy. The packed promotion then produces the argument binary64 in XMM0's low 64 bits and positive zero in its upper 64 bits, because its second binary32 source component is zero.
 
 Cosine is called first. The returned low binary64 is rounded to binary32 and saved to memory before sine is called. Sine receives a fresh memory load of the same saved binary32 angle product, followed by the same promotion; it also receives upper 64 bits equal to positive zero. The caller consumes only the returned low binary64 and rounds it to binary32 for the matrix calculation. No upper-lane value from either result participates in that calculation. The caller reloads its required matrix values and saved cosine after the sine call rather than expecting the math call to retain their XMM registers. Evidence: client `0x024614–0x02465C`.
 
@@ -65,4 +67,10 @@ A nonmatching checked control state or a sufficiently large input can reach the 
 
 The imported identities establish which operations the original caller requested. The file hashes, lane widths, conversion boundaries and inspected register effects do not establish correctly rounded sine/cosine for every input, an error bound, identical results from another runtime build, or a guarantee under changed floating controls. Numerical approximation, range-reduction internals, NaN/infinity behavior, signaling inputs, exception delivery and general fallback execution remain outside this small ABI contract. No original algorithm, coefficient table or implementation instruction sequence is reproduced.
 
-Status: FINAL / STABLE / HELD after complete author readback. All prior held artifacts remain unopened and unchanged.
+## Re-certification (2026-11-14)
+
+Confirmed against the original files: both file sizes and SHA-256 values; x86 PE32 machine type and preferred bases; the client thunks at `0x28D7A4` and `0x28D9C2`, their import slots `0x2FC444` and `0x2FC45C` and by-name imports; the runtime exports at RVAs `0x036F80` (ordinal 878) and `0x03DCF0` (ordinal 883); the caller sequence `0x024614–0x02465C` (single-precision multiply, packed promotion with zero upper lane, cosine before sine, cosine result rounded and saved, fresh reload for sine, reload of matrix values and saved cosine afterwards); both runtime entries' MXCSR test (mask `0x7F80`, expected `0x1F80`), x87 control-word test (low seven bits `0x7F`), magnitude classification (lower word `0x3030`, first excluded word `0x40F6`, corresponding to `2^-252` and 90,112), use of all of XMM1–XMM7 plus EAX and EDX in the principal bodies, eight-byte temporary stack use, plain return, absence of MXCSR or x87 control writes, and the fallback bridges at `0x03711F` and `0x03DE9C` to `0x032775` and `0x032EAE`, which reload the result with the upper half cleared.
+
+Corrected (1): the caller's angle is now identified as its first stack argument, the multiplier's location is given, the product's overwrite of the argument slot is stated, and the cosine argument's register origin is stated (previously "a binary32 angle from memory" without location). Process remarks in the opening and the trailing status sentence were removed.
+
+Unresolved: which runtime file a given process actually loads; behaviour and register effects of the fallback targets; numerical accuracy, range reduction and special-value behaviour; whether the application establishes the stated floating-point controls at startup.

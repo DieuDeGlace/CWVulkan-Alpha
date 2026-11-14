@@ -2262,3 +2262,35 @@ Open: the traced-path gates before the swing-count block (0x212CB2), resets A/B 
 the blend repeat count, models entries 840 and 2101.
 Repair: comments in `Protocol.h` and `RemoteCreatures.*` (pushed in dfdbfa1) had been
 double-encoded by a PowerShell 5.1 read; they are restored to UTF-8 (text unchanged).
+## Provenance re-certification, batches 1-2 (2026-11-14)
+
+Twelve inherited contracts (class C of `docs/provenance-audit.md`) were checked for
+suitability on the clean side (behavioural prose only), re-certified by fresh source-only
+authors against the original images (no reconstruction consulted; 45 corrections recorded in
+each document's re-certification section) and then read whole by the implementer:
+- `alpha-relationship-kind-89-admission.md` (3518E683...1CE6)
+- `alpha-hit-scalar-reduction-order.md` (C65BD469...3E5E)
+- `alpha-forward-link-zero-gates.md` (9CA7413C...DF1F)
+- `alpha-fatal-object-descriptor-association.md` (9B30688A...A082)
+- `alpha-inventory-equality-consumers.md` (9A5ADC42...A9AE)
+- `alpha-data-stores.md` (1BA38C37...219C)
+- `alpha-category13-inventory-counter.md` (7516D24D...BE15)
+- `alpha-generic-hit-vector-adjustment.md` (8045574D...2628)
+- `alpha-yaw-trig-scalar-abi.md` (53188905...BF30)
+- `alpha-fatal-context-field-producers.md` (AAD508BA...A9F4)
+- `alpha-world-creature-health-admission.md` (2B7DAAE1...2A02)
+- `alpha-linked-item-storage-producers.md` (639AF16A...6E95)
+
+Engine changes:
+- The hit reduction's action-84 test compares the action byte (hit-scalar contract).
+- The orphaned role-5 pet also takes action clock 5000 (forward-link contract).
+- `makePet`'s owner helper performs its own lookup; only a found owner caps the level,
+  writes the reverse identifier, rescales the first multiplier and takes the forward link.
+  The pet reset leaves the reverse identifier zero; creation writes it itself.
+- Taming (offline and online kind-6) sets the tamer's forward link to the tamed creature
+  (fatal-context frame assignment); the engine's own taming admission stands in for the
+  native selector-7 record test.
+Kept deviations: the data stores open read-only and immutable (the owner installation must
+stay untouched); the adaptation price fix (owner extension). Not modelled: the inventory UI
+byte +0x29 gate on the fallback swap; the sound request parameters; the selector-1 world-byte
+exit; the subtype 0x18 -> 0x19 writer; the 0xE38-byte item-block clear.

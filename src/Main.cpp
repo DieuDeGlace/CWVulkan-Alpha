@@ -2377,6 +2377,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 creatures::setItemLevel(pet, (int16_t)t.level);
                                 inventory.equipment[12] = pet;
                                 c.action = 0;
+                                c.linkedId = t.creature; // alpha-fatal-context-field-producers.md, frame assignment
                                 wearInventory();
                             }
                         for (const auto &p : happened.petItems)
@@ -2993,6 +2994,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             creatures::setItemLevel(pet, (int16_t)tamed.level);
                             inventory.equipment[12] = pet;
                             c.action = 0;
+                            c.linkedId = id; // the source's ID becomes the forward link (frame assignment)
                             wearInventory();
                         }
                     if (h.kind() == 6)

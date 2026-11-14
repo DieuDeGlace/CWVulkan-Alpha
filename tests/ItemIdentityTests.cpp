@@ -186,6 +186,14 @@ static void handTransfers() {
     check(inv.bags[2][0].count == 3 && inv.hand.count == 2 && itemLevel(inv.bags[2][0].item) == 5 &&
           itemLevel(inv.hand.item) == 1 && hasPadding(inv.bags[2][0].item, 0x11) && hasPadding(inv.hand.item, 0x22),
           "hand comparison does not normalize quantity fields; fallback swap retains each destination's padding");
+
+    // alpha-inventory-equality-consumers.md: a zero hand count goes straight to
+    // the fallback swap, before the classification test.
+    inv.bags[2][0] = {4, herb};
+    inv.hand = {0, item(3, 1)};
+    check(inv.pressSlot(2, 0) == SOUND_GRAB && inv.hand.count == 4 && itemType(inv.hand.item) == 11 &&
+              inv.bags[2][0].count == 0 && itemType(inv.bags[2][0].item) == 3,
+          "a zero hand count of another group swaps instead of refusing");
 }
 
 static void linkedEquipmentTransfers() {
@@ -207,6 +215,11 @@ static void linkedEquipmentTransfers() {
     inv.pressBox(11, 1, 1);
     check(inv.hand.count == 1 && itemSubtype(inv.hand.item) == 3 && itemSubtype(inv.equipment[12]) == 2 &&
           hasPadding(inv.hand.item, 0x11), "signed hand counts at most one take the equipment swap route");
+    inv.equipment[12] = food;
+    inv.hand = {1, handFood};
+    inv.pressBox(11, 1, 1);
+    check(inv.hand.count == 1 && itemSubtype(inv.hand.item) == 2 && itemSubtype(inv.equipment[12]) == 3,
+          "a hand count of exactly one fails the greater-than-one gate and swaps");
 
     inv = Inventory{};
     inv.bags.resize(4);

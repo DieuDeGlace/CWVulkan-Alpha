@@ -3,6 +3,7 @@
 #include "creatures/Physics.h"
 #include "creatures/Strike.h"
 #include <bit>
+#include <cmath>
 #include <cstdio>
 #include <limits>
 
@@ -205,6 +206,29 @@ int main() {
         applyHit(target, body, hit);
         check(std::bit_cast<uint32_t>(target.stealth) == 0x3f4bc302,
               "scalar reduction uses quartered amount divided by narrowed power after the integer exponent sum");
+    }
+    {
+        // alpha-hit-scalar-reduction-order.md: unordered entry and clamp outcomes.
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        auto skipped = targetActor();
+        skipped.action = 84;
+        skipped.stealth = .5f;
+        HitRecord hit;
+        hit.amount = nan;
+        prepareHitApplication(skipped, hit);
+        check(skipped.stealth == .5f && skipped.action == 84 && skipped.hitStun == 0,
+              "a NaN amount skips the scalar, action and timer writes");
+        auto unordered = targetActor();
+        unordered.stealth = nan;
+        hit.amount = 1;
+        prepareHitApplication(unordered, hit);
+        check(std::isnan(unordered.stealth), "a NaN difference keeps the provisional store instead of clamping");
+        auto negativeZero = targetActor();
+        negativeZero.stealth = -0.f;
+        hit.amount = std::numeric_limits<float>::denorm_min();
+        prepareHitApplication(negativeZero, hit);
+        check(std::bit_cast<uint32_t>(negativeZero.stealth) == 0x80000000u,
+              "a negative-zero difference is not rewritten by the strict clamp");
     }
     {
         auto target = targetActor();

@@ -1,6 +1,8 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha generic-hit vector adjustment
 
-This original-only, code-free contract covers the common vector block at client RVAs `0x197e5e–0x197fa8` within the generic hit producer at RVA `0x196d30`, including its null-source join and the subsequent initial main-record vector copy. The supported image is `binary/Cube.exe`, SHA256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, image base `0x00400000`. All addresses below are RVAs; evidence paths are relative to the original Alpha evidence root. Earlier held artifacts remained unopened and unchanged. No replacement code, history, tests, probes, captures, SDK, reconstruction or other contract supplied facts.
+This code-free contract covers the common vector block at client RVAs `0x197e5e–0x197fa8` within the generic hit producer at RVA `0x196d30`, including the paths that join it and the subsequent initial main-record vector copy. The supported image is `binary/Cube.exe`, SHA256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, image base `0x00400000`. All addresses below are RVAs; evidence paths are relative to the original Alpha evidence root. Only original evidence supports the statements here.
 
 The consequential result is that stable ordinary finite inputs bypass the vector-normalization/write branch. The block first selects the larger of target velocity's squared length and the supplied vector's squared length, then requires a freshly recomputed target-velocity squared length to be strictly greater than that selected value. The comparison directions are confirmed in the original image; no intended clamp or alternate comparison is substituted for them.
 
@@ -8,12 +10,12 @@ Inputs, join and distinct destinations
 
 The routine receives its world implicitly and its target as explicit stack argument 1, at the entry-frame position `+8`. Explicit stack argument 2, at `+0x0c`, is the source pointer. Explicit stack argument 8, at `+0x24`, points to the supplied three-component binary32 vector. These argument numbers exclude the implicit world. The target pointer remains the base for the creature-field accesses described here.
 
-The null-source path joins the common block at `0x197e5e` through `0x197e58`; another continuation can join through `0x197e5a`. The vector block itself does not dereference the source pointer or add a source-present gate. Earlier target/world/action admission and the null-source path's preceding scalar/random work are outside this vector contract.
+The common block at `0x197e5e` has several predecessors. The null-source path (taken at `0x196db6` when explicit argument 2 is null) first draws one `rand` value, sets target `+0x1184` to binary32 0.5 and copies explicit argument 3 into a stack temporary, then jumps in from `0x197e58`. Other source-present continuations jump in directly from `0x197bbf`, `0x197c55` and `0x197e3b`, and three more branches (`0x197aed`, `0x197aff`, `0x197c5e`) enter one instruction earlier at `0x197e5a`, which only reloads a saved register before falling into the block. The vector block itself does not dereference the source pointer or add a source-present gate. Beyond the facts just listed, earlier target/world/action admission and the effect of the null-source path's draw are outside this vector contract. The predecessor list is the set of direct branches present in the listing; indirect entry was not found but is not excluded.
 
 | Storage | Role in this bounded block |
 | --- | --- |
 | Target `+0x34/+0x38/+0x3c` | Velocity used for the squared-length comparisons and conditional normalization; the only creature vector conditionally written by this block |
-| Target `+0x4c/+0x50/+0x54` | Stored response vector; no direct access through these target-relative offsets in this block |
+| Target `+0x4c/+0x50/+0x54` | Three-component field referred to below as the stored response (its wider meaning is not established by this block); no direct access through these target-relative offsets in this block |
 | Three binary32 values addressed by explicit argument 8 | Supplied vector; read for its squared length, then freshly read again for the initial main-record copy |
 | Stack squared-length and component temporaries | Intermediate selected squared length, normalized components and scaled component copies; separate from the main hit record |
 
@@ -27,7 +29,7 @@ First the block loads target velocity's Y, X and Z components and forms each com
 
 The supplied vector's X, Y and Z components are independently loaded and squared in binary32. Its X and Y squares are added first, followed by its Z square, again with binary32 results. If that supplied squared length is strictly greater than the initially computed velocity squared length, the supplied result replaces the retained/stack squared-length value. Otherwise the initial velocity result remains selected; equality does not select the supplied result.
 
-Next the block reloads target velocity's Y, X and Z components and recomputes its squared length with binary32 component squares, X-square-plus-Y-square first, then Z square. Only when this recomputed squared length is strictly greater than the selected squared length does execution continue into normalization. Less-than and equality skip directly to main-record construction at `0x197fa8`.
+Next the block reloads target velocity's Y, X and Z components and recomputes its squared length with binary32 component squares, X-square-plus-Y-square first, then Z square. Only when this recomputed squared length is strictly greater than the selected squared length does execution continue into normalization. Less-than and equality skip directly to main-record construction at `0x197fa8`. Both comparisons are ordered-greater tests, so an unordered comparison (a NaN operand) behaves like "not greater": it leaves the selected value unchanged at the first comparison and skips normalization at the second.
 
 For unchanged finite velocity components and finite squared-length intermediates, the initial and recomputed velocity squared lengths are identical operations on identical operands. The selected value is at least that value. The strict-greater gate consequently fails whether the supplied vector is smaller, equal or larger. This conclusion also covers an unchanged zero velocity and zero supplied vector. No square-root, reciprocal or velocity write is executed on that ordinary stable path.
 
@@ -46,7 +48,7 @@ The following describes the actual tail's operations without asserting that stab
 
 The selected squared-length temporary is at the native stack offset `+0x14` during this block. The normalized-component temporaries are at stack offsets `+0x10/+0x24/+0x28`; the final three-component scratch copy is at `+0x1c8/+0x1cc/+0x1d0`. These offsets identify original temporary storage at the cited instructions; they do not name replacement structures. The final scratch copy is not the main hit record's vector and is not copied back through argument 8 by this block.
 
-The exactly-one constant is original image RVA `0x345dc0`, binary32 bit pattern `0x3f800000`. Both square-root calls use the original imported stub at RVA `0x28d9c8`. This contract establishes the binary32 sums, binary64 call boundaries, binary32 narrowing, reciprocal and multiplication order. It does not re-specify the imported library's internal square-root approximation or an untraced global floating-point mode.
+The exactly-one constant is original image RVA `0x345dc0`, binary32 bit pattern `0x3f800000`. Both square-root calls use the original stub at RVA `0x28d9c8`, which jumps through IAT RVA `0x2fc460`, the by-name import `MSVCR110.dll!_libm_sse2_sqrt_precise`; the argument and result are binary64 in XMM0. This contract establishes the binary32 sums, binary64 call boundaries, binary32 narrowing, reciprocal and multiplication order. It does not re-specify the imported library's internal square-root approximation or an untraced global floating-point mode.
 
 Original evidence: `decompiled/client/assembly.txt` and `binary/Cube.exe`, third velocity load/squared-length preparation and first root at `0x197ee6–0x197f15`; root narrowing and reciprocal at `0x197f1a–0x197f26`; normalized products and temporary stores at `0x197f2a–0x197f54`; selected-length root at `0x197f4b–0x197f62`; scaled products and ordered target/scratch writes at `0x197f66–0x197fa3`; import identity in `decompiled/client/functions/0068d9c8.c` and original import stub RVA `0x28d9c8`.
 
@@ -64,4 +66,10 @@ Limits and held result
 
 The stable finite bypass is a consequence of the original repeated calculation and comparison directions, not an inferred design purpose. The conditional tail is retained as a bounded native path; no concurrent-mutator schedule or exceptional-input trigger for reaching it is invented. Invalid pointers, corrupt objects, nonfinite values or intermediates, SIMD exception masks/rounding/denormal controls, asynchronous state changes and imported math internals are not assigned recovery behavior. This artifact does not claim that velocity or response is unchanged elsewhere in the complete producer or later applier.
 
-Status: FINAL / STABLE / HELD after full prose readback. Earlier held artifacts remain unopened and unchanged.
+## Re-certification (2026-11-14)
+
+Confirmed against the original listing and image bytes: argument loads at `0x196d6f–0x196d95` (world in ECX; target from frame `+8`, source from `+0x0c`, supplied-vector pointer later from `+0x24`); the null-source test at `0x196db4–0x196db6`; the component load and square order, X-square-plus-Y-square-then-Z summation in the first and repeated velocity lengths, the supplied-vector length, the stack temporary at `+0x14`, both strict-greater comparisons and their skip targets (`0x197eaf`, `0x197ee0`); the tail's Y-plus-X summation, both precise square-root calls, the exactly-one reciprocal, the normalized temporaries at `+0x10/+0x24/+0x28`, the scaled products, the write order X, scratch `+0x1c8/+0x1cc/+0x1d0`, Y, Z; the record copy at `0x198075–0x1980af` into record `+0x38/+0x3c/+0x40` with record base stack `+0xc4`; the append at `0x198679–0x198687`; the constant and import identity.
+
+Corrected (3): the join description now lists every direct-branch predecessor of `0x197e5e` and `0x197e5a` instead of naming only the null-source path and one other continuation, and records the null-source path's `rand` draw, `+0x1184` write and temporary copy; the unordered (NaN) outcome of both comparisons is stated; the square-root import is named. Process remarks in the opening and the old trailing status sentence were removed.
+
+Unresolved: whether any caller or concurrent writer can change target velocity between the first and repeated length calculation (the only way the tail could be reached with finite values); the purpose of the `+0x1184` write; the producer's later record modifications and the separate hit applier.

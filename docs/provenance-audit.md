@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14: 60 A, 65 B, 91 C (36947 lines).
+Snapshot 2026-11-14 (after batches 1-2): 75 A, 62 B, 79 C (36273 lines).
 
 ## Remediation
 
@@ -37,6 +37,10 @@ Snapshot 2026-11-14: 60 A, 65 B, 91 C (36947 lines).
 Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 `alpha-hit-scalar-reduction-order.md`, `alpha-forward-link-zero-gates.md`,
 `alpha-fatal-object-descriptor-association.md` and `alpha-inventory-equality-consumers.md`.
+Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
+`alpha-generic-hit-vector-adjustment.md`, `alpha-yaw-trig-scalar-abi.md`,
+`alpha-fatal-context-field-producers.md`, `alpha-world-creature-health-admission.md` and
+`alpha-linked-item-storage-producers.md`. Both batches are class A (CLEANROOM.md).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -57,13 +61,13 @@ Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 | `alpha-camera-initial-state.md` | A | 227 | 1 |
 | `alpha-camera-ray-geometry.md` | A | 196 | 1 |
 | `alpha-camera-view-production.md` | A | 100 | 3 |
-| `alpha-category13-inventory-counter.md` | C | 66 | 1 |
+| `alpha-category13-inventory-counter.md` | A | 76 | 0 |
 | `alpha-character-screens.md` | C | 736 | 0 |
 | `alpha-class-83-descriptor-production.md` | A | 157 | 0 |
 | `alpha-client-action-binding-producer.md` | B | 113 | 1 |
 | `alpha-client-action-input-phase.md` | B | 149 | 2 |
 | `alpha-client-buff-action-boundaries.md` | C | 161 | 2 |
-| `alpha-client-buff-event-transmission.md` | C | 78 | 2 |
+| `alpha-client-buff-event-transmission.md` | C | 91 | 3 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
 | `alpha-client-frame-world-step-order.md` | B | 78 | 2 |
 | `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
@@ -75,10 +79,10 @@ Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 | `alpha-client-world-clock-input.md` | B | 52 | 2 |
 | `alpha-column-scalar-cache-publication.md` | B | 105 | 0 |
 | `alpha-column-value-production.md` | A | 413 | 0 |
-| `alpha-combat-aim-triplet.md` | B | 266 | 0 |
-| `alpha-combat-approach-path.md` | B | 322 | 0 |
+| `alpha-combat-aim-triplet.md` | A | 266 | 0 |
+| `alpha-combat-approach-path.md` | A | 322 | 0 |
 | `alpha-combat-beam-leftovers.md` | A | 378 | 0 |
-| `alpha-combat-cast-points.md` | B | 201 | 0 |
+| `alpha-combat-cast-points.md` | A | 201 | 0 |
 | `alpha-combat-helper-tables.md` | A | 348 | 0 |
 | `alpha-combat-stat-queries.md` | A | 294 | 0 |
 | `alpha-common-action-processing-state.md` | B | 130 | 3 |
@@ -90,53 +94,53 @@ Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 | `alpha-created-actor-combat.md` | A | 379 | 0 |
 | `alpha-created-candidate-appearances.md` | A | 95 | 1 |
 | `alpha-created-companion-navigation.md` | B | 120 | 2 |
-| `alpha-creature-light-attachment-producers.md` | C | 77 | 0 |
+| `alpha-creature-light-attachment-producers.md` | C | 91 | 1 |
 | `alpha-creature-map-key-order.md` | B | 70 | 1 |
 | `alpha-creatures-behaviour.md` | C | 1237 | 1 |
 | `alpha-creatures-models.md` | C | 1543 | 0 |
 | `alpha-creature-update-phases.md` | B | 170 | 2 |
 | `alpha-creature-yaw-light-gates.md` | C | 115 | 1 |
 | `alpha-critical-and-haste-stat-numerics.md` | B | 137 | 0 |
-| `alpha-data-stores.md` | C | 56 | 1 |
+| `alpha-data-stores.md` | A | 155 | 0 |
 | `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
 | `alpha-descriptor-equipment-setup.md` | A | 133 | 1 |
 | `alpha-descriptor-inventory-transfer.md` | A | 85 | 1 |
 | `alpha-extractor.md` | C | 432 | 2 |
 | `alpha-fatal-branch-order.md` | A | 202 | 0 |
-| `alpha-fatal-context-field-producers.md` | C | 74 | 1 |
+| `alpha-fatal-context-field-producers.md` | A | 84 | 0 |
 | `alpha-fatal-credit-level-consumer.md` | B | 108 | 2 |
 | `alpha-fatal-descriptor-tail-lifecycle.md` | B | 103 | 1 |
 | `alpha-fatal-disposal-callers.md` | A | 301 | 0 |
 | `alpha-fatal-loot-branches.md` | A | 278 | 1 |
 | `alpha-fatal-loot-branches-generator-recount.md` | A | 79 | 0 |
 | `alpha-fatal-object-association-producers.md` | C | 87 | 1 |
-| `alpha-fatal-object-descriptor-association.md` | C | 62 | 1 |
+| `alpha-fatal-object-descriptor-association.md` | A | 93 | 1 |
 | `alpha-fatal-region-credit-order.md` | B | 143 | 1 |
 | `alpha-fatal-world-drop-production.md` | A | 72 | 1 |
 | `alpha-floating-point-environment.md` | B | 272 | 1 |
-| `alpha-forward-link-zero-gates.md` | C | 59 | 1 |
+| `alpha-forward-link-zero-gates.md` | A | 99 | 1 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
 | `alpha-generic-hit-presentation-draws.md` | B | 65 | 1 |
 | `alpha-generic-hit-record-production.md` | B | 116 | 3 |
 | `alpha-generic-hit-source-auxiliary.md` | B | 119 | 2 |
-| `alpha-generic-hit-vector-adjustment.md` | C | 68 | 0 |
+| `alpha-generic-hit-vector-adjustment.md` | A | 76 | 0 |
 | `alpha-hazards-blast-ticks.md` | A | 397 | 2 |
 | `alpha-head-pitch-and-pick.md` | A | 215 | 0 |
 | `alpha-hit-application-mutations.md` | C | 134 | 2 |
-| `alpha-hit-item-presentation-vector.md` | C | 95 | 1 |
+| `alpha-hit-item-presentation-vector.md` | C | 104 | 1 |
 | `alpha-hit-response-vector-consumer.md` | C | 132 | 1 |
-| `alpha-hit-scalar-reduction-order.md` | C | 25 | 1 |
+| `alpha-hit-scalar-reduction-order.md` | A | 70 | 0 |
 | `alpha-hit-threat-death-lifecycle.md` | C | 136 | 2 |
 | `alpha-hostility-test.md` | A | 188 | 0 |
 | `alpha-house-furniture.md` | C | 159 | 1 |
 | `alpha-interaction.md` | C | 587 | 3 |
-| `alpha-inventory-equality-consumers.md` | C | 65 | 0 |
+| `alpha-inventory-equality-consumers.md` | A | 94 | 0 |
 | `alpha-item-names.md` | C | 578 | 0 |
 | `alpha-item-services.md` | C | 605 | 2 |
 | `alpha-items-generator.md` | C | 364 | 0 |
-| `alpha-light-admission-plane-production.md` | C | 95 | 1 |
+| `alpha-light-admission-plane-production.md` | C | 104 | 1 |
 | `alpha-light-propagation-lifecycle.md` | B | 100 | 2 |
-| `alpha-linked-item-storage-producers.md` | C | 77 | 1 |
+| `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
 | `alpha-location-creatures.md` | C | 568 | 1 |
 | `alpha-loot-rolls.md` | C | 471 | 0 |
 | `alpha-materials-wildlife-routes.md` | C | 708 | 1 |
@@ -188,7 +192,7 @@ Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 | `alpha-ranged-action-scheduling.md` | B | 135 | 2 |
 | `alpha-ranged-audio-boundaries.md` | B | 148 | 1 |
 | `alpha-recipe-grant-entry-boundary.md` | B | 86 | 1 |
-| `alpha-relationship-kind-89-admission.md` | C | 22 | 1 |
+| `alpha-relationship-kind-89-admission.md` | A | 55 | 0 |
 | `alpha-remote-creature-interpolation.md` | A | 223 | 0 |
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | C | 783 | 2 |
@@ -233,7 +237,7 @@ Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 | `alpha-weapon-attachment-poses.md` | A | 157 | 0 |
 | `alpha-world-actor-creation.md` | B | 199 | 0 |
 | `alpha-world-call-phase-boundary.md` | B | 82 | 1 |
-| `alpha-world-creature-health-admission.md` | C | 76 | 1 |
+| `alpha-world-creature-health-admission.md` | A | 84 | 0 |
 | `alpha-worldgen-caves.md` | C | 449 | 0 |
 | `alpha-worldgen-clouds.md` | C | 109 | 0 |
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
@@ -251,7 +255,7 @@ Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
 | `alpha-world-objects.md` | A | 249 | 0 |
 | `alpha-world-random-stream-boundaries.md` | B | 116 | 2 |
 | `alpha-world-relationship-record-delivery.md` | B | 115 | 2 |
-| `alpha-yaw-trig-scalar-abi.md` | C | 69 | 2 |
+| `alpha-yaw-trig-scalar-abi.md` | A | 77 | 1 |
 | `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
 | `shadows.md` | C | 194 | 3 |
 | `sky-and-clouds.md` | C | 481 | 6 |
