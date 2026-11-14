@@ -565,7 +565,8 @@ int main() {
         auto ground = [](int32_t, int32_t, int32_t z) {
             return z <= 64 && z >= 40 ? Block{90, 140, 40, (uint8_t)(GRASS | SURFACE_COLOURED)} : Block{255, 255, 255, AIR};
         };
-        const auto crater = naturalSphere({8398402.5, 8397472.5, 65.4}, 8, 5, ground);
+        const auto broken = breakCells(rawBlocks({8398402.5, 8397472.5, 65.4}), 8, CellRounding::FloorAdjusted, 5, ground);
+        const auto crater = removals(broken);
         same((double)crater.size(), 955, "bomb crater records");
         int layer64 = 0, layer58 = 0;
         for (const BlockEdit &e : crater)
@@ -579,7 +580,35 @@ int main() {
         same(BlockEdit::parse(first.data()) == crater.front(), 1, "record round trip");
         // A structure block (no flag 0x20) survives.
         auto built = [](int32_t, int32_t, int32_t z) { return z <= 64 ? Block{9, 9, 9, PLACED_BLOCK} : Block{255, 255, 255, AIR}; };
-        same((double)naturalSphere({8398402.5, 8397472.5, 65.4}, 8, 5, built).size(), 0, "bombs spare structures");
+        same((double)breakCells(rawBlocks({8398402.5, 8397472.5, 65.4}), 8, CellRounding::FloorAdjusted, 5, built).size(), 0,
+             "bombs spare structures");
+        // Strike-cell-helpers §8.1 step 6: the burst is at the unsnapped cell position, in the
+        // tested cell's colour.
+        const std::array<int64_t, 3> centre = rawBlocks({8398402.5, 8397472.5, 65.4});
+        same(broken.front().at[0] == centre[0] - 7 * 65536 && broken.front().at[1] == centre[1] - 3 * 65536 &&
+                 broken.front().at[2] == centre[2] - 2 * 65536,
+             1,
+             "first burst at the unsnapped offset position");
+        same(broken.front().colour.g, 140, "burst colour from the tested cell");
+    }
+    // Strike-cell-helpers §2.1, §5.3: the test cell uses floor-adjusted division (an exact
+    // negative multiple goes one lower); the strike records by truncation, the blast by the
+    // floor-adjusted index.
+    {
+        std::vector<glm::ivec3> asked;
+        auto natural = [&](int32_t x, int32_t y, int32_t z) {
+            asked.push_back({x, y, z});
+            return Block{1, 2, 3, (uint8_t)(GRASS | SURFACE_COLOURED)};
+        };
+        const std::array<int64_t, 3> exact{10 * 65536, 10 * 65536, -65536}, half{10 * 65536, 10 * 65536, -32768};
+        const auto strikeExact = breakCells(exact, 1, CellRounding::Truncate, 0, natural);
+        same(asked.size() == 1 && asked[0].z == -2, 1, "exact -65536 is tested at -2");
+        same(strikeExact.size() == 1 && strikeExact[0].removal.z == -1, 1, "the strike records it at -1");
+        same(breakCells(exact, 1, CellRounding::FloorAdjusted, 0, natural)[0].removal.z, -2, "the blast records -2");
+        const auto strikeHalf = breakCells(half, 1, CellRounding::Truncate, 0, natural);
+        same(strikeHalf[0].removal.z, 0, "raw -32768: the strike records 0 (tested at -1)");
+        same(breakCells(half, 1, CellRounding::FloorAdjusted, 0, natural)[0].removal.z, -1, "the blast records -1");
+        same((double)breakCells(half, 0, CellRounding::Truncate, 0, natural).size(), 0, "radius 0 breaks nothing");
     }
     // §13.2: blueprint 0 (10 x 10 x 6: five grey layers under wood) turned once.
     {

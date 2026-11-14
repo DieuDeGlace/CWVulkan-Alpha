@@ -59,9 +59,23 @@ std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int
 // §6.2: the blueprint models by object number.
 const char *blueprintKey(int32_t number); // nullptr for numbers with no blueprint
 
-// §8 step 2, §9: the natural blocks (flag 0x20) of the cells round `centre` (blocks) with
-// dx² + dy² + dz² < radius², as removal records dated `today`, in the original's loop order.
-std::vector<BlockEdit> naturalSphere(glm::dvec3 centre, int32_t radius, int32_t today, const ReadBlock &read);
+// Strike-cell-helpers §8: one cell a strike (K3) or a blast breaks: its removal record (dated,
+// at the caller's record rounding), the unsnapped raw cell position (the burst's) and the
+// tested cell's colour, read before removal.
+struct BrokenCell {
+    BlockEdit removal;
+    std::array<int64_t, 3> at{};
+    glm::u8vec3 colour{0};
+};
+// §5.3: the strike records cells by truncating division, the blast by floor-adjusted division.
+enum class CellRounding { Truncate, FloorAdjusted };
+// §8: the cells at `centre` (raw) plus integer offsets (x outermost, z innermost) with
+// i² + j² + k² < radius², whose looked-up cell (floor-adjusted indices) has flag 0x20.
+std::vector<BrokenCell> breakCells(const std::array<int64_t, 3> &centre, int32_t radius, CellRounding records,
+                                   int32_t today, const ReadBlock &read);
+std::vector<BlockEdit> removals(const std::vector<BrokenCell> &cells);
+// A block position produced from raw coordinates, back to raw (exact for such values).
+std::array<int64_t, 3> rawBlocks(glm::dvec3 blocks);
 // Each held zone's list of edits, in the order they were made (§3), and which lists changed.
 class BlockEditLists {
   public:

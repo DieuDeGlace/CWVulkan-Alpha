@@ -121,9 +121,10 @@ void Particles::update(int32_t dtMs, const BlockType &block) {
 
 Burst bombBurst(glm::dvec3 at) { return Burst::at(at, {0, 0, 20}, {1, 0.2f, 0.5f, 1}, 0.25f, 20, FIRE); }
 
-Burst blockBurst(glm::ivec3 cell, glm::vec3 rgb) {
-    // At the cell's corner, half a block off its centre (as Alpha does).
-    return Burst::at(glm::dvec3(cell), {0, 0, 10}, glm::vec4(rgb / 255.f, 1), 0.5f, 3, LIT);
+Burst blockBurst(const std::array<int64_t, 3> &at, glm::vec3 rgb) {
+    Burst b = Burst::at(glm::dvec3(0), {0, 0, 10}, glm::vec4(rgb / 255.f, 1), 0.5f, 3, LIT);
+    std::copy(at.begin(), at.end(), b.position);
+    return b;
 }
 
 Burst splashBurst(glm::dvec3 at) { return Burst::at(at, {0, 0, 10}, {0.2f, 0.7f, 1, 1}, 0.4f, 15, LIT); }

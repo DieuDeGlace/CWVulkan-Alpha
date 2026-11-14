@@ -797,11 +797,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (options.crater) {
             const float yaw = glm::radians(player->facing());
             const glm::dvec3 at = player->body().blocks() + glm::dvec3(-std::sin(yaw) * 10, std::cos(yaw) * 10, 0);
-            const auto removed = naturalSphere(at, 8, session ? (int32_t)session->clock.day : 0, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); });
-            for (const BlockEdit &e : removed) { // particles §5.2
-                const worldgen::Block b = view.held().read(e.x, e.y, e.z);
-                bursts.push_back(creatures::blockBurst({e.x, e.y, e.z}, {b.r, b.g, b.b}));
-            }
+            const auto broken = breakCells(rawBlocks(at), 8, CellRounding::FloorAdjusted,
+                                           session ? (int32_t)session->clock.day : 0,
+                                           [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); });
+            for (const BrokenCell &cell : broken) // particles §5.2
+                bursts.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
+            const auto removed = removals(broken);
             view.applyEdits(removed, false);
             for (const BlockEdit &e : removed)
                 blockEdits.add(e);
@@ -814,8 +815,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     Scene scene;
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
     npcs.removesBlocks = [&](glm::dvec3 centre, int32_t radius) {
-        return !naturalSphere(centre, radius, scene.day,
-                              [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); })
+        return !breakCells(rawBlocks(centre), radius, CellRounding::FloorAdjusted, scene.day,
+                           [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); })
                     .empty();
     };
     if (session) {
@@ -2303,11 +2304,19 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (const creatures::SoundEvent &s : happened.sounds)
                             playAt(s.sound, s.position, s.volume, s.pitch);
                         bursts.insert(bursts.end(), happened.bursts.begin(), happened.bursts.end());
-                        const auto blockBursts = [&](const std::vector<BlockEdit> &removed) { // particles §5.2
-                            for (const BlockEdit &e : removed) {
-                                const worldgen::Block b = view.held().read(e.x, e.y, e.z);
-                                bursts.push_back(creatures::blockBurst({e.x, e.y, e.z}, {b.r, b.g, b.b}));
-                            }
+                        // Strike-cell-helpers §8: break the cells round `centre`, burst each from
+                        // its unsnapped position in its tested colour, then apply and record the
+                        // removals. True when any cell went.
+                        const auto breakAround = [&](glm::dvec3 centre, int32_t radius, CellRounding rounding) {
+                            const auto broken = breakCells(rawBlocks(centre), radius, rounding, scene.day,
+                                [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); });
+                            for (const BrokenCell &cell : broken)
+                                bursts.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
+                            const auto removed = removals(broken);
+                            view.applyEdits(removed, false);
+                            for (const BlockEdit &e : removed)
+                                blockEdits.add(e);
+                            return !broken.empty();
                         };
                         // Pets §7.4: a creature tamed by this player turns the food in the Pet slot into
                         // its pet item; §12: the pet item follows the pet's level and experience.
@@ -2332,32 +2341,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 wearInventory();
                             }
                         // Block edits §8: a bomb that went off takes the natural ground within 8 blocks.
-                        for (const auto &blast : happened.explosions) {
-                            const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
-                            const auto removed = naturalSphere(blast.centre, 8, scene.day, read);
-                            if (removed.empty())
-                                continue;
-                            blockBursts(removed);
-                            view.applyEdits(removed, false);
-                            for (const BlockEdit &e : removed)
-                                blockEdits.add(e);
-                            if (blast.removes) // pitch drawn before the victims (hazards-blast-ticks §4.2)
-                                playAt(1, blast.centre, 1, blast.pitch);
-                        }
+                        for (const auto &blast : happened.explosions)
+                            if (breakAround(blast.centre, 8, CellRounding::FloorAdjusted) && blast.removes)
+                                playAt(1, blast.centre, 1, blast.pitch); // pitch drawn before the victims
                         // Strike-call-sites K3: big creatures' strikes break the cells round the
                         // strike centre; the sound at the striker kept the pitch drawn at the strike.
-                        for (const auto &impact : happened.craters) {
-                            const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
-                            const auto removed = naturalSphere(impact.centre, impact.radius, scene.day, read);
-                            if (removed.empty())
-                                continue;
-                            blockBursts(removed);
-                            view.applyEdits(removed, false);
-                            for (const BlockEdit &e : removed)
-                                blockEdits.add(e);
-                            if (impact.removes)
+                        for (const auto &impact : happened.craters)
+                            if (breakAround(impact.centre, impact.radius, CellRounding::Truncate) && impact.removes)
                                 playAt(2, impact.striker, 1, impact.pitch);
-                        }
                         for (const auto &credit : happened.appliedCredits)
                             if (credit.direct && credit.record.experience != 0) {
                                 interface.floating.push_back(ui::experienceText(credit.record.experience, player->body().blocks()));

@@ -932,8 +932,8 @@ void Server::stepWorld(float dtMs) {
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
         npcs.removesBlocks = [this](glm::dvec3 centre, int32_t radius) {
-            return !naturalSphere(centre, radius, (int32_t)clockDay,
-                                  [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); })
+            return !breakCells(rawBlocks(centre), radius, CellRounding::FloorAdjusted, (int32_t)clockDay,
+                               [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); })
                         .empty();
         };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };
@@ -1116,35 +1116,25 @@ void Server::stepWorld(float dtMs) {
 
     // Particles §5: this step's bursts, for the players near them.
     std::vector<creatures::Burst> bursts = frame.bursts;
-    const auto blockBursts = [&](const std::vector<BlockEdit> &removed) { // particles §5.2
-        for (const BlockEdit &e : removed) {
-            const worldgen::Block b = zones.read(e.x, e.y, e.z);
-            bursts.push_back(creatures::blockBurst({e.x, e.y, e.z}, {b.r, b.g, b.b}));
-        }
+    // Strike-cell-helpers §8: break the cells round `centre`, burst each from its unsnapped
+    // position in its tested colour, then write the removals. True when any cell went.
+    const auto breakAround = [&](glm::dvec3 centre, int32_t radius, CellRounding rounding) {
+        const auto broken = breakCells(rawBlocks(centre), radius, rounding, (int32_t)clockDay,
+                                       [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); });
+        for (const BrokenCell &cell : broken)
+            bursts.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
+        writeBlocks(removals(broken));
+        return !broken.empty();
     };
-    // Block edits §8: a bomb that went off takes the natural ground within 8 blocks.
-    for (const auto &blast : frame.explosions) {
-        const auto removed = naturalSphere(blast.centre, 8, (int32_t)clockDay,
-                                           [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); });
-        if (removed.empty())
-            continue;
-        blockBursts(removed);
-        writeBlocks(removed);
-        if (blast.removes) // pitch drawn before the victims (hazards-blast-ticks §4.2)
-            itemSounds.push_back({blast.centre, 1, blast.pitch, 1});
-    }
+    // Hazards-blast-ticks §4.2: a bomb that went off breaks the cells within 8 blocks.
+    for (const auto &blast : frame.explosions)
+        if (breakAround(blast.centre, 8, CellRounding::FloorAdjusted) && blast.removes)
+            itemSounds.push_back({blast.centre, 1, blast.pitch, 1}); // pitch drawn before the victims
     // Strike-call-sites K3: big creatures' strikes break the cells round the strike centre;
     // the sound at the striker kept the pitch drawn at the strike.
-    for (const auto &impact : frame.craters) {
-        const auto removed = naturalSphere(impact.centre, impact.radius, (int32_t)clockDay,
-                                           [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); });
-        if (removed.empty())
-            continue;
-        blockBursts(removed);
-        writeBlocks(removed);
-        if (impact.removes)
+    for (const auto &impact : frame.craters)
+        if (breakAround(impact.centre, impact.radius, CellRounding::Truncate) && impact.removes)
             itemSounds.push_back({impact.striker, 2, impact.pitch, 1});
-    }
 
     // Server §6.4: what the dead leave behind, sent in section 7 with their zones.
     for (const creatures::NpcFrame::Death &death : frame.deaths)

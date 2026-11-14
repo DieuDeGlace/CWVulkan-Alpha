@@ -121,18 +121,47 @@ const char *blueprintKey(int32_t n) {
     return n >= 0 && n < 12 ? keys[n] : nullptr;
 }
 
-std::vector<BlockEdit> naturalSphere(glm::dvec3 centre, int32_t R, int32_t today, const ReadBlock &read) {
-    std::vector<BlockEdit> out;
-    for (int32_t dx = -R; dx <= R; dx++)
-        for (int32_t dy = -R; dy <= R; dy++)
-            for (int32_t dz = -R; dz <= R; dz++) {
-                if (dx * dx + dy * dy + dz * dz >= R * R)
+namespace {
+
+// Strike-cell-helpers §2.1: one is subtracted from negative raw values before the truncating
+// division, so an exact negative multiple of 65536 lands one block below its floor.
+int32_t floorAdjusted(int64_t raw) { return int32_t((raw < 0 ? raw - 65536 : raw) / 65536); }
+int32_t truncated(int64_t raw) { return int32_t(raw / 65536); }
+
+} // namespace
+
+std::array<int64_t, 3> rawBlocks(glm::dvec3 blocks) {
+    return {int64_t(blocks.x * 65536.0), int64_t(blocks.y * 65536.0), int64_t(blocks.z * 65536.0)};
+}
+
+std::vector<BrokenCell> breakCells(const std::array<int64_t, 3> &centre, int32_t radius, CellRounding records,
+                                   int32_t today, const ReadBlock &read) {
+    std::vector<BrokenCell> out;
+    const auto recorded = records == CellRounding::Truncate ? truncated : floorAdjusted;
+    for (int32_t i = -radius; i <= radius; i++)
+        for (int32_t j = -radius; j <= radius; j++)
+            for (int32_t k = -radius; k <= radius; k++) {
+                if (!(float(radius * radius) > float(i * i + j * j + k * k)))
                     continue;
-                const glm::dvec3 q = centre + glm::dvec3(dx, dy, dz);
-                const int32_t x = (int32_t)std::floor(q.x), y = (int32_t)std::floor(q.y), z = (int32_t)std::floor(q.z);
-                if (read(x, y, z).typeByte & worldgen::SURFACE_COLOURED)
-                    out.push_back({x, y, z, 255, 255, 255, 0, today});
+                const std::array<int64_t, 3> at{centre[0] + int64_t(i) * 65536, centre[1] + int64_t(j) * 65536,
+                                                centre[2] + int64_t(k) * 65536};
+                // §3: the test is flag 0x20 of the looked-up cell; read() supplies the
+                // lookup's fallbacks (none carries the flag).
+                const worldgen::Block cell = read(floorAdjusted(at[0]), floorAdjusted(at[1]), floorAdjusted(at[2]));
+                if (!(cell.typeByte & worldgen::SURFACE_COLOURED))
+                    continue;
+                // §5: the record always carries the air value and the day.
+                const BlockEdit removal{recorded(at[0]), recorded(at[1]), recorded(at[2]), 255, 255, 255, 0, today};
+                out.push_back({removal, at, {cell.r, cell.g, cell.b}});
             }
+    return out;
+}
+
+std::vector<BlockEdit> removals(const std::vector<BrokenCell> &cells) {
+    std::vector<BlockEdit> out;
+    out.reserve(cells.size());
+    for (const BrokenCell &cell : cells)
+        out.push_back(cell.removal);
     return out;
 }
 

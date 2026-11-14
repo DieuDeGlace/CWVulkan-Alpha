@@ -68,7 +68,8 @@ class Particles {
 
 // §5: the bursts of the producers. Block colours are 0..255.
 Burst bombBurst(glm::dvec3 at);                         // §5.1: a bomb goes off
-Burst blockBurst(glm::ivec3 cell, glm::vec3 rgb);       // §5.2: a natural block blown away
+// §5.2 / strike-cell-helpers §8.1 step 6: a broken cell's burst at the unsnapped raw cell position.
+Burst blockBurst(const std::array<int64_t, 3> &at, glm::vec3 rgb);
 Burst splashBurst(glm::dvec3 at);                       // §5.5: water entered falling fast
 Burst arrowBurst(glm::dvec3 at, glm::vec3 rgb);         // §5.7: an arrow into a block
 

@@ -2051,3 +2051,24 @@ fired at the hit moment, drew the pitch after the creature step and played at th
 `impactReach` and `craterRadius` are removed. The blast adapter is the same `removesBlocks`
 with radius 8. Still open: the cell test 0x20AA60 (the natural-block flag stands in), the
 cell lookup's rounding for negative coordinates, and the branch at 0x139CC8.
+
+## Strike cell helpers (round 13, held 2026-11-14)
+
+Held contract `docs/specs/alpha-strike-cell-helpers.md` (SHA-256 CF2CD012...4CEC), read whole.
+`naturalSphere` is replaced by `breakCells(centre raw, radius, rounding, day, read)`, shared
+by the strike (K3) and the blast:
+- offsets x outermost, z innermost, kept while radius² (binary32) exceeds i² + j² + k²;
+- the tested cell is looked up with floor-adjusted division (§2.1: an exact negative multiple
+  of 65536 lands one block lower); the test is flag 0x20 only (§3). `Zone::read` already
+  supplies the lookup's fallbacks (grey below, water/air above, water for an unflagged empty
+  cell at z <= 0), none of which carries the flag;
+- the removal record carries the air value and the day (§5) at the strike's truncating or
+  the blast's floor-adjusted indices (§5.3); applying it already writes what §4 writes
+  (water with the keep flag at z <= 0, air above unless kept);
+- each burst starts at the unsnapped cell position with the tested cell's colour (§8.1
+  step 6); the engine had used the cell corner and re-read the colour at the record cell.
+Main and the server share one `breakAround` helper per program. The plant pass (§7.2)
+already matches `dropFloating` (same fallback rule) but runs over the whole touched zone
+rather than the rectangle. Not modelled: the server-only light pass when world +0xB8 is
+null (§7.3; engine lighting is the client's own), the blast's critical section, and the
+zone change vectors' network/save use (unresolved in the contract).

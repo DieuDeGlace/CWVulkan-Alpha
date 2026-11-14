@@ -1644,3 +1644,9 @@ crater with the pitch equal to the draw right after the query and the sound at t
 when cells go, and no crater or draw otherwise. The blast test now checks radius 8. All 60
 CTests pass, the player diagnostic and five live runs pass, and the six captures match the
 preceding batch.
+Strike cell helpers (2026-11-14). WorldgenTests: the 955-cell bomb crater and its records are
+unchanged through `breakCells`; the first burst is at the unsnapped offset position in the
+tested colour; raw z -65536 is tested at -2 and recorded at -1 by the strike, -2 by the
+blast; raw z -32768 is recorded at 0 by the strike and -1 by the blast; radius 0 breaks
+nothing. All 60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.
