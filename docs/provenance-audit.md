@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14 (after batches 1-2): 75 A, 62 B, 79 C (36273 lines).
+Snapshot 2026-11-14 (after batches 1-3b; 214 tracked contracts, local ignored variants excluded): 79 A, 61 B, 74 C (35794 lines).
 
 ## Remediation
 
@@ -41,6 +41,8 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 `alpha-generic-hit-vector-adjustment.md`, `alpha-yaw-trig-scalar-abi.md`,
 `alpha-fatal-context-field-producers.md`, `alpha-world-creature-health-admission.md` and
 `alpha-linked-item-storage-producers.md`. Both batches are class A (CLEANROOM.md).
+Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentation-vector.md`,
+`alpha-opaque-output-transfer-state.md` and `alpha-terrain-color-pipeline-public.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -55,7 +57,6 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-beam-height-leftovers.md` | A | 228 | 0 |
 | `alpha-behavior-target-selection.md` | B | 78 | 0 |
 | `alpha-block-edits.md` | C | 623 | 3 |
-| `alpha-buff-record-replication.md` | B | 128 | 2 |
 | `alpha-buff-record-replication-recovered.md` | B | 414 | 2 |
 | `alpha-camera-follow-collision.md` | A | 119 | 4 |
 | `alpha-camera-initial-state.md` | A | 227 | 1 |
@@ -113,7 +114,7 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-fatal-disposal-callers.md` | A | 301 | 0 |
 | `alpha-fatal-loot-branches.md` | A | 278 | 1 |
 | `alpha-fatal-loot-branches-generator-recount.md` | A | 79 | 0 |
-| `alpha-fatal-object-association-producers.md` | C | 87 | 1 |
+| `alpha-fatal-object-association-producers.md` | C | 102 | 2 |
 | `alpha-fatal-object-descriptor-association.md` | A | 93 | 1 |
 | `alpha-fatal-region-credit-order.md` | B | 143 | 1 |
 | `alpha-fatal-world-drop-production.md` | A | 72 | 1 |
@@ -127,7 +128,7 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-hazards-blast-ticks.md` | A | 397 | 2 |
 | `alpha-head-pitch-and-pick.md` | A | 215 | 0 |
 | `alpha-hit-application-mutations.md` | C | 134 | 2 |
-| `alpha-hit-item-presentation-vector.md` | C | 104 | 1 |
+| `alpha-hit-item-presentation-vector.md` | A | 104 | 1 |
 | `alpha-hit-response-vector-consumer.md` | C | 132 | 1 |
 | `alpha-hit-scalar-reduction-order.md` | A | 70 | 0 |
 | `alpha-hit-threat-death-lifecycle.md` | C | 136 | 2 |
@@ -138,7 +139,7 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-item-names.md` | C | 578 | 0 |
 | `alpha-item-services.md` | C | 605 | 2 |
 | `alpha-items-generator.md` | C | 364 | 0 |
-| `alpha-light-admission-plane-production.md` | C | 104 | 1 |
+| `alpha-light-admission-plane-production.md` | A | 104 | 1 |
 | `alpha-light-propagation-lifecycle.md` | B | 100 | 2 |
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
 | `alpha-location-creatures.md` | C | 568 | 1 |
@@ -153,7 +154,7 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
 | `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
 | `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
-| `alpha-opaque-output-transfer-state.md` | C | 96 | 1 |
+| `alpha-opaque-output-transfer-state.md` | A | 105 | 1 |
 | `alpha-open-points-1.md` | C | 386 | 0 |
 | `alpha-open-points-10.md` | C | 474 | 1 |
 | `alpha-open-points-11.md` | C | 224 | 2 |
@@ -205,7 +206,7 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-server-simulation.md` | C | 581 | 1 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
 | `alpha-skills.md` | C | 557 | 0 |
-| `alpha-spatial-association-producers.md` | C | 82 | 0 |
+| `alpha-spatial-association-producers.md` | C | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |
 | `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
@@ -219,8 +220,7 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 | `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
 | `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
 | `alpha-terrain-chunk-point-lights.md` | B | 92 | 0 |
-| `alpha-terrain-color-pipeline.md` | C | 101 | 2 |
-| `alpha-terrain-color-pipeline-public.md` | C | 101 | 2 |
+| `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
 | `alpha-terrain-light-source-lifecycle.md` | C | 104 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
 | `alpha-trails-poses-schedules.md` | C | 690 | 2 |

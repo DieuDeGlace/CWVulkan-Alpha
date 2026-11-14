@@ -2294,3 +2294,22 @@ Kept deviations: the data stores open read-only and immutable (the owner install
 stay untouched); the adaptation price fix (owner extension). Not modelled: the inventory UI
 byte +0x29 gate on the fallback swap; the sound request parameters; the selector-1 world-byte
 exit; the subtype 0x18 -> 0x19 writer; the 0xE38-byte item-block clear.
+## Provenance re-certification, batch 3b (2026-11-14)
+
+Four inherited rendering contracts were re-certified by a fresh source-only author against
+the original image and its embedded shader programs (21 corrections; no reconstruction
+consulted) and read whole by the implementer:
+- `alpha-light-admission-plane-production.md` (059CAC28...4D5C)
+- `alpha-hit-item-presentation-vector.md` (D1952744...9564)
+- `alpha-opaque-output-transfer-state.md` (0B989F9D...CFEE)
+- `alpha-terrain-color-pipeline-public.md` (3A28AC82...046F)
+
+The engine already matched all four, including the one reversed claim: the ordinary opaque
+terrain's dark fill is (0, 0, 0, 1); the sky average belongs to a preceding pass (the engine's
+sky-average darkness exists only in the cloud pass). Only a comment changed
+(`WorldView.cpp`: the tint condition is the voxel-type-2 test, with no held "submerged"
+meaning). Not modelled: the early admission read before plane publication and the renderer's
+critical section; the 80-byte node and list-length guard of the item-effect append; D3D9
+device/reset formats, GUI render surfaces and gamma ramps; the previous-value retention when
+the fog distance is not positive. Open engine question: a device without B8G8R8A8_UNORM falls
+back to its first format, which could be sRGB; the contract authorises neither choice.

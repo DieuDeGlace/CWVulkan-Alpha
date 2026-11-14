@@ -800,6 +800,8 @@ void WorldView::fillScene(Scene &scene) const {
     const Climate cl = terrain.climate(x, y, map.zoneAt(x, y));
     scene.zone = {cl.warmth, cl.moisture, world.seaShare(x, y), cl.fire};
     scene.focus = glm::vec3(eye.x, eye.y, std::max(eye.z - 40.f, 0.f));
+    // Alternate-tint condition (alpha-terrain-color-pipeline-public.md): only the
+    // voxel-type-2 test at the reference position; no submersion meaning is held.
     scene.underwater = map.read(x, y, (int32_t)std::floor(eye.z)).type() == WATER;
 
     scene.lights.clear();

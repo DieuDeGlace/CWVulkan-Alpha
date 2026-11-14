@@ -1701,4 +1701,4 @@ bit outside the mask), HitApplicationTests (NaN amount writes nothing; NaN and n
 differences kept), LinkedItemTests (orphaned role 5: health 0, role 3, clock 5000, reverse 0),
 ItemIdentityTests (zero hand count swaps; hand count 1 with category 20 swaps). All 60 CTests
 pass, the player diagnostic and five live runs pass, and the six captures match the
-preceding batch.
+preceding batch.Provenance batch 3b (2026-11-14). No behaviour change (comment only); all 60 CTests pass.
