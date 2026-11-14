@@ -871,9 +871,32 @@ void Server::stepWorld(float dtMs) {
         for (const creatures::Npc &n : npcs.all())
             if (n.fighter.health > 0)
                 here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
+        // Attack-routine site 1: the attack routine with no attacker on each target as it is
+        // reached. A player is resolved on its record's snapshot (its client applies the hit).
+        const auto trapStrike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push, bool resistance) {
+            creatures::Combatant snapshot;
+            creatures::Combatant *target = nullptr;
+            if (const auto player = connections.find(c.id); player != connections.end()) {
+                snapshot = player->second->creature.fighter();
+                snapshot.id = c.id;
+                snapshot.buffs = player->second->buffs;
+                target = &snapshot;
+            } else {
+                for (creatures::Npc &n : npcs.npcs())
+                    if (n.fighter.id == c.id)
+                        target = &n.fighter;
+            }
+            if (!target)
+                return;
+            glm::vec3 velocity(0);
+            const auto out = creatures::resolveHit(*target, velocity, nullptr,
+                                                   creatures::trapHitInput(c.at, damage, push, resistance),
+                                                   [this] { return worldRandom.draw(); });
+            trapHits.insert(trapHits.end(), out.records.begin(), out.records.end());
+        };
         statics.traps((int32_t)dtMs, here, held,
                       [this](glm::dvec3 at) { return world->levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
-                      trapHits, itemSounds);
+                      trapStrike, itemSounds);
         for (const creatures::HitRecord &h : trapHits)
             if (!connections.count(h.target))
                 onNpcs.push_back(h);

@@ -1975,3 +1975,19 @@ Engine extensions / not modelled: the world-object base term b of §1.2 (no worl
 models, so b = 0); the attachment copy and the interpolation zeroing of §1.6 (no attachment
 or remote-interpolation counter in the engine). Contract note: §1.3 condition 5 reads both
 "0.0 > d.z is false" and "d.z <= 0.0; a NaN fails"; the engine keeps d.z <= 0.
+
+### Trap hits through the attack routine (2026-11-13)
+
+From the held `alpha-attack-routine.md` (§3 E1/E2, §4 M6-M12, §6 site 1): each trap hit now
+calls the engine's attack routine (`resolveHit`) with no attacker, at the trap, in visiting
+order, with damage D, flags A and B clear, the push P1 as V, the mitigation selector (type 6)
+and the blockable flag. The attackerless path makes one discarded draw, sets the target's
++0x1184 (the engine's `hitFlash`) to 0.5, skips E3-M5 (so no armour or resistance applies;
+the earlier note expecting type-6 resistance / type-7/8 armour mitigation was wrong),
+multiplies the damage by the target's type-1 (damage-taken) buffs and emits a main record
+with attacker key 0, no stun and no action marker. The server resolves a connected player on
+its record snapshot with its buffs; its client applies the hit.
+
+Engine stand-ins still open: the hit routine runs at the engine's existing delivery points
+(the offline player at once, creatures in their next step) instead of inside the trap loop;
+zone selection near role-0 creatures; the level-at-position routine.

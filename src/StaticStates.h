@@ -94,15 +94,18 @@ class StaticStates {
     // creature but role 1 within 5 blocks each time the trap world clock crosses a 200 ms
     // quotient, a type 8 once as it activates. `creatures` are (id, position, controller) and
     // are visited in ascending signed id; `level(at)` is the engine's level-at-position
-    // adapter. Hits are kind-0 records with no attacker (the attack-routine path is open).
+    // adapter. Each hit is delivered at once, in visiting order, through `strike`: the
+    // attack routine with no attacker (attack-routine §6 site 1), given the damage D, the push
+    // P1 and the mitigation selector (nonzero for type 6).
     struct Creature {
         uint64_t id = 0;
         glm::dvec3 at{0};
         uint8_t controller = 0;
     };
+    using TrapStrike = std::function<void(const Creature &target, float damage, glm::vec3 push, bool resistance)>;
     void traps(int32_t dtMs, const std::vector<Creature> &creatures,
                const std::map<Key, const worldgen::Zone *> &held, const std::function<int32_t(glm::dvec3)> &level,
-               std::vector<creatures::HitRecord> &hits, std::vector<creatures::SoundEvent> &sounds);
+               const TrapStrike &strike, std::vector<creatures::SoundEvent> &sounds);
 
   private:
     // §6.3: the one state setter (the hook a mod would use for new usable kinds).

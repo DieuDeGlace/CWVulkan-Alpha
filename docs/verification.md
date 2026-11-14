@@ -1618,3 +1618,8 @@ frame's decay of its previous value, and the decay is bit-exact for both rates a
 nothing at 0 ms. New cases check the shield bar entry 8 and its release to 104 at clock 0,
 and a beam record's 35 draws in particle order. All 60 CTests pass, the player diagnostic and
 five live runs pass, and the six captures match the preceding batch.
+Trap attack routine (2026-11-13). The spike-trap CreatureTests case now resolves each hit
+through the attackerless attack routine: one discarded draw per hit, a main record with no
+attacker, the 0.5 flash, the type-7 armour selector, and a damage-taken buff of 0.5 halving
+a 20 hit to 10. All 60 CTests pass, the player diagnostic and five live runs pass, and the
+six captures match the preceding batch.

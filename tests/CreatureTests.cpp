@@ -537,14 +537,34 @@ int main() {
         const auto level5 = [](glm::dvec3) { return 5; };
         std::vector<HitRecord> hits;
         std::vector<SoundEvent> sounds;
+        // Attack-routine site 1: the player resolves through the attackerless path.
+        Combatant victim;
+        victim.id = 1, victim.health = 100;
+        int draws = 0;
+        bool spikeResistance = true;
+        const StaticStates::TrapStrike strike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push,
+                                                    bool resistance) {
+            if (c.id != victim.id) {
+                hits.push_back({});
+                hits.back().target = c.id;
+                return;
+            }
+            spikeResistance = resistance;
+            glm::vec3 velocity(0);
+            const auto out = resolveHit(victim, velocity, nullptr, trapHitInput(c.at, damage, push, resistance), [&] {
+                draws++;
+                return 12345;
+            });
+            hits.insert(hits.end(), out.records.begin(), out.records.end());
+        };
         const std::vector<StaticStates::Creature> nobody;
         states.step(16, none, held);
-        states.traps(16, nobody, held, level5, hits, sounds);
+        states.traps(16, nobody, held, level5, strike, sounds);
         same((*states.zone(0, 0))[0].state, 0, "retracted after 2 s");
         const std::vector<StaticStates::Creature> here{{1, {8, 5, 1.91}, 0}, {2, {5, 7, 1.91}, 1}};
         for (int i = 0; i < 130 && (*states.zone(0, 0))[0].state == 0; i++) {
             states.step(16, none, held);
-            states.traps(16, here, held, level5, hits, sounds);
+            states.traps(16, here, held, level5, strike, sounds);
         }
         same((*states.zone(0, 0))[0].state, 1, "up for the player");
         same(std::any_of(sounds.begin(), sounds.end(), [](const SoundEvent &e) { return e.sound == 52; }), 1, "with sound 52");
@@ -552,7 +572,7 @@ int main() {
         // Hazards-blast-ticks §3.3 step 7: one pass per 200 ms quotient of the trap world clock.
         for (int i = 0; i < 25; i++) {
             states.step(16, none, held);
-            states.traps(16, here, held, level5, hits, sounds);
+            states.traps(16, here, held, level5, strike, sounds);
         }
         same((double)hits.size(), 2, "two passes in 400 ms");
         same(!hits.empty() && hits[0].target == 1, 1, "the player is hurt");
@@ -560,6 +580,15 @@ int main() {
         same(hits.empty() ? 0 : hits[0].knockBack.x, 20, "thrown away from it", 1e-4);
         same(std::none_of(hits.begin(), hits.end(), [](const HitRecord &h) { return h.target == 2; }), 1,
              "the monster is spared");
+        same(draws, 2, "one discarded draw per attackerless hit");
+        same(!hits.empty() && hits[0].attacker == 0 && hits[0].kind == HIT_DAMAGE, 1, "a main record with no attacker");
+        same(victim.hitFlash, 0.5, "the attackerless flash");
+        same(spikeResistance, 0, "type 7 takes the armour selector");
+        // Damage-taken buffs multiply; no mitigation runs on this path.
+        victim.buffs.push_back({DAMAGE_TAKEN, 0.5f, 10000});
+        hits.clear();
+        strike({1, {8, 5, 1.91}, 0}, 20.f, {20, 0, 5}, false);
+        same(hits.empty() ? 0 : hits[0].amount, 10, "damage-taken buff halves the trap hit", 1e-6);
     }
 
     // Open points 2 §2.2: a static only stops motion toward its centre (base on z).

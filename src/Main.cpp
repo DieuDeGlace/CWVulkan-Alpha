@@ -1993,21 +1993,39 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             for (const creatures::Npc &n : npcs.all())
                                 if (n.fighter.health > 0)
                                     here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
-                            std::vector<creatures::HitRecord> trapHits;
                             std::vector<creatures::SoundEvent> trapSounds;
                             const worldgen::World &world = view.terrainWorld();
+                            // Attack-routine site 1: each trap hit runs the attack routine with no
+                            // attacker on the target as it is reached (one discarded draw, the 0.5
+                            // flash, the damage-taken buffs), then lands as before.
+                            const auto trapStrike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push,
+                                                        bool resistance) {
+                                creatures::Combatant *target = nullptr;
+                                if (c.id == player->combat().id)
+                                    target = &player->combat();
+                                else
+                                    for (creatures::Npc &n : npcs.npcs())
+                                        if (n.fighter.id == c.id)
+                                            target = &n.fighter;
+                                if (!target)
+                                    return;
+                                const auto in = creatures::trapHitInput(c.at, damage, push, resistance);
+                                glm::vec3 velocity(0);
+                                const auto out = creatures::resolveHit(*target, velocity, nullptr, in,
+                                                                       [&] { return worldRandom.draw(); });
+                                for (const creatures::HitRecord &h : out.records) {
+                                    if (h.target == player->combat().id) {
+                                        player->takeHit(h);
+                                        if (auto text = ui::hitText(h.amount, h.kind, false, true, player->body().blocks()))
+                                            interface.floating.push_back(*text);
+                                    } else {
+                                        shotHitsOnNpcs.push_back(h);
+                                    }
+                                }
+                            };
                             statics.traps(dt, here, held,
                                           [&](glm::dvec3 at) { return world.levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
-                                          trapHits, trapSounds);
-                            for (const creatures::HitRecord &h : trapHits) {
-                                if (h.target == player->combat().id) {
-                                    player->takeHit(h);
-                                    if (auto text = ui::hitText(h.amount, h.kind, false, true, player->body().blocks()))
-                                        interface.floating.push_back(*text);
-                                } else {
-                                    shotHitsOnNpcs.push_back(h);
-                                }
-                            }
+                                          trapStrike, trapSounds);
                             for (const creatures::SoundEvent &e : trapSounds)
                                 playAt(e.sound, e.position, e.volume, e.pitch);
                         }

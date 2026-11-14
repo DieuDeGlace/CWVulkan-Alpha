@@ -911,6 +911,19 @@ bool hitMoment(const Combatant &c, float beforeMs, float dtMs) {
 
 // §5
 
+HitInput trapHitInput(glm::dvec3 targetAt, float damage, glm::vec3 push, bool resistance) {
+    HitInput in;
+    in.amount = damage;
+    in.selector = 0;
+    in.magic = resistance;
+    in.blockable = true;
+    in.knockBack = push;
+    in.targetPosition = targetAt;
+    for (int axis = 0; axis < 3; axis++)
+        in.targetRecordPosition[axis] = (int64_t)(targetAt[axis] * 65536.0);
+    return in;
+}
+
 HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const HitInput &in,
                       const std::function<int()> &draw, const std::function<void(const HitEmission &)> &emit) {
     HitOutcome out;

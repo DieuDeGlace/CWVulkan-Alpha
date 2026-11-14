@@ -301,6 +301,11 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &targetVelocity, Combatant *a
                       const std::function<int()> &draw,
                       const std::function<void(const HitEmission &)> &emit = {});
 
+// Attack-routine §6 site 1: what a trap passes with no attacker: damage D, flags A and B
+// clear, the push as V, the mitigation selector (resistance for type 6), kind 0, blockable,
+// and the target's raw position (`targetAt` in blocks).
+HitInput trapHitInput(glm::dvec3 targetAt, float damage, glm::vec3 push, bool resistance);
+
 struct HitApplicationContext {
     const Combatant *source = nullptr;
     bool local = true, replica = false;

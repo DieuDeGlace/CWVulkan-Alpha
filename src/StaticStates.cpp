@@ -188,7 +188,7 @@ void StaticStates::appendUpdates(const worldgen::WorldMap &map, std::span<const 
 
 void StaticStates::traps(int32_t dtMs, const std::vector<Creature> &unordered,
                          const std::map<Key, const worldgen::Zone *> &held, const std::function<int32_t(glm::dvec3)> &level,
-                         std::vector<creatures::HitRecord> &hits, std::vector<creatures::SoundEvent> &sounds) {
+                         const TrapStrike &strike, std::vector<creatures::SoundEvent> &sounds) {
     // Hazards-blast-ticks contract §3 (site 1). The world creature collection is visited in
     // ascending signed id.
     std::vector<Creature> creatures = unordered;
@@ -255,11 +255,7 @@ void StaticStates::traps(int32_t dtMs, const std::vector<Creature> &unordered,
                 glm::vec3 k(u.x * 20.f, u.y * 20.f, 5.f);
                 if (o.kind == 8)
                     k *= 2.f;
-                creatures::HitRecord h;
-                h.target = c.id;
-                h.amount = amount;
-                h.knockBack = k;
-                hits.push_back(h);
+                strike(c, amount, k, o.kind == 6);
             }
         }
     }
