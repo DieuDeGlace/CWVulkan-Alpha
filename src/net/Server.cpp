@@ -931,8 +931,8 @@ void Server::stepWorld(float dtMs) {
         };
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
-        npcs.blastRemovesBlocks = [this](glm::dvec3 centre) {
-            return !naturalSphere(centre, 8, (int32_t)clockDay,
+        npcs.removesBlocks = [this](glm::dvec3 centre, int32_t radius) {
+            return !naturalSphere(centre, radius, (int32_t)clockDay,
                                   [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); })
                         .empty();
         };
@@ -1133,7 +1133,8 @@ void Server::stepWorld(float dtMs) {
         if (blast.removes) // pitch drawn before the victims (hazards-blast-ticks §4.2)
             itemSounds.push_back({blast.centre, 1, blast.pitch, 1});
     }
-    // Block edits §9: big creatures' blows take the natural ground away.
+    // Strike-call-sites K3: big creatures' strikes break the cells round the strike centre;
+    // the sound at the striker kept the pitch drawn at the strike.
     for (const auto &impact : frame.craters) {
         const auto removed = naturalSphere(impact.centre, impact.radius, (int32_t)clockDay,
                                            [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); });
@@ -1141,7 +1142,8 @@ void Server::stepWorld(float dtMs) {
             continue;
         blockBursts(removed);
         writeBlocks(removed);
-        itemSounds.push_back({impact.centre, 2, 0.5f + 0.4f * (float)draw() / 32767.f, 1});
+        if (impact.removes)
+            itemSounds.push_back({impact.striker, 2, impact.pitch, 1});
     }
 
     // Server §6.4: what the dead leave behind, sent in section 7 with their zones.

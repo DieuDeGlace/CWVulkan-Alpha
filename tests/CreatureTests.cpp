@@ -1117,9 +1117,9 @@ int main() {
         const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 3);
         int asked = 0;
         std::optional<worldgen::Random> atQuery;
-        npcs.blastRemovesBlocks = [&](glm::dvec3 centre) {
+        npcs.removesBlocks = [&](glm::dvec3 centre, int32_t radius) {
             asked++;
-            same(centre.x == 10.5 && centre.y == 10.5, 1, "asked at the bomb");
+            same(centre.x == 10.5 && centre.y == 10.5 && radius == 8, 1, "asked at the bomb, radius 8");
             atQuery = random; // the generator state just before the pitch draw
             return removes;
         };
@@ -1140,6 +1140,43 @@ int main() {
         }
         same(blasts, 1, "one blast");
         same(asked, 1, "one block query per blast");
+    }
+
+    // Strike-call-sites K3: a striker wider than 4 asks once per strike frame for the cells
+    // within min(trunc(R), 8) of the strike centre; when any go, the sound pitch is the draw
+    // right after the query (before any target); none, no draw and no crater.
+    for (const bool removes : {true, false}) {
+        Combatant big;
+        big.id = 41;
+        big.action = 17;
+        const Phases timing = phases(big, 17);
+        big.actionMs = timing.windUp + timing.active / 2;
+        Body body;
+        body.size = {5.6f, 5.6f, 5.6f};
+        body.place({0, 0, 3});
+        worldgen::Random random{7};
+        Npcs npcs{random};
+        int asked = 0;
+        glm::dvec3 at{0};
+        int32_t radius = 0;
+        std::optional<worldgen::Random> atQuery;
+        npcs.removesBlocks = [&](glm::dvec3 centre, int32_t r) {
+            asked++, at = centre, radius = r;
+            atQuery = random;
+            return removes;
+        };
+        NpcFrame frame;
+        PlayerView view{big, body, 0, big.actionMs};
+        npcs.dispatchPlayerActions({&view, 1}, 16, [](int32_t, int32_t, int32_t) { return uint8_t(0); }, frame);
+        same(asked, 1, "one block query per strike frame");
+        same(radius, 8, "R = 1.5 x 5.6 truncated and capped at 8");
+        same(at.y, 1.5 * 5.6, "the strike centre, forward by the reach", 1e-4);
+        same((double)frame.craters.size(), removes ? 1 : 0, "a crater only when cells go");
+        if (removes && !frame.craters.empty()) {
+            const float expected = (float)atQuery->draw() * 0.4f / 32767.f + 0.5f;
+            same(frame.craters[0].pitch, expected, "the pitch is the draw right after the query");
+            same(frame.craters[0].striker.y, 0, "the sound is at the striker", 1e-9);
+        }
     }
 
     // Physics §4.5: a crate (a static 2 x 2 x 1 at x 5..7) stops a walker, which may stand on it;

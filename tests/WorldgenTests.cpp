@@ -611,10 +611,6 @@ int main() {
     same(editKept(5, 8), 1, "edit kept on day 8");
     same(editKept(5, 9), 0, "edit dropped on day 9");
     same(editKept(-1, 900), 1, "negative days never expire");
-    // §9: a troll's swing digs radius 8; a human never digs.
-    same(craterRadius(3, 5.6f), 8, "troll crater radius");
-    same(craterRadius(3, 1.2f), 0, "players never dig");
-    same(impactReach(3, 5.6f).second, 5.6, "troll forward reach", 1e-6);
 
     // Wildlife §2.5: the picker's lists and picks.
     {

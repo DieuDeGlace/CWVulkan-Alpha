@@ -1638,3 +1638,9 @@ never against role 0 even toggled, the reverse falling to the toggle, role 6 nev
 one role 1 in either order, and the same creature relating by its toggle only. Relationship
 and target-selection tests now use the single exemption predicate. All 60 CTests pass, the
 player diagnostic and five live runs pass, and the six captures match the preceding batch.
+Strike block breaking (2026-11-14). A CreatureTests case drives a 5.6-wide striker through the
+real dispatch: one block query per strike frame at radius 8 and the forward strike centre, a
+crater with the pitch equal to the draw right after the query and the sound at the striker
+when cells go, and no crater or draw otherwise. The blast test now checks radius 8. All 60
+CTests pass, the player diagnostic and five live runs pass, and the six captures match the
+preceding batch.

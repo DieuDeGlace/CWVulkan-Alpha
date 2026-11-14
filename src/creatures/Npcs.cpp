@@ -2063,11 +2063,28 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
                   bool attackerAlly) {
     // Strike-call-sites contract K2-K8, §5 and §6.
     const auto rolls = [&] { return draw(); };
+    const StrikeGeometry geometry = strikeGeometry(attacker, attackerBody, yaw);
+    // K3: a striker wider than 4 breaks the cells within trunc(R) (at most 8) of the strike
+    // centre, except in actions 0x57, 0x5B and 0x4A; when any goes, sound 2 at the striker
+    // takes one draw here, before every target. (The adapter is set only where the world is
+    // not online; the caller removes the cells and presents them.)
+    if (removesBlocks && attackerBody.size.x > 4.f && attacker.action != 0x57 && attacker.action != 0x5B &&
+        attacker.action != 0x4A) {
+        NpcFrame::Impact impact;
+        impact.radius = std::min(int32_t(geometry.reach), 8);
+        for (size_t axis = 0; axis < 3; axis++)
+            impact.centre[axis] = double(geometry.centre[axis]) / 65536.0;
+        impact.striker = attackerBody.blocks();
+        if (removesBlocks(impact.centre, impact.radius)) {
+            impact.removes = true;
+            impact.pitch = (float)draw() * 0.4f / 32767.f + 0.5f;
+            frame.craters.push_back(impact);
+        }
+    }
     // K4: action 0x1F resets a kind-9 effect (with its notice).
     if (attacker.action == 0x1F)
         if (auto consumed = consumeBuff(attacker, 9))
             frame.buffs.push_back(*consumed);
-    const StrikeGeometry geometry = strikeGeometry(attacker, attackerBody, yaw);
     bool hitAny = false;
     // K5 step 5: the hostility test (striker, target), alpha-hostility-test.md §4. Engine quest
     // extension (not native): a creature's swing also lands on its quest battle's other side.
@@ -2381,21 +2398,6 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 strike(c, npc.body, npc.yaw, players, false, window.areaHeal, frame, block, npc.target,
                        npc.questRole == 3);
         }
-        if (c.action != 0 && !shootsProjectile(c.action) && c.action != 110 && hitMoment(c, before, dtMs)) {
-            // Block edits §9: the impact point, in front of the creature by its reach.
-            if (const int32_t radius = craterRadius(c.action, npc.looks.box.x)) {
-                const float f = impactReach(c.action, npc.looks.box.x).second;
-                const float yaw = glm::radians(npc.yaw);
-                glm::dvec3 centre = npc.body.blocks() + glm::dvec3(-std::sin(yaw) * f, std::cos(yaw) * f, 0);
-                if (c.action >= 30 && c.action <= 33)
-                    centre = npc.body.blocks() + glm::dvec3(c.aim);
-                if (c.action == 69 || c.action == 75)
-                    centre.z += (npc.looks.box.z - npc.looks.box.x) / 2;
-                if (c.action == 11 || c.action == 54 || c.action == 61)
-                    centre = npc.body.blocks();
-                frame.craters.push_back({centre, radius});
-            }
-        }
         endActionUpdate(c, milliseconds, {false, false}, [&](const Buff &buff) {
             periodicHit(c, npc.body, buff, players, frame);
         });
@@ -2528,7 +2530,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             if (n.fighter.type == 144 && n.fighter.controller == 6) {
                 NpcFrame::Explosion explosion{n.body.blocks(), n.fighter.id, n.fighter.level};
                 // §4.2: the removal-sound draw comes before every victim's draws.
-                if (blastRemovesBlocks && blastRemovesBlocks(explosion.centre)) {
+                if (removesBlocks && removesBlocks(explosion.centre, 8)) {
                     explosion.removes = true;
                     explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
                 }

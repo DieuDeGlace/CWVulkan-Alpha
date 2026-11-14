@@ -62,13 +62,6 @@ const char *blueprintKey(int32_t number); // nullptr for numbers with no bluepri
 // §8 step 2, §9: the natural blocks (flag 0x20) of the cells round `centre` (blocks) with
 // dx² + dy² + dz² < radius², as removal records dated `today`, in the original's loop order.
 std::vector<BlockEdit> naturalSphere(glm::dvec3 centre, int32_t radius, int32_t today, const ReadBlock &read);
-// §9: the impact radius ρ and forward reach f of action `action` for a creature `width`
-// blocks wide.
-std::pair<float, float> impactReach(int32_t action, float width);
-// §9: the crater radius of a blow, or 0 when the blow digs none (creatures 4 blocks wide or
-// less, actions 87, 91 and 74). Online clients never dig; that is the caller's test.
-int32_t craterRadius(int32_t action, float width);
-
 // Each held zone's list of edits, in the order they were made (§3), and which lists changed.
 class BlockEditLists {
   public:

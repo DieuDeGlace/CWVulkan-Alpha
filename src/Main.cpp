@@ -813,8 +813,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     view.setLook(options.lookGiven ? options.yaw : 30.f, options.lookGiven ? options.pitch : 15.f);
     Scene scene;
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
-    npcs.blastRemovesBlocks = [&](glm::dvec3 centre) {
-        return !naturalSphere(centre, 8, scene.day, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); })
+    npcs.removesBlocks = [&](glm::dvec3 centre, int32_t radius) {
+        return !naturalSphere(centre, radius, scene.day,
+                              [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); })
                     .empty();
     };
     if (session) {
@@ -2343,7 +2344,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             if (blast.removes) // pitch drawn before the victims (hazards-blast-ticks §4.2)
                                 playAt(1, blast.centre, 1, blast.pitch);
                         }
-                        // Block edits §9: big creatures' blows take the natural ground away.
+                        // Strike-call-sites K3: big creatures' strikes break the cells round the
+                        // strike centre; the sound at the striker kept the pitch drawn at the strike.
                         for (const auto &impact : happened.craters) {
                             const auto read = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); };
                             const auto removed = naturalSphere(impact.centre, impact.radius, scene.day, read);
@@ -2353,7 +2355,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             view.applyEdits(removed, false);
                             for (const BlockEdit &e : removed)
                                 blockEdits.add(e);
-                            playAt(2, impact.centre, 1, 0.5f + 0.4f * (float)worldRandom.draw() / 32767.f);
+                            if (impact.removes)
+                                playAt(2, impact.striker, 1, impact.pitch);
                         }
                         for (const auto &credit : happened.appliedCredits)
                             if (credit.direct && credit.record.experience != 0) {

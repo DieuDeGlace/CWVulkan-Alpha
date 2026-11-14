@@ -151,11 +151,15 @@ struct NpcFrame {
     };
     std::vector<Death> deaths;
     std::vector<MissionProgress> missions; // immediate snapshots with engine reward metadata
-    // Block edits §9: the blows of creatures wider than 4 blocks, which dig craters where the
-    // world is not online (centre in blocks).
+    // Strike-call-sites K3: the strikes of creatures wider than 4 blocks, which break the cells
+    // within `radius` of the strike centre where the world is not online (blocks). When cells
+    // go, the striker's sound 2 takes `pitch`, drawn at the strike before any target.
     struct Impact {
         glm::dvec3 centre{0};
         int32_t radius = 0;
+        bool removes = false;
+        float pitch = 0;
+        glm::dvec3 striker{0};
     };
     std::vector<Impact> craters;
     // Block edits §8: bombs that went off this step (their first dead step).
@@ -267,10 +271,10 @@ class Npcs {
     std::function<void(const ItemRecord &)> onFatalItem;
     // Final backing admission/write follows every recipient and completion grant.
     std::function<void(const Combatant &)> onFatalBacking;
-    // Engine block adapter (hazards-blast-ticks §4.2): whether a blast at this centre
-    // (blocks) removes at least one block. Read-only; the caller removes the blocks
-    // after the step. Unset means no removal sound and no draw.
-    std::function<bool(glm::dvec3 centre)> blastRemovesBlocks;
+    // Engine block adapter (hazards-blast-ticks §4.2, strike-call-sites K3): whether the
+    // removable cells within `radius` of `centre` (blocks) include at least one. Read-only;
+    // the caller removes the blocks after the step. Unset means no removal sound and no draw.
+    std::function<bool(glm::dvec3 centre, int32_t radius)> removesBlocks;
     bool markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day);
     // Existing engine descriptor-tail adapter; retains live actors. Native
     // virtual destruction and descriptor lifetime remain separate contracts.

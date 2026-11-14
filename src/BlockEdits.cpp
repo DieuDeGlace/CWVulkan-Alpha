@@ -136,38 +136,6 @@ std::vector<BlockEdit> naturalSphere(glm::dvec3 centre, int32_t R, int32_t today
     return out;
 }
 
-std::pair<float, float> impactReach(int32_t action, float w) {
-    auto in = [&](std::initializer_list<int32_t> ids) { return std::find(ids.begin(), ids.end(), action) != ids.end(); };
-    std::pair<float, float> r{1.5f * w, 1.5f * w};
-    if (in({1, 2, 3, 4, 6, 7, 9, 13, 14, 18, 19}))
-        r = {2 * w, w};
-    else if (in({20, 21}))
-        r = {3 * w, 1.5f * w};
-    else if (in({68, 70}))
-        r = {1.5f * w, 0};
-    else if (in({86, 93, 104}))
-        r = {3 * w, 0};
-    else if (in({87, 88}))
-        r = {8, 0};
-    else if (in({30, 32}))
-        r = {3, 0};
-    else if (in({31, 33}))
-        r = {5, 0};
-    else if (in({91, 74}))
-        r = {20, 0};
-    else if (in({72, 76, 77, 78}))
-        r = {1.8f * w, 0};
-    if (in({11, 54, 61}))
-        r = {3 * r.first, 0}; // these strike at the creature's own centre
-    return r;
-}
-
-int32_t craterRadius(int32_t action, float w) {
-    if (w <= 4 || action == 87 || action == 91 || action == 74)
-        return 0;
-    return std::min((int32_t)impactReach(action, w).first, 8);
-}
-
 void BlockEditLists::add(const BlockEdit &e) {
     const Key key{floorDiv(e.x, Zone::SIZE), floorDiv(e.y, Zone::SIZE)};
     lists[key].push_back(e);

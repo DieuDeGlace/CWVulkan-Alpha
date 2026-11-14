@@ -2036,3 +2036,18 @@ application, threat propagation within 8 units at 0.5, and the healing projectil
 (owner role 1 halves it, role 6 excluded). No behaviour change. Cleanup: the duplicate
 exemption predicate `harmless` is removed in favour of `peacefulAnimal` (the same 32-race
 list and 0x1A00 mask), and `hostile` is documented as the target relation.
+
+### Strike block breaking, K3 (2026-11-14)
+
+From the held `alpha-strike-call-sites.md` K1-K3: block breaking now runs inside the strike on
+each strike frame (the K1 window), after the reach and centre (K2) and before the setup and
+target loop. A striker wider than 4 (body size x, ordered), not in action 0x57, 0x5B or 0x4A,
+asks the engine adapter `removesBlocks(centre, n)` with the exact strike centre and
+n = min(trunc(R), 8); when any cell goes, the sound-2 pitch (scaled unit draw x 0.4, plus 0.5)
+is drawn there, before every target draw, and the sound plays at the striker. Main and the
+server remove the cells and emit the per-cell bursts after the step. Replaced: the older
+block-edits §9 path (its own reach table, which disagreed with K2 for actions 0x48/0x4C-0x4E,
+fired at the hit moment, drew the pitch after the creature step and played at the crater);
+`impactReach` and `craterRadius` are removed. The blast adapter is the same `removesBlocks`
+with radius 8. Still open: the cell test 0x20AA60 (the natural-block flag stands in), the
+cell lookup's rounding for negative coordinates, and the branch at 0x139CC8.
