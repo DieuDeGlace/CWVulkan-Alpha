@@ -5,6 +5,7 @@
 #include "creatures/CreatedBehavior.h"
 #include "creatures/DescriptorEquipment.h"
 #include "creatures/CameraView.h"
+#include "creatures/Names.h"
 #include <cassert>
 #include <bit>
 #include "BlockEdits.h"
@@ -46,7 +47,7 @@ bool shooter(const Combatant &c) {
 
 } // namespace
 
-// §13.2 step 7: whether `a` would fight `b` (0x596ca0).
+// The target relation (alpha-target-relation.md §5; behaviour §13.2 step 7).
 bool hostile(const Combatant &a, const Combatant &b) {
     if (a.controller == 6 || b.controller == 6)
         return false;
@@ -55,7 +56,7 @@ bool hostile(const Combatant &a, const Combatant &b) {
     if ((a.controller == 1) != (b.controller == 1))
         return true;
     if (a.controller == 1 && b.controller == 1 &&
-        harmless(a.type, a.appearanceFlags) != harmless(b.type, b.appearanceFlags))
+        peacefulAnimal(a.type, a.appearanceFlags) != peacefulAnimal(b.type, b.appearanceFlags))
         return true;
     return (a.mode & 0x20) || (b.mode & 0x20);
 }
@@ -78,18 +79,6 @@ bool actionOver(const Combatant &c) { return c.actionMs > (float)duration(c, c.a
 
 } // namespace
 
-bool harmless(int32_t type, uint16_t appearanceFlags) {
-    if (appearanceFlags & 0x1a00)
-        return false;
-    switch (type) {
-    case 19: case 20: case 22: case 23: case 25: case 26: case 27: case 30: case 31: case 32: case 33: case 34:
-    case 35: case 53: case 55: case 56: case 57: case 58: case 67: case 68: case 74: case 87: case 89: case 92:
-    case 93: case 98: case 100: case 106: case 107: case 145: case 146: case 147:
-        return true;
-    default:
-        return false;
-    }
-}
 
 // The older actor setup entry is an engine projection onto the held descriptor
 // kernel. Complete item backing survives each partial header/scalar mutation.
@@ -1102,7 +1091,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     services.draw = [&] { return draw(); };
     services.power = [](double exponent) { return std::pow(1.5, exponent); };
     services.related = hostile;
-    services.classified = [](const Combatant &actor) { return harmless(actor.type, actor.appearanceFlags); };
+    services.classified = [](const Combatant &actor) { return peacefulAnimal(actor.type, actor.appearanceFlags); };
     services.visible = [&](selection::Actor from, selection::Actor to) {
         const visibility::Position start{from.body->position[0], from.body->position[1], from.body->position[2]};
         const visibility::Position end{to.body->position[0], to.body->position[1], to.body->position[2]};
@@ -1112,7 +1101,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     services.extensionAdmission = [&](selection::Actor target) {
         // Required engine quests: allies fight hostile non-animal creatures.
         return npc.questRole == 3 && target.fighter->controller == 1 &&
-               !harmless(target.fighter->type, target.fighter->appearanceFlags);
+               !peacefulAnimal(target.fighter->type, target.fighter->appearanceFlags);
     };
     selection::TargetSelection selector{{&c, &npc.body},
         {npc.specialMs, npc.chaseMs, npc.cooldownMs, npc.targetRange}, int32_t(dtMs), services};

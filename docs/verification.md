@@ -1633,3 +1633,8 @@ Online strike order and area heal (2026-11-13). No new unit case (the path lives
 loop); the area-heal record and window flag keep their CreatureTests coverage. All 60 CTests
 pass, the player diagnostic and five live runs (including the connected-client flow) pass, and
 the six captures match the preceding batch.
+Target relation (2026-11-13). New CreatureTests cases pin the relation's distinct rules: role 5
+never against role 0 even toggled, the reverse falling to the toggle, role 6 never a target,
+one role 1 in either order, and the same creature relating by its toggle only. Relationship
+and target-selection tests now use the single exemption predicate. All 60 CTests pass, the
+player diagnostic and five live runs pass, and the six captures match the preceding batch.

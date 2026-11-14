@@ -2024,3 +2024,15 @@ test, dodge deferral, the strike). A non-hostile target goes to the §6 area-hea
 is also re-evaluated after each struck target: actions 0x20/0x21 of class pair (_, 1) on a
 flagged frame send the area-heal record (its two draws) as this client's hit and play
 sound 42. The online client had skipped the geometric test and the heal.
+
+## Target relation (round 12, held 2026-11-13)
+
+Held contract `docs/specs/alpha-target-relation.md` (SHA-256 BCF310E5...81EC), read whole.
+The engine's `hostile(a, b)` already implemented §5 exactly (role 5 against role 0 never,
+role 6 never, one role 1, differing exemption, toggle bit; no identity rule), and its four
+callers already matched §7: target choice (`TargetSelection::consider`, including the pet
+food exception and the chooser-exemption acceptance), the heal-threat walk in hit
+application, threat propagation within 8 units at 0.5, and the healing projectile branch
+(owner role 1 halves it, role 6 excluded). No behaviour change. Cleanup: the duplicate
+exemption predicate `harmless` is removed in favour of `peacefulAnimal` (the same 32-race
+list and 0x1A00 mask), and `hostile` is documented as the target relation.

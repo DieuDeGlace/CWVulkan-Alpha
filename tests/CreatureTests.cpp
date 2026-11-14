@@ -1956,6 +1956,17 @@ int main() {
         same(hostilityTest(player, other) && hostilityTest(other, player), 1, "toggle bit 0x20 on either");
         player.health = -5;
         same(hostilityTest(player, monster), 1, "health is not read");
+
+        // Target relation §5: role 5 never turns on role 0 (even toggled), the reverse falls to
+        // the toggle; role 6 is never a target; no identity rule (a toggled creature relates to
+        // itself).
+        tamed.mode = 0x20;
+        same(hostile(tamed, player), 0, "role 5 against role 0 is never");
+        same(hostile(player, tamed), 1, "role 0 against a toggled role 5 is the toggle");
+        same(hostile(monster, object) || hostile(object, monster), 0, "role 6 is never a target");
+        same(hostile(monster, player) && hostile(player, monster), 1, "one role 1 in either order");
+        same(hostile(tamed, tamed), 1, "the same creature relates by its toggle");
+        same(hostile(object, object), 0, "role 6 against itself");
     }
 
     // Beam-height §2.2: with a shield in the second hand, bar entry 1 is 8; holding it starts the

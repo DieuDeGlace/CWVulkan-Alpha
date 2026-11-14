@@ -470,7 +470,11 @@ void equip(Combatant &c, const Appearance &looks, const std::function<int()> &dr
 // `whole` false: steps 2 and 3 only (location spec §4.3.2, a ring creature made up inline).
 void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole = true);
 
-// §13.2 step 7: whether `a` would fight `b` (0x596ca0).
+// The target relation (alpha-target-relation.md §5, 0x196CA0): whether `a` would turn
+// against `b`. Role 5 against role 0 never; either role 6 never; exactly one role 1 always;
+// two role-1 creatures when exactly one is exempt (peacefulAnimal); otherwise mode bit 0x20.
+// No identity rule; callers exclude themselves. Used by target choice, threat spread and the
+// healing paths; strikes use hostilityTest instead.
 bool hostile(const Combatant &a, const Combatant &b);
 // Aim-triplet contract §3.7 facing and §3.8 drawn aim, after a creature's movement step, for
 // NPCs and the local player alike (beam-leftovers §7: every live creature reaches them).
@@ -483,8 +487,5 @@ void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Bod
 
 // Travel §5.1: the creature types that can be ridden as pets.
 bool rideable(int32_t type);
-
-// §13.2: animals that never start a fight (0x444680).
-bool harmless(int32_t type, uint16_t appearanceFlags);
 
 } // namespace creatures

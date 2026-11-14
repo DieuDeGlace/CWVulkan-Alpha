@@ -1,4 +1,5 @@
 #include "creatures/TargetSelection.h"
+#include "creatures/Names.h"
 #include "creatures/Npcs.h"
 #include <algorithm>
 #include <bit>
@@ -89,7 +90,7 @@ struct Fixture {
         };
         services.classified = [&](const Combatant &a) {
             events.push_back("classified");
-            return harmless(a.type, a.appearanceFlags);
+            return peacefulAnimal(a.type, a.appearanceFlags);
         };
         services.visible = [&](Actor, Actor candidate) {
             events.push_back("visible");

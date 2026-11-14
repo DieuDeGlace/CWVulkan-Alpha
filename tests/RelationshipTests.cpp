@@ -1,4 +1,5 @@
 #include "creatures/Npcs.h"
+#include "creatures/Names.h"
 #include "net/Protocol.h"
 #include "net/RemoteFighter.h"
 #include <algorithm>
@@ -185,10 +186,10 @@ int main() {
         first.type = 19;
         second.mode = 0;
         check(hostile(first, second), "different role-one classification results admit without status");
-        check(harmless(89, 0) && harmless(89, 0x0400) && !harmless(0x159, 0),
+        check(peacefulAnimal(89, 0) && peacefulAnimal(89, 0x0400) && !peacefulAnimal(0x159, 0),
               "independently rechecked kind 89 is admitted by its complete kind value, without truncation or an unrelated flag gate");
         for (const uint16_t flags : {uint16_t(0x0200), uint16_t(0x0800), uint16_t(0x1000), uint16_t(0x1a00)})
-            check(!harmless(89, flags), "each native 0x1a00 bit rejects kind 89 before its kind admission");
+            check(!peacefulAnimal(89, flags), "each native 0x1a00 bit rejects kind 89 before its kind admission");
     }
     {
         worldgen::WorldMap map;
