@@ -1629,3 +1629,7 @@ non-1 roles at peace, an exempt role-1 animal against a monster and its loss of 
 through appearance bit 11, the 0x20 mode bit on either side, and that health is not read.
 All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures
 match the preceding batch.
+Online strike order and area heal (2026-11-13). No new unit case (the path lives in the client
+loop); the area-heal record and window flag keep their CreatureTests coverage. All 60 CTests
+pass, the player diagnostic and five live runs (including the connected-client flow) pass, and
+the six captures match the preceding batch.

@@ -2014,3 +2014,13 @@ Engine extension kept and identified: a creature's swing also lands on its quest
 other side (required engine quests). The behaviour-side relation (`hostile`, 0x196CA0) stays
 for target choice; the write-up identifies it as a distinct sibling but does not specify it.
 Still open: the geometric test's ray-march second phase; the online area heal.
+
+### Online strike path: order, line of sight and area heal (2026-11-13)
+
+From the held strike-call-sites and hostility contracts: the online client's strike loop now
+visits the listed creatures in ascending signed id and follows K5 in order (health with NaN
+passing, struck set, reach, the geometric test with option 1 and maximum 200, the hostility
+test, dodge deferral, the strike). A non-hostile target goes to the §6 area-heal check, which
+is also re-evaluated after each struck target: actions 0x20/0x21 of class pair (_, 1) on a
+flagged frame send the area-heal record (its two draws) as this client's hit and play
+sound 42. The online client had skipped the geometric test and the heal.

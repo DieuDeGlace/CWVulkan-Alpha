@@ -1419,16 +1419,28 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (c.action == 0x1F)
                         if (auto consumed = creatures::consumeBuff(c, 9))
                             sendBuff(*consumed);
-                    for (const auto &[id, other] : receivedActors) {
+                    const auto rolls = [&] { return worldRandom.draw(); };
+                    const creatures::visibility::Scene sightScene{
+                        [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
+                        npcs.sightRecords};
+                    // K5: the listed creatures in ascending signed id.
+                    std::vector<uint64_t> visitOrder;
+                    visitOrder.reserve(receivedActors.size());
+                    for (const auto &entry : receivedActors)
+                        visitOrder.push_back(entry.first);
+                    std::sort(visitOrder.begin(), visitOrder.end(), [](uint64_t a, uint64_t b) {
+                        return std::bit_cast<int64_t>(a) < std::bit_cast<int64_t>(b);
+                    });
+                    for (const uint64_t id : visitOrder) {
+                        const auto &other = receivedActors.at(id);
                         creatures::Combatant target = other.fighter();
                         target.id = id;
                         target.health = other.health();
                         target.controller = other.controller();
                         if (const auto resident = otherFighters.find(id); resident != otherFighters.end())
                             target.buffs = resident->second.fighter.buffs;
-                        // K5 step 5 / hostility test (striker, target); the online area heal
-                        // for non-hostile targets is not modelled here.
-                        if (target.health <= 0 || !creatures::hostilityTest(c, target))
+                        if (!(target.health > 0 || std::isnan(target.health)) ||
+                            std::find(c.struck.begin(), c.struck.end(), id) != c.struck.end())
                             continue;
                         creatures::Body body;
                         for (int axis = 0; axis < 3; axis++)
@@ -1437,10 +1449,32 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         body.velocity = other.velocity();
                         body.intent = other.intent();
                         body.push = other.response();
-                        if (std::find(c.struck.begin(), c.struck.end(), id) != c.struck.end() ||
-                            !creatures::strikeReaches(geometry, player->body(), body))
+                        if (!creatures::strikeReaches(geometry, player->body(), body))
                             continue;
-                        if (target.dodgeMs != 0) { // K5 step 6: deferred
+                        // K5 step 4: the geometric test with option 1 and maximum 200.
+                        const creatures::visibility::Position end{body.position[0], body.position[1], body.position[2]};
+                        if (!creatures::visibility::visible(geometry.start, end, 1, 200.f, sightScene))
+                            continue;
+                        const bool hostile = creatures::hostilityTest(c, target);
+                        // Strike-call-sites §6 online: actions 0x20/0x21 of class pair (_, 1) on a
+                        // flagged frame heal a non-hostile target, sent as this client's hit.
+                        const auto healCheck = [&] {
+                            if ((c.action != 0x21 && c.action != 0x20) || !window.areaHeal || hostile ||
+                                c.specialization != 1)
+                                return;
+                            std::array<int64_t, 3> at;
+                            std::copy_n(body.position, 3, at.begin());
+                            const creatures::HitRecord heal = creatures::areaHealRecord(c, id, at, rolls);
+                            client.sendHit(net::Hit::from(heal));
+                            playAt(42, player->body().blocks(), 1, 1);
+                            if (auto text = ui::hitText(heal.amount, heal.kind, heal.critical, false, body.blocks()))
+                                interface.floating.push_back(*text);
+                        };
+                        if (!hostile) { // K5 step 5
+                            healCheck();
+                            continue;
+                        }
+                        if (target.dodgeMs != 0) { // K5 step 6: deferred, no heal check
                             if (std::find(c.deferred.begin(), c.deferred.end(), id) == c.deferred.end())
                                 c.deferred.push_back(id);
                             continue;
@@ -1448,7 +1482,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         const bool first = c.struck.empty() && c.hitStun <= 0;
                         c.struck.push_back(id);
                         c.hitLanded = true;
-                        const auto rolls = [&] { return worldRandom.draw(); };
                         const creatures::HitInput in = creatures::strikeInput(c, player->body(), body, rolls);
                         const creatures::HitOutcome out = creatures::resolveHit(target, body.velocity, &c, in, rolls);
                         for (const auto &event : out.buffs) {
@@ -1477,6 +1510,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             if (after.upgradeSound)
                                 playAt(47, player->body().blocks(), 1, 1);
                         }
+                        healCheck(); // re-evaluated: never heals a hostile target
                     }
                 }
             }
