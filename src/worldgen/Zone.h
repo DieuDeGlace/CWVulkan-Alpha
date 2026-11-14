@@ -203,6 +203,20 @@ struct House {
     std::vector<int32_t> seats, beds;
 };
 
+// World objects §2.1: an airship template a landing place leaves in its zone. Copies of it
+// enter the world's object list near players (§2.4). Positions in 1/65536 blocks, angles in
+// degrees.
+struct AirshipTemplate {
+    int64_t id = 0; // K(zone x, zone y, index in the zone's list)
+    std::array<int64_t, 3> target{}, home{}, destination{};
+    float targetYaw = 0, heading = 0;
+};
+// §2.1 fields: the template of a landing plot of rotation `rotation`, top height `top`, centre
+// column (`centreX`, `centreY`) = zone origin + half the plot size + the plot offset, as
+// entry `index` of zone (zx, zy). No draws.
+AirshipTemplate airshipTemplate(int32_t zx, int32_t zy, int32_t index, int32_t rotation, int32_t top, int32_t centreX,
+                                int32_t centreY);
+
 // A position later passes keep their distance from (caves spec §3.1), in 1/65536 blocks.
 struct ObjectMark {
     int64_t x = 0, y = 0, z = 0;
@@ -224,6 +238,7 @@ struct Zone {
     std::vector<LeafSource> leafSources;
     std::vector<std::array<int64_t, 3>> songPosts; // trees §4.9: kind-61 records (1/65536 blocks)
     std::vector<House> houses;
+    std::vector<AirshipTemplate> airships; // world objects §2.1 (zone +0x24)
     // Structures spec §5.2: a town zone's plots (g x g, index i + g j) with their roles.
     struct TownPlot {
         int32_t ox = 0, oy = 0, size = 0, kind = 0, sub = 0, face = 0;

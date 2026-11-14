@@ -8,6 +8,7 @@
 #include "WorldItems.h"
 #include "creatures/Strike.h"
 #include "creatures/Abilities.h"
+#include "creatures/Airships.h"
 #include "creatures/Appearance.h"
 #include "creatures/Combat.h"
 #include "creatures/ControllerAim.h"
@@ -664,6 +665,81 @@ int main() {
         step(b, 16, floor);
         same(b.blocks().y - y0, 0.096, "walking move per frame", 1e-4);
         same(b.velocity.y, 6 * std::pow(1 - 0.0025, 16), "stored speed after friction", 1e-3);
+    }
+
+    // World objects §2.1: a landing plot's airship template.
+    {
+        const worldgen::AirshipTemplate t = worldgen::airshipTemplate(3, 7, 1, 0, 60, 1000, 2000);
+        same(t.id, (((7ll << 16) + 3) << 8) + 1, "identifier K(zone x, zone y, index)");
+        same(t.heading, 0, "heading r x 90");
+        same(t.home[0] == (981ll << 16) && t.home[1] == (2000ll << 16) && t.home[2] == (126ll << 16), 1,
+             "home 19 out along (r + 2) pi / 2, 66 above the top");
+        same(t.target[0] == t.home[0] && t.target[1] == t.home[1] - 100 * 65536 && t.target[2] == t.home[2] + 100 * 65536,
+             1, "target 100 back and 100 up");
+        same(t.destination[0] == t.home[0] + 50 * 65536 && t.destination[2] == t.home[2] + 20 * 65536, 1, "destination");
+        same(worldgen::airshipTemplate(3, 7, 0, 1, 60, 1000, 2000).heading, 90, "rotation 1 heads 90");
+    }
+
+    // World objects §2.4, §3, §5: ships are copied in within 512 blocks of a player and dropped
+    // beyond; a body lands on one (standing, its key carried); red voxels never collide.
+    {
+        worldgen::Prefab model;
+        model.sx = 10, model.sy = 10, model.sz = 4;
+        model.rgb.assign(3 * 400, 90);
+        for (int32_t x = 0; x < 10; x++) // the column x = 0 .. 9, y = 0 painted pure red
+            for (int32_t z = 0; z < 4; z++) {
+                uint8_t *c = &model.rgb[3 * (size_t(z * 10) * 10 + size_t(x))];
+                c[0] = 255, c[1] = 0, c[2] = 0;
+            }
+        auto zone = std::make_shared<worldgen::Zone>();
+        zone->zx = 40, zone->zy = 40;
+        worldgen::AirshipTemplate t;
+        t.id = 77;
+        t.target = {int64_t(40 * 256 + 128) << 16, int64_t(40 * 256 + 128) << 16, int64_t(100) << 16};
+        zone->airships.push_back(t);
+        worldgen::WorldMap map;
+        map.add(zone);
+        Airships ships;
+        ships.setModel(model);
+        const Airships::Raw far{t.target[0] + (600ll << 16), t.target[1], t.target[2]};
+        ships.refresh(std::span(&far, 1), map);
+        same((double)ships.ships().size(), 0, "no copy beyond 512 blocks");
+        const Airships::Raw nearby{t.target[0] + (200ll << 16), t.target[1], t.target[2]}; // its zone is a player zone
+        ships.refresh(std::span(&nearby, 1), map);
+        same(ships.ships().size() == 1 && ships.ships().begin()->second.position == t.target, 1,
+             "copied within 512 blocks, posed at the target");
+        // §3.2: a box inside the hull hits and takes the hull's base.
+        int64_t base = 0;
+        same(ships.collide(t.target.data(), glm::vec3(1), 9, base), 1, "a box in the hull collides");
+        same(base, t.target[2] - 2 * 65536, "base = position z - T(half height)");
+        same(!ships.ships().empty() && ships.ships().begin()->second.carried.contains(9), 1, "the key is carried");
+        // §5: the red column (model y 0, world y = target - 5) never collides.
+        const int64_t onRed[3] = {t.target[0], t.target[1] - int64_t(4.5 * 65536), t.target[2]};
+        int64_t unused = 0;
+        same(ships.collide(onRed, glm::vec3(0.5f), 10, unused), 0, "pure red voxels are empty");
+        // A body dropped above the deck lands on it.
+        Body b;
+        b.place({40 * 256 + 128.5, 40 * 256 + 128.5, 100 + 2 + 1.08 + 1});
+        b.obstacles = &ships, b.key = 11;
+        const auto air = [](int32_t, int32_t, int32_t) -> uint8_t { return 0; };
+        for (int i = 0; i < 60; i++)
+            step(b, 16, air);
+        same((b.contact & ON_GROUND) != 0, 1, "standing on the deck");
+        same(b.blocks().z, 100 + 2 + 1.08, "resting on the deck top", 0.05);
+        same(!ships.ships().empty() && ships.ships().begin()->second.carried.contains(11), 1, "the lander is carried");
+        // §6.3: a stationary ship keeps its carried creature where it is.
+        const int64_t before[3] = {b.position[0], b.position[1], b.position[2]};
+        ships.step(16, [&](int64_t key, Airships::Carried &out) {
+            if (key != 11)
+                return false;
+            out = {b.position, b.follow, &b.yaw};
+            return true;
+        });
+        same(b.position[0] == before[0] && b.position[1] == before[1] && b.position[2] == before[2], 1,
+             "a stationary ship leaves its passenger in place");
+        same(!ships.ships().empty() && !ships.ships().begin()->second.carried.contains(9), 1, "absent creatures leave the set");
+        ships.refresh(std::span(&far, 1), map);
+        same((double)ships.ships().size(), 0, "dropped beyond 512 blocks of every player");
     }
 
     // Height §1.2, §1.3, §1.5: the step-up and step-down snaps land on the exact fixed targets

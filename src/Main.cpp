@@ -32,6 +32,7 @@
 #include "creatures/Credits.h"
 #include "creatures/Spirits.h"
 #include "creatures/Names.h"
+#include "creatures/Airships.h"
 #include "creatures/Npcs.h"
 #include "worldgen/Items.h"
 #include "Dictionary.h"
@@ -601,6 +602,34 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             player->combat().setEquipment(slot, inventory.equipment[slot]);
     };
     creatures::Npcs npcs{worldRandom};
+    // World objects: the airships (offline this program runs them; online none arrive).
+    creatures::Airships airships;
+    if (const auto model = view.prefab("airship.cub"))
+        airships.setModel(*model);
+    npcs.obstacles = &airships;
+    // §2.4 (unconnected world): drop and copy ships round the players; §6: then each frame.
+    const auto refreshAirships = [&] {
+        std::vector<creatures::Airships::Raw> players;
+        if (player) {
+            const int64_t *p = player->body().position;
+            players.push_back({p[0], p[1], p[2]});
+        }
+        airships.refresh(players, view.held());
+    };
+    const auto stepAirships = [&](int32_t elapsed) {
+        airships.step(elapsed, [&](int64_t key, creatures::Airships::Carried &out) {
+            const auto expose = [&](creatures::Body &body) {
+                out = {body.position, body.follow, &body.yaw};
+                return true;
+            };
+            if (player && std::bit_cast<int64_t>(player->combat().id) == key)
+                return expose(player->body());
+            for (creatures::Npc &n : npcs.npcs())
+                if (std::bit_cast<int64_t>(n.fighter.id) == key)
+                    return expose(n.body);
+            return false;
+        });
+    };
     npcs.creditItems = [&](creatures::Combatant &actor) -> creatures::CreditItems {
         const auto storage = creatures::actorCreditItems(actor);
         if (player && &actor == &player->combat()) {
@@ -1897,9 +1926,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     advanceWorldClock(elapsed, accelerated);
                     if (client.connected())
                         refreshReceivedLinks();
+                    else
+                        refreshAirships();
                     const auto advancePlayer = [&](int32_t actorElapsed) {
                         if (!client.connected()) // physics §4.4: hostile/inert creatures push the player
                             player->body().separate = npcs.pushOnPlayer(player->body());
+                        player->body().obstacles = &airships, player->body().key = player->combat().id;
                         player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
                         player->advance(actorElapsed, client.connected());
                         publishPlayerEffects();
@@ -2212,6 +2244,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                               &player->appearance(), &playerCreationConfig}}, scene.timeOfDayMs, scene.day,
                             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
                             aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer);
+                        stepAirships(elapsed); // world objects §6: after the creature loop
                         const auto happened = aggregate.addedSince(npcEvents);
                         projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
                         for (const auto &event : happened.buffs)
@@ -2491,6 +2524,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     advanceWorldClock(elapsed, accelerated);
                     if (client.connected())
                         refreshReceivedLinks();
+                    else
+                        refreshAirships();
                     for (auto &[id, remote] : otherFighters)
                         if (remote.fighter.health > 0)
                             creatures::tickBuffs(remote.fighter, elapsed, false);
@@ -2498,6 +2533,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     worldItems.step(elapsed, !client.connected(), block, [&] { return worldRandom.draw(); }, aggregate.sounds);
                     if (!client.connected())
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, block, aggregate);
+                    stepAirships(elapsed);
                 },
                 [&](creatures::NpcFrame &aggregate) {
                     applyReceivedRelationships();
@@ -2824,6 +2860,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             items.push_back({lid, place * hinge * glm::scale(glm::mat4(1), size / lidVoxels), true});
                         }
                 }
+            }
+        }
+        // World objects §7: each airship at its current pose, turned by +yaw, its grid centred
+        // on the position (the mesh is centred on x and y with its base at z = 0).
+        if (const MeshId ship = airships.ships().empty() ? 0 : view.airshipMesh()) {
+            const float halfHeight = float(airships.modelSize().z) * 0.5f;
+            for (const auto &[id, s] : airships.ships()) {
+                const glm::dvec3 at = glm::dvec3(double(s.position[0]), double(s.position[1]), double(s.position[2])) / 65536.0;
+                const glm::mat4 world = glm::translate(glm::mat4(1), view.toRender(at)) *
+                                        glm::rotate(glm::mat4(1), glm::radians(s.yaw), glm::vec3(0, 0, 1)) *
+                                        glm::translate(glm::mat4(1), glm::vec3(0, 0, -halfHeight));
+                items.push_back({ship, world, true});
             }
         }
         // World items §2: each item's model in its pose, near enough to see.

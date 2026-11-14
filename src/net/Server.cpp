@@ -902,10 +902,15 @@ void Server::stepWorld(float dtMs) {
                 onNpcs.push_back(h);
     }
 
-    if (!npcs.objects) // physics §4.5: the creatures collide with the zones' statics
+    if (!npcs.objects) { // physics §4.5: the creatures collide with the zones' statics
         npcs.objects = [this](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {
             return statics.blocks(zones, lo, hi, axis, move, ignored);
         };
+        // World objects §3, §5: and with the airships.
+        if (const auto model = options.prefabs ? options.prefabs("airship.cub") : nullptr)
+            airships.setModel(*model);
+        npcs.obstacles = &airships;
+    }
     if (!npcs.descriptorContext)
         npcs.descriptorContext = [this](int32_t zx, int32_t zy) {
             return missions.descriptorContext(zx, zy, [this](int32_t rx, int32_t ry) {
@@ -1042,8 +1047,24 @@ void Server::stepWorld(float dtMs) {
                     questChanged(who);
                 }
     }
+    // World objects §2.4: drop and copy airships round the connected players, before the
+    // creatures move; §6 after them. (The original server never sends them to clients.)
+    {
+        std::vector<creatures::Airships::Raw> shipPlayers;
+        for (const auto &[pid, c] : connections)
+            shipPlayers.push_back({c->creature.position(0), c->creature.position(1), c->creature.position(2)});
+        airships.refresh(shipPlayers, zones);
+    }
     const creatures::NpcFrame frame = npcs.step(dtMs, zones, std::move(players), clockMs, (int32_t)clockDay,
                                                block, onNpcs, {}, buffInput);
+    airships.step((int32_t)dtMs, [this](int64_t key, creatures::Airships::Carried &out) {
+        for (creatures::Npc &n : npcs.npcs())
+            if (std::bit_cast<int64_t>(n.fighter.id) == key) {
+                out = {n.body.position, n.body.follow, &n.body.yaw};
+                return true;
+            }
+        return false; // (players' bodies are their clients'; see CLEANROOM.md)
+    });
     for (const auto &grant : frame.grants)
         gifts.push_back(grant.serialize());
     for (const creatures::NpcFrame::Death &death : frame.deaths) // mod SDK v6

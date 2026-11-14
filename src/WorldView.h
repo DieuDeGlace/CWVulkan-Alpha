@@ -119,6 +119,8 @@ class WorldView {
     // The base height H of a column (terrain spec §4), for places not generated yet.
     float groundHeight(int32_t x, int32_t y) const { return terrain.height(x, y); }
     const worldgen::World &terrainWorld() const { return world; }
+    // A prefab model of the content stores (null when missing), as world generation reads it.
+    std::shared_ptr<const worldgen::Prefab> prefab(const std::string &key) const { return terrain.prefabs(key); }
     const worldgen::Terrain &terrainGenerator() const { return terrain; }
     // Zones kept round the camera's in each direction (the options' render distance).
     void setRadius(int32_t zones) { radius = std::max(zones, 1); }
@@ -139,6 +141,8 @@ class WorldView {
     std::function<bool(int32_t zx, int32_t zy)> missionTarget;
     // A static object's model and its size in voxels (interaction §4.2).
     std::pair<MeshId, glm::vec3> staticModel(int32_t kind);
+    // World objects §5, §7: the airship model's mesh (0 when missing), loaded once.
+    MeshId airshipMesh();
     // Interaction §4.4: the kinds with a moving part (doors, windows, gate, traps, lever,
     // chest), which the game draws each frame from their state instead of with the plants.
     static bool movingStatic(int32_t kind) {
@@ -198,6 +202,8 @@ class WorldView {
     std::map<Key, ChunkEntry> chunks; // by chunk corner
     std::map<int32_t, std::pair<MeshId, float>> plantModels;
     std::map<int32_t, std::pair<MeshId, glm::vec3>> staticModels;
+    MeshId airshipModelMesh = 0;
+    bool airshipModelTried = false;
     worldgen::CloudField clouds;
     MeshId cloudMesh = 0;
     motion::MotionSettings motionSettings;

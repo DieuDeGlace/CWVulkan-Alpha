@@ -322,6 +322,8 @@ class Npcs {
     void setNamedWorld(bool named) { namedWorld = named; }
     // Physics §4.5: the static objects creatures collide with (left empty: none).
     ObjectTest objects;
+    // World objects §3: the airships creatures collide with and stand on (null: none).
+    VoxelObstacles *obstacles = nullptr;
     // Current spatial records for visibility's four side-face tests. Terrain
     // classification uses the step's existing block reader.
     visibility::RecordLookup sightRecords;

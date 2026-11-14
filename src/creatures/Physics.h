@@ -43,6 +43,17 @@ float skillFactor(int32_t n);
 using StaticRef = std::array<int32_t, 3>;
 using IgnoredStatics = std::set<StaticRef>;
 
+// World objects §3, §4: the voxel objects (airships) a moving body collides with. `collide`
+// tests the box at `position` (raw) of size `size` against every object, inserting `key` into
+// each object hit and leaving `base` at the hit object's base height (the last in key order);
+// `blocksRaised` is the step-up attempt's test of the box raised by 1.01 in each object's
+// frame, stopping at the first hit.
+struct VoxelObstacles {
+    virtual ~VoxelObstacles() = default;
+    virtual bool collide(const int64_t position[3], glm::vec3 size, uint64_t key, int64_t &base) = 0;
+    virtual bool blocksRaised(const int64_t position[3], glm::vec3 size, uint64_t key) = 0;
+};
+
 struct Body {
     int64_t position[3] = {0, 0, 0}; // centre of the box, 1/65536 blocks
     // Cast-point contract §2: the follow point (object +0x1350), zero at construction and
@@ -79,6 +90,8 @@ struct Body {
     bool slowed = false, hastened = false; // §3.2: record fields 18 and 19 running
     glm::vec3 look{0}; // record field 26: where it aims, used while mode 0x04 is set
     const IgnoredStatics *ignoredStatics = nullptr; // statics its path search walks through
+    VoxelObstacles *obstacles = nullptr; // world objects §3: the airships it can stand on (owner's)
+    uint64_t key = 0;                    // the creature's id, inserted into the objects it touches
     bool pathActive = false; // supplies the navigation-container response-decay gate
 
     // What the step did, for the game to act on; the game clears them.

@@ -436,6 +436,23 @@ std::pair<MeshId, glm::vec3> WorldView::staticModel(int32_t kind) {
     return entry;
 }
 
+MeshId WorldView::airshipMesh() {
+    if (airshipModelTried)
+        return airshipModelMesh;
+    airshipModelTried = true;
+    // World objects §5: the model's pure red voxels are emptied when it loads.
+    if (const auto prefab = terrain.prefabs("airship.cub")) {
+        CubModel model;
+        model.sx = prefab->sx, model.sy = prefab->sy, model.sz = prefab->sz;
+        model.rgb = prefab->rgb;
+        for (size_t i = 0; i + 2 < model.rgb.size(); i += 3)
+            if (model.rgb[i] == 255 && model.rgb[i + 1] == 0 && model.rgb[i + 2] == 0)
+                model.rgb[i] = 0;
+        airshipModelMesh = renderer.addMesh(model.mesh());
+    }
+    return airshipModelMesh;
+}
+
 std::vector<WorldView::PlantInstance> WorldView::plantsOf(const Zone &zone) {
     std::vector<PlantInstance> out;
     // Static objects: the model fills the object's scale box, turned by quarter turns.

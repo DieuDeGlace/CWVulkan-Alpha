@@ -477,6 +477,8 @@ class TownBuilder : StructureWriter {
         }
         if (m)
             placePrefab(zone, random, placerWorld(), *m, at);
+        if (p.kind == LANDING_PLACE)
+            landingAirship(p);
         // Open points 5 §3: a mana cube on the footprint's low corner column, above whatever
         // tops it. Its number decides who can see it (a player with that many cubes).
         if (p.kind == SPHINX || p.kind == OBELISK) {
@@ -490,6 +492,21 @@ class TownBuilder : StructureWriter {
                 zone.items.push_back(cube);
             }
         }
+    }
+
+    // World objects §2.1: after the landing place, an airship template when any of the eight
+    // region cells round the zone's own is land (elevation > 0). No draws. (The companion
+    // spawn record the original also appends is not modelled; its fields are untraced.)
+    void landingAirship(const Plot &p) {
+        bool land = false;
+        for (int32_t i = -1; i <= 1; i++)
+            for (int32_t j = -1; j <= 1; j++)
+                if (i != 0 || j != 0)
+                    if (const RegionCell *c = terrain.world().cell(zone.zx / 64 + i, zone.zy / 64 + j))
+                        land = land || c->elevation > 0;
+        if (land)
+            zone.airships.push_back(airshipTemplate(zone.zx, zone.zy, int32_t(zone.airships.size()), p.face, p.hi,
+                                                    cx(p), cy(p)));
     }
 
     // ---- §5.5.10: creatures on open plots --------------------------------------------------

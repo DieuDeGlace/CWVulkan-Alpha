@@ -2446,6 +2446,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         }
         npc.body.ignoredStatics = npc.path.searching() ? &npc.path.ignored : nullptr; // (path search §4.1 step 3)
         npc.body.pathActive = !npc.path.empty();
+        npc.body.obstacles = obstacles, npc.body.key = c.id; // world objects §3
         worldStep(npc.body, (int32_t)dtMs, block, objects);
         npc.path.state.counter = std::bit_cast<int32_t>(uint32_t(npc.path.state.counter) + uint32_t(milliseconds));
         c.mode = npc.body.mode;
@@ -2570,6 +2571,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         }
         n.deadMs += std::max(dtMs, 0.001f);
         n.body.intent = glm::vec3(0);
+        n.body.obstacles = obstacles, n.body.key = n.fighter.id;
         worldStep(n.body, (int32_t)dtMs, block, objects);
         it = n.deadMs >= 1000 ? list.erase(it) : std::next(it);
     }

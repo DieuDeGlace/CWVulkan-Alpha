@@ -389,6 +389,7 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     d *= reciprocal;
     const uint32_t old = b.contact;
     bool touchedObject = false, onObject = false;
+    bool onVoxelObject = false; // world objects §3.1: a z-axis airship hit this update
     // Height §1.2 step 1: a static-object hit withdraws the step-up (and step-down) for the
     // rest of this update.
     bool stepAllowed = true;
@@ -399,7 +400,9 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         const glm::dvec3 c = b.blocks(), h = glm::dvec3(b.size) * 0.5;
         return objects(c - h, c + h, axis, (double)move / ONE, b.ignoredStatics);
     };
-    for (int s = 0; s < n; s++)
+    for (int s = 0; s < n; s++) {
+        // World objects §3.1: the base height of the last airship hit, reset each sub-step.
+        int64_t base = 0;
         for (int k = 0; k < 3; k++) {
             const int64_t move = fixedOf(d[k]);
             b.position[k] += move;
@@ -415,8 +418,12 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
                         b.velocity.z = 0;
                         b.fallStart = (float)(b.position[2] / ONE);
                     }
+                    continue;
                 }
-                continue;
+                // World objects §3.2: then the airships, voxel by voxel.
+                if (!b.obstacles || !b.obstacles->collide(b.position, b.size, b.key, base))
+                    continue;
+                onVoxelObject = onVoxelObject || k == 2;
             }
             if (k == 2) {
                 // §4.2: stop vertically. The player's hard landing out of the water hurts
@@ -434,22 +441,25 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
                 b.fallStart = (float)(b.position[2] / ONE);
                 continue;
             }
-            // §4.3: step up onto a ledge, else undo this axis only (velocity kept).
-            // Height §1.2 step 8: the snap keeps the drawn height (z - offset) continuous. The
-            // object base term is 0 (the engine has no world-object voxel models).
-            if (stepAllowed && !b.swimmer && !any(cellsOf(b.position, b.size, {0, 0, 1.01f}), blocks)) {
-                const int64_t zBefore = b.position[2];
-                const int64_t raised = 65536 * snapLayer(zBefore - halfHeight) + halfHeight + SNAP_LIFT;
-                b.bob = floatF(raised - (zBefore - fixedT(b.bob)));
-                b.position[2] = raised;
+            // §4.3: step up onto a ledge, else undo this axis only (velocity kept). The raised
+            // box must clear the terrain, then every airship (world objects §4).
+            // Height §1.2 step 8: the snap, relative to the sub-step's airship base, keeps the
+            // drawn height (z - offset) continuous.
+            if (stepAllowed && !b.swimmer && !any(cellsOf(b.position, b.size, {0, 0, 1.01f}), blocks) &&
+                !(b.obstacles && b.obstacles->blocksRaised(b.position, b.size, b.key))) {
+                const int64_t relative = b.position[2] - base;
+                const int64_t raised = 65536 * snapLayer(relative - halfHeight) + halfHeight + SNAP_LIFT;
+                b.bob = floatF(raised - (relative - fixedT(b.bob)));
+                b.position[2] = raised + base;
             } else {
                 b.position[k] -= move;
             }
         }
+    }
 
     // §5.1: contact flags.
     b.contact = touchedObject ? ON_OBJECT : 0;
-    if (onObject)
+    if (onObject || onVoxelObject) // world objects §3.4: either landing flag stands
         b.contact |= ON_GROUND;
     const Cells box = cellsOf(b.position, b.size);
     {

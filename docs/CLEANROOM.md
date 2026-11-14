@@ -2072,3 +2072,39 @@ already matches `dropFloating` (same fallback rule) but runs over the whole touc
 rather than the rectangle. Not modelled: the server-only light pass when world +0xB8 is
 null (§7.3; engine lighting is the client's own), the blast's critical section, and the
 zone change vectors' network/save use (unresolved in the contract).
+
+## World objects: airships (round 13, held 2026-11-14)
+
+Held contract `docs/specs/alpha-world-objects.md` (SHA-256 3F3557F9...856C), read whole; a
+first author context safety-stopped before writing and a fresh one wrote it. The list is the
+original's airships (model 0xA03, `airship.cub`). Implemented:
+- **Templates (§2.1):** `worldgen::airshipTemplate` computes the identifier K(zx, zy, n), the
+  heading r x 90, the home 19 blocks out along (r + 2) pi / 2 and 66 above the plot top, the
+  target 100 back along the heading and 100 up, and the destination (+50, +50, +20), in the
+  contract's binary32/binary64 order. `Town` adds one after each landing-place prefab when
+  any of the eight region cells round the zone's own has positive elevation (+0x18 of the
+  region record, the engine's `RegionCell::elevation`). Engine identification: the
+  contract's zone x * 256 + A + Px is the town builder's plot centre `cx(p)` (plot origin
+  plus half its size), r is `Plot::face` (+0x14) and H is `Plot::hi` (+0x04).
+- **List (§2.3, §2.4):** `creatures::Airships` drops ships whose target is 512 blocks or more
+  from every player, then copies each template of the player zones (3 x 3 round each player)
+  once a player is within 512 blocks, posed at the target. Offline (unconnected) only on the
+  client; the server runs it for its connected players. The original server never sends
+  ships, so connected clients have none.
+- **Collision (§3, §4):** after the terrain and static tests of an axis, a body with an
+  obstacle list tests each ship within 64 blocks (squared length 4096) in its model frame
+  (binary32 rotation by -yaw, half-size offset), voxel by voxel; every hit ship takes the
+  body's key and sets the sub-step base (ship z - T(half height)). A z hit stands the body
+  (landing flag). The step-up attempt also needs the raised box (1.01 added in the model
+  frame) clear of every ship, and its snap is relative to the sub-step base. Pure red voxels
+  are emptied when the model is set.
+- **Frame update (§6.2, §6.3):** target += T(seconds x velocity); the pose follows by the
+  per-millisecond factor; carried creatures follow the pose change (position, follow point,
+  yaw) and leave the set when gone or 64 blocks from the target.
+- **Drawing (§7):** the client draws each ship at its current pose turned by +yaw with its
+  grid centred on the position.
+Not modelled (open; a steering author round is running): the course steering of §6.1 (ships
+keep the template's zero velocity, so they hover at their target), the yaw-follow helper,
+the companion spawn and creature placement of §6.4, the unstuck routine's ship part, the
+out-of-grid shared cell writes of §5 (treated as empty), and the yaw field at +0x137C. The
+server cannot carry players (their bodies are their clients'), so their keys leave the set.

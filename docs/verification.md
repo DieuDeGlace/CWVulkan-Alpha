@@ -1650,3 +1650,11 @@ tested colour; raw z -65536 is tested at -2 and recorded at -1 by the strike, -2
 blast; raw z -32768 is recorded at 0 by the strike and -1 by the blast; radius 0 breaks
 nothing. All 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+Airships (2026-11-14). CreatureTests: the landing-plot template's identifier, heading, home,
+target and destination; no copy with the player 600 blocks away (outside the player zones),
+a copy posed at the target with the player 200 blocks away; a box inside the hull collides,
+takes the base position z - T(half height) and is carried; pure red voxels never collide; a
+body dropped above the deck lands on it, stands, and is carried; a stationary ship leaves
+its passenger in place and drops absent keys; the ship is dropped once every player is
+beyond 512 blocks. All 60 CTests pass, the player diagnostic and five live runs pass, and the
+six captures match the preceding batch (no landing place is in their views).

@@ -34,6 +34,7 @@
 #include "Quests.h"
 #include "StaticStates.h"
 #include "WorldItems.h"
+#include "creatures/Airships.h"
 #include "creatures/Npcs.h"
 #include "net/Protocol.h"
 #include "net/Socket.h"
@@ -155,6 +156,7 @@ class Server {
     // not certify original-server RNG/thread/startup behavior.
     worldgen::Random worldRandom{1};
     creatures::Npcs npcs{worldRandom};
+    creatures::Airships airships; // world objects (alpha-world-objects.md)
     // Projectiles §2: the NPCs' projectiles (players' own are simulated by their clients), and
     // their hits on NPCs, applied with the next step's incoming hits.
     creatures::Projectiles projectiles;

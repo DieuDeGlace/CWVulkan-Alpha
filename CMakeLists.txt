@@ -156,6 +156,7 @@ add_library(engine STATIC
     src/creatures/Pose.cpp
     src/creatures/Particles.cpp
     src/creatures/Physics.cpp
+    src/creatures/Airships.cpp
     src/creatures/Visibility.cpp
     src/creatures/ControllerAim.cpp
     src/creatures/TargetSelection.cpp
