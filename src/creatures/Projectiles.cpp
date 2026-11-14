@@ -125,17 +125,6 @@ void endChain(Combatant &c) {
     c.actionMs = (int32_t)std::floor((float)c.actionMs * before / attackSpeed(c));
 }
 
-// 0x5988a0: whether a projectile of `a` may hurt `b`.
-bool canDamage(const Combatant &a, const Combatant &b) {
-    if (a.controller == 6 || b.controller == 6)
-        return true;
-    if ((a.controller == 1) != (b.controller == 1))
-        return true;
-    if (a.controller == 1 && b.controller == 1)
-        return peacefulAnimal(a.type, a.appearanceFlags) != peacefulAnimal(b.type, b.appearanceFlags);
-    return (a.mode & 0x20) || (b.mode & 0x20);
-}
-
 bool solidAt(const BlockType &block, glm::dvec3 p) {
     const uint8_t t = block((int32_t)std::floor(p.x), (int32_t)std::floor(p.y), (int32_t)std::floor(p.z)) & 0x1f;
     return t != 0 && t != 2;
@@ -638,7 +627,8 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             if ((path == HitPath::Contact || from) && C.fighter->health <= 0)
                 return false;
             if (path == HitPath::Impact || !(p.kind == BURST && p.element == 2)) {
-                if (from && (C.fighter->id == p.shooter || !canDamage(*from, *C.fighter)))
+                // Hostility-test callers 0x22162C / 0x2225AA (owner first).
+                if (from && (C.fighter->id == p.shooter || !hostilityTest(*from, *C.fighter)))
                     return false;
             }
             return sight(p.blocks(), C.body->blocks(), block);

@@ -609,10 +609,11 @@ void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
     FlagScope indexScope{actorLookupActive};
     const glm::dvec3 P = bomb.body.blocks();
     frame.bursts.push_back(bombBurst(P)); // particles §5.1
-    // Hazards-blast-ticks contract §4.3/§4.4 (site 2). The bomb has role 6, so the admission
-    // test passes for every victim; dodgers (+0x128) are skipped.
+    // Hazards-blast-ticks contract §4.3/§4.4 (site 2). The bomb has role 6, so the hostility
+    // test passes for every victim but itself (the blast loop matches caller 0x20F192 by its
+    // struck set and horizontal reach; not traced further); dodgers (+0x128) are skipped.
     auto hit = [&](Combatant &target, Body &body, glm::vec3 box) {
-        if (&target == &bomb.fighter || !(target.health > 0 || std::isnan(target.health)) || target.dodgeMs != 0)
+        if (!hostilityTest(bomb.fighter, target) || !(target.health > 0 || std::isnan(target.health)) || target.dodgeMs != 0)
             return;
         // Horizontal reach: the raw horizontal squared length below trunc(((0.7 x + 8)^2) x 65536).
         int64_t horizontal = 0;
@@ -858,7 +859,7 @@ bool Npcs::walkPath(Npc &n, float dtMs, const BlockType &block) {
 
 bool Npcs::hostileInContact(const Combatant &fighter, const Body &body) const {
     for (const Npc &o : list)
-        if (o.fighter.health > 0 && hostile(fighter, o.fighter) && inContact(body.size, body.blocks(), o.body.size, o.body.blocks()))
+        if (o.fighter.health > 0 && hostilityTest(fighter, o.fighter) && inContact(body.size, body.blocks(), o.body.size, o.body.blocks()))
             return true;
     return false;
 }
@@ -1913,8 +1914,8 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
             // the beam-leftovers contract left open), both before admission.
             const bool critical = (float)draw() / 32767.f < criticalChance(attacker);
             const HitInput in = beamInput(attacker, critical, [&] { return draw(); });
-            // Engine admission stand-in for routine 0x1988A0: hostility either way.
-            if (hostile(attacker, c) || hostile(c, attacker)) {
+            // Hostility-test caller 0x21658E (striker, target).
+            if (hostilityTest(attacker, c)) {
                 const bool accepted = landBlow(attacker, attackerBody, c, body, frame, in, players);
                 // B6.1: class pair (_, 2) drains: a self record of -S4 and a direct health gain.
                 if (accepted && attacker.specialization == 2) {
@@ -2079,23 +2080,18 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
             frame.buffs.push_back(*consumed);
     const StrikeGeometry geometry = strikeGeometry(attacker, attackerBody, yaw);
     bool hitAny = false;
-    // Engine admission stand-in for the hostility routine 0x1988A0: the engine's sides.
-    // Players strike creatures other than role 6; creatures strike players and their quest
-    // battle's other side.
+    // K5 step 5: the hostility test (striker, target), alpha-hostility-test.md §4. Engine quest
+    // extension (not native): a creature's swing also lands on its quest battle's other side.
     const auto admits = [&](const Combatant &target, const Npc *npc) {
-        if (&target == &attacker)
-            return false;
-        if (byPlayer)
-            return npc && npc->fighter.controller != 6;
-        if (!npc)
+        if (hostilityTest(attacker, target))
             return true;
-        return npcTarget && target.id == npcTarget && (attackerAlly || npc->questRole == 3);
+        return !byPlayer && npc && npcTarget && target.id == npcTarget && (attackerAlly || npc->questRole == 3);
     };
     // §6: actions 0x20/0x21 of class pair (_, 1) heal the creatures they do not attack on a
-    // flagged frame. Role-6 targets are left out, as the projectile heal does.
+    // flagged frame (role 6 is always attacked, so never healed here).
     const auto healCheck = [&](Combatant &target, Body &body, const Npc *npc) {
         if ((attacker.action != 0x21 && attacker.action != 0x20) || !areaHeal || admits(target, npc) ||
-            attacker.specialization != 1 || target.controller == 6)
+            attacker.specialization != 1)
             return;
         std::array<int64_t, 3> at;
         std::copy_n(body.position, 3, at.begin());
@@ -2445,7 +2441,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             if (lunges(c.action, c.actionMs)) {
                 for (const PlayerView &p : players)
                     b.targetInContact = b.targetInContact ||
-                                        (p.fighter.health > 0 && hostile(c, p.fighter) &&
+                                        (p.fighter.health > 0 && hostilityTest(c, p.fighter) && // caller 0x219F7D
                                          inContact(b.size, b.blocks(), p.body.size, p.body.blocks()));
                 b.targetInContact = b.targetInContact || hostileInContact(c, b);
                 // Found, or past 500 ms: the intercept ends (and a pending 47 becomes the smash).

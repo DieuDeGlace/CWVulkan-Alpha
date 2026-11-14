@@ -1936,6 +1936,28 @@ int main() {
         same(npcs.all().empty(), 1, "despawned beyond 220 blocks");
     }
 
+    // Hostility test §2.4: identity, role 6, one role 1, differing exemption, toggle bit 0x20.
+    {
+        Combatant player, other, monster, deer, object, tamed;
+        player.controller = other.controller = 0;
+        monster.controller = deer.controller = 1;
+        monster.type = 12, deer.type = 19; // 19 is in the exempt list, 12 is not
+        object.controller = 6;
+        tamed.controller = 5;
+        same(hostilityTest(object, object), 0, "the same object is never hostile, even role 6");
+        same(hostilityTest(player, object) && hostilityTest(object, monster), 1, "role 6 is hostile to all");
+        same(hostilityTest(player, monster) && hostilityTest(monster, player), 1, "exactly one role 1");
+        same(hostilityTest(tamed, monster), 1, "role 5 against role 1");
+        same(hostilityTest(player, other) || hostilityTest(tamed, player), 0, "non-1 roles are not hostile");
+        same(hostilityTest(monster, deer), 1, "role 1 against an exempt role 1");
+        deer.appearanceFlags = 0x0800; // bit 11 removes the exemption
+        same(hostilityTest(monster, deer), 0, "two unexempt role 1");
+        other.mode = 0x20;
+        same(hostilityTest(player, other) && hostilityTest(other, player), 1, "toggle bit 0x20 on either");
+        player.health = -5;
+        same(hostilityTest(player, monster), 1, "health is not read");
+    }
+
     // Beam-height §2.2: with a shield in the second hand, bar entry 1 is 8; holding it starts the
     // block at clock 0 and letting go turns it into 0x68 (104) at clock 0, with no further test.
     {

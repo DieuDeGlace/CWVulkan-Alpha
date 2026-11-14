@@ -1991,3 +1991,26 @@ its record snapshot with its buffs; its client applies the hit.
 Engine stand-ins still open: the hit routine runs at the engine's existing delivery points
 (the offline player at once, creatures in their next step) instead of inside the trap loop;
 zone selection near role-0 creatures; the level-at-position routine.
+
+## Hostility test (round 11, held 2026-11-13)
+
+Held contract `docs/specs/alpha-hostility-test.md` (SHA-256 B10605EA...3884), read whole.
+`creatures::hostilityTest(source, other)` implements §2.4 in order: the same object never
+(identity, not id); either role 6 always; exactly one role 1 always; two role-1 creatures
+when their exemption (the §2.3 predicate, the engine's existing `peacefulAnimal`, whose list
+and appearance mask match) differs; otherwise mode bit 0x20 of either. It reads no health,
+makes no draws and is symmetric. Wired at the callers of §2.7:
+- the melee strike loop and its area-heal check (the engine-side sides stand-in is gone;
+  role-6 objects are now struck by everyone and town NPCs no longer strike players);
+- the beam target test (was the behaviour-side `hostile` in both directions);
+- the nearby-hostile contact flag for lunges, for players and creatures;
+- both projectile collision loops (replacing the local `canDamage` copy, now with identity);
+- the client's target choice (`ControllerAim`, local player first);
+- the online client's strike path (role 6 no longer excluded);
+- the bomb blast loop (equivalent: the bomb is role 6), matched to caller 0x20F192 by its
+  struck set and reach test only.
+
+Engine extension kept and identified: a creature's swing also lands on its quest battle's
+other side (required engine quests). The behaviour-side relation (`hostile`, 0x196CA0) stays
+for target choice; the write-up identifies it as a distinct sibling but does not specify it.
+Still open: the geometric test's ray-march second phase; the online area heal.

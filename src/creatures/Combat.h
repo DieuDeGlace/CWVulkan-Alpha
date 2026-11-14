@@ -301,6 +301,12 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &targetVelocity, Combatant *a
                       const std::function<int()> &draw,
                       const std::function<void(const HitEmission &)> &emit = {});
 
+// Hostility test (alpha-hostility-test.md §2.4): whether `source` may harm `other`. The same
+// object never; either role 6 always; exactly one role 1 always; two role-1 creatures when
+// exactly one is exempt (peacefulAnimal); otherwise toggle bit 0x20 of either mode word.
+// Symmetric, reads no health, makes no draws. Pass the real objects: sameness is identity.
+bool hostilityTest(const Combatant &source, const Combatant &other);
+
 // Attack-routine §6 site 1: what a trap passes with no attacker: damage D, flags A and B
 // clear, the push as V, the mitigation selector (resistance for type 6), kind 0, blockable,
 // and the target's raw position (`targetAt` in blocks).

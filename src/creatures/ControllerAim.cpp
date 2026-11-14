@@ -119,7 +119,8 @@ AimPoint aimPoint(const CameraState &camera, const Fixed3 &playerPosition, const
             nearest = toPlayer;
             out.nearest = k.fighter->id;
         }
-        if ((hostile(player, *k.fighter) || hostile(*k.fighter, player)) && (admitted < 0.f || d2 < admitted))
+        // Hostility-test caller 0x098C6A: the local player first, each candidate second.
+        if (hostilityTest(player, *k.fighter) && (admitted < 0.f || d2 < admitted))
             admitted = d2;
     }
     // The override: the nearest admitted creature's depth from the eye, if in front of the player.

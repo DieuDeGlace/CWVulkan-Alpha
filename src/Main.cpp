@@ -1426,8 +1426,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         target.controller = other.controller();
                         if (const auto resident = otherFighters.find(id); resident != otherFighters.end())
                             target.buffs = resident->second.fighter.buffs;
-                        if (target.health <= 0 || target.controller == 6 ||
-                            (target.controller == 0 && !creatures::hostile(c, target)))
+                        // K5 step 5 / hostility test (striker, target); the online area heal
+                        // for non-hostile targets is not modelled here.
+                        if (target.health <= 0 || !creatures::hostilityTest(c, target))
                             continue;
                         creatures::Body body;
                         for (int axis = 0; axis < 3; axis++)

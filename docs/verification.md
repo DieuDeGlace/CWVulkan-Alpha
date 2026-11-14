@@ -1623,3 +1623,9 @@ through the attackerless attack routine: one discarded draw per hit, a main reco
 attacker, the 0.5 flash, the type-7 armour selector, and a damage-taken buff of 0.5 halving
 a 20 hit to 10. All 60 CTests pass, the player diagnostic and five live runs pass, and the
 six captures match the preceding batch.
+Hostility test (2026-11-13). A CreatureTests case checks each rule of the relation: identity
+(even for role 6), role 6 against everyone, exactly one role 1, role 5 against role 1,
+non-1 roles at peace, an exempt role-1 animal against a monster and its loss of exemption
+through appearance bit 11, the 0x20 mode bit on either side, and that health is not read.
+All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures
+match the preceding batch.

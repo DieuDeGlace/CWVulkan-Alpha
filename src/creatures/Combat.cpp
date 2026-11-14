@@ -1,6 +1,7 @@
 #include "creatures/Strike.h"
 #include "creatures/Combat.h"
 #include "creatures/Abilities.h"
+#include "creatures/Names.h"
 #include "creatures/Physics.h"
 #include <algorithm>
 #include <bit>
@@ -910,6 +911,20 @@ bool hitMoment(const Combatant &c, float beforeMs, float dtMs) {
 }
 
 // §5
+
+bool hostilityTest(const Combatant &source, const Combatant &other) {
+    if (&source == &other)
+        return false;
+    if (source.controller == 6 || other.controller == 6)
+        return true;
+    const bool sourceRole1 = source.controller == 1, otherRole1 = other.controller == 1;
+    if (sourceRole1 != otherRole1)
+        return true;
+    if (sourceRole1 && peacefulAnimal(source.type, source.appearanceFlags) !=
+                           peacefulAnimal(other.type, other.appearanceFlags))
+        return true;
+    return (source.mode & 0x20) || (other.mode & 0x20);
+}
 
 HitInput trapHitInput(glm::dvec3 targetAt, float damage, glm::vec3 push, bool resistance) {
     HitInput in;
