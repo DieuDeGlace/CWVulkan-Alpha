@@ -903,6 +903,21 @@ int main() {
         same(remotes.find(7)->drawn[0], frozen, "a dead creature's drawn pose stays frozen");
         remotes.retain({});
         same(remotes.find(7) == nullptr, 1, "unlisted creatures are forgotten");
+
+        // Aim §3.7/§3.8 on a received creature: facing its aim turns the yaw toward the aim's
+        // heading from the received value, and with action 0 the drawn aim is the aim.
+        record.setHealth(50.f);
+        record.bytes[0x114] = 0x04; // the face-aim mode bit
+        const float aim[3] = {1.f, 0.f, 0.f}, pitch = 12.f;
+        std::memcpy(&record.bytes[0x150], aim, sizeof aim);
+        std::memcpy(&record.bytes[0x48], &pitch, sizeof pitch);
+        remotes.receive(8, record, true);
+        same(remotes.find(8)->headPitch, 12.f, "the head pitch is received");
+        remotes.step(16, air, {});
+        const net::RemoteCreatures::Remote &faced = *remotes.find(8);
+        same(faced.drawnLook == glm::vec3(1, 0, 0), true, "with action 0 the drawn aim is the aim");
+        same(faced.rotation.z < 0.f && faced.rotation.z > -90.f, true, "the yaw turns toward the aim's heading");
+        same(faced.headPitch < 12.f && faced.headPitch > 0.f, true, "the head pitch turns toward the level aim");
     }
 
     // Steering §2.1: the angle helper reaches b within a quarter turn, and stays on the near

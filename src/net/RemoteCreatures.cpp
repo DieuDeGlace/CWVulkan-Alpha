@@ -1,5 +1,6 @@
 #include "net/RemoteCreatures.h"
 #include "creatures/AngleStep.h"
+#include "creatures/Npcs.h"
 #include <bit>
 
 namespace net {
@@ -7,7 +8,7 @@ namespace net {
 void RemoteCreatures::receive(uint64_t id, const CreatureRecord &record, bool snap) {
     const auto [it, created] = list.try_emplace(id);
     Remote &r = it->second;
-    // §1.6: every received field lands on the live state (the whole-record copy).
+    // Â§1.6: every received field lands on the live state (the whole-record copy).
     creatures::Body &b = r.live;
     for (int axis = 0; axis < 3; axis++)
         b.position[axis] = record.position(axis);
@@ -21,13 +22,21 @@ void RemoteCreatures::receive(uint64_t id, const CreatureRecord &record, bool sn
     b.swimmer = (b.appearanceFlags & 0x0100) != 0;
     b.flyer = (b.appearanceFlags & 0x0002) != 0;
     b.replica = true;
+    r.fighter = record.fighter();
+    b.mode = r.fighter.mode;
+    b.dodgeMs = int32_t(r.fighter.dodgeMs);
+    b.look = record.look();
     r.rotation = record.orientation();
+    b.yaw = r.rotation.z;
+    r.headPitch = record.headPitch();
     r.health = record.health();
     // A first receipt always snaps (the drawn pose of a new creature starts at the record).
     if (snap || created) {
         r.smoothing = false;
         std::copy(b.position, b.position + 3, r.drawn.begin());
         r.drawnRotation = r.rotation;
+        if (created)
+            r.drawnLook = b.look; // engine choice: a new creature's drawn aim starts at its aim
     } else {
         r.smoothing = true;
     }
@@ -38,7 +47,7 @@ void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {
 }
 
 void RemoteCreatures::step(int32_t dtMs, const creatures::BlockType &block, const creatures::ObjectTest &objects) {
-    // §2.2: the fraction f approaches 1 at 0.015 once per millisecond of the step.
+    // Â§2.2: the fraction f approaches 1 at 0.015 once per millisecond of the step.
     float f = 0.f;
     for (int32_t ms = 0; ms < dtMs; ms++)
         f = (1.f - f) * 0.015f + f;
@@ -47,13 +56,17 @@ void RemoteCreatures::step(int32_t dtMs, const creatures::BlockType &block, cons
         if (!(r.health > 0.f))
             continue;
         creatures::worldStep(r.live, dtMs, block, objects);
+        // Aim §3.7 facing turns the live yaw and head pitch from the previous drawn aim; §3.8
+        // then moves the drawn aim (the received clock stands for the clock before the step).
+        creatures::faceAfterStep(r.rotation.z, r.headPitch, r.drawnLook, r.live, r.fighter, r.fighter.actionMs, dtMs);
+        r.live.yaw = r.rotation.z;
         const int64_t *live = r.live.position;
-        if (!r.smoothing) { // §2.1: the drawn pose is a copy of the live pose
+        if (!r.smoothing) { // Â§2.1: the drawn pose is a copy of the live pose
             std::copy(live, live + 3, r.drawn.begin());
             r.drawnRotation = r.rotation;
             continue;
         }
-        // §2.2: each axis closes (d x T(f)) / 65536 of its gap, the vertical axis a second
+        // Â§2.2: each axis closes (d x T(f)) / 65536 of its gap, the vertical axis a second
         // time by the binary32 gap x f.
         for (size_t axis = 0; axis < 3; axis++) {
             const uint64_t d = uint64_t(live[axis]) - uint64_t(r.drawn[axis]);
@@ -62,7 +75,7 @@ void RemoteCreatures::step(int32_t dtMs, const creatures::BlockType &block, cons
         }
         const float gap = float(std::bit_cast<int64_t>(uint64_t(live[2]) - uint64_t(r.drawn[2])));
         r.drawn[2] = std::bit_cast<int64_t>(uint64_t(r.drawn[2]) + uint64_t(int64_t(gap * f)));
-        // §2.3: each rotation component by the angle step.
+        // Â§2.3: each rotation component by the angle step.
         for (int c = 0; c < 3; c++)
             r.drawnRotation[c] = creatures::angleStep(r.drawnRotation[c], r.rotation[c], f);
     }

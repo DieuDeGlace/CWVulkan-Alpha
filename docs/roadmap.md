@@ -242,8 +242,9 @@ Differences from the Steam engine that shape the plan:
   sequence step by step. The held fatal-disposal contract closes the virtual
   disposal (spawn records only, no draws), the fatal-loot helper's full draw
   order (the engine now draws a boss's worn-item roll) and the eight upstream
-  call sites; the attack routine's miss/block/absorption choice and the heal
-  power routine remain open.
+  call sites. The held attack-routine contract confirmed the miss/block/
+  absorption choice and the heal power routine (2026-11-12); its unaudited
+  callees and the callers' untraced upstream gates remain open.
 - [x] Bounded fatal-context producers: core snapshots retain cached descriptor
   coordinates/ordinal and reverse ownership; the forward link stays resident.
   Ordinary descriptor activation preserves its origin across movement, while
@@ -597,9 +598,11 @@ Differences from the Steam engine that shape the plan:
   the per-selector evaluator and the mapping onto engine creature fields remain.
   The weapon lights now read the previous pose refresh's weapon points instead
   of the main-position fallback. Term by term, the rotation primitives, swing
-  precision, dodge axis, carried branches and held grips now follow the contract;
-  the per-selector evaluator, owner +0x58 turns, selector 0x33/0x34 swing factor,
-  lean inputs and the blend repeat count remain open.
+  precision, dodge axis, carried branches and held grips now follow the contract.
+  The four held pose-selector contracts now drive the per-selector evaluator
+  (every case, the 0x33/0x34 swing factor and the model-slot writes). Owner
+  +0x58 turns, lean inputs, the blend repeat count, the owner hand-turn and spin
+  fields (+0x148/+0x154/+0x1314) and the post-evaluator consumers remain open.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
 - [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look

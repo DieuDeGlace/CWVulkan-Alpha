@@ -1689,4 +1689,7 @@ Pose selectors (2026-11-14). CreatureTests: selector 8 with an off-hand model, s
 clearing the amplitude, 0x13's strike offsets, 0x30 in phase 3, 0x46 after the strike, 0x47
 writing model 2101 with the 1.5 off-hand scale, and the knockdown offset. All 60 CTests pass,
 the player diagnostic and five live runs pass, and the six captures show the same scenes with
-creatures and the player posed normally.
+creatures and the player posed normally.Remote facing (2026-11-14). CreatureTests: a received creature keeps its received head pitch;
+with the face-aim bit and action 0 one 16 ms update sets the drawn aim to the aim and turns
+the yaw and head pitch toward it. All 60 CTests pass, the player diagnostic and five live
+runs (including the connected client) pass, and the six captures match the preceding batch.

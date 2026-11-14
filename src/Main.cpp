@@ -2957,6 +2957,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 creatures::Motion motion;
                 motion.velocity = other.velocity();
                 motion.yawDegrees = drawnYaw;
+                motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
                 if (other.health() <= 0) { // particles §7.2
                     if (shattered.insert(id).second)

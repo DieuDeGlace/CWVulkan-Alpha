@@ -2229,3 +2229,16 @@ case from these contracts:
 Open (commented in the source): the owner hand-turn targets (+0x148/+0x154) and the
 +0x1314 spin variants, 0x3A's mount terms, the consumers of 0x29's head and tail values, the
 foot spread factor, +0x40 read as intent in 0x36, and the quadruped rest height.
+### Remote facing and drawn aim (2026-11-14)
+
+From the held `alpha-remote-creature-interpolation.md` (§2.4, §3.1, §3.2) and
+`alpha-combat-aim-triplet.md` (§3.7, §3.8): no client gate in the creature loop excludes a
+received creature from the facing block (0x21F29A-0x21F62B) or the drawn-aim store
+(0x21FD54), so `net::RemoteCreatures` now runs the shared `faceAfterStep` after each
+received creature's movement step. The receipt lands the mode word (face-aim bit), dodge
+time, aim (record field 26), head pitch (field 5) and the decoded fighter on the live state;
+the facing turns the live yaw and head pitch from the previous drawn aim, then the drawn aim
+moves toward the aim and is replaced by it between actions. Remote creatures are drawn with
+that head pitch. Engine choices: a new creature's drawn aim starts at its aim; the received
+action clock stands for the clock before the step (whether a remote clock advances locally
+is not closed). Still open: the driven-flag list, the attachment copy path.
