@@ -1665,3 +1665,7 @@ course 1 to 2, then flies at 10 blocks a second toward the waypoint ahead and ab
 its target moves by velocity x seconds; a ship copied at its target yaw keeps it through the
 yaw follow. All 60 CTests pass, the player diagnostic and five live runs pass, and the six
 captures match the preceding batch.
+In-range combat arithmetic (2026-11-14). No new unit case (the change replaces double
+precision by the contract's binary32 forms in the same branches); the existing creature,
+pet, combat and selection tests still pass. All 60 CTests pass, the player diagnostic and
+five live runs pass, and the six captures match the preceding batch.

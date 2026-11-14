@@ -1130,7 +1130,6 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     const Phases p = phases(c, c.action);
     const glm::dvec3 self = npc.body.blocks();
     const glm::dvec3 there = target.body->blocks();
-    const glm::dvec3 toTarget = there - self;
     const bool seen = sight(self, there, block, sightRecords);
     // Open points 4 §2: the range, each rule over the last. A special is rolled afresh on every
     // update while its timer is out; it is kept only if the creature is in range for that roll.
@@ -1281,8 +1280,25 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         }
         return true;
     }
+    // Held contract §6.3: D (the separation conversion) is the aim and d² its binary32 square,
+    // the values every class below compares and steers with.
+    const glm::vec3 D = separation;
+    const float d2 = separationSquared;
     npc.body.mode |= AIMING;
-    npc.body.look = glm::vec3(toTarget);
+    npc.body.look = D;
+    // §6.4(f) step 3: a lunge at 10 blocks a second along D, normalised by the reciprocal of
+    // the rounded double root when it is not zero.
+    const auto lungeVelocity = [&] {
+        glm::vec3 v = D;
+        const float squared = (v.x * v.x + v.y * v.y) + v.z * v.z;
+        if (squared > 0.f) {
+            const float r = 1.f / float(std::sqrt(double(squared)));
+            v = {v.x * r, v.y * r, v.z * r};
+        }
+        return glm::vec3(v.x * 10.f, v.y * 10.f, v.z * 10.f);
+    };
+    // §6.4(f)/(g): the signed raw height of the subject over the target.
+    const int64_t above = std::bit_cast<int64_t>(uint64_t(npc.body.position[2]) - uint64_t(target.body->position[2]));
     const auto start = [&](int32_t action) {
         c.action = action;
         c.actionMs = 0;
@@ -1337,42 +1353,41 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
                 pool.push_back(73);
         }
         start(pool[(uint32_t)draw() % pool.size()]);
-        if (golem && c.action == 54) { // the smash leaps at the target
-            npc.body.velocity = 2.f * glm::vec3(toTarget);
+        if (golem && c.action == 54) { // §6.4(c) step 2: the smash leaps at twice T - S
+            int64_t doubled[3];
+            for (int axis = 0; axis < 3; axis++) {
+                const uint64_t d = uint64_t(target.body->position[axis]) - uint64_t(npc.body.position[axis]);
+                doubled[axis] = std::bit_cast<int64_t>(d * 0x20000u) / 65536;
+            }
+            const int64_t origin[3] = {0, 0, 0};
+            npc.body.velocity = separationOf(doubled, origin);
             npc.body.velocity.z = 15;
         }
         return beamAim();
     }
     // §1.7: a dragon (no magic user) casts between 8 and 60 blocks; closer it leaps or lunges.
     if (c.type == 101 && !isMagicUser(c)) {
-        const double d2 = glm::dot(toTarget, toTarget);
-        if (d2 >= 3600) // the class does nothing further; no later class runs
+        if (!(d2 < 3600.f)) // the class does nothing further; no later class runs
             return true;
-        if (d2 >= 64 && d2 < 3600) {
+        if (!(d2 < 64.f)) {
             if (actionOver(c))
                 start(37);
             return true;
         }
-        if (d2 < 64) {
-            npc.body.mode |= AIMING;
-            if (c.actionMs > 2000) {
-                if ((draw() & 1) && self.z - there.z <= 8) {
-                    npc.body.velocity.z = 30;
-                } else {
-                    start(51);
-                    if (glm::dot(toTarget, toTarget) > 0)
-                        npc.body.velocity = 10.f * glm::normalize(glm::vec3(toTarget));
-                }
+        npc.body.mode |= AIMING;
+        if (c.actionMs > 2000) {
+            if ((draw() & 1) && above <= 524288) { // 8 blocks
+                npc.body.velocity.z = 30;
+            } else {
+                start(51);
+                npc.body.velocity = lungeVelocity();
             }
-            return true;
         }
+        return true;
     }
     // Magic users within 60 blocks: the primary attack at low mana or on an even draw, else
     // the secondary.
     if (isMagicUser(c)) {
-        // d², in binary32 as the contract forms it: (Dy·Dy + Dx·Dx) + Dz·Dz.
-        const glm::vec3 D(toTarget);
-        const float d2 = (D.y * D.y + D.x * D.x) + D.z * D.z;
         if (!(d2 < 3600.f)) // the class does nothing further; no later class runs
             return true;
         if (c.mana <= 0.5f || draw() % 2 == 0)
@@ -1403,20 +1418,18 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     }
     // Open points 4 §5.1: claws and jaws together hop. A hop needs only 2 s of the current action,
     // not its end, and every update after that draws again until it lunges.
-    const double distance2 = glm::dot(toTarget, toTarget);
     const uint16_t natural = npc.looks.flags;
     if ((natural & 0x02) && (natural & 0x10)) {
-        if (distance2 >= 64) {
+        if (!(d2 < 64.f)) {
             npc.body.mode &= ~AIMING;
             return true;
         }
         if (c.actionMs > 2000) {
-            if ((draw() & 1) && self.z - there.z <= 2) {
+            if ((draw() & 1) && above <= 131072) { // 2 blocks
                 npc.body.velocity.z = 5;
             } else {
                 start(51);
-                if (distance2 > 0)
-                    npc.body.velocity = 10.f * glm::normalize(glm::vec3(toTarget));
+                npc.body.velocity = lungeVelocity();
             }
         }
         return true;
@@ -1428,13 +1441,16 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         if (bigCreature(c.type) || own >= 2 || c.actionMs < (float)duration(c, c.action) ||
             !(npc.body.contact & (ON_GROUND | IN_WATER)))
             return false;
-        const glm::vec2 e(toTarget);
-        if (glm::dot(e, e) == 0)
+        // §6.4(h) step 3: the horizontal part of D, scaled by the reciprocal of the rounded
+        // double root; the second draw picks along, back, or to either side, at 20.
+        const float squared = (D.y * D.y + D.x * D.x) + 0.f;
+        if (!(squared > 0.f))
             return true;
-        const glm::vec2 u = glm::normalize(e);
-        const glm::vec2 right(u.y, -u.x);
-        const glm::vec2 ways[4] = {u, -u, right, -right};
-        npc.body.velocity = glm::vec3(20.f * ways[(uint32_t)draw() % 4], 5);
+        const float r = 1.f / float(std::sqrt(double(squared)));
+        const glm::vec2 u(D.x * r, D.y * r);
+        const glm::vec2 side(u.y, -u.x);
+        const glm::vec2 ways[4] = {u * 20.f, u * -20.f, side * 20.f, side * -20.f};
+        npc.body.velocity = glm::vec3(ways[draw() % 4], 0.f + 5.f);
         npc.body.dodgeMs = 600;
         c.dodgeMs = 600;
         return true;
@@ -1459,7 +1475,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
 
     if (shooter(c)) {
         // §6.2: the ranged rule. (Beyond 60 blocks nothing happens; R keeps them nearer.)
-        if (distance2 >= 3600)
+        if (!(d2 < 3600.f))
             return true;
         const bool held = c.action == 24 || c.action == 25 || c.action == 27;
         // The one-in-ten draw is made only while the dodge lockout is zero.
@@ -1495,8 +1511,8 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     // §6.1: melee.
     // Held contract: the melee class does nothing beyond its reach; within it
     // the dodge draw needs a zero lockout, and so does the attack fallback.
-    const float reach = 3.f * (own + theirs);
-    if (!(distance2 < (double)reach * reach))
+    const float reach = (own + theirs) * 3.f;
+    if (!(d2 < reach * reach))
         return true;
     const bool held = c.action == 59 || c.action == 63 || c.action == 8;
     if (!held && c.dodgeMs == 0 && (uint32_t)draw() % 10 == 0 && dodge())

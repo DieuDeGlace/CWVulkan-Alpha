@@ -2138,3 +2138,21 @@ Held contract `docs/specs/alpha-airship-steering.md` (SHA-256 CF69EB99...97E4), 
 Still open: the finishing step's effect on the companion (boss/size bits), the behaviour
 object, the health gate of the unstuck routine (the engine body has no health), and the
 world values read by the spawn pass's window test.
+
+### Creature in-range combat: exact arithmetic (2026-11-14)
+
+Audit of `Npcs::combat`'s near route against the held `alpha-created-actor-combat.md` §6:
+the class order (a)-(i) and their decisions already matched (the dragon class is tested
+before the magic class but excludes magic users, which is equivalent), and `actionOver`
+is the R0 test. The arithmetic now follows the contract instead of double precision:
+- d² is the binary32 square of the separation conversion D (§3 step 9, §6.3), used by every
+  band (64, 3600, the melee reach (S + T) x 3) and D is the stored aim;
+- the golem smash leaps at the 64-bit doubled T - S converted like D (§6.4(c));
+- the dragon and claws-and-jaws lunges normalise D by the reciprocal of the rounded double
+  root before x 10, and their height tests compare the raw signed height with 524288 /
+  131072 (§6.4(f), (g));
+- the evasion uses D's horizontal part with the same reciprocal, the perpendicular as
+  (u2, -u1) and z 0 + 5 (§6.4(h)).
+Open (round 15 author running): the helper tables 0x044270, 0x03CAA0, 0x047310, 0x03D1A0,
+0x045410 and 0x0456A0 (the engine's primary/secondary attack starters stand in for the last
+two), and the busy indicator bit 0x0040 of §2.
