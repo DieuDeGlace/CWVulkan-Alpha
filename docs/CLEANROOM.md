@@ -2313,3 +2313,20 @@ critical section; the 80-byte node and list-length guard of the item-effect appe
 device/reset formats, GUI render surfaces and gamma ramps; the previous-value retention when
 the fog distance is not positive. Open engine question: a device without B8G8R8A8_UNORM falls
 back to its first format, which could be sRGB; the contract authorises neither choice.
+## Provenance re-certification, batch 3a (2026-11-14)
+
+Four inherited contracts were re-certified by a fresh source-only author against the
+original images (12 corrections; no reconstruction consulted) and read whole by the
+implementer:
+- `alpha-creature-light-attachment-producers.md` (12A6F25F...5233)
+- `alpha-client-buff-event-transmission.md` (C60C344B...F8D7)
+- `alpha-spatial-association-producers.md` (0BF3B6D5...67F2)
+- `alpha-fatal-object-association-producers.md` (1374AB45...3B13)
+
+The engine already matched them (buff residents: types 1, 2, 3, 6, 7, 9, 10, 11 replace all 24
+bytes, every other type appends; the selector-17 producer's second-creature source; the
+remote-creature blend toward the same creature's live state; the spatial association never
+written; the fatal snapshot list). Not modelled: the native P/reference adjustment order over
+the four attachment series (the engine keeps trail points relative to the displayed position);
+the model-point transform and collection argument; the server's double target lookup, list
+node size and packet-9-after-packet-8 loop order; apply replacing immutable zone fields.

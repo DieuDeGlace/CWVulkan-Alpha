@@ -1,3 +1,5 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha spatial association-word production boundaries
 
 ## Supported evidence and result
@@ -6,7 +8,7 @@ The supported image is the original 32-bit `binary/Cube.exe` under the relative 
 
 This audit closes the association-word origin of the **directly appended spatial records** in all three requested generator bodies. Those records receive `0xFFFFFFFF` from their constructors/builders and retain it when appended. No first nondefault, zero or positive producer for spatial record `+0x178` was established. The result does not supply a missing association by assigning an array ordinal.
 
-The field-focused inspection covered the complete original instruction bodies from `0x1AF170` through the return at `0x1BF3D2`, from `0x1CC510` through the return at `0x1D5F8C`, and from `0x1E4850` through the return at `0x1EE0B8`. The original listing contains respectively 61,916, 39,444 and 37,430 encoded instruction bytes for these bodies; those bytes were checked against the supported executable. The corresponding three function decompilations report timeouts and were not treated as completed behavioral evidence. This is a field-production audit across those bodies, not a specification of all terrain geometry or every nested generator.
+The field-focused inspection covered the complete original instruction bodies from `0x1AF170` through the return at `0x1BF3D2`, from `0x1CC510` through the return at `0x1D5F8C`, and from `0x1E4850` through the return at `0x1EE0B8`. The original listing contains respectively 61,916, 39,444 and 37,430 encoded instruction bytes for these bodies; those bytes were checked against the supported executable. The listing does not cover the whole of each body: it omits real instructions in undiscovered switch-case regions totalling 4,233, 107 and 1,589 bytes respectively (the largest omitted runs begin at `0x1B6107`, `0x1B250E`, `0x1BDFCC` and `0x1E646B`). Those regions were disassembled directly from the image. They contain no call to append helper `0x1A0E00`, to the record constructor or to any of the record builders named below, and no access at displacement `0x178` or with a `0x188` stride; their own callees are among the unclosed transitive dependencies listed at the end. The corresponding three function decompilations report timeouts and were not treated as completed behavioral evidence. This is a field-production audit across those bodies, not a specification of all terrain geometry or every nested generator.
 
 Reconstruction material was used only for leads. Every affirmative relation below rests on original instructions; reconstruction field names and comments do not establish a producer.
 
@@ -42,7 +44,7 @@ The audit followed the full-record temporary addresses as well as their interior
 
 ## Intervening operations and existing-record access
 
-Where the specialized objects pass through placement helper `0x1F4DA0`, that helper's direct record mutations concern the vertical position words at `+0x18/+0x1C`. It does not fill the association word. Calls receiving only a record's position or dimension subobject likewise do not turn their component index into `M+0x178`. These statements concern valid, nonoverlapping records and cell structures; corrupt or deliberately overlapping arguments are excluded. Evidence: `005f4da0.c` and the original record-argument paths in the three generator bodies.
+Where the specialized objects pass through placement helper `0x1F4DA0`, that helper's only direct record mutations are signed 64-bit adjustments by plus or minus `0x10000` to the vertical position word pair at `+0x18/+0x1C`. It does not fill the association word. The original instruction listing does not contain this helper's body; its instructions were checked by direct disassembly of the image. Calls receiving only a record's position or dimension subobject likewise do not turn their component index into `M+0x178`. These statements concern valid, nonoverlapping records and cell structures; corrupt or deliberately overlapping arguments are excluded. Evidence: `005f4da0.c` and the original record-argument paths in the three generator bodies.
 
 The generators also address already appended records through helper `0x04B560`, which selects an element using the `0x188`-byte extent. In `0x1CC510`, the later pass `0x1D30CB–0x1D3605` uses this access for kind checks, inventory work, size/position reads and an active-byte change. In particular, the kind-10 route writes byte `+0x30=2` at `0x1D3192`; that is not an association assignment. The inventory resize and add helpers receive record `+0x48`; their direct fixed members and owned allocation operations do not supply the subsequent `+0x178` word. Evidence: `0044b560.c`, `00487380.c`, `0046ebe0.c`, and original pass instructions.
 
@@ -78,4 +80,14 @@ In particular, the complete transitive behavior of all other generator callees, 
 
 No original evidence in this audit establishes a first assignment of zero or a positive index to spatial `+0x178`, its source identity, or the conditions for such an assignment. A consumer comparing that word with a creature's backing ordinal cannot supply those missing producer facts. Nor do the separate ordinal entries above justify populating it. The behavior beyond the established -1 and raw-copy boundaries remains unresolved.
 
-Status: FINAL / STABLE / HELD after complete author readback.
+## Re-certification (2026-11-14)
+
+Re-checked by a source-side author against `binary/Cube.exe` (SHA-256 re-computed and matching), the original instruction listing, function exports and `dumpbin` disassembly of instructions the listing omits. Listing bytes for the three generator bodies were compared one instruction at a time with the executable (all matched). No reconstruction material, other contract or implementation material was consulted.
+
+Confirmed: the three body extents and listed byte totals; 56, 9 and 3 direct append sites; the per-family origin counts and the individually listed append, construction and kind-store addresses; the constructor tail stores and nested-constructor extent; the specialized builders' tail stores and the two copy-returning builders' temporary tails and copy sites; the indexed-access helper's `0x188` stride; the kind-10 active-byte write; inventory-helper extents; full-record and prefix copy field transfers; append ordinal preservation and end advance; capacity replacement and relocation; temporary destruction; the reader/writer active-byte phases, including the short-buffer cursor behaviour; the reader call site; reference-entry construction and list insertion; and the cell-pointer store.
+
+Corrected:
+- Body coverage: previously the listed byte totals were presented as the complete bodies; now the unlisted switch-case regions are stated, with what their direct disassembly does and does not contain.
+- Placement helper `0x1F4DA0`: previously described generally; now its only record mutations (plus or minus `0x10000` to the 64-bit word at `+0x18`) are stated, and its absence from the listing is recorded.
+
+Unresolved (unchanged in substance): the first nondefault producer of spatial `+0x178`; transitive behaviour of every other generator callee (including `0x1F0CE0`, `0x1AD320`, `0x1DC6E0` and the callees inside the unlisted regions); virtual callbacks, scripts, external memory and aliasing; any server counterpart.

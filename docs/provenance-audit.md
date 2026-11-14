@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14 (after batches 1-3b; 214 tracked contracts, local ignored variants excluded): 79 A, 61 B, 74 C (35794 lines).
+Snapshot 2026-11-14 (after batches 1-3; 214 tracked contracts, local ignored variants excluded): 83 A, 61 B, 70 C (35435 lines).
 
 ## Remediation
 
@@ -43,6 +43,8 @@ Batch 2: `alpha-data-stores.md`, `alpha-category13-inventory-counter.md`,
 `alpha-linked-item-storage-producers.md`. Both batches are class A (CLEANROOM.md).
 Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentation-vector.md`,
 `alpha-opaque-output-transfer-state.md` and `alpha-terrain-color-pipeline-public.md`.
+Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-event-transmission.md`,
+`alpha-spatial-association-producers.md` and `alpha-fatal-object-association-producers.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -68,7 +70,7 @@ Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentat
 | `alpha-client-action-binding-producer.md` | B | 113 | 1 |
 | `alpha-client-action-input-phase.md` | B | 149 | 2 |
 | `alpha-client-buff-action-boundaries.md` | C | 161 | 2 |
-| `alpha-client-buff-event-transmission.md` | C | 91 | 3 |
+| `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
 | `alpha-client-frame-world-step-order.md` | B | 78 | 2 |
 | `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
@@ -95,7 +97,7 @@ Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentat
 | `alpha-created-actor-combat.md` | A | 379 | 0 |
 | `alpha-created-candidate-appearances.md` | A | 95 | 1 |
 | `alpha-created-companion-navigation.md` | B | 120 | 2 |
-| `alpha-creature-light-attachment-producers.md` | C | 91 | 1 |
+| `alpha-creature-light-attachment-producers.md` | A | 91 | 1 |
 | `alpha-creature-map-key-order.md` | B | 70 | 1 |
 | `alpha-creatures-behaviour.md` | C | 1237 | 1 |
 | `alpha-creatures-models.md` | C | 1543 | 0 |
@@ -114,7 +116,7 @@ Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentat
 | `alpha-fatal-disposal-callers.md` | A | 301 | 0 |
 | `alpha-fatal-loot-branches.md` | A | 278 | 1 |
 | `alpha-fatal-loot-branches-generator-recount.md` | A | 79 | 0 |
-| `alpha-fatal-object-association-producers.md` | C | 102 | 2 |
+| `alpha-fatal-object-association-producers.md` | A | 102 | 2 |
 | `alpha-fatal-object-descriptor-association.md` | A | 93 | 1 |
 | `alpha-fatal-region-credit-order.md` | B | 143 | 1 |
 | `alpha-fatal-world-drop-production.md` | A | 72 | 1 |
@@ -206,7 +208,7 @@ Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentat
 | `alpha-server-simulation.md` | C | 581 | 1 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
 | `alpha-skills.md` | C | 557 | 0 |
-| `alpha-spatial-association-producers.md` | C | 94 | 1 |
+| `alpha-spatial-association-producers.md` | A | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |
 | `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
@@ -221,7 +223,7 @@ Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentat
 | `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
 | `alpha-terrain-chunk-point-lights.md` | B | 92 | 0 |
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
-| `alpha-terrain-light-source-lifecycle.md` | C | 104 | 1 |
+| `alpha-terrain-light-source-lifecycle.md` | C | 123 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
 | `alpha-trails-poses-schedules.md` | C | 690 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
