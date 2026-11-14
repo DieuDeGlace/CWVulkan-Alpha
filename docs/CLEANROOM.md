@@ -2175,3 +2175,14 @@ already matched the engine, so no behaviour change was needed:
   cost, the kind-9 wind-up preset, lockout cleared unless exempt).
 New regression cases pin the less obvious rows. Open (contract): the client-only callers of
 the helpers and the meaning of the counters they read.
+
+### Airship pilot behaviour (round 16, held 2026-11-14)
+
+Held contract `docs/specs/alpha-airship-pilot-behaviour.md` (SHA-256 8729395A...1436), read
+whole. The pilot's behaviour object is a sequential behaviour holding one look-at-player
+element (the ordinary one). The engine adds behaviour 8 for it: `lookAtPlayer` alone, and
+when it declines the sequence zeroes the movement input. `lookAtPlayer` now disqualifies a
+NaN-health player (the original's ordered >= 0 test). Already matching: the 32 ms behaviour
+cadence and stun gate, and the finishing step for kind 4 (five appearance draws; it cannot
+set the boss or the 0x1000 flag) plus the follow-on equipment step's class-0x88 draw
+(`DescriptorEquipment::setup`). So the pilot is never a boss and never doubled in size.

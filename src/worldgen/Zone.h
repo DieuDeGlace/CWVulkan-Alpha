@@ -164,8 +164,9 @@ struct Spawn {
     // monster's Combat, RandomWalk; 2 a group leader's Combat, LookAtPlayer, WalkPath,
     // RandomWalk; 3 a member's Combat, LookAtPlayer, Companion of `leader`, WalkPath, RandomWalk;
     // location creatures: 5 a ring creature's Combat, WalkPath, RandomInteraction, RandomWalk;
-    // 6 a group leader's Combat, WalkPath, RandomWalk),
-    // the route walked (blocks) and the leader's index in the same spawn list.
+    // 6 a group leader's Combat, WalkPath, RandomWalk; 8 an airship pilot's LookAtPlayer alone,
+    // airship pilot behaviour §5), the route walked (blocks) and the leader's index in the same
+    // spawn list.
     uint8_t behaviour = 0;
     std::vector<std::array<int32_t, 3>> route;
     int32_t leader = -1;

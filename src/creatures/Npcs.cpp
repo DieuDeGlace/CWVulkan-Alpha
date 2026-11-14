@@ -889,6 +889,13 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
         }
         return;
     }
+    // Airship pilot behaviour §4, §5: a sequence of LookAtPlayer alone; when it declines, the
+    // sequence zeroes the movement input.
+    if (npc.behaviour == 8) {
+        if (!lookAtPlayer(npc, players))
+            npc.body.intent = glm::vec3(0);
+        return;
+    }
     // Wildlife §4.9: the cell monster, the group leader and its members.
     if (npc.behaviour == 1) {
         if (!combat(npc, dtMs, players, block, frame, map))
@@ -1563,7 +1570,7 @@ bool Npcs::lookAtPlayer(Npc &npc, std::vector<PlayerView> &players) {
     glm::vec3 offset{0};
     float best = 64.f;
     for (const PlayerView &p : players) {
-        if (p.fighter.health < 0)
+        if (!(p.fighter.health >= 0.f)) // ordered: a NaN or negative health does not qualify
             continue;
         const glm::vec3 d = separationOf(p.body.position, npc.body.position);
         const float squared = (d.y * d.y + d.x * d.x) + d.z * d.z;

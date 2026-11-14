@@ -776,6 +776,38 @@ int main() {
         same((double)ships.ships().size(), 0, "dropped beyond 512 blocks of every player");
     }
 
+    // Airship pilot behaviour §5: the pilot (behaviour 8) faces a player within 8 blocks and
+    // otherwise stands still; it never walks.
+    {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        worldgen::Random random{3};
+        Npcs npcs{random};
+        Npc pilot;
+        pilot.fighter.id = 900, pilot.fighter.controller = 3, pilot.fighter.characterClass = 0x88;
+        pilot.fighter.health = maxHealth(pilot.fighter);
+        pilot.behaviour = 8;
+        pilot.body.place({10.5, 10.5, 1 + 1.08 + 0.01});
+        pilot.home = pilot.body.blocks();
+        npcs.npcs().push_back(pilot);
+        Combatant me;
+        me.id = 1, me.health = maxHealth(me);
+        Body body;
+        body.place({14.5, 10.5, 1 + 1.08 + 0.01});
+        for (int i = 0; i < 4; i++)
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
+        const Npc &faced = npcs.all().front();
+        same((faced.body.mode & AIMING) != 0 && faced.body.look.x > 3.9f, 1, "faces the player 4 blocks away");
+        same(glm::length(faced.body.intent), 0, "does not walk toward it");
+        body.place({30.5, 10.5, 1 + 1.08 + 0.01});
+        for (int i = 0; i < 4; i++)
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
+        same((npcs.all().front().body.mode & AIMING) == 0 && glm::length(npcs.all().front().body.intent) == 0, 1,
+             "beyond 8 blocks it stops facing and stays put");
+    }
+
     // Steering §2.1: the angle helper reaches b within a quarter turn, and stays on the near
     // side of a beyond it.
     {

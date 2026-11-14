@@ -518,6 +518,7 @@ class TownBuilder : StructureWriter {
         companion.level = L.level; // +0x34 from +0x24 of the layout's record: the location's level
         companion.yaw = ship.targetYaw;
         companion.objectKey = ship.id;
+        companion.behaviour = 8; // airship pilot behaviour §2: a sequence of LookAtPlayer alone
         zone.spawns.push_back(companion);
         zone.airships.push_back(ship);
     }

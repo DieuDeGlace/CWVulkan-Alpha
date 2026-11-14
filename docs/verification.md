@@ -1675,3 +1675,7 @@ special's parity (0x41 odd, 0x42 even, negative counts included), the 0.3 cost o
 the class (4, 1) roll starting through a lockout while any other special is stopped. All 60
 CTests pass, the player diagnostic and five live runs pass, and the six captures match the
 preceding batch.
+Airship pilot (2026-11-14). A CreatureTests case runs a behaviour-8 pilot: it faces a player 4
+blocks away without walking, and beyond 8 blocks stops facing and stays put. All 60 CTests
+pass, the player diagnostic and five live runs pass, and the six captures match the preceding
+batch.
