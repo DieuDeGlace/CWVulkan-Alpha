@@ -2156,3 +2156,22 @@ is the R0 test. The arithmetic now follows the contract instead of double precis
 Open (round 15 author running): the helper tables 0x044270, 0x03CAA0, 0x047310, 0x03D1A0,
 0x045410 and 0x0456A0 (the engine's primary/secondary attack starters stand in for the last
 two), and the busy indicator bit 0x0040 of §2.
+
+### Combat helper tables (round 15, held 2026-11-14)
+
+Held contract `docs/specs/alpha-combat-helper-tables.md` (SHA-256 F2938586...A55B), read
+whole. It closes the six helpers the created-actor combat contract left bounded. Every part
+already matched the engine, so no behaviour change was needed:
+- A/B/C (0x044270, 0x03CAA0, 0x047310) are the engine's `phases` recovery, wind-up and
+  active terms (spot-checked code by code, including B's bracelet row for 0x25/0x2B/0x59 and
+  the fixed rows for 0x5B, 0x5D, 0x5F, 0x65, 0x69); R0 (0x03D1A0) is `duration`.
+- The busy indicator (A/2 + B + C) is `TargetSelection`'s readiness threshold.
+- The melee chooser 0x045020 is `primaryAttack` (all 15 rows and the R0 + 200 combo rule);
+  the special chooser 0x0452A0 is `secondaryAttack` (7 rows, parity of +0x70);
+  the cost query 0x044AE0 is `manaCost`.
+- Starter 0x045410 is `startPrimaryAttack` (lockout, action 0x30, R0 minus A when the count is
+  nonzero except actions 0x1E/0x20, inclusive clock test); starter 0x0456A0 is
+  `startSecondaryAttack` (no exclusion, class (4, 1) exemption for 0x05/0x11/0x14, mana
+  cost, the kind-9 wind-up preset, lockout cleared unless exempt).
+New regression cases pin the less obvious rows. Open (contract): the client-only callers of
+the helpers and the meaning of the counters they read.

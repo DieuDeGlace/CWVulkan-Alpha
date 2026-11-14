@@ -2141,6 +2141,41 @@ int main() {
         same(hostile(object, object), 0, "role 6 against itself");
     }
 
+    // Combat helper tables (alpha-combat-helper-tables.md): the less obvious rows, pinned.
+    {
+        Combatant c;
+        c.level = 5;
+        // §3: B for 0x59 is scaled 600 with a bracelet (second-slot subtype 0x0C), else 1200.
+        c.equipment[MAIN_HAND] = Item{3, 0x0C, 1, 0, 5, 0};
+        const int32_t withBracelet = phases(c, 0x59).windUp;
+        c.equipment[MAIN_HAND] = Item{3, 0x0F, 1, 0, 5, 0};
+        same(std::abs(phases(c, 0x59).windUp - 2 * withBracelet) <= 1, 1, "0x59 wind-up halves with a bracelet");
+        // §6.2 row 12: a two-hander chains 0x39 -> 0x43 -> 0x3A within R0 + 200, else 0x39.
+        c.action = 0x39, c.actionMs = duration(c, 0x39) + 199;
+        same(primaryAttack(c), 0x43, "0x39 chains to 0x43 within R0 + 200");
+        c.action = 0x43, c.actionMs = duration(c, 0x43) + 199;
+        same(primaryAttack(c), 0x3A, "0x43 chains to 0x3A within R0 + 200");
+        c.actionMs = duration(c, 0x43) + 200;
+        same(primaryAttack(c), 0x39, "past R0 + 200 it starts over");
+        // §6.3 row 6: a two-hander's special alternates with the swing count's parity.
+        c.combo = 3;
+        same(secondaryAttack(c), 0x41, "odd count: 0x41");
+        c.combo = -2;
+        same(secondaryAttack(c), 0x42, "even count: 0x42");
+        // §6.4: the ranged codes cost nothing with a kind-9 effect, 0.3 without.
+        same(manaCost(c, 0x2E), 0.3f, "0x2E costs 0.3");
+        // §8 step 4: a class (4, 1) roll (0x05) keeps its lockout and ignores it.
+        Combatant rogue;
+        rogue.characterClass = 4, rogue.specialization = 1, rogue.mana = 1;
+        rogue.equipment[MAIN_HAND] = Item{3, 5, 1, 0, 5, 0};
+        rogue.dodgeMs = 300;
+        rogue.actionMs = 100000;
+        same(startSecondaryAttack(rogue) && rogue.action == 5 && rogue.dodgeMs == 300, 1,
+             "the exempt roll starts through a lockout and keeps it");
+        rogue.characterClass = 1, rogue.action = 0, rogue.dodgeMs = 300;
+        same(startSecondaryAttack(rogue), 0, "a lockout stops any other special");
+    }
+
     // Beam-height §2.2: with a shield in the second hand, bar entry 1 is 8; holding it starts the
     // block at clock 0 and letting go turns it into 0x68 (104) at clock 0, with no further test.
     {

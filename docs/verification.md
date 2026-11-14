@@ -1669,3 +1669,9 @@ In-range combat arithmetic (2026-11-14). No new unit case (the change replaces d
 precision by the contract's binary32 forms in the same branches); the existing creature,
 pet, combat and selection tests still pass. All 60 CTests pass, the player diagnostic and
 five live runs pass, and the six captures match the preceding batch.
+Combat helper tables (2026-11-14). CreatureTests pin the bracelet row of B (0x59 wind-up
+halved), the two-hander chain 0x39 -> 0x43 -> 0x3A within R0 + 200 and its restart, the
+special's parity (0x41 odd, 0x42 even, negative counts included), the 0.3 cost of 0x2E, and
+the class (4, 1) roll starting through a lockout while any other special is stopped. All 60
+CTests pass, the player diagnostic and five live runs pass, and the six captures match the
+preceding batch.
