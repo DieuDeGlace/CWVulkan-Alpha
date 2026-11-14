@@ -1658,3 +1658,10 @@ body dropped above the deck lands on it, stands, and is carried; a stationary sh
 its passenger in place and drops absent keys; the ship is dropped once every player is
 beyond 512 blocks. All 60 CTests pass, the player diagnostic and five live runs pass, and the
 six captures match the preceding batch (no landing place is in their views).
+Airship steering (2026-11-14). CreatureTests: a body sunk 4.2 blocks into a hull is pushed out
+through the nearer +x side on one axis only; a keyed creature is placed on the marker voxel a
+hair above it and takes the ship's yaw (none without a ship); a ship at home moves from
+course 1 to 2, then flies at 10 blocks a second toward the waypoint ahead and above home and
+its target moves by velocity x seconds; a ship copied at its target yaw keeps it through the
+yaw follow. All 60 CTests pass, the player diagnostic and five live runs pass, and the six
+captures match the preceding batch.

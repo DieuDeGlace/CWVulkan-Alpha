@@ -910,6 +910,7 @@ void Server::stepWorld(float dtMs) {
         if (const auto model = options.prefabs ? options.prefabs("airship.cub") : nullptr)
             airships.setModel(*model);
         npcs.obstacles = &airships;
+        npcs.placeOnObject = [this](int64_t key, creatures::Body &body, float &yaw) { return airships.place(key, body, yaw); };
     }
     if (!npcs.descriptorContext)
         npcs.descriptorContext = [this](int32_t zx, int32_t zy) {
@@ -1057,10 +1058,10 @@ void Server::stepWorld(float dtMs) {
     }
     const creatures::NpcFrame frame = npcs.step(dtMs, zones, std::move(players), clockMs, (int32_t)clockDay,
                                                block, onNpcs, {}, buffInput);
-    airships.step((int32_t)dtMs, [this](int64_t key, creatures::Airships::Carried &out) {
+    airships.step((int32_t)dtMs, true, zones, [this](int64_t key, creatures::Airships::Carried &out) {
         for (creatures::Npc &n : npcs.npcs())
             if (std::bit_cast<int64_t>(n.fighter.id) == key) {
-                out = {n.body.position, n.body.follow, &n.body.yaw};
+                out = {n.body.position, n.body.follow, &n.yaw};
                 return true;
             }
         return false; // (players' bodies are their clients'; see CLEANROOM.md)

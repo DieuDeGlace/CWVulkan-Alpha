@@ -1,11 +1,10 @@
 #pragma once
-// World objects (docs/specs/alpha-world-objects.md): the world's airship list (world +0x0C).
-// Templates a landing place leaves in its zone are copied in near players and dropped far from
-// them (§2.4); creatures collide with their voxels and stand on them (§3, §4); each frame a
-// ship integrates its velocity, its drawn pose follows its target and the creatures it carries
-// are moved with it (§6). Open, so not modelled: the course steering of §6.1 and the yaw-follow
-// helper of §6.2 step 4 (ships keep the template's zero velocity and their yaw), the unstuck
-// routine's ship part and the companion creature placement (§6.4).
+// World objects (docs/specs/alpha-world-objects.md, alpha-airship-steering.md): the world's
+// airship list (world +0x0C). Templates a landing place leaves in its zone are copied in near
+// players and dropped far from them; creatures collide with their voxels, stand on them and
+// are pushed out of them; each frame a ship steers round its four courses (unconnected world),
+// integrates its velocity, its pose follows its target and the creatures it carries move with
+// it; its companion creature is placed on it.
 #include "creatures/Physics.h"
 #include "worldgen/Prefab.h"
 #include "worldgen/WorldMap.h"
@@ -13,6 +12,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <span>
 #include <vector>
@@ -45,15 +45,25 @@ class Airships final : public VoxelObstacles {
         int64_t *follow = nullptr;
         float *yaw = nullptr;
     };
-    // §6.2, §6.3: one frame of `dtMs`. `lookup(key, out)` fills `out` for a living creature.
-    void step(int32_t dtMs, const std::function<bool(int64_t key, Carried &out)> &lookup);
+    // One frame of `dtMs`: steering §1 when `steer` (an unconnected world; `map` gives the
+    // column heights), then world objects §6.2 (integration, pose and yaw follow) and §6.3.
+    // `lookup(key, out)` fills `out` for a living creature.
+    void step(int32_t dtMs, bool steer, const worldgen::WorldMap &map,
+              const std::function<bool(int64_t key, Carried &out)> &lookup);
+
+    // Steering §3: a creature keyed to ship `key` (after its movement): moved to the model's
+    // first marker voxel above the ship when more than one block from it, and turned to the
+    // ship's yaw. False when no ship has that key.
+    bool place(int64_t key, Body &body, float &yaw) const;
 
     const std::map<int64_t, Ship> &ships() const { return list; }
 
     bool collide(const int64_t position[3], glm::vec3 size, uint64_t key, int64_t &base) override;
     bool blocksRaised(const int64_t position[3], glm::vec3 size, uint64_t key) override;
+    void unstick(int64_t position[3], glm::vec3 size) override;
 
   private:
+    void steerShip(Ship &ship, int32_t dtMs, const worldgen::WorldMap &map) const;
     // §3.2 steps 1-3: the box centre in the ship's model frame, or false beyond 64 blocks.
     bool modelFrame(const Ship &ship, const int64_t position[3], glm::vec3 &centre) const;
     // §3.2 steps 4-5: whether any voxel of the box at `centre` (model frame) is solid.
@@ -64,6 +74,7 @@ class Airships final : public VoxelObstacles {
     int32_t sx = 0, sy = 0, sz = 0;
     float hx = 0, hy = 0, hz = 0; // half sizes, binary32
     std::vector<uint8_t> voxels;  // 1 where solid, x fastest, then y, then z
+    std::optional<glm::ivec3> marker; // steering §3.2: the first pure red voxel (x, y, z order)
 };
 
 } // namespace creatures

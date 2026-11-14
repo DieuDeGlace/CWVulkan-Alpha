@@ -607,6 +607,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     if (const auto model = view.prefab("airship.cub"))
         airships.setModel(*model);
     npcs.obstacles = &airships;
+    npcs.placeOnObject = [&](int64_t key, creatures::Body &body, float &yaw) { return airships.place(key, body, yaw); };
     // §2.4 (unconnected world): drop and copy ships round the players; §6: then each frame.
     const auto refreshAirships = [&] {
         std::vector<creatures::Airships::Raw> players;
@@ -617,16 +618,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         airships.refresh(players, view.held());
     };
     const auto stepAirships = [&](int32_t elapsed) {
-        airships.step(elapsed, [&](int64_t key, creatures::Airships::Carried &out) {
-            const auto expose = [&](creatures::Body &body) {
-                out = {body.position, body.follow, &body.yaw};
+        // Steering runs only in an unconnected world; the yaw carried is the facing (+0x30).
+        airships.step(elapsed, !client.connected(), view.held(), [&](int64_t key, creatures::Airships::Carried &out) {
+            if (player && std::bit_cast<int64_t>(player->combat().id) == key) {
+                out = {player->body().position, player->body().follow, &player->facing()};
                 return true;
-            };
-            if (player && std::bit_cast<int64_t>(player->combat().id) == key)
-                return expose(player->body());
+            }
             for (creatures::Npc &n : npcs.npcs())
-                if (std::bit_cast<int64_t>(n.fighter.id) == key)
-                    return expose(n.body);
+                if (std::bit_cast<int64_t>(n.fighter.id) == key) {
+                    out = {n.body.position, n.body.follow, &n.yaw};
+                    return true;
+                }
             return false;
         });
     };

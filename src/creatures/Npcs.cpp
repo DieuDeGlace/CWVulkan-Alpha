@@ -242,6 +242,7 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     // §9.1: the spawn's own appearance flags and gear (a town guard keeps its gear, 0x40).
     npc.looks.flags |= s.appearanceFlags;
     npc.boss = s.bossLoot;
+    npc.objectKey = s.objectKey;
     npc.behaviour = s.behaviour;
     if (s.characterClass >= 0x80 && s.characterClass <= 0x84) { // schedules §3.6: back to the counter
         npc.behaviour = 4;
@@ -2448,6 +2449,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.pathActive = !npc.path.empty();
         npc.body.obstacles = obstacles, npc.body.key = c.id; // world objects §3
         worldStep(npc.body, (int32_t)dtMs, block, objects);
+        if (npc.objectKey != 0 && placeOnObject) // airship steering §3
+            placeOnObject(npc.objectKey, npc.body, npc.yaw);
         npc.path.state.counter = std::bit_cast<int32_t>(uint32_t(npc.path.state.counter) + uint32_t(milliseconds));
         c.mode = npc.body.mode;
         advanceCharge(c, dtMs);

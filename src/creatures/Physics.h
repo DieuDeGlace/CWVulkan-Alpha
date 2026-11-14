@@ -52,6 +52,9 @@ struct VoxelObstacles {
     virtual ~VoxelObstacles() = default;
     virtual bool collide(const int64_t position[3], glm::vec3 size, uint64_t key, int64_t &base) = 0;
     virtual bool blocksRaised(const int64_t position[3], glm::vec3 size, uint64_t key) = 0;
+    // Airship steering §5: after the terrain unstick, push a box overlapping an object's
+    // voxels out along the nearest free horizontal axis (objects in key order).
+    virtual void unstick(int64_t position[3], glm::vec3 size) = 0;
 };
 
 struct Body {

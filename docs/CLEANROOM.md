@@ -2108,3 +2108,33 @@ keep the template's zero velocity, so they hover at their target), the yaw-follo
 the companion spawn and creature placement of §6.4, the unstuck routine's ship part, the
 out-of-grid shared cell writes of §5 (treated as empty), and the yaw field at +0x137C. The
 server cannot carry players (their bodies are their clients'), so their keys leave the set.
+
+### Airship steering, yaw follow, placement and push-out (round 14, held 2026-11-14)
+
+Held contract `docs/specs/alpha-airship-steering.md` (SHA-256 CF69EB99...97E4), read whole.
+- **Steering (§1)**, unconnected worlds only (the client offline, the server): courses
+  1 -> 2 -> 3 -> 0 -> 1. Course 1 heads home (velocity = offset within 10 blocks, else 10
+  blocks a second); courses 2 and 0 fly at 10 blocks a second to home +- 50 along the heading
+  and 20 up; course 3 approaches the destination horizontally (30 a second beyond 30 blocks,
+  per-millisecond approach at 0.001) and holds 100 to 150 blocks above the column's stored
+  top, its target yaw following the horizontal velocity; courses 0-2 turn the target yaw to
+  the heading at 0.005. All in the contract's binary32/binary64 order.
+- **Angle helper and yaw follow (§2):** a + asin(sin(b - a)) in degrees, then the current yaw
+  approaches it at 0.01 per millisecond, every world.
+- **Companion (§4):** the town builder now appends the companion spawn record (radius 512,
+  role 3, kind 4, class byte 0x88, the location's level, the ship's target and yaw, key
+  +0x10E0 = the template identifier) before the template, so the zone's finishing pass and
+  spawn identifiers include it as in the original (this also restores that pass's draws for
+  towns with landing places). Activation is the engine's spawn pass. Its single-element
+  behaviour object is untraced; the engine's default behaviour stands in.
+- **Placement (§3):** after its movement each creature keyed to a listed ship is set on the
+  model's first pure red voxel (x, y, z loader order) turned by +yaw about the grid centre,
+  half its height plus 0.001 above it, when more than one block away, and takes the ship's
+  yaw.
+- **Push-out (§5):** after the terrain unstick, per ship in key order, a box overlapping its
+  voxels moves to the nearest free of the four horizontal escapes (1.05 / 0.05 margins),
+  turned back to the world by +yaw.
+- Carrying now moves the facing used for strikes (`Npc::yaw`, the player's facing).
+Still open: the finishing step's effect on the companion (boss/size bits), the behaviour
+object, the health gate of the unstuck routine (the engine body has no health), and the
+world values read by the spawn pass's window test.

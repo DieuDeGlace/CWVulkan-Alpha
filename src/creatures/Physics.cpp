@@ -377,6 +377,9 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
             b.position[2] = layer * ONE + half + LIFT;
             b.bob = 0;
         }
+        // Airship steering §5: then, once, out of any airship's voxels.
+        if (b.obstacles)
+            b.obstacles->unstick(b.position, b.size);
     }
 
     // Step 11: the displacement, then §4: substeps under one block, x, y, z each.

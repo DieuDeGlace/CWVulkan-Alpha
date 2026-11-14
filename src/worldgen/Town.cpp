@@ -495,8 +495,9 @@ class TownBuilder : StructureWriter {
     }
 
     // World objects §2.1: after the landing place, an airship template when any of the eight
-    // region cells round the zone's own is land (elevation > 0). No draws. (The companion
-    // spawn record the original also appends is not modelled; its fields are untraced.)
+    // region cells round the zone's own is land (elevation > 0). Airship steering §4.1: first
+    // its companion spawn record, keyed to the template, joins the zone's spawn list (the
+    // finishing pass then treats it like every other spawn). No draws here.
     void landingAirship(const Plot &p) {
         bool land = false;
         for (int32_t i = -1; i <= 1; i++)
@@ -504,9 +505,21 @@ class TownBuilder : StructureWriter {
                 if (i != 0 || j != 0)
                     if (const RegionCell *c = terrain.world().cell(zone.zx / 64 + i, zone.zy / 64 + j))
                         land = land || c->elevation > 0;
-        if (land)
-            zone.airships.push_back(airshipTemplate(zone.zx, zone.zy, int32_t(zone.airships.size()), p.face, p.hi,
-                                                    cx(p), cy(p)));
+        if (!land)
+            return;
+        const AirshipTemplate ship =
+            airshipTemplate(zone.zx, zone.zy, int32_t(zone.airships.size()), p.face, p.hi, cx(p), cy(p));
+        Spawn companion;
+        companion.radius = 512.f;
+        companion.x = ship.target[0], companion.y = ship.target[1], companion.z = ship.target[2];
+        companion.controller = 3;
+        companion.type = 4;
+        companion.characterClass = 0x88;
+        companion.level = L.level; // +0x34 from +0x24 of the layout's record: the location's level
+        companion.yaw = ship.targetYaw;
+        companion.objectKey = ship.id;
+        zone.spawns.push_back(companion);
+        zone.airships.push_back(ship);
     }
 
     // ---- §5.5.10: creatures on open plots --------------------------------------------------

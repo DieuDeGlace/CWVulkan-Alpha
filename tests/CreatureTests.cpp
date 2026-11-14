@@ -696,6 +696,7 @@ int main() {
         worldgen::AirshipTemplate t;
         t.id = 77;
         t.target = {int64_t(40 * 256 + 128) << 16, int64_t(40 * 256 + 128) << 16, int64_t(100) << 16};
+        t.home = t.target;
         zone->airships.push_back(t);
         worldgen::WorldMap map;
         map.add(zone);
@@ -729,7 +730,7 @@ int main() {
         same(!ships.ships().empty() && ships.ships().begin()->second.carried.contains(11), 1, "the lander is carried");
         // §6.3: a stationary ship keeps its carried creature where it is.
         const int64_t before[3] = {b.position[0], b.position[1], b.position[2]};
-        ships.step(16, [&](int64_t key, Airships::Carried &out) {
+        ships.step(16, false, map, [&](int64_t key, Airships::Carried &out) {
             if (key != 11)
                 return false;
             out = {b.position, b.follow, &b.yaw};
@@ -738,8 +739,66 @@ int main() {
         same(b.position[0] == before[0] && b.position[1] == before[1] && b.position[2] == before[2], 1,
              "a stationary ship leaves its passenger in place");
         same(!ships.ships().empty() && !ships.ships().begin()->second.carried.contains(9), 1, "absent creatures leave the set");
+        // Steering §5: a body sunk into the hull is pushed out along the nearest free axis.
+        Body stuck;
+        stuck.place({40 * 256 + 128.5 + 4.2, 40 * 256 + 128.5, 100});
+        stuck.obstacles = &ships;
+        ships.unstick(stuck.position, stuck.size);
+        same(stuck.blocks().x > 40 * 256 + 128 + 5, 1, "pushed out through the nearer +x side");
+        same(stuck.blocks().y, 40 * 256 + 128.5, "only one axis moves", 1e-6);
+        // Steering §3: a keyed creature is set on the first marker voxel (model 0, 0, 0 here,
+        // the red column's first), a hair above it, and takes the ship's yaw.
+        Body rider;
+        float riderYaw = 33;
+        same(ships.place(77, rider, riderYaw), 1, "placed on its ship");
+        same(rider.position[0] == t.target[0] - 5 * 65536 && rider.position[1] == t.target[1] - 5 * 65536, 1,
+             "at the marker, turned by the ship's yaw 0");
+        same(rider.position[2], t.target[2] - 2 * 65536 + int64_t((rider.size.z * 0.5f + 0.001f) * 65536.f),
+             "a hair above the marker by half its height");
+        same(riderYaw, 0, "takes the ship's yaw");
+        same(ships.place(78, rider, riderYaw), 0, "no ship, no placement");
+        // Steering §1.3: from state 1 the ship heads home (here 100 blocks below its target)
+        // at 10 blocks a second, and the target moves with it.
+        const int64_t z0 = ships.ships().begin()->second.state.target[2];
+        ships.step(16, true, map, [](int64_t, Airships::Carried &) { return false; });
+        const Airships::Ship &moving = ships.ships().begin()->second;
+        same(moving.velocity.z, 0, "the template's home is its target here, so it has arrived", 0);
+        same(moving.course, 2, "arrival at home moves on to course 2");
+        same(moving.state.target[2], z0, "no velocity, no move");
+        // §1.5: course 2 then flies at 10 blocks a second toward home + (0, 50, 20) (heading 0).
+        ships.step(16, true, map, [](int64_t, Airships::Carried &) { return false; });
+        const glm::vec3 v = ships.ships().begin()->second.velocity;
+        same(glm::length(v), 10, "course 2 speed", 1e-4);
+        same(v.x == 0 && v.y > 9 && v.z > 3.5f, 1, "toward the waypoint ahead and above home");
+        same((double)(ships.ships().begin()->second.state.target[1] - t.target[1]) / 65536.0, v.y * 0.016, "the target moved",
+             1e-4);
         ships.refresh(std::span(&far, 1), map);
         same((double)ships.ships().size(), 0, "dropped beyond 512 blocks of every player");
+    }
+
+    // Steering §2.1: the angle helper reaches b within a quarter turn, and stays on the near
+    // side of a beyond it.
+    {
+        Airships probe; // (the helper is exercised through a ship's yaw follow)
+        auto zone = std::make_shared<worldgen::Zone>();
+        zone->zx = 40, zone->zy = 40;
+        worldgen::AirshipTemplate t;
+        t.id = 5;
+        t.target = {int64_t(40 * 256 + 128) << 16, int64_t(40 * 256 + 128) << 16, int64_t(100) << 16};
+        t.home = t.target;
+        t.targetYaw = 60;
+        zone->airships.push_back(t);
+        worldgen::WorldMap map;
+        map.add(zone);
+        worldgen::Prefab model;
+        model.sx = model.sy = model.sz = 2;
+        model.rgb.assign(3 * 8, 90);
+        probe.setModel(model);
+        probe.refresh(std::span(&t.target, 1), map);
+        const float yaw0 = probe.ships().begin()->second.yaw;
+        same(yaw0, 60, "copied at the target yaw");
+        probe.step(16, false, map, [](int64_t, Airships::Carried &) { return false; });
+        same(probe.ships().begin()->second.yaw, 60, "already facing its target yaw", 1e-4);
     }
 
     // Height §1.2, §1.3, §1.5: the step-up and step-down snaps land on the exact fixed targets

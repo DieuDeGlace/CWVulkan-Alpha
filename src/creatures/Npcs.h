@@ -47,6 +47,8 @@ struct Npc {
     Appearance looks;
     PoseState pose;
     float yaw = 0; // degrees, facing(ψ) = (−sin ψ, cos ψ)
+    // Airship steering §3, §4.3: the key of the airship it is placed on (creature +0x1D30), 0 none.
+    int64_t objectKey = 0;
     glm::dvec3 home{0};
     std::pair<int32_t, int32_t> zone{0, 0};
     static constexpr size_t NO_SPAWN = (size_t)-1;
@@ -324,6 +326,9 @@ class Npcs {
     ObjectTest objects;
     // World objects §3: the airships creatures collide with and stand on (null: none).
     VoxelObstacles *obstacles = nullptr;
+    // Airship steering §3: after its movement, a creature keyed to an airship is placed on it
+    // (position and yaw). Unset: no placement.
+    std::function<bool(int64_t key, Body &body, float &yaw)> placeOnObject;
     // Current spatial records for visibility's four side-face tests. Terrain
     // classification uses the step's existing block reader.
     visibility::RecordLookup sightRecords;
