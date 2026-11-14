@@ -2208,3 +2208,24 @@ opened. This concerns the source side only.) Implemented on the connected client
   and the sine difference differently.
 Not modelled: the drawn aim (§2.4), the type-1 batch message (the engine protocol sends type
 0 and end-of-update), and the gated server-only spans for remote creatures beyond the unstuck.
+
+## Pose selectors (round 16, held 2026-11-14)
+
+Held contracts, each read whole: `docs/specs/alpha-pose-selectors-01-18.md` (SHA-256
+448DC82B...D969), `-19-24.md` (BED44C9D...C1F2), `-25-30.md` (7FEB0CCB...D004) and
+`-31-49.md` (0F5A4CCF...7F56). The selectors 0x19-0x30 were researched in two narrower
+rounds after the first author stopped. `src/creatures/Pose.cpp` now evaluates every selector
+case from these contracts:
+- A mapping block names each contract term after its engine field (hand, foot, arm, torso,
+  head, tail and shoulder offsets, the lift, the auxiliary scalar, the turn flag, the blend
+  rate and the main and off-hand model slots).
+- Clock comparisons against the wind-up, active and recovery bounds are integer, as in the
+  original. Shared helpers express the repeated approach, orbit and rest formulas once.
+- Arm swing is scaled by 0.1 for 0x33/0x34; the rest-hand formula, the arm mid-points and the
+  knockdown offset (x/y order) follow the contracts; sitting is gated on clock < R0; a
+  cleared selector zeroes the pose clock; a new off-hand scale field carries 0x47's 1.5.
+- Where the earlier general pose contract disagreed, the selector contracts win: 0x15 reads
+  no mount, 0x3A reads the mount, 0x42/0x43/0x47 write the model slots (0x47 model 2101).
+Open (commented in the source): the owner hand-turn targets (+0x148/+0x154) and the
++0x1314 spin variants, 0x3A's mount terms, the consumers of 0x29's head and tail values, the
+foot spread factor, +0x40 read as intent in 0x36, and the quadruped rest height.

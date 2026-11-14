@@ -1685,3 +1685,8 @@ smoothing receipt leaves the drawn pose and one 16 ms update closes part of a 4-
 dead creature's drawn pose stays frozen, and unlisted creatures are forgotten. All 60 CTests
 pass, the player diagnostic and five live runs (including the connected client) pass, and the
 six captures match the preceding batch.
+Pose selectors (2026-11-14). CreatureTests: selector 8 with an off-hand model, selector 1
+clearing the amplitude, 0x13's strike offsets, 0x30 in phase 3, 0x46 after the strike, 0x47
+writing model 2101 with the 1.5 off-hand scale, and the knockdown offset. All 60 CTests pass,
+the player diagnostic and five live runs pass, and the six captures show the same scenes with
+creatures and the player posed normally.

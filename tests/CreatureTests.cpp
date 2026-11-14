@@ -265,6 +265,66 @@ int main() {
         same(s.leftHand.x, 8, "left hand gripped at R + (2, 0, 0)", 1e-4);
     }
 
+    // Pose selector contracts: case bodies whose targets changed. A fresh state takes each
+    // target in one frame; standing still, the rest hands are at (+-6, 2.1, -4.1).
+    {
+        Appearance a;
+        a.box = {0.96f, 0.5f, 2.16f};
+        const auto voxels = [](uint16_t) { return glm::vec3(10); };
+        const auto pose = [&](Combatant &c, int32_t action, int32_t ms, Motion m = {}, float amplitude = 0) {
+            c.action = action;
+            c.actionMs = ms;
+            m.fighter = &c;
+            PoseState s;
+            s.amplitude = amplitude;
+            const auto parts = poseParts(s, a, m, 16, voxels);
+            return std::make_pair(s, parts);
+        };
+        Combatant c;
+        c.multipliers[1] = 1 / attackSpeed(c);
+        // 01-18 selector 8 with an off-hand model: the off-hand offset Z gains 5 and the off-hand
+        // rest position is not regripped.
+        c.equipment[OFF_HAND] = {3, 0, 1, 0, 1, 0};
+        auto [s8, parts8] = pose(c, 98, 300);
+        same(s8.handL.z, 5, "selector 8: off-hand offset Z += 5", 1e-6);
+        same(s8.turnL.z, 90, "selector 8: off-hand angle (0, 60, 90)", 1e-4);
+        same(s8.leftHand.x, -6, "selector 8: off hand stays at its rest position", 1e-4);
+        c.equipment[OFF_HAND] = {};
+        // 01-18 selector 1, t < 500: owner +0x1188 (the walk amplitude) is cleared.
+        auto [s1, parts1] = pose(c, 54, 100, Motion{}, 1);
+        same(s1.amplitude, 0, "selector 1 clears the walk amplitude");
+        // 01-18 selector 0x13 strike: the main-hand offset target is (1, -4, -1).
+        const Phases p7 = phases(c, 7);
+        auto [s19, parts19] = pose(c, 7, p7.windUp + 1);
+        same(s19.handR.y, -4, "selector 0x13: main-hand offset (1, -4, -1)", 1e-6);
+        same(s19.shift.y, 3, "selector 0x13: body offset Y 3", 1e-6);
+        // 25-30 selector 0x30, B <= clock < R0: body angles (0, 0, 90), off hand at main - 2.
+        const Phases p65 = phases(c, 65);
+        auto [s48, parts48] = pose(c, 65, p65.windUp + 1);
+        same(s48.torso.z, 90, "selector 0x30: body angle Z 90", 1e-4);
+        same(s48.leftHand.x, s48.rightHand.x - 2, "selector 0x30: off hand at main X - 2", 1e-4);
+        // 31-49 selector 0x46: nothing is written after T1 + T2.
+        const Phases p51 = phases(c, 51);
+        same(p51.recovery > 1, 1, "action 51 has a recovery phase");
+        {
+            auto [s70, parts70] = pose(c, 51, p51.windUp + p51.active + 1);
+            same(s70.tilt.x, 0, "selector 0x46: no creature angle after the strike", 1e-6);
+        }
+        // 31-49 selector 0x47: model 2101 between the hands during the wind-up.
+        const Phases p108 = phases(c, 108);
+        same(p108.windUp > 1, 1, "action 108 has a wind-up");
+        {
+            auto [s71, parts71] = pose(c, 108, 1);
+            same(std::any_of(parts71.begin(), parts71.end(), [](const PartDraw &d) { return d.model == 2101; }), 1,
+                 "selector 0x47 draws model 2101");
+        }
+        // Weapon pose contract §5: knocked down, a biped's creature offset Z is (box y - box z) / 2.
+        Motion down;
+        down.knockedDown = true;
+        auto [sk, partsk] = pose(c, 0, 0, down);
+        same(sk.lean.z, (0.5f - 2.16f) * 0.5f, "knocked down: offset from box y", 1e-6);
+    }
+
     // Trails §1.5: a sword swing (action 1, pose 16) opens a trail between 300 and 750 ms and
     // collapses it after; the shield charge release (action 104) traces half a ring.
     {

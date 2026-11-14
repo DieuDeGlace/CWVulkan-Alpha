@@ -56,8 +56,14 @@ glm::mat4 S(glm::mat4 m, float s) { return glm::scale(m, glm::vec3(s)); }
 
 // "Relax toward t at rate r per ms", dt times (§7.3).
 float relax(float x, float t, float r, float dt) { return t + (x - t) * std::pow(1.f - r, dt); }
-float clamp01(float v) { return std::clamp(v, 0.f, 1.f); }
-float lerp(float a, float b, float q) { return (1 - q) * a + q * b; }
+// Pose selector contracts §1: the binary32 sine and cosine wrappers (argument widened, result
+// narrowed), the ordered clamps (a NaN passes) and the 32-bit wrapping clock arithmetic.
+float sinw(float x) { return (float)std::sin((double)x); }
+float cosw(float x) { return (float)std::cos((double)x); }
+float clampHigh(float v) { return v > 1.f ? 1.f : v; }
+float clampUnit(float v) { return v > 1.f ? 1.f : 0.f > v ? 0.f : v; }
+int32_t add32(int32_t a, int32_t b) { return (int32_t)((uint32_t)a + (uint32_t)b); }
+int32_t sub32(int32_t a, int32_t b) { return (int32_t)((uint32_t)a - (uint32_t)b); }
 
 int subtypeIn(const Item &item) { return item.type == 3 ? item.subtype : -1; }
 
@@ -79,6 +85,7 @@ struct Frame {
     glm::vec3 L{0}, Rh{0}, armL{0}, armR{0}, footL{0}, footR{0}; // base targets
     glm::vec3 lambda{0}, rho{0};                                   // hand rotations
     float legL = 0, legR = 0, F = 0, ell = 0, rate = 0.01f;
+    float offScale = 1; // the off-hand weapon scale local (weapon pose contract §3)
     bool turn = false;
     uint16_t mainModel = NO_MODEL, offModel = NO_MODEL;
     bool mainOnBack = false, offOnBack = false;
@@ -432,9 +439,10 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     // The engine keeps an ended action's id for the chains (Combat.cpp); Alpha clears it a frame
     // after its end (phase E), so past that the pose reads it as action 0.
     int32_t action = c ? c->action : 0;
-    float t = c ? c->actionMs : 0;
-    if (c && t >= (float)duration(*c, action) + 50)
-        action = 0, t = 0;
+    int32_t clock = c ? c->actionMs : 0; // the pose clock C +0x4 (owner +0x6C)
+    if (c && (float)clock >= (float)duration(*c, action) + 50)
+        action = 0, clock = 0;
+    float t = (float)clock;
     int32_t pose = 0;
     if (c && action != 0) {
         Combatant now = *c;
@@ -446,7 +454,10 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     Phases P;
     if (c)
         P = phases(*c, action);
-    const float P1 = (float)P.windUp, P12 = (float)(P.windUp + P.active), D = (float)P.total();
+    // Combat helper tables: B (wind-up), Cq (active), Ar (recovery) and R0, their wrapping sum.
+    const int32_t B = P.windUp, Cq = P.active, Ar = P.recovery, R0 = add32(add32(B, Cq), Ar);
+    // Pose selectors 31-49 §8 (0x0C6B80): the use limit of the item being eaten or drunk.
+    const int32_t heldLimit = c && c->held.type == 1 ? (c->held.subtype == 1 ? 3000 : 10000) : 0;
     const int main = c ? subtypeIn(c->mainHand()) : -1, off = c ? subtypeIn(c->offHand()) : -1;
     const bool offShield = off == SHIELD;
 
@@ -467,7 +478,9 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     const float swingKept = swing; // s′
     if (main == LONGSWORD && action != 0)
         swing *= 0.25f;
-    if (pose == 53)
+    if ((pose == 0x33 || pose == 0x34) && clock < heldLimit)
+        swing *= 0.1f;
+    if (pose == 0x35)
         swing *= 0.1f;
     if (action == 22 || action == 36 || action == 63 || action == 8 || action == 28 || pose == 2 || pose == 3 ||
         pose == 48 || pose == 49 || pose == 37)
@@ -476,6 +489,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         swing = 0;
 
     Frame f;
+    f.offScale = a.weaponScale;
     // §7.7 step 1, §7.4 step 2: legs.
     f.legL = (float)(1.5 * swingKept * 180.0 / PI);
     f.legR = -f.legL;
@@ -486,22 +500,24 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     // Step 2: the pivot height while gliding.
     if (m.gliding && !m.onGround && m.dodgeMs <= 0)
         f.h = a.box.z / 2;
-    // Step 3: base targets.
+    // Step 3: base targets. Weapon pose contract §3: the rest hand positions.
     const glm::vec3 h = a.handOffset;
     const float amp = s.amplitude;
     if (quadruped) {
         f.Rh = h;
         f.L = {-h.x, h.y, h.z};
     } else {
-        const float r = h.x * (1 + amp);
-        f.Rh = {std::cos(swing) * r, h.y + std::sin(swing) * r + 2.1f - 5 * amp, h.z - 4.1f + 6 * amp};
-        f.L = {-std::cos(swing) * r, h.y - std::sin(swing) * r + 2.1f - 5 * amp, h.z - 4.1f + 6 * amp};
+        const float reach = h.x * amp + h.x;
+        const float cq = cosw(swing), sq = sinw(swing);
+        const float z = (h.z - 4.1f) + amp * 6;
+        f.Rh = {cq * reach, h.y + sq * reach, z};
+        f.L = {-(cq * reach), h.y + -(sq * reach), z};
+        f.Rh.y = (2.1f - amp * 5) + f.Rh.y;
+        f.L.y = (2.1f - amp * 5) + f.L.y;
     }
-    auto armOf = [&](glm::vec3 hand, float side) {
-        return glm::vec3((hand.x + h.x * -0.3f * side) * 0.5f, (hand.y - 8) * 0.25f, (hand.z + h.z + 12) * 0.5f);
-    };
-    f.armR = armOf(f.Rh, 1);
-    f.armL = armOf(f.L, -1);
+    // Pose selectors 01-18 §1.2: the auxiliary mid-points OM (armL) and MM (armR).
+    f.armL = {(h.x * -0.3f + f.L.x) * 0.5f, ((f.L.y - 8) * 0.5f) * 0.5f, (f.L.z + (h.z + 12)) * 0.5f};
+    f.armR = {(f.Rh.x + h.x * 0.3f) * 0.5f, ((f.Rh.y - 8) * 0.5f) * 0.5f, (f.Rh.z + (h.z + 12)) * 0.5f};
     f.footR = a.footOffset;
     f.footL = {-a.footOffset.x, a.footOffset.y, a.footOffset.z};
     if (pose == 0) {
@@ -526,104 +542,178 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         f.E.z = (a.box.y - a.box.z) / 2;
         f.K = {0, -1, 0};
         f.legL = f.legR = -20;
-        if (action != 0 && t < D)
+        if (action != 0 && clock < R0)
             f.dL += glm::vec3(0, -5, 6), f.dR += glm::vec3(0, -5, 6);
     }
 
-    // §7.8: the shared blocks.
-    auto G = [&](glm::vec3 g) {
-        f.L = f.Rh + g;
-        f.armL.y += 10;
-        f.armL.z -= 4;
+    // The per-selector pose evaluator. Storage of the selector contracts (alpha-pose-selectors-*.md,
+    // weapon-attachment-poses §3-§5) as the frame fields hold it:
+    //   rR, rL       main-hand / off-hand angle targets (MA, OA; L134, L164)
+    //   dR, dL       main-hand / off-hand offset targets (MO, OO; L14C, L170)
+    //   Rh, L        main-hand / off-hand rest hand positions (MP, OP; L17C, L158)
+    //   armR, armL   main / off auxiliary mid-points (MM, OM; L23C, L188)
+    //   T  body-angle target (BA, L140)          B  creature-angle target (CA, L194)
+    //   H  head-angle target (HA, L1A0)          Q  tail-angle target (L200)
+    //   E  creature-offset target (CO, L1AC)     S  body-offset target (BO, L1F4)
+    //   K  C +0x78 target (L1B8)                 U  hand-turn target (HT, L1C4)
+    //   h  lift target (L60)                     F  auxiliary scalar (L6C)
+    //   footR, footL  auxiliary points FA / FB (owner +0x100, X-flipped copy; L1D0, L1DC)
+    //   turn  flag byte (L27)      rate  blend-rate slot (L10)      offScale  off-hand weapon scale
+    //   mainModel, offModel  C +0xDC / C +0xE0      cleared  selector C +0x8 := 0
+    // B, Cq, Ar and R0 are the wind-up, active, recovery and total helpers; P is twoHanded(main).
+    // Owner +0x148 / +0x154 (hand-turn sources) and +0x1314 (spin variants) are not kept by the
+    // engine: those hand turns stay zero and the spin variants are never taken (open).
+    bool cleared = false;
+    const int mainSub = c ? c->mainHand().subtype : -1, offSub = c ? c->offHand().subtype : -1;
+    const auto upperArm = [&] { f.armL.y += 10; f.armL.z -= 4; };
+    const auto offFromMain = [&](float dx) { f.L = f.Rh; f.L.x += dx; };
+    // 01-18 §3 block G.
+    const auto blockG = [&] {
+        offFromMain(2);
+        upperArm();
+        f.rate = 0.005f;
+        f.rL = f.rR;
     };
-    auto stance = [&](bool pose35) {
-        f.U = glm::vec3(0);
-        if (c->type != 87 && c->type != 96) { // moles and zombies keep their arms down
-            f.rL.x = pose35 ? -60.f : -90.f;
-            f.T.z = 20;
-            f.rR = {-120, -90, 30};
-        }
-        if (!offShield) {
-            f.rL = {-80, 40, 60};
-            f.dL.y -= 4;
-            f.dL.z += 2;
-        }
-        if (f.mainModel != NO_MODEL && f.offModel == NO_MODEL) {
-            f.Rh += glm::vec3(0, 2, 3);
-            G({-3, 0, -3});
-            f.rR.x = 0;
-            f.rR.y = 20;
+    // 01-18 §3 block R: the two-hand grip.
+    const auto twoHandGrip = [&](bool copyAngles) {
+        f.Rh.y += 2;
+        f.Rh.z += 3;
+        f.L = f.Rh;
+        f.L.x -= 3;
+        f.L.z -= 3;
+        upperArm();
+        f.rR.x = 0;
+        f.rR.y = 20;
+        if (copyAngles)
             f.rL = f.rR;
-        }
     };
-    const bool W = t < P1, A = t >= P1 && t < P12, Rr = t >= P12 && t < D, E = t >= D;
-    const float u = P.active > 0 ? clamp01((t - P1) / (float)P.active) : 1;
-    auto guardIdle = [&] {
-        f.T.z = 0;
-        f.B.z = 0;
-        f.rR = {60, -20, 20};
-        f.dR = {0, 2 + std::sin(0.01f * t), 4 + std::cos(0.01f * t)};
-        f.rL = {60, 20, -20};
-        f.dL = {0, 2 + std::sin(0.01f * t + PIf / 2), 4 + std::cos(0.01f * t + PIf / 2)};
-        f.rate = 0.03f;
+    // 01-18 §3 block T (19-24 §3.5 block S).
+    const auto blockT = [&](glm::vec3 offAngles) {
+        f.rL = offAngles;
+        f.dL.y -= 4;
+        f.dL.z += 2;
+        if (f.mainModel != NO_MODEL && f.offModel == NO_MODEL)
+            twoHandGrip(true);
     };
-    auto casting = [&] { // pose 61 W
-        f.T.x = 20;
-        f.H.x = 20;
-        f.dL = {3 * std::cos(0.005f * t) - 1, 5, 5 * std::sin(0.005f * t) + 5};
-        f.dR = {3 * std::cos(0.005f * t + PIf) + 1, 5, 5 * std::sin(0.005f * t + PIf) + 5};
+    // 01-18 §3 block Q: the late branch; false when the type gate stops it.
+    const auto late = [&](float offX, bool typeGate) {
+        f.U = glm::vec3(0);
+        cleared = true;
+        if (typeGate && (c->type == 0x60 || c->type == 0x57))
+            return false;
+        f.rL.x = offX;
+        f.T.z = 20;
+        f.rR = {-120, -90, 30};
+        return true;
     };
-    // Poses 23, 24, 25, 26 W and 27: the hands wobble while the spell is held.
-    auto wobble = [&] {
-        f.dR.x += 0.5f * std::sin(0.04f * t);
-        f.dL.x += 0.5f * std::sin(0.04f * t);
-        f.dR.z += 0.5f * std::cos(0.05f * t);
-        f.dL.z += 0.5f * std::cos(0.05f * t);
+    // Selectors 5, 6, 0x43: the rest hands bob.
+    const auto handBob = [&] {
+        f.Rh.z = cosw(t * 0.5f) * 0.5f + f.Rh.z;
+        f.L.z = cosw(t * 0.5f) * 0.5f + f.L.z;
     };
-    auto spell = [&] { // pose 23 W
+    // 19-24 §3.1 oscillation O (01-18 selectors 0x17, 0x18).
+    const auto sway = [&] {
+        f.dR.y += 4;
+        f.dL.y += 4;
+        f.dR.x = sinw(t * 0.04f) * 0.5f + f.dR.x;
+        f.dR.z = cosw(t * 0.05f) * 0.5f + f.dR.z;
+        f.dL.x = sinw(t * 0.04f) * 0.5f + f.dL.x;
+        f.dL.z = cosw(t * 0.05f) * 0.5f + f.dL.z;
+    };
+    // 19-24 §3.2 block F.
+    const auto armsForward = [&] {
         f.T.z = -30;
         f.rR = {0, -45, -60};
         f.rL = {-45, -45, 0};
-        f.dR.y += 4;
-        f.dL.y += 4;
-        wobble();
+        sway();
+    };
+    // 01-18 selectors 0x13, 0x14 and 31-49 selector 0x32, late paths: the guard idle.
+    const auto guard = [&](float bodyRate) {
+        f.T.z = 0;
+        f.B.z = 0;
+        f.rR = {60, -20, 20};
+        const float p = t * 0.01f;
+        f.dR = {0, sinw(p) + 2, cosw(p) + 4};
+        f.rL = {60, 20, -20};
+        const float p2 = (float)((double)(t * 0.01f) + PI / 2);
+        f.dL = {0, sinw(p2) + 2, cosw(p2) + 4};
+        f.S.z = sinw(t * bodyRate) * 0.5f + f.S.z;
+    };
+    // 31-49 §5 orbit offsets O.
+    const auto orbit = [&] {
+        f.T.x = 20;
+        f.H.x = 20;
+        const float p = t * 0.005f;
+        f.dL = {cosw(p) * 3 - 1, 5, sinw(p) * 5 + 5};
+        const float p2 = (float)((double)(t * 0.005f) + PI);
+        f.dR = {cosw(p2) * 3 + 1, 5, sinw(p2) * 5 + 5};
+    };
+    // 19-24 §3.3 mirror tail M, and §3.4 rest block E.
+    const auto mirror = [&] {
+        f.dL = f.dR;
+        f.rL = f.rR;
+        f.L = f.Rh;
+        f.L.x -= 0.2f;
+        f.L.y -= 0.2f;
+        f.L.z -= 1;
+    };
+    const auto restE = [&] {
+        f.dR = {2, 0, 0};
+        f.rR = glm::vec3(0);
+        f.T.z = -30;
+        f.rate = 0.03f;
+    };
+    const auto mix = [](glm::vec3 to, float p, glm::vec3 from, float q) { return to * p + from * q; };
+    // 31-49 §5 constant set K.
+    const auto setK = [&] {
+        f.E.z = -0.14f;
+        f.T.x = 10;
+        f.dL = glm::vec3(0, 4, 0);
+        f.dR = glm::vec3(0, 4, 0);
+        f.K = {0, 2, -2};
     };
 
-    // Step 6: the pose case (Appendix C, with the cells resolved in alpha-trails-poses-schedules.md
-    // §2). The few cells still open there are left at defaults.
     switch (pose) {
-    case 1: {
+    case 0x01: { // 01-18 §4
         const bool two = twoHanded(main);
         if (t < 500) {
-            const float q = clamp01(t / 500);
+            const float r = clampHigh(t / 500);
             if (two) {
-                f.rR.x = 120 * q;
-                f.dR = {-f.Rh.x, 0, 14};
-                f.dL = {2 - f.dL.x, 0, 12};
+                f.rR.x = r * 120;
+                f.dR.y = 0, f.dR.z = 14, f.dR.x = -f.Rh.x;
+                f.dL.y = 0, f.dL.z = 12, f.dL.x = 2 - f.dL.x;
             } else {
                 f.dR = {1, 0, 14};
                 f.dL = {-1, 0, 14};
                 f.rL.x = f.rR.x = -100;
             }
-            f.T.x = -40 * q;
-            f.B.x = -40 * q;
-            f.F = -50 * q;
-        } else if (t < D) {
-            f.B.x = -60 * (1 - std::min(2 * (t - 500) / 500, 1.f));
+            f.T.x = r * -40;
+            f.B.x = r * -40;
+            if (action == 0x30) {
+                const float spin = (t / 500) * 360;
+                f.B.x = r * -40 - (spin > 360 ? 360.f : spin);
+            }
+            s.amplitude = 0; // owner +0x1188 := +0.0, seen by later refreshes
+        } else if (clock < R0) {
+            const float r = clampHigh((float)sub32(clock, 500) / 500 * 2);
+            f.B.x = (1 - r) * -60;
             f.T.x = -20;
             f.rR.x = -70;
             if (two) {
-                f.dR = {-f.Rh.x, 4, 0};
-                f.dL = {2 - f.dL.x, 4, 0};
+                f.dR.y = 4, f.dR.z = 0, f.dR.x = -f.Rh.x;
+                f.dL.y = 4, f.dL.z = 0, f.dL.x = 2 - f.dL.x;
             } else {
                 f.dR = {1, 3, 8};
                 f.dL = {-1, 3, 8};
-                f.rL.x = -150;
+                f.rL.x = f.rR.x = -150;
             }
             f.rate = 0.1f;
         } else if (two) {
-            f.Rh += glm::vec3(-8, 4, 0);
-            G({-2, 0, -1});
+            f.Rh.y += 4;
+            f.Rh.x -= 8;
+            offFromMain(-2);
+            f.L.z -= 1;
+            upperArm();
             f.rR.x = -60;
             f.rR.z = 20;
         } else {
@@ -635,200 +725,220 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.rL = {-250, -90, 0};
         break;
     }
-    case 2:
-        if (W) {
-            const float q = clamp01(1.5f * t / P1);
-            f.B.x = 5 + 10 * q;
+    case 0x02: // 01-18 §4
+        if (clock < B) {
+            const float p = clampHigh(t / (float)B * 1.5f), q = 1 - p;
+            f.B.x = p * 10 + 5;
             f.T = {10, 10, -60};
-            f.rR = {lerp(90, 60, q), 0, lerp(90, 60, q)};
-            f.dR = f.dL = {0, 0, 14 * q};
-            G({2, 0, 0});
-            f.rL = f.rR;
+            f.rR = {q * 90 + p * 60, q * 0.f + p * 0.f, q * 90 + p * 60};
+            f.dR = {0, 0, p * 14};
+            f.dL = f.dR;
+            offFromMain(2);
+            upperArm();
             f.rate = 0.01f;
-        } else if (A) {
+            f.rL = f.rR;
+        } else if (clock < R0) {
+            const float p = clampHigh((float)sub32(clock, B) / (float)Cq);
+            f.rate = 0.04f;
             f.B.x = -10;
             f.T.y = 10;
             f.T.z = 60;
             f.rR = {-70, 0, -60};
-            f.dR = f.dL = {0, 2 * std::sin(PIf * u / 2), 0};
-            G({2, -1, 0});
+            const float k = (float)std::sin((double)(float)(((double)p * PI) * 0.5)) * 2;
+            f.dR = {0, k, 0};
+            f.dL = f.dR;
+            offFromMain(2);
+            f.L.y -= 1;
             f.rL = f.rR;
-            f.rate = 0.04f;
         } else {
-            f.Rh += glm::vec3(0, 2, 3);
-            G({-3, 0, -3});
-            f.rR.x = 0;
-            f.rR.y = 20;
-            f.rL = f.rR;
+            cleared = true;
+            twoHandGrip(true);
         }
         break;
-    case 3:
-        if (W) {
+    case 0x03: // 01-18 §4
+        if (clock < B) {
             f.B.z = 0;
             f.rR = {-90, 0, 0};
-            f.dR = f.dL = {-5, 8, 0};
-            G({2, 0, 0});
-            f.rL = f.rR;
-            f.rate = 0.005f;
-        } else if (t < P1 + (float)P.active / 2) {
+            f.dR = {-5, 8, 0};
+            f.dL = f.dR;
+            blockG();
+        } else if (clock < add32(B, Cq / 2)) {
             f.B = {10, 0, -10};
             f.T = {30, 0, -30};
             f.rR = {0, 0, 90};
-            f.dR = f.dL = {-8, -4, 20};
-            G({2, 0, 0});
-            f.rL = f.rR;
-            f.rate = 0.005f;
-        } else if (t < D) {
+            f.dR = {-8, -4, 20};
+            f.dL = f.dR;
+            blockG();
+        } else if (clock < R0) {
             f.B.z = -30;
             f.T = {0, 20, -60};
             f.rR = {70, 0, 90};
-            f.dR = f.dL = {5, -2, 0};
-            G({2, 0, 0});
-            f.rL = {70, 0, 90};
+            f.dR = {5, -2, 0};
+            f.dL = f.dR;
+            offFromMain(2);
+            upperArm();
             f.rate = 0.02f;
+            f.rL = f.rR;
         } else {
-            G({-2, 0, -1});
+            cleared = true;
+            offFromMain(-2);
+            f.L.z -= 1;
+            upperArm();
             f.rR.y = 90;
             f.T.z = -80;
             f.rL = f.rR;
         }
         break;
-    case 4:
-        if (W) {
-            const float q = clamp01(t / P1);
-            f.B.x = 5 * q;
-            f.T.y = 10 * q;
-            f.T.z = -20 * q;
-            f.rR = {60 * q, lerp(120, 60, q), 60 * q};
-            f.rate = 0.005f;
-        } else if (c->characterClass == 1 && c->specialization == 1) {
+    case 0x04: { // 01-18 §4
+        const int32_t halfB = B / 2;
+        if (clock < halfB) {
+            const float p = clampHigh(t / (float)halfB), q = 1 - p;
+            f.B.x = p * 5;
+            f.T.y = p * 10;
+            f.T.z = p * -20;
+            f.rR = {q * 0.f + p * 60, q * 120 + p * 60, q * 0.f + p * 60};
+            blockG();
+            break;
+        }
+        if (c->characterClass == 1 && c->specialization == 1) {
             f.dR = {2, 7, 4};
             f.rR = {0, -60, 0};
             f.rate = 0.01f;
         } else {
-            const float q2 = std::min(1.5f * (t - P1 / 2) / std::max(1.f, P1 / 2), 1.f); // 1 from P1 on (as read)
-            f.rate = 0.005f;
+            const float p = clampHigh((float)sub32(clock, halfB) / (float)halfB * 1.5f), q = 1 - p;
+            f.B.x = 0;
             f.T = {20, 0, 0};
-            f.rR = {lerp(90, 30, q2), 0, lerp(90, 0, q2)};
-            f.Rh.z += 0.5f * std::cos(0.5f * t);
-            f.dR = {-6, 0, 16 * q2};
+            f.rR = {q * 90 + p * 30, q * 0.f + p * 0.f, q * 90 + p * 0.f};
+            f.Rh.z = cosw(t * 0.5f) * 0.5f + f.Rh.z;
+            f.dR = {-6, 0, p * 16};
+            f.rate = 0.005f;
         }
-        if (!W)
-            f.dL = f.dR;
-        G({2, 0, 0});
+        f.dL = f.dR;
+        offFromMain(2);
+        upperArm();
         f.rL = f.rR;
         break;
-    case 5:
+    }
+    case 0x05: // 01-18 §5
         f.rR = {-90, 0, -40};
         f.rL = {-90, 0, 40};
-        f.Rh.z += 0.5f * std::cos(0.5f * t);
-        f.L.z += 0.5f * std::cos(0.5f * t);
+        handBob();
         f.dR = {1, -7, 0};
         f.dL = {-1, -7, 0};
         f.T.z = -40;
         f.rate = 0.005f;
         break;
-    case 6:
-        f.Rh.z += 0.5f * std::cos(0.5f * t);
-        f.L.z += 0.5f * std::cos(0.5f * t);
-        f.rate = 0.005f;
+    case 0x06: // 01-18 §5
         if (c->specialization == 1) {
             f.rR = {-50, -60, 40};
             f.rL = {-90, 90, -50};
+            handBob();
             f.dR = {-3, 7, 3};
             f.dL = {-2, 2, 0};
             f.T.z = -20;
         } else {
             f.rR = {-90, 0, -40};
             f.rL = {-90, 90, -40};
+            handBob();
             f.dR = {1, -7, 0};
-            f.dL = {-1, -7, 0};
+            f.dL = {-1, 0, 1};
             f.T.z = -40;
         }
+        f.rate = 0.005f;
         break;
-    case 8:
+    case 0x07: // 01-18 §5; its hand-turn target blends owner +0x148 and +0x154 (open: not kept)
+        if (clock < R0 / 2)
+            f.rate = 0.005f;
+        else if (clock < R0)
+            f.rate = 0.03f;
+        f.rR = {0, 90, 0};
+        if (twoHanded(main)) {
+            offFromMain(2);
+            upperArm();
+        }
+        break;
+    case 0x08: // 01-18 §5: the clock against 100 and 500
         if (f.offModel != NO_MODEL) {
-            if (t < 100)
+            if (clock < 100)
                 f.T.z = 80, f.rL = {0, 0, 90}, f.rR = {-45, 45, 0};
-            else if (t < 500)
-                f.T.z = -90, f.rL = {0, 60, 90}, f.L.z += 5, f.rR = {-90, 0, 45};
+            else if (clock < 500)
+                f.T.z = -90, f.rL = {0, 60, 90}, f.dL.z += 5, f.rR = {-90, 0, 45};
             else
                 f.T.z = -30, f.rL = {0, 100, 60}, f.rR = {-45, 45, 0};
-        } else if (t < 100) {
-            f.T.z = -80, f.rR = {0, 0, 90};
-        } else if (t < 500) {
-            f.T.z = 90, f.rR = {0, 60, -85};
-            f.dL += glm::vec3(2, 3, 3);
-            f.dR += glm::vec3(2, 3, 3);
-        } else {
-            f.Rh += glm::vec3(0, 2, 3);
-            f.rR.x = 0;
-            f.rR.y = 20;
+            break;
         }
-        G({-3, 0, -3});
+        if (clock < 100) {
+            f.T.z = -80;
+            f.rR = {0, 0, 90};
+        } else if (clock < 500) {
+            f.T.z = 90;
+            f.rR = {0, 60, -90};
+            f.rR.z += 5;
+            f.dL.x += 2, f.dR.x += 2, f.dL.y += 3, f.dR.y += 3, f.dL.z += 3, f.dR.z += 3;
+        } else {
+            twoHandGrip(false);
+        }
+        offFromMain(-3);
+        f.L.z -= 3;
         f.rL = f.rR;
         break;
-    case 9:
-        if (W) {
+    case 0x09: // 01-18 §5
+    case 0x0A:
+        if (clock < B) {
             f.T.z = 80;
             f.rL = {0, 0, 90};
             f.rR = {-45, 45, 0};
-            if (action == 48)
-                f.B.z = 360 * t / 300;
-        } else {
+            if (action == 0x30)
+                f.B.z = (float)sub32(0, clock) / 300 * 360;
+        } else if (pose == 0x09 || clock < R0) {
             f.T.z = -90;
             f.rL = {0, 0, 90};
             f.rR = {-90, 0, 45};
+            if (pose == 0x0A) {
+                f.L.x = sinw((float)sub32(clock, 600) * 0.1f) + f.L.x;
+                f.rate = 0.03f;
+            }
+        } else if (late(-90, true)) {
+            blockT(offSub == SHIELD ? glm::vec3(0, 0, 90) : glm::vec3(-80, 40, 60));
         }
         break;
-    case 10:
-        if (W) {
-            f.T.z = 80;
-            f.rL = {0, 0, 90};
-            f.rR = {-45, 45, 0};
-        } else if (!E) {
-            f.T.z = -90;
-            f.rL = {0, 0, 90};
-            f.rR = {-90, 0, 45};
-            f.L.x += std::sin(0.1f * (t - 600));
-            f.rate = 0.03f;
-        } else {
-            stance(false);
-        }
-        break;
-    case 11:
+    case 0x0B: // 01-18 §5
         if (!(a.flags & 0x0004)) {
             f.T.z = 60;
             f.rR = {0, -45, -60};
             f.rL = {-45, -45, 0};
         }
         break;
-    case 15:
-        if (W) {
+    case 0x0F: // 01-18 §6 (the spin variant, remainder 2, is open; its CA.Z is then 0)
+        f.B.z = 0;
+        if (clock < B) {
             f.T.z = 40;
             f.rL = {0, -90, 30};
             f.dL.y -= 4;
             f.dL.z += 4;
             f.rR = {0, -90, -120};
             f.dR.y -= 6;
-        } else if (!E) {
+        } else if (clock < R0) {
             f.T.z = -90;
             f.E.x = -0.1f;
             f.rL = {-90, -90, -30};
             f.rR = {0, -90, -120};
             f.dR.y -= 6;
-        } else {
-            stance(false);
+        } else if (late(-90, true)) {
+            blockT({-80, 40, 60});
         }
+        if (offSub == SHIELD)
+            f.rL = {0, 0, 90};
         break;
-    case 16:
-        if (W) {
+    case 0x10: // 01-18 §6 (the spin variant, remainder 1, is open; its CA.Z is then 0)
+        f.B.z = 0;
+        if (clock < B) {
             f.T.z = 90;
             f.rR = {0, -90, 0};
             f.rL = {-90, 0, 90};
             f.dR.y += 6;
             f.dR.z += 4;
-        } else if (!E) {
+        } else if (clock < R0) {
             f.T.z = 20;
             f.rL = {-90, -60, 90};
             f.dL.y -= 4;
@@ -839,162 +949,177 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.footL.y -= 4;
             f.footR.y += 4;
             f.turn = true;
-        } else {
-            stance(false);
+        } else if (late(-60, true)) {
+            blockT({-80, 40, 60});
         }
-        if (offShield)
+        if (offSub == SHIELD)
             f.rL = {0, 0, 90};
         break;
-    case 17:
-        if (W) {
+    case 0x11: // 01-18 §6
+        if (clock < B) {
             f.T.z = 40;
             f.rR = {-90, 90, 30};
             f.rL = {-90, 0, -20};
-            f.dR.y -= 6;
-        } else if (!E) {
+            f.dL.y -= 6;
+        } else if (clock < R0) {
             f.T.z = -90;
             f.rR = {-40, 0, 30};
             f.dR = {3, 0, 4};
             f.rL = {-90, 90, 90};
+            f.dL = {-3, -1, 0};
             f.turn = true;
             f.rate = 0.05f;
-        } else {
-            stance(false);
+        } else if (late(-90, true)) {
+            blockT({-80, 40, 60});
         }
         break;
-    case 18:
-        if (W) {
+    case 0x12: // 01-18 §6
+        if (clock < B) {
             f.T.z = -40;
             f.rL = {-90, -90, -30};
             f.rR = {-90, 0, 20};
             f.dR.y -= 6;
-        } else if (!E) {
+        } else if (clock < R0) {
             f.T.z = 90;
-            f.rL = offShield ? glm::vec3(0, 0, 40) : glm::vec3(-40, 0, -30);
+            f.rL = offSub == SHIELD ? glm::vec3(0, 0, 40) : glm::vec3(-40, 0, -30);
             f.dL = {-3, 0, 4};
             f.rR = {-90, -90, -90};
             f.dR = {3, -1, 0};
             f.turn = true;
             f.rate = 0.05f;
-        } else {
-            stance(false);
+        } else if (late(-90, true)) {
+            blockT(offSub == SHIELD ? glm::vec3(0, 0, 90) : glm::vec3(-80, 40, 60));
         }
         break;
-    case 19:
-    case 20:
-        if (t > P1 && t < D) {
-            if (pose == 19) {
+    case 0x13: // 01-18 §6
+    case 0x14:
+        if (clock > B && clock < R0) {
+            if (pose == 0x13) {
                 f.T.z = -20;
                 f.B.z = -20;
                 f.rL = {0, 90, 40};
                 f.dL = {0, 8, 4};
                 f.rR = {0, 90, 30};
+                f.dR = {1, -4, -1};
             } else {
                 f.T.z = 45;
                 f.B.z = 45;
                 f.rR = {0, -90, -90};
                 f.dR = {8, 0, 4};
                 f.rL = {0, -90, -30};
+                f.dL = {-1, -4, -1};
             }
             f.H.x = -10;
             f.S.y = 3;
-            f.rate = 0.03f;
         } else {
-            guardIdle();
-            if (pose == 19)
-                f.S.z += 0.5f * std::sin(0.005f * t);
+            guard(pose == 0x13 ? 0.005f : 0.01f);
         }
+        f.rate = 0.03f;
         break;
-    case 21:
-    case 22: {
-        const bool mainShoots = main == BOW || main == CROSSBOW;
-        if (pose == 22) {
-            if (!mainShoots) {
-                f.dL += glm::vec3(-4, 3, 2);
-                f.dR += glm::vec3(-10, 2, 1);
-                f.T.z = -60;
-                f.rL.z = 60;
+    case 0x15: // 01-18 §7: path M works the off hand, path N (a bow or crossbow) the main hand
+        if (mainSub != BOW && mainSub != CROSSBOW) {
+            if (offSub == CROSSBOW)
                 f.rL.y = -90;
-                f.rR.z = 60;
-                if (c->offHand().type == 3)
-                    f.mainModel = 840;
-                if (t < 300)
-                    f.rL.x += 20;
-            } else {
-                f.dR += glm::vec3(4, 3, 2);
-                f.dL += glm::vec3(10, 2, 1);
-                f.T.z = 60;
-                f.rR.z = -60;
-                f.rR.y = -90;
-                f.rL.z = -60;
-                if (c->mainHand().type == 3)
-                    f.offModel = 840;
-                if (t < 300)
-                    f.rR.x += 20;
-            }
-        } else if (mainShoots) {
-            if (main == CROSSBOW)
-                f.rR.y = -90;
-            if (t < 2 * D) { // (as read: the release is reached only past 2·D)
-                f.dR += main == BOW ? glm::vec3(7, 5, 4) : glm::vec3(3, 2, 4); // (open points 3 §5)
-                f.dL += glm::vec3(10, 3, 3);
-                f.T.z = 70;
-                f.rR.z = f.rL.z = -70;
-                if (t < D / 2) {
-                    f.dR.z -= 2;
-                    f.rR.x = -5;
-                    f.dL = {5, 1, 0};
-                    f.T.z = 50;
-                    f.offModel = NO_MODEL;
-                }
-            } else {
-                f.dL.x += 1;
-                f.rL.x = f.rR.x = -30;
-                f.rL.y = -45;
-            }
-            if (c->mainHand().type == 3)
-                f.offModel = 840;
-        } else {
-            if (off == CROSSBOW)
-                f.rL.y = -90;
-            if (t < 2 * D) {
-                f.dL += off == BOW ? glm::vec3(-7, 5, 4) : glm::vec3(-3, 2, 4); // (open points 3 §5)
-                f.dR += glm::vec3(-10, 3, 3);
+            if (clock < add32(R0, R0)) {
+                if (offSub == BOW)
+                    f.dL.y += 5, f.dL.x -= 7;
+                else
+                    f.dL.y += 2, f.dL.x -= 3;
+                f.dL.z += 4;
+                f.dR.y += 3, f.dR.x -= 10, f.dR.z += 3;
                 f.T.z -= 70;
                 f.rL.z = 70;
                 f.rR.z = 70;
-                if (t < D / 2) {
+                if (clock < R0 / 2) {
                     f.dL.z -= 2;
                     f.rL.x = -5;
                     f.dR = {-5, 1, 0};
-                    f.T.z = -50;
                     f.mainModel = NO_MODEL;
+                    f.T.z = -50;
+                    f.rL.z = 70;
+                    break;
                 }
             } else {
-                f.dR.x -= 1;
-                f.rL.x = f.rR.x = -30;
+                f.dL.x -= 1;
+                f.rL.x = -30;
+                f.rR.x = -30;
                 f.rR.y = 45;
-                if (off == CROSSBOW)
+                if (offSub == CROSSBOW)
                     f.rL.z = 50;
             }
             if (c->offHand().type == 3)
                 f.mainModel = 840;
+        } else {
+            if (mainSub == CROSSBOW)
+                f.rR.y = -90;
+            if (clock < add32(R0, R0)) {
+                if (mainSub == BOW)
+                    f.dR.y += 5, f.dR.x += 7;
+                else
+                    f.dR.y += 2, f.dR.x += 3;
+                f.dR.z += 4;
+                f.dL.y += 3, f.dL.x += 10, f.dL.z += 3;
+                f.T.z = 70;
+                f.rR.z = -70;
+                f.rL.z = -70;
+                if (clock < R0 / 2) {
+                    f.dR.z -= 2;
+                    f.rR.x = -5;
+                    f.dL = {5, 1, 0};
+                    f.offModel = NO_MODEL;
+                    f.T.z = 50;
+                    f.rR.z = -70;
+                    break;
+                }
+            } else {
+                f.dR.x += 1;
+                f.rR.x = -30;
+                f.rL.x = -30;
+                f.rL.y = -45;
+            }
+            if (c->mainHand().type == 3)
+                f.offModel = 840;
         }
         break;
-    }
-    case 23:
-        spell();
-        if (!W)
+    case 0x16: // 01-18 §7
+        if (mainSub != BOW && mainSub != CROSSBOW) {
+            f.dL.y += 3, f.dL.x -= 4, f.dL.z += 2;
+            f.dR.y += 2, f.dR.x -= 10, f.dR.z += 1;
+            f.T.z = -60;
+            f.rL.z = 60;
+            f.rL.y = -90;
+            f.rR.z = 60;
+            if (c->offHand().type == 3)
+                f.mainModel = 840;
+            if (clock < 300)
+                f.dL.z -= 1, f.rL.x += 20, f.rL.y -= 20;
+        } else {
+            f.dR.y += 3, f.dR.x += 4, f.dR.z += 2;
+            f.dL.y += 2, f.dL.x += 10, f.dL.z += 1;
             f.T.z = 60;
+            f.rR.z = -60;
+            f.rR.y = -90;
+            f.rL.z = -60;
+            if (c->mainHand().type == 3)
+                f.offModel = 840;
+            if (clock < 300)
+                f.dR.z -= 1, f.rR.x += 20, f.rR.y += 20;
+        }
         break;
-    case 24:
-    case 25:
-        if (W) {
-            f.dR.y += 4;
-            f.dL.y += 4;
-            f.T.z = pose == 24 ? 20.f : -20.f;
-            wobble();
-        } else if (pose == 24) {
+    case 0x17: // 01-18 §7
+        if (clock < B) {
+            armsForward();
+        } else {
+            f.T.z = 60;
+            f.rR = {0, -45, -60};
+            f.rL = {-45, -45, 0};
+        }
+        break;
+    case 0x18: // 01-18 §7
+        if (clock < B) {
+            sway();
+            f.T.z = 20;
+        } else if (clock < R0) {
             f.E.x = 0.5f;
             f.T.z = -60;
             f.B.z = -30;
@@ -1002,7 +1127,13 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.rR = {-45, 45, 0};
             f.dL = {-2, 0, 0};
             f.turn = true;
-        } else {
+        }
+        break;
+    case 0x19: // 19-24 §5.1
+        if (clock < B) {
+            sway();
+            f.T.z = -20;
+        } else if (clock < R0) {
             f.E.x = -0.5f;
             f.T.z = 60;
             f.B.z = 30;
@@ -1012,10 +1143,10 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.turn = true;
         }
         break;
-    case 26:
-        if (W) {
-            spell();
-        } else if (!E) {
+    case 0x1A: // 19-24 §5.2
+        if (clock < B) {
+            armsForward();
+        } else if (clock < R0) {
             f.T.z = 90;
             f.rR = {-90, 0, -90};
             f.rL = {-45, -45, 0};
@@ -1026,88 +1157,146 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.dR = {3, 0, 1};
         }
         break;
-    case 27:
-        spell();
+    case 0x1B: // 19-24 §5.3
+        armsForward();
         break;
-    case 28:
-        if (W) {
+    case 0x1C: // 19-24 §5.4: no clamp on the turn
+        if (clock < B) {
             f.T.z = -80;
+            f.B.z = 0;
             f.rR = {-90, 90, -90};
             f.rL = {20, 90, 90};
-        } else if (A) {
+        } else if (clock < add32(B, Cq)) {
             f.T.z = -90;
-            f.B.z = 360 * u;
+            f.B.z = (float)sub32(clock, B) * 360 / (float)Cq;
             f.rL = {0, 100, 90};
             f.rR = {0, 90, 0};
             f.rate = 0.2f;
         } else {
             f.T.z = 80;
+            f.B.z = 0;
             f.rL = {90, 90, 270};
             f.rR = {0, 90, 90};
         }
         break;
-    case 29:
-        if (W) {
+    case 0x1D: // 19-24 §5.5
+        if (clock < B) {
             f.rR = {-80, -90, 60};
             f.rL = {-80, 90, -60};
             f.dR.y += 3;
             f.dR.x -= 5;
             f.dL.x += 5;
-        } else if (!E) {
+        } else if (clock < R0) {
             f.T = {0, 0, -30};
             f.dR.y -= 5;
             f.dL.y -= 5;
             f.rL = {-90, 90, 110};
             f.rR = {-90, -90, -110};
-            f.E.y = -0.5f;
             f.rate = 0.04f;
+            f.E.y = -0.5f;
         } else {
-            stance(false);
+            late(-90, false);
+            blockT({-80, 40, 60});
         }
         break;
-    case 30: case 31: case 32: case 33:
-        if (W) {
-            const float q = clamp01(t / P1);
-            if (pose == 30)
-                f.rR = {-80, 90, -90}, f.dR = {-10, 8, 8}, f.T.z = -45, f.B.z = -20 * q;
-            else if (pose == 31)
-                f.rR = {0, -90, 0}, f.dR = {-8, 6, 6}, f.H.x = -10, f.H.z = 30, f.T.z = 45, f.B.z = 20,
-                f.E.x = 0, f.rate = 0.05f;
-            else if (pose == 32)
-                f.dR = {2, 2, 14}, f.rR = {50, 0, 0}, f.T.z = -45, f.B.z = -20 * q, f.E.x = 0.5f * q, f.rate = 0.04f;
-            else
-                f.dR = {4, 2, 8}, f.rR = {-90, -180, 90}, f.T.z = -90, f.E.y = -1;
-        } else if (t < D) {
-            const float q2 = clamp01(1.2f * u);
-            const auto blend = [&](glm::vec3 to, glm::vec3 from) { return q2 * to + (1 - q2) * from; };
-            if (pose == 30)
-                f.E.x = -0.8f * q2, f.H.x = -10, f.T.z = 90 * q2 - 45 * (1 - q2), f.B.z = 30 * q2, f.ell = 10 * q2,
-                f.rR = blend({-110, 60, 0}, {-90, 90, 48}), f.dR = blend({-12, 0, -1}, {-10, 8, 8}), f.rate = 0.05f;
-            else if (pose == 31)
-                f.E.x = 0.8f * q2, f.H.z = -30, f.T.z = 45 * (1 - q2) - 45 * q2, f.B.z = -30 * q2, f.B.x = -20 * q2,
-                f.ell = 10 * q2, f.rR = blend({0, -90, -130}, {0, -90, 20}), f.dR = blend({0, 2, 0}, {-8, 6, 6}),
-                f.rate = 0.05f;
-            else if (pose == 32)
-                f.B.x = 20 * (1 - clamp01(2 * u)) - 10 * clamp01(2 * u), f.T.z = 45 * clamp01(2 * u) - 45 * (1 - clamp01(2 * u)),
-                f.rR = blend({-90, 0, -45}, {90, 0, 45}), f.dR = blend({0, 9, 0}, {2, 2, 14}), f.rate = 0.05f;
-            else
-                f.dR = {6, 0, 0}, f.E.y = 0.5f, f.T.z = 90, f.rR = {-90, 0, -90}, f.turn = true;
+    // 19-24 §5.6-§5.9. Their p × 10 (stack +0x30) has no traced reader (open); the engine keeps
+    // it as the foot spread. The spin terms on owner +0x1314 are open (never taken).
+    case 0x1E:
+        if (clock < B) {
+            const float r = t / (float)B;
+            f.rR = {-80, 90, -90};
+            f.dR = {-10, 8, 8};
+            f.T.z = -45;
+            f.B.z = r * -20;
+            f.E.x = r * 0.f;
+            f.rate = 0.04f;
+        } else if (clock < add32(add32(B, Cq), Ar)) {
+            const float p = clampHigh((float)sub32(clock, B) * 1.2f / (float)Cq), q = 1 - p;
+            f.E.x = q * 0.f - p * 0.8f;
+            f.rR = mix({-110, 60, 0}, p, {-90, 90, 48}, q);
+            f.dR = mix({-12, 0, -1}, p, {-10, 8, 8}, q);
+            f.H.x = -10;
+            f.T.z = p * 90 - q * 45;
+            f.B.z = p * 30;
+            f.rate = 0.05f;
+            f.ell = p * 10;
         } else {
-            f.rate = 0.03f;
-            f.dR = {2, 0, 0};
-            f.rR = glm::vec3(0);
-            f.T.z = -30;
+            restE();
         }
-        f.dL = f.dR;
-        f.rL = f.rR;
-        f.L = f.Rh + glm::vec3(-0.2f, -0.2f, -1);
+        mirror();
         break;
-    case 34:
+    case 0x1F:
+        if (clock < B) {
+            f.rR = {0, -90, 0};
+            f.dR = {-8, 6, 6};
+            f.H.x = -10;
+            f.H.z = 30;
+            f.T.z = 45;
+            f.rate = 0.05f;
+            f.E.x = -0.f;
+            f.B.z = 20;
+        } else if (clock < R0) {
+            const float p = clampHigh((float)sub32(clock, B) * 1.2f / (float)Cq), q = 1 - p;
+            f.E.x = p * 0.8f + q * -0.f;
+            f.H.z = -30;
+            f.rR = mix({0, -90, -130}, p, {0, -90, 20}, q);
+            f.dR = mix({0, 2, 0}, p, {-8, 6, 6}, q);
+            f.T.z = q * 45 - p * 45;
+            f.B.z = p * -30;
+            f.B.x = p * -20;
+            f.rate = 0.05f;
+            f.ell = p * 10;
+        } else {
+            restE();
+        }
+        mirror();
+        break;
+    case 0x20:
+        if (clock < B) {
+            const float r = t / (float)B;
+            f.dR = {2, 2, 14};
+            f.rR = {50, 0, 0};
+            f.T.z = -45;
+            f.B.z = r * -20;
+            f.E.x = r * 0.5f;
+            f.rate = 0.04f;
+        } else if (clock < add32(add32(B, Cq), Ar)) {
+            const float p = clampHigh((float)sub32(clock, B) * 2 / (float)Cq), q = 1 - p;
+            f.B.x = q * 20 - p * 10;
+            f.rR = mix({-90, 0, -45}, p, {90, 0, 45}, q);
+            f.dR = mix({0, 9, 0}, p, {2, 2, 14}, q);
+            f.T.z = p * 45 - q * 45;
+            f.rate = 0.05f;
+        } else {
+            restE();
+        }
+        mirror();
+        break;
+    case 0x21:
+        if (clock < B) {
+            f.dR = {4, 2, 8};
+            f.rR = {-90, -180, 90};
+            f.T.z = -90;
+            f.E.y = -1;
+            f.rate = 0.02f;
+        } else if (clock < add32(B, Cq)) {
+            f.dR = {6, 0, 0};
+            f.E.y = 0.5f;
+            f.T.z = 90;
+            f.rR = {-90, 0, -90};
+            f.turn = true;
+            f.rate = 0.05f;
+        } else {
+            restE();
+        }
+        mirror();
+        break;
+    case 0x22: // 19-24 §5.10
         f.rR = {-90, -90, 80};
         f.T.z = -80;
         break;
-    case 35:
-        if (W) {
+    case 0x23: // 19-24 §5.11
+        if (clock < B) {
             f.rR = {-90, 0, 0};
             f.rL = {-90, 0, 40};
             f.dR = {1, -7, 0};
@@ -1116,7 +1305,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.E.y = -0.5f;
             f.rate = 0.005f;
             f.turn = true;
-        } else if (!E) {
+        } else if (clock < R0) {
             f.rR = {-90, -60, -30};
             f.rL = {-90, 60, -50};
             f.dR = {3, 5, 2};
@@ -1124,249 +1313,294 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.T.z = 40;
             f.rate = 0.05f;
             f.turn = true;
-        } else {
-            stance(true);
+        } else if (late(-60, true)) {
+            blockT({-80, 40, 60});
         }
         break;
-    case 37:
-        if (W) {
+    case 0x25: { // 25-30 §5.1: the mid-point gets its common +10 / -4 on top of phase 3's own
+        float armY = f.armL.y, armZ = f.armL.z;
+        if (clock < B) {
             f.rR = {-90, -90, 80};
             f.T.z = -80;
-        } else if (!E) {
+        } else if (clock < R0) {
             f.rR = {-90, 0, -90};
-            f.T.z = 90;
             f.Rh.x += 4;
+            f.T.z = 90;
+            f.turn = true;
             f.footL.y -= 4;
             f.footR.y += 4;
-            f.turn = true;
             f.rate = 0.05f;
-        }
-        if (!E) {
-            G({2, 0, 0});
-            f.rL = f.rR;
         } else {
-            f.Rh += glm::vec3(-8, 4, 0);
-            G({-2, 0, -1});
+            cleared = true;
+            f.Rh.y += 4;
+            f.Rh.x -= 8;
             f.rR.x = -60;
             f.rR.z = 20;
             f.T.z = -20;
+            armY += 10;
+            armZ -= 4;
         }
+        offFromMain(2);
+        f.armL.y = armY + 10;
+        f.armL.z = armZ - 4;
+        f.rL = f.rR;
         break;
-    case 38:
-        if (t < P1 + (float)P.active / 2)
+    }
+    case 0x26: // 25-30 §5.2
+        if (clock < add32(B, Cq / 2))
             f.H = {-30, 10, 90}, f.T = {0, 0, 60}, f.K = {-3, -2, 0};
-        else if (t < D)
+        else if (clock < R0)
             f.H = {30, -10, -30}, f.T = {10, 0, -20}, f.K = {3, 0, 2};
         break;
-    case 39:
-        if (t < P1 + (float)P.active / 2)
-            f.H = {-70, 0, 0}, f.T = {-10, 0, 0}, f.K = {0, -3, -1}, f.rL.x = f.rR.x = 20;
-        else if (t < D)
-            f.H = {50, 0, 0}, f.T = {20, 0, 0}, f.S = {0, -3, 1}, f.K = {0, 0, 2}, f.rR.x = f.rL.x = -20,
+    case 0x27: // 25-30 §5.3
+        if (clock < add32(B, Cq / 2))
+            f.H = {-70, 0, 0}, f.T = {-10, 0, 0}, f.K = {0, -3, -1}, f.rL.x = 20, f.rR.x = 20;
+        else if (clock < R0)
+            f.H = {50, 0, 0}, f.T = {20, 0, 0}, f.S = {0, -3, 1}, f.K = {0, 0, 2}, f.rR.x = -20, f.rL.x = -20,
             f.Q = {-10, 0, 0};
         break;
-    case 40:
-        if (W)
-            f.B.z = 90, f.H = {0, 10, -60}, f.Q = {0, 0, -70}, f.rate = 0.002f;
-        else
+    case 0x28: // 25-30 §5.4
+        if (clock < B)
+            f.B.z = 90, f.rate = 0.002f, f.H = {0, 10, -60}, f.Q = {0, 0, -70};
+        else if (clock < R0)
             f.B.z = 200, f.H = {0, -20, 60}, f.K = {-3, 0, -2}, f.Q = {0, 0, 70};
         break;
-    case 41: {
-        // The creature curls up toward its body and uncurls.
-        float k = 0;
-        if (W)
-            k = P1 > 0 ? t / P1 : 1;
-        else if (A)
-            k = 1, f.curled = true, f.S = {0, 0, -3};
-        else if (Rr)
-            k = 1 - (t - P12) / std::max(1.f, (float)P.recovery);
-        const glm::vec3 centre = a.bodyOffset;
-        f.Rh = glm::mix(f.Rh, centre, k);
-        f.L = glm::mix(f.L, centre, k);
-        f.footR = glm::mix(f.footR, centre, k);
-        f.footL = glm::mix(f.footL, centre, k);
+    case 0x29: { // 25-30 §6.1: the rest hands and feet curl toward the body offset P and back
+        // (The head and tail offset locals curl too; their consumers are not traced, so the engine
+        // keeps those parts in place: open.)
+        const auto curl = [&](float k) {
+            for (glm::vec3 *v : {&f.L, &f.Rh, &f.footL, &f.footR})
+                *v = (a.bodyOffset - *v) * k + *v;
+        };
+        if (clock < B) {
+            curl(t / (float)B);
+        } else if (clock < add32(B, Cq)) {
+            f.curled = true; // C +0xBC, +0xCC, +0xD4, +0xD8 := 0, read here as hands, feet and tail hidden
+            f.S = {0, 0, -3};
+        } else if (clock < R0) {
+            curl(1 - (float)sub32(sub32(clock, B), Cq) / (float)Ar);
+        }
         break;
     }
-    case 42:
-        if (W)
-            f.H = {-10, 10, 30}, f.T = {-10, 0, 0}, f.K = {-3, 0, -1}, f.rL.x = f.rR.x = 20;
-        else
-            f.H = {50, t < P12 ? -30.f : 30.f, 0}, f.T = {30, 0, 0}, f.S = {0, -1, 2}, f.K = {0, 0, 2}, f.rR.x = -60,
-            f.rL.x = -20, f.Q = {-20, 0, 0};
-        f.rate = 0.005f;
+    case 0x2A: // 25-30 §6.2
+        if (clock < add32(B, Cq / 2)) {
+            f.H = {-10, 10, 30};
+            f.T = {-10, 0, 0};
+            f.K = {-3, 0, -1};
+            f.rL.x = 20;
+            f.rR.x = 20;
+            f.rate = 0.005f;
+        } else if (clock < R0) {
+            f.H = {50, 30, 0};
+            if (clock < add32(B, Cq))
+                f.H.y = -30;
+            f.T = {30, 0, 0};
+            f.S = {0, -1, 2};
+            f.K = {0, 0, 2};
+            f.rR.x = -60;
+            f.rate = 0.005f;
+            f.rL.x = -20;
+            f.Q = {-20, 0, 0};
+        }
         break;
-    case 43:
-        if (W)
+    case 0x2B: // 25-30 §6.3
+        if (clock < add32(B, Cq / 2))
             f.H = {-20, 0, 0}, f.T = {50, 0, 0}, f.S = {0, -2, 2}, f.K = {0, -6, -2}, f.rL.x = 20, f.rR.x = 30,
             f.Q = {-50, 0, 0};
-        else
-            f.H = {-10, 0, 0}, f.K = {0, 0, 1}, f.rate = 0.02f;
+        else if (clock < R0)
+            f.H = {-10, 0, 0}, f.T = glm::vec3(0), f.K = {0, 0, 1}, f.rL.x = 0, f.rR.x = 0, f.rate = 0.02f;
         break;
-    case 44:
-    case 73:
-    {
-        // Five steps: the wind-up, three thirds of the strike, then back to the wind-up.
-        const float P2 = (float)P.active;
-        const auto windUp = [&] {
-            f.H = {10, 0, 0}, f.T = {-20, 0, 0}, f.S = {0, -1, 0}, f.K = {0, 1, 1}, f.rL.x = f.rR.x = 20;
-            f.dL.z = f.dR.z = 2, f.Q = {30, 0, 10};
+    case 0x2C: // 25-30 §6.4, 31-49 §6 0x49: the wind-up, three thirds of the strike, the return
+    case 0x49: {
+        const auto ends = [&](glm::vec3 head) {
+            f.H = head, f.T = {-20, 0, 0}, f.S = {0, -1, 0}, f.K = {0, 1, 1}, f.rL.x = 20, f.rR.x = 20;
+            f.dL.z = 2, f.dR.z = 2, f.Q = {30, 0, 10};
         };
-        if (t < P1)
-            windUp();
-        else if (t < P1 + P2 / 3)
+        if (clock < B)
+            ends({10, 0, 0});
+        else if (clock < add32(B, Cq / 3))
             f.H = {-30, 0, 0}, f.T = {50, 0, 0}, f.S = {0, 0, 1}, f.K = {0, -4, 2}, f.rL.x = 60, f.rR.x = 70,
             f.Q = {-30, 0, 0};
-        else if (t < P1 + 2 * P2 / 3)
+        else if (clock < add32(B, add32(Cq, Cq) / 3))
             f.H = {-30, 0, 0}, f.T = {40, 0, 0}, f.S = {0, 1, 1}, f.K = {0, -2, 2}, f.rL.x = 70, f.rR.x = -30,
             f.dR = {0, 3, -2}, f.Q = {-30, 0, -10};
-        else if (t < P1 + P2)
+        else if (clock < add32(B, Cq))
             f.H = {-30, 0, 0}, f.T = {10, 0, 0}, f.S = {0, 1, 1}, f.K = {0, -2, 2}, f.rL.x = -30, f.rR.x = -40,
             f.dL = {0, 3, -2}, f.Q = {-30, 0, -10};
-        else if (t < D)
-            windUp(), f.H = {10, 0, -10};
+        else if (clock < R0)
+            ends({10, 0, -10});
         break;
     }
-    case 45:
-        if (W)
+    case 0x2D: // 25-30 §7.1: no clamp on the roll
+        if (clock < B)
             f.T.x = -10, f.H.x = 10, f.Q.x = -60;
-        else if (A)
-            f.rL.x = f.rR.x = 80, f.H.x = -60, f.B.x = -360 * u, f.K = {0, -3, 0};
-        else
+        else if (clock < add32(B, Cq))
+            f.rL.x = 80, f.rR.x = 80, f.H.x = -60, f.B.x = (float)sub32(clock, B) / (float)Cq * -360,
+            f.K = {0, -3, 0};
+        else if (clock < R0)
             f.T.x = 20, f.H.x = -10, f.K = {0, -2, 0};
         break;
-    case 46:
-    case 47: {
-        const float side = pose == 46 ? 1.f : -1.f;
-        if (W)
+    case 0x2E: // 25-30 §7.2, §7.3 (mirrored)
+    case 0x2F: {
+        const float side = pose == 0x2E ? 1.f : -1.f;
+        if (clock < B)
             f.T.z = -10 * side, f.T.y = 30 * side, f.rL.y = f.rR.y = -30 * side, f.H.z = 60 * side;
-        else if (A)
-            f.rL.y = f.rR.y = 80 * side, f.B.y = -360 * u * side;
-        else
+        else if (clock < add32(B, Cq))
+            f.rL.y = f.rR.y = 80 * side, f.B.y = (float)sub32(clock, B) / (float)Cq * (-360 * side);
+        else if (clock < R0)
             f.T.y = -30 * side, f.rL.y = f.rR.y = 30 * side;
         break;
     }
-    case 48:
-        if (W) {
-            const float q = clamp01(t / P1);
-            f.T.y = 10 * q;
-            f.T.z = -80 * q;
-            f.rR = {-90, 90 * q, -30 * q};
-            G({2, 0, 0});
+    case 0x30: { // 25-30 §7.4 (its hand-turn target is owner +0x148: open, not kept)
+        const int32_t halfB = B / 2;
+        const auto stepR = [&](float dx) {
+            offFromMain(dx);
+            upperArm();
+            f.rate = 0.01f;
+        };
+        if (clock < halfB) {
+            const float p = clampHigh(t / (float)halfB), q = 1 - p;
+            f.T.y = p * 10;
+            f.T.z = p * -80;
+            f.rR = {q * -90 + p * -90, q * 0.f + p * 90, q * 0.f + p * -30};
+            stepR(2);
+        } else if (clock < B) {
+            f.T = {10, 0, -90};
+            f.rR = {0, 110, -20};
+            stepR(2);
+        } else if (clock < R0) {
+            f.T = {0, 0, 90};
+            f.rR = {0, 90, 90};
+            stepR(-2);
         } else {
-            if (A)
-                f.T = {10, 0, -90}, f.rR = {0, 110, -20}, f.L = f.Rh;
-            else if (Rr)
-                f.B.z = 20, f.T = {0, 0, 90}, f.rR = {0, 90, 90}, f.L = f.Rh;
-            else
-                G({-2, 0, -1}), f.rR.y = 90, f.T.z = -80;
-            f.armL.y += 10;
-            f.armL.z -= 4;
-            if (!E)
-                f.B.z = 360 * clamp01((t - P1) / std::max(1.f, D - P1));
+            cleared = true;
+            offFromMain(-2);
+            f.L.z -= 1;
+            upperArm();
+            f.rR.y = 90;
+            f.T.z = -80;
         }
+        // Step W, every phase.
+        f.B.z = clampUnit((float)sub32(clock, B) / (float)Cq) * 360;
         f.rL = f.rR;
         break;
-    case 49:
-        if (W) {
+    }
+    case 0x31: // 31-49 §6 (its hand-turn target is owner +0x148: open, not kept)
+        if (clock < B) {
             f.B.z = 30;
             f.T = {0, 0, 90};
             f.rR = {-90, -90, 90};
-            G({2, 0, 0});
+            f.Rh = f.L;
+            f.L.x += 2;
+            upperArm();
             f.rate = 0.005f;
-        } else if (!E) {
+        } else if (clock < R0) {
+            f.T = glm::vec3(0);
             f.rR = {-90, -90, 0};
-            if (t < P12)
+            if (clock < add32(B, Cq))
                 f.E.x = 0.25f;
-            G({-2, 0, 0});
-            f.B.z = -360 * clamp01((t - P1) / std::max(1.f, D - P1));
+            offFromMain(-2);
+            upperArm();
+            f.B.z = clampHigh((float)sub32(clock, B) / (float)Cq) * -360;
             f.rate = 0.03f;
         } else {
-            G({-2, 0, -1});
+            cleared = true;
+            offFromMain(-2);
+            f.L.z -= 1;
+            upperArm();
             f.rR = {-90, 90, 0};
+            f.T.z = 0;
         }
         f.rL = f.rR;
         break;
-    case 50:
+    case 0x32: { // 31-49 §6 (its p × 40 scratch is never read)
         f.rR = {60, -20, 20};
         f.dR = {0, 2, 4};
         f.rL = {60, 20, -20};
         f.dL = {0, 2, 4};
-        if (W || A) {
+        const auto kick = [&] {
+            f.rL.x = -90, f.rL.z = 90, f.rR.x = -90;
+            f.dL = {-4, -4, -2}, f.dR = {0, 4, 1};
+        };
+        if (clock < B) {
             f.T.z = 50;
-            f.rL.x = -90;
-            f.rL.z = 90;
-            f.rR.x = -90;
-            f.dL = {-4, -4, -2};
-            f.dR = {0, 4, 1};
-            if (A) {
-                const float q = clamp01(1.5f * u);
-                f.B.z = -270 * q;
-                f.B.y = -40 * q;
-                f.S.z += 4;
-                f.ell = 40 * q;
-                f.H.x = -30;
-                f.H.z = -60;
-                f.rate = 0.03f;
-            }
+            kick();
+        } else if (clock < add32(B, Cq)) {
+            const float p = clampUnit((float)sub32(clock, B) / (float)Cq * 1.5f);
+            f.B.z = p * -270;
+            f.B.y = p * -40;
+            f.S.z += 4;
+            kick();
+            f.H.x = -30;
+            f.H.z = -60;
+            f.rate = 0.03f;
         } else {
-            guardIdle();
+            guard(0.005f);
         }
         break;
-    case 51:
-    case 52:
-        if (pose == 52)
-            f.E.z = -0.14f, f.T.x = 10, f.K = {0, 2, -2};
-        if (t < 3000) { // the held item's use limit (§6.5); consumables' own limits come with items
-            f.H = {45 + 5 * std::cos(0.02f * t), 0, 0};
+    }
+    case 0x34: // 31-49 §6: constant set K, then selector 0x33's body
+        setK();
+        [[fallthrough]];
+    case 0x33:
+        if (clock < heldLimit) {
+            f.H = {cosw(t * 0.02f) * 5 + 45, 0, 0};
             f.T = {10, 0, 0};
             f.B = {10, 0, 0};
             f.dL = {1, 7, 8};
             f.dR = {-1, 7, 8};
-            f.rL = f.rR = {100, 0, 0};
+            f.rL = {100, 0, 0};
+            f.rR = {100, 0, 0};
         }
         break;
-    case 53:
+    case 0x35: // 31-49 §6
         f.T = {-30, 0, 0};
         f.dL = {4, 6, 6};
         f.dR = {-4, 6, 6};
         f.S.y = 3;
         break;
-    case 54:
-        if (glm::dot(m.intent, m.intent) > 0) {
+    case 0x36: // 31-49 §6: owner +0x40 read here as the movement intent
+        if ((m.intent.x * m.intent.x + m.intent.y * m.intent.y) + m.intent.z * m.intent.z > 0) {
+            f.dL.y += 4;
             f.B.x = 20;
             f.T.x = -10;
             f.H.x = -20;
-            f.rL.x = f.rR.x = -20;
-            f.dL.y += 4;
+            f.rL.x = -20;
+            f.rR.x = -20;
             f.dR.y += 4;
             f.F = -40;
-            f.footL += glm::vec3(0, 4, 3);
-            f.footR += glm::vec3(0, 4, 3);
+            f.footL.z += 3, f.footR.z += 3;
+            f.footR.y += 4, f.footL.y += 4;
         }
         break;
-    case 56: // stunned
+    case 0x37: // 31-49 §6
+        f.B = {-90, 0, 0};
+        f.H.x = 20;
+        f.E.z = (a.box.y - a.box.z) * 0.5f - 0.15f;
+        f.K = {0, -1, 0};
+        f.dL = f.dR = {0, 0, 3};
+        break;
+    case 0x38: // 31-49 §6
         f.T.x += 30;
         f.dL = {-2, 0, 0};
         f.dR = {2, 0, 0};
         f.rL = {-10, -10, 90};
         f.rR = {-10, 10, -90};
         break;
-    case 55:
-        f.B = {-90, 0, 0};
-        f.H.x = 20;
-        f.E.z = (a.box.y - a.box.z) / 2 - 0.15f;
-        f.K = {0, -1, 0};
-        f.dL = f.dR = {0, 0, 3};
+    case 0x39: // 31-49 §6
+        setK();
         break;
-    case 57:
-        f.E.z = -0.14f;
-        f.T.x = 10;
-        f.dL = f.dR = {0, 4, 0};
-        f.K = {0, 2, -2};
-        break;
-    case 59:
+    case 0x3A: // 31-49 §6 (the mount terms are open: the engine passes no mount)
         f.T.x = 20;
+        f.dL = {4, 6, -3};
+        f.dR = {-4, 6, -3};
+        f.K = {0, 2, -2};
+        f.rL = {60, 90, 60};
+        f.rR = {60, -90, -60};
+        break;
+    case 0x3B: // 31-49 §6
         f.E.z += 1.25f;
+        f.T.x = 20;
         f.B.z = -50;
         f.dL = {4, 6, -3};
         f.dR = {-4, 6, -3};
@@ -1375,25 +1609,26 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         f.rL = {60, 90, 60};
         f.rR = {60, -90, -60};
         break;
-    case 60:
-        if (t < 600)
-            f.T.z = -80, f.rR = {-90, 90, -90}, f.rL = {20, 90, 90};
-        else if (t < 5000)
-            f.B.z = 360 * t / 300, f.rL = {0, -90, 0}, f.rR = {0, 90, 0}, f.rate = 0.2f;
+    case 0x3C: // 31-49 §6: the clock against 600 and 5000
+        if (clock < 600)
+            f.T.z = -80, f.B.z = 0, f.rR = {-90, 90, -90}, f.rL = {20, 90, 90};
+        else if (clock < 5000)
+            f.T.z = 0, f.B.z = (float)sub32(clock, 600) * 360 / 300, f.rL = {0, -90, 0}, f.rR = {0, 90, 0},
+            f.rate = 0.2f;
         else
-            f.T.z = 80, f.rL = {90, 90, 270}, f.rR = {0, 90, 90};
+            f.T.z = 80, f.B.z = 0, f.rL = {90, 90, 270}, f.rR = {0, 90, 90};
         break;
-    case 61:
-        if (W) {
-            casting();
-        } else if (A) {
+    case 0x3D: // 31-49 §6
+        if (clock < B) {
+            orbit();
+        } else if (clock < add32(B, Cq)) {
             f.T.x = -20;
             f.T.z = 10;
             f.dL = {2, 4, 0};
             f.dR = {-2, 6, 0};
             f.rL = {0, 45, 0};
             f.rR = {0, -45, 0};
-        } else {
+        } else if (clock < R0) {
             f.dL = {-3, -6, 0};
             f.dR = {3, -6, 0};
             f.rL = {-90, 0, 130};
@@ -1401,109 +1636,124 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.rate = 0.03f;
         }
         break;
-    case 62:
-        casting();
+    case 0x3E: // 31-49 §6
+        orbit();
         break;
-    case 63:
-        // Alternating 500 ms windows: right, both, left, both, ...
-        if (t < P12 + 400) {
-            const int64_t k500 = (int64_t)std::floor((t - P1 + 100) / 500), k1000 = (int64_t)std::floor((t - P1 + 100) / 1000);
-            if (t <= P1 || (k500 & 1))
-                f.dL = {2, -2, 12}, f.dR = {-2, -2, 12}, f.T.x = 20, f.B.x = 10;
-            else if (k1000 & 1)
-                f.dL = {2, -2, 12}, f.dR = {0, 0, -5}, f.T = {-10, 0, 20}, f.B = {-5, 0, 10}, f.rate = 0.03f;
-            else
-                f.dL = {0, 0, -5}, f.dR = {-2, -2, 12}, f.T = {-10, 0, -20}, f.B = {-5, 0, -10}, f.rate = 0.03f;
-        }
+    case 0x3F: { // 31-49 §6: 500 ms windows, divided toward zero
+        if (clock >= add32(add32(Cq, 400), B))
+            break;
+        const int32_t e = add32(sub32(clock, B), 100), q1 = e / 500, q2 = e / 1000;
+        if (clock <= B || q1 % 2 == 1)
+            f.dL = {2, -2, 12}, f.dR = {-2, -2, 12}, f.T.x = 20, f.B.x = 10;
+        else if (q2 % 2 != 0)
+            f.dL = {2, -2, 12}, f.dR = {0, 0, -5}, f.rate = 0.03f, f.T = {-10, 0, 20}, f.B = {-5, 0, 10};
+        else
+            f.dL = {0, 0, -5}, f.dR = {-2, -2, 12}, f.rate = 0.03f, f.T = {-10, 0, -20}, f.B = {-5, 0, -10};
         break;
-    case 65:
-        if (t < D)
-            f.T.z = 90 * std::sin(0.03f * t), f.dL = f.dR = glm::vec3(0), f.rate = 0.04f;
+    }
+    case 0x41: // 31-49 §6
+        if (clock < R0)
+            f.T = {0, 0, sinw(t * 0.03f) * 90}, f.dR = glm::vec3(0), f.dL = glm::vec3(0), f.rate = 0.04f;
         break;
-    case 66:
-        if (c->spentCharge > 0) { // open points 3 §6: a charged throw, a boomerang in each hand
-            if (W) {
+    case 0x42: // 31-49 §6: owner +0x13B4, read as the spent charge (a boomerang in each hand)
+        if (c->spentCharge > 0) {
+            if (clock < B) {
                 f.T.z = -90;
                 f.dR = {2, -2, 1};
                 f.rR = {0, 10, 0};
                 f.offModel = f.mainModel;
-            } else if (A) {
+            } else if (clock < add32(B, 300)) {
                 f.T.z = 10;
                 f.dL = {-2, -2, 1};
                 f.rL = {0, -10, 0};
                 f.offModel = f.mainModel;
                 f.mainModel = NO_MODEL;
-            } else {
+            } else if (clock < R0) {
+                f.mainModel = NO_MODEL;
                 f.T.z = 90;
-                f.mainModel = f.offModel = NO_MODEL;
+                f.offModel = NO_MODEL;
             }
-            if (!W)
-                f.B.z = std::min(360 * (t - P1) / 200, 700.f);
-        } else if (W) {
+            f.rate = 0.03f;
+            if (clock > B && clock < R0) {
+                const float spin = (float)sub32(clock, B) * 360 / 200;
+                f.B.z = spin > 700 ? 700.f : spin;
+            }
+        } else if (clock < B) {
             f.T.z = -90;
             f.dR = {2, -2, 1};
             f.rR = {0, 10, 0};
-        } else {
+        } else if (clock < R0) {
             f.T.z = 90;
             f.mainModel = NO_MODEL; // the boomerang is in flight
         }
         break;
-    case 67:
-        f.T.z = -90 * c->charge;
+    case 0x43: // 31-49 §6: owner +0x144 is the charge
+        f.T.z = c->charge * -90;
         f.dR = {2, -2, 1};
         f.rR = {0, 10, 0};
-        f.Rh.z += 0.5f * std::cos(0.5f * t);
-        f.L.z += 0.5f * std::cos(0.5f * t);
+        handBob();
         if (c->charge > 0)
             f.offModel = f.mainModel; // a second boomerang in the off hand
         break;
-    case 7:
-        // (Its U channel blends record fields 24 and 25, which the engine does not keep yet.)
-        f.rR = {0, 90, 0};
-        if (twoHanded(main))
-            G({2, 0, 0});
-        f.rate = t < D / 2 ? 0.005f : 0.03f;
-        break;
-    case 68:
-        if (W)
+    case 0x44: // 31-49 §6
+        if (clock < B)
             f.T.x = -20, f.rL = f.rR = {-90, 0, 0}, f.dR = {1, -2, 0}, f.dL = {-1, -2, 0};
         else
-            f.rL = {0, 45, 0}, f.rR = {0, -45, 0}, f.dR = {-2, 5, 0}, f.dL = {2, 6, 0};
+            f.T.x = 0, f.rL = {0, 45, 0}, f.rR = {0, -45, 0}, f.dR = {-2, 5, 0}, f.dL = {2, 6, 0};
         break;
-    case 69:
-        if (t < P12)
-            f.rR = {-90, -90, -90}, f.dR = {4, 3, 0}, f.T.z = -60 * t / std::max(1.f, P12), f.rL = {0, 0, 90},
-            f.B.z = -360 * t / std::max(1.f, P12), f.rate = 0.03f;
+    case 0x45: { // 31-49 §6
+        const int32_t strike = add32(B, Cq);
+        if (clock < strike)
+            f.rate = 0.03f, f.B.z = t * -360 / (float)strike, f.rR = {-90, -90, -90}, f.dR = {4, 3, 0},
+            f.T.z = t * -60 / (float)strike, f.rL = {0, 0, 90};
         else
             f.rL = {0, 0, 90}, f.rR = {-60, -60, -60};
         break;
-    case 70:
-        f.B.x = W ? -30.f : 120.f;
+    }
+    case 0x46: // 31-49 §6
+        if (clock < B)
+            f.B.x = -30;
+        else if (clock < add32(B, Cq))
+            f.B.x = 120;
         break;
-    case 71:
-        if (W)
-            f.dR = {-3, -2, 10}, f.dL = {3, -2, 10}, f.T.x = 40, f.B.x = 10;
-        else if (A)
-            f.dR = f.dL = {0, 5, 0}, f.T.x = -20, f.B.x = -40;
-        else
-            f.dR = {2, -1, 0}, f.dL = {-2, -1, 0};
+    case 0x47: // 31-49 §6: model 2101 between the hands at one and a half the weapon scale
+        if (clock < B) {
+            f.dR = {-3, -2, 10};
+            f.dL = {3, -2, 10};
+            f.offModel = 2101;
+            f.offScale = f.offScale * 1.5f;
+            f.T.x = 40;
+            f.B.x = 10;
+        } else if (clock < add32(Cq, B)) {
+            f.rate = 0.01f;
+            f.dR = f.dL = {0, 5, 0};
+            f.T.x = -20;
+            f.B.x = -40;
+        } else {
+            f.dR = {2, -1, 0};
+            f.dL = {-2, -1, 0};
+        }
         break;
-    case 72:
-        if (t < 5000)
+    case 0x48: // 31-49 §6
+        if (clock < 5000)
             f.T.x = 20, f.H.x = 30, f.dL = f.dR = {0, 0, 16};
         break;
-    default:
+    default: // 0x0C, 0x0D, 0x0E, 0x24, 0x40 and selectors past 0x49: no case body
         break;
     }
-    // Step 8: arm targets.
-    f.armL = 0.5f * (f.armL + f.L);
-    f.armR = 0.5f * (f.armR + f.Rh);
-    // Steps 9–12.
+    // Weapon pose contract §5: a zero selector also zeroes the clock; later selector tests see 0.
+    if (cleared)
+        pose = 0, clock = 0, t = 0;
+    // Step 8 (selectors 01-18 §1.2): the auxiliary mid-points average with the rest hands.
+    f.armL = (f.L + f.armL) * 0.5f;
+    f.armR = (f.Rh + f.armR) * 0.5f;
+    // Steps 9–12. Weapon pose contract §5: knocked down, a quadruped (+0x7E bit 0) takes box x
+    // (+0x80) for its offset and any other creature box y (+0x84).
     if (m.knockedDown) {
-        if (!quadruped)
-            f.B = {90, 0, 0}, f.E.z = (a.box.x - a.box.z) / 2;
+        if (quadruped)
+            f.B = {0, 90, 0}, f.E.z = (a.box.x - a.box.z) * 0.5f;
         else
-            f.B = {0, 90, 0}, f.E.z = (a.box.y - a.box.z) / 2;
+            f.B = {90, 0, 0}, f.E.z = (a.box.y - a.box.z) * 0.5f;
     }
     if (m.climbing) {
         f.dL.z += 7;
@@ -1738,7 +1988,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
                 back = R(R(T(back, {0, -6.2f, 0}), -45, {0, 1, 0}), 90, {0, 0, 1});
             else
                 back = R(R(T(back, {0, -7.2f, 0}), -225, {0, 1, 0}), 90, {0, 0, 1});
-            part(f.offModel, back, glm::vec3(wscale), centred, false, false, c ? &c->offHand() : nullptr);
+            part(f.offModel, back, glm::vec3(f.offScale), centred, false, false, c ? &c->offHand() : nullptr);
         } else {
             // Held (§9): selector 0x47 holds the item at the hands' midpoint, 8 higher.
             const glm::vec3 grasp = pose == 0x47 ? 0.5f * (Rhand + Lhand) + glm::vec3(0, 0, 8) : Lhand;
@@ -1746,11 +1996,11 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             glm::mat4 at = R(Rzyx(T(arm, grasp), lambda), m.headPitch * 0.5f, {1, 0, 0});
             const bool special = f.offModel == 840 || pose == 0x47;
             if (!special && off == FIST && main != BOOMERANG)
-                part(f.offModel, Ry(S(at, wscale), 180), glm::vec3(1), grip, false, false, c ? &c->offHand() : nullptr);
+                part(f.offModel, Ry(S(at, f.offScale), 180), glm::vec3(1), grip, false, false, c ? &c->offHand() : nullptr);
             else if (!special && off == BRACELET)
-                part(f.offModel, S(at, wscale), glm::vec3(extra), grip, false, false, c ? &c->offHand() : nullptr);
+                part(f.offModel, S(at, f.offScale), glm::vec3(extra), grip, false, false, c ? &c->offHand() : nullptr);
             else
-                part(f.offModel, at, glm::vec3(wscale), grip, false, false, c ? &c->offHand() : nullptr);
+                part(f.offModel, at, glm::vec3(f.offScale), grip, false, false, c ? &c->offHand() : nullptr);
         }
     }
     newest(beforeOff, 2);
