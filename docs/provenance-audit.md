@@ -1,0 +1,258 @@
+# Specification provenance audit
+
+Release gate (AGENTS.md, CLEANROOM.md "Continuation provenance"): an existing spec or a
+checked roadmap item does not by itself establish independent authorship or native parity.
+This inventory classifies every `docs/specs` contract. It is regenerated mechanically: the
+status is read from a document's first 15 lines; "recorded" means CLEANROOM.md cites the
+document's current SHA-256 prefix.
+
+Classes:
+- **A, held and recorded.** A source-only author reported FINAL / STABLE / HELD and the
+  implementer recorded the read and hash in CLEANROOM.md.
+- **B, held, hash not recorded.** Marked held, but CLEANROOM.md does not cite the current
+  hash (an older revision, or a record by topic only); only three hashes appear in the local
+  handoff. Authorship is therefore not pinned to the current text.
+- **C, inherited.** No held status and never named in CLEANROOM.md: carried over from the
+  2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
+  must not be handed to source authors unredacted.
+
+Snapshot 2026-11-14: 60 A, 65 B, 91 C (36947 lines).
+
+## Remediation
+
+1. Class C first, then B. Each document goes to a fresh source-only author
+   (CLEANROOM_AUTHOR.md) who checks every statement against the original images, rewrites
+   transcribed-looking or mixed wording as independent code-free prose, moves anything
+   unconfirmed to an unresolved section, appends a dated re-certification record, and sets
+   the held status only after a complete readback.
+2. Documents that contain implementation notes or history (for example
+   `alpha-net-transport.md`, `alpha-net-server.md`, `alpha-audio.md`, `sky-and-clouds.md`)
+   are redacted to their behavioural content on the clean side before any author sees them,
+   or are re-derived from a neutral topic brief.
+3. The implementer then reads each re-certified document whole, records its hash in
+   CLEANROOM.md, and reconciles corrected behaviour in the engine with tests.
+4. The gate closes when every row is class A. Class A certifies the process record, not
+   complete native parity.
+
+Pilot (2026-11-14): `alpha-relationship-kind-89-admission.md`,
+`alpha-hit-scalar-reduction-order.md`, `alpha-forward-link-zero-gates.md`,
+`alpha-fatal-object-descriptor-association.md` and `alpha-inventory-equality-consumers.md`.
+
+| Spec | Class | Lines | Implementation words |
+| --- | --- | ---: | ---: |
+| `alpha-actor-creation-configuration.md` | A | 130 | 0 |
+| `alpha-actor-identity-publication.md` | B | 60 | 2 |
+| `alpha-actor-inventory-consumers.md` | A | 70 | 1 |
+| `alpha-airship-pilot-behaviour.md` | A | 236 | 0 |
+| `alpha-airship-steering.md` | A | 240 | 0 |
+| `alpha-attack-routine.md` | A | 418 | 1 |
+| `alpha-audio.md` | C | 396 | 5 |
+| `alpha-backing-reference-producers.md` | C | 113 | 0 |
+| `alpha-beam-height-leftovers.md` | A | 228 | 0 |
+| `alpha-behavior-target-selection.md` | B | 78 | 0 |
+| `alpha-block-edits.md` | C | 623 | 3 |
+| `alpha-buff-record-replication.md` | B | 128 | 2 |
+| `alpha-buff-record-replication-recovered.md` | B | 414 | 2 |
+| `alpha-camera-follow-collision.md` | A | 119 | 4 |
+| `alpha-camera-initial-state.md` | A | 227 | 1 |
+| `alpha-camera-ray-geometry.md` | A | 196 | 1 |
+| `alpha-camera-view-production.md` | A | 100 | 3 |
+| `alpha-category13-inventory-counter.md` | C | 66 | 1 |
+| `alpha-character-screens.md` | C | 736 | 0 |
+| `alpha-class-83-descriptor-production.md` | A | 157 | 0 |
+| `alpha-client-action-binding-producer.md` | B | 113 | 1 |
+| `alpha-client-action-input-phase.md` | B | 149 | 2 |
+| `alpha-client-buff-action-boundaries.md` | C | 161 | 2 |
+| `alpha-client-buff-event-transmission.md` | C | 78 | 2 |
+| `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
+| `alpha-client-frame-world-step-order.md` | B | 78 | 2 |
+| `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
+| `alpha-client-incoming-hit-mutations.md` | B | 102 | 2 |
+| `alpha-client-primary-start-boundary.md` | B | 186 | 3 |
+| `alpha-client-projectile-hit-call-boundary.md` | B | 117 | 3 |
+| `alpha-client-receiver-publication-locks.md` | B | 131 | 1 |
+| `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
+| `alpha-client-world-clock-input.md` | B | 52 | 2 |
+| `alpha-column-scalar-cache-publication.md` | B | 105 | 0 |
+| `alpha-column-value-production.md` | A | 413 | 0 |
+| `alpha-combat-aim-triplet.md` | B | 266 | 0 |
+| `alpha-combat-approach-path.md` | B | 322 | 0 |
+| `alpha-combat-beam-leftovers.md` | A | 378 | 0 |
+| `alpha-combat-cast-points.md` | B | 201 | 0 |
+| `alpha-combat-helper-tables.md` | A | 348 | 0 |
+| `alpha-combat-stat-queries.md` | A | 294 | 0 |
+| `alpha-common-action-processing-state.md` | B | 130 | 3 |
+| `alpha-common-hit-input-construction.md` | B | 203 | 1 |
+| `alpha-companion-direct-route-geometry.md` | A | 109 | 1 |
+| `alpha-controller-aim-writers.md` | A | 186 | 1 |
+| `alpha-crafting.md` | C | 536 | 2 |
+| `alpha-created-actor-behavior.md` | B | 122 | 2 |
+| `alpha-created-actor-combat.md` | A | 379 | 0 |
+| `alpha-created-candidate-appearances.md` | A | 95 | 1 |
+| `alpha-created-companion-navigation.md` | B | 120 | 2 |
+| `alpha-creature-light-attachment-producers.md` | C | 77 | 0 |
+| `alpha-creature-map-key-order.md` | B | 70 | 1 |
+| `alpha-creatures-behaviour.md` | C | 1237 | 1 |
+| `alpha-creatures-models.md` | C | 1543 | 0 |
+| `alpha-creature-update-phases.md` | B | 170 | 2 |
+| `alpha-creature-yaw-light-gates.md` | C | 115 | 1 |
+| `alpha-critical-and-haste-stat-numerics.md` | B | 137 | 0 |
+| `alpha-data-stores.md` | C | 56 | 1 |
+| `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
+| `alpha-descriptor-equipment-setup.md` | A | 133 | 1 |
+| `alpha-descriptor-inventory-transfer.md` | A | 85 | 1 |
+| `alpha-extractor.md` | C | 432 | 2 |
+| `alpha-fatal-branch-order.md` | A | 202 | 0 |
+| `alpha-fatal-context-field-producers.md` | C | 74 | 1 |
+| `alpha-fatal-credit-level-consumer.md` | B | 108 | 2 |
+| `alpha-fatal-descriptor-tail-lifecycle.md` | B | 103 | 1 |
+| `alpha-fatal-disposal-callers.md` | A | 301 | 0 |
+| `alpha-fatal-loot-branches.md` | A | 278 | 1 |
+| `alpha-fatal-loot-branches-generator-recount.md` | A | 79 | 0 |
+| `alpha-fatal-object-association-producers.md` | C | 87 | 1 |
+| `alpha-fatal-object-descriptor-association.md` | C | 62 | 1 |
+| `alpha-fatal-region-credit-order.md` | B | 143 | 1 |
+| `alpha-fatal-world-drop-production.md` | A | 72 | 1 |
+| `alpha-floating-point-environment.md` | B | 272 | 1 |
+| `alpha-forward-link-zero-gates.md` | C | 59 | 1 |
+| `alpha-front-end-widget-states.md` | A | 102 | 1 |
+| `alpha-generic-hit-presentation-draws.md` | B | 65 | 1 |
+| `alpha-generic-hit-record-production.md` | B | 116 | 3 |
+| `alpha-generic-hit-source-auxiliary.md` | B | 119 | 2 |
+| `alpha-generic-hit-vector-adjustment.md` | C | 68 | 0 |
+| `alpha-hazards-blast-ticks.md` | A | 397 | 2 |
+| `alpha-head-pitch-and-pick.md` | A | 215 | 0 |
+| `alpha-hit-application-mutations.md` | C | 134 | 2 |
+| `alpha-hit-item-presentation-vector.md` | C | 95 | 1 |
+| `alpha-hit-response-vector-consumer.md` | C | 132 | 1 |
+| `alpha-hit-scalar-reduction-order.md` | C | 25 | 1 |
+| `alpha-hit-threat-death-lifecycle.md` | C | 136 | 2 |
+| `alpha-hostility-test.md` | A | 188 | 0 |
+| `alpha-house-furniture.md` | C | 159 | 1 |
+| `alpha-interaction.md` | C | 587 | 3 |
+| `alpha-inventory-equality-consumers.md` | C | 65 | 0 |
+| `alpha-item-names.md` | C | 578 | 0 |
+| `alpha-item-services.md` | C | 605 | 2 |
+| `alpha-items-generator.md` | C | 364 | 0 |
+| `alpha-light-admission-plane-production.md` | C | 95 | 1 |
+| `alpha-light-propagation-lifecycle.md` | B | 100 | 2 |
+| `alpha-linked-item-storage-producers.md` | C | 77 | 1 |
+| `alpha-location-creatures.md` | C | 568 | 1 |
+| `alpha-loot-rolls.md` | C | 471 | 0 |
+| `alpha-materials-wildlife-routes.md` | C | 708 | 1 |
+| `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
+| `alpha-missions.md` | C | 803 | 0 |
+| `alpha-mode-twenty-production.md` | A | 88 | 0 |
+| `alpha-net-packets.md` | C | 551 | 3 |
+| `alpha-net-server.md` | C | 288 | 7 |
+| `alpha-net-transport.md` | C | 299 | 11 |
+| `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
+| `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
+| `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
+| `alpha-opaque-output-transfer-state.md` | C | 96 | 1 |
+| `alpha-open-points-1.md` | C | 386 | 0 |
+| `alpha-open-points-10.md` | C | 474 | 1 |
+| `alpha-open-points-11.md` | C | 224 | 2 |
+| `alpha-open-points-12.md` | C | 357 | 1 |
+| `alpha-open-points-2.md` | C | 359 | 1 |
+| `alpha-open-points-3.md` | C | 505 | 2 |
+| `alpha-open-points-4.md` | C | 577 | 1 |
+| `alpha-open-points-5.md` | C | 419 | 1 |
+| `alpha-open-points-6.md` | C | 688 | 0 |
+| `alpha-open-points-7.md` | C | 355 | 0 |
+| `alpha-open-points-8.md` | C | 357 | 0 |
+| `alpha-open-points-9.md` | C | 171 | 0 |
+| `alpha-particles.md` | C | 564 | 3 |
+| `alpha-path-expansion-order.md` | A | 124 | 1 |
+| `alpha-path-following-update.md` | A | 108 | 2 |
+| `alpha-path-reroot-reference.md` | A | 14 | 0 |
+| `alpha-path-search.md` | C | 573 | 1 |
+| `alpha-path-terrain-classification.md` | A | 121 | 1 |
+| `alpha-path-world-fallback.md` | A | 60 | 1 |
+| `alpha-periodic-buff-hit.md` | B | 117 | 2 |
+| `alpha-periodic-hit-application-details.md` | B | 98 | 2 |
+| `alpha-periodic-hit-producer-state.md` | C | 111 | 2 |
+| `alpha-pets-bombs.md` | C | 781 | 2 |
+| `alpha-physics-camera.md` | C | 592 | 0 |
+| `alpha-player-control.md` | C | 249 | 0 |
+| `alpha-pose-owner-inputs.md` | A | 212 | 1 |
+| `alpha-pose-selectors-01-18.md` | A | 360 | 0 |
+| `alpha-pose-selectors-19-24.md` | A | 354 | 0 |
+| `alpha-pose-selectors-25-30.md` | A | 289 | 1 |
+| `alpha-pose-selectors-31-49.md` | A | 536 | 0 |
+| `alpha-power-helper-call-boundary.md` | B | 69 | 3 |
+| `alpha-projectiles.md` | C | 378 | 0 |
+| `alpha-projectile-world-ownership.md` | B | 105 | 3 |
+| `alpha-projection-input-production.md` | A | 97 | 2 |
+| `alpha-protection-state-producers.md` | B | 107 | 1 |
+| `alpha-ranged-action-scheduling.md` | B | 135 | 2 |
+| `alpha-ranged-audio-boundaries.md` | B | 148 | 1 |
+| `alpha-recipe-grant-entry-boundary.md` | B | 86 | 1 |
+| `alpha-relationship-kind-89-admission.md` | C | 22 | 1 |
+| `alpha-remote-creature-interpolation.md` | A | 223 | 0 |
+| `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
+| `alpha-rendering.md` | C | 783 | 2 |
+| `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-saves.md` | C | 352 | 3 |
+| `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
+| `alpha-server-buff-update-admission.md` | C | 119 | 2 |
+| `alpha-server-hit-record-routing.md` | B | 77 | 1 |
+| `alpha-server-mode-association-origins.md` | A | 84 | 1 |
+| `alpha-server-simulation.md` | C | 581 | 1 |
+| `alpha-server-vendor-stock.md` | A | 139 | 1 |
+| `alpha-skills.md` | C | 557 | 0 |
+| `alpha-spatial-association-producers.md` | C | 82 | 0 |
+| `alpha-spatial-bucket-production.md` | A | 76 | 1 |
+| `alpha-spatial-record-association-production.md` | A | 75 | 0 |
+| `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
+| `alpha-spawn-objects.md` | C | 451 | 1 |
+| `alpha-specialized-vendor-stock.md` | A | 106 | 0 |
+| `alpha-strike-call-sites.md` | A | 277 | 0 |
+| `alpha-strike-cell-helpers.md` | A | 280 | 0 |
+| `alpha-talk-vendors.md` | C | 646 | 4 |
+| `alpha-target-relation.md` | A | 178 | 0 |
+| `alpha-template-stamping-markers.md` | A | 504 | 0 |
+| `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
+| `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
+| `alpha-terrain-chunk-point-lights.md` | B | 92 | 0 |
+| `alpha-terrain-color-pipeline.md` | C | 101 | 2 |
+| `alpha-terrain-color-pipeline-public.md` | C | 101 | 2 |
+| `alpha-terrain-light-source-lifecycle.md` | C | 104 | 1 |
+| `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
+| `alpha-trails-poses-schedules.md` | C | 690 | 2 |
+| `alpha-trap-generation.md` | A | 255 | 1 |
+| `alpha-travel.md` | C | 562 | 1 |
+| `alpha-ui-plasma.md` | C | 603 | 4 |
+| `alpha-ui-screens.md` | C | 3071 | 2 |
+| `alpha-vendor-stock-generation.md` | A | 113 | 1 |
+| `alpha-vendor-widget-transactions.md` | A | 82 | 3 |
+| `alpha-visibility-ray-geometry.md` | B | 72 | 0 |
+| `alpha-voxel-fallback-record-initialization.md` | A | 87 | 1 |
+| `alpha-water-material-contract.md` | B | 88 | 1 |
+| `alpha-water-projectile-contact-event.md` | B | 113 | 3 |
+| `alpha-weapon-attachment-poses.md` | A | 157 | 0 |
+| `alpha-world-actor-creation.md` | B | 199 | 0 |
+| `alpha-world-call-phase-boundary.md` | B | 82 | 1 |
+| `alpha-world-creature-health-admission.md` | C | 76 | 1 |
+| `alpha-worldgen-caves.md` | C | 449 | 0 |
+| `alpha-worldgen-clouds.md` | C | 109 | 0 |
+| `alpha-worldgen-locations.md` | C | 568 | 1 |
+| `alpha-worldgen-overview.md` | C | 210 | 4 |
+| `alpha-worldgen-random.md` | C | 229 | 0 |
+| `alpha-worldgen-regions.md` | C | 362 | 0 |
+| `alpha-worldgen-structures.md` | C | 1928 | 1 |
+| `alpha-worldgen-terrain.md` | C | 437 | 0 |
+| `alpha-worldgen-trees.md` | C | 568 | 1 |
+| `alpha-worldgen-vegetation.md` | C | 263 | 0 |
+| `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |
+| `alpha-world-hit-target-admission.md` | B | 101 | 2 |
+| `alpha-world-item-list-population.md` | A | 163 | 0 |
+| `alpha-world-items.md` | C | 410 | 0 |
+| `alpha-world-objects.md` | A | 249 | 0 |
+| `alpha-world-random-stream-boundaries.md` | B | 116 | 2 |
+| `alpha-world-relationship-record-delivery.md` | B | 115 | 2 |
+| `alpha-yaw-trig-scalar-abi.md` | C | 69 | 2 |
+| `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
+| `shadows.md` | C | 194 | 3 |
+| `sky-and-clouds.md` | C | 481 | 6 |
+| `vegetation-wind.md` | C | 294 | 1 |
