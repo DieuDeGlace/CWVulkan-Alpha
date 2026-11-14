@@ -95,6 +95,7 @@ struct Body {
     const IgnoredStatics *ignoredStatics = nullptr; // statics its path search walks through
     VoxelObstacles *obstacles = nullptr; // world objects §3: the airships it can stand on (owner's)
     uint64_t key = 0;                    // the creature's id, inserted into the objects it touches
+    bool replica = false; // a received creature advanced locally: no unstuck (remote smoothing §3.1)
     bool pathActive = false; // supplies the navigation-container response-decay gate
 
     // What the step did, for the game to act on; the game clears them.

@@ -1679,3 +1679,9 @@ Airship pilot (2026-11-14). A CreatureTests case runs a behaviour-8 pilot: it fa
 blocks away without walking, and beyond 8 blocks stops facing and stays put. All 60 CTests
 pass, the player diagnostic and five live runs pass, and the six captures match the preceding
 batch.
+Remote smoothing (2026-11-14). CreatureTests: the angle step reaches 90, folds 120 to 60, leaves
+180 and halves 10 -> 40 at factor 0.5; a snap draws a received creature at its record, a
+smoothing receipt leaves the drawn pose and one 16 ms update closes part of a 4-block gap, a
+dead creature's drawn pose stays frozen, and unlisted creatures are forgotten. All 60 CTests
+pass, the player diagnostic and five live runs (including the connected client) pass, and the
+six captures match the preceding batch.

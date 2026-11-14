@@ -363,7 +363,7 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // block, even at head height, has its bottom set 1.1 blocks above the floor of the block
     // layer it is in, whether or not that is free; deep inside, it climbs a block a step. (Never
     // for inert objects, controller 6. Nothing like this exists for static objects.)
-    if (b.controller != 6) {
+    if (b.controller != 6 && !b.replica) {
         // (Cells of zones not loaded are passed over.)
         const auto solidHere = [&](int32_t x, int32_t y, int32_t z) {
             const uint8_t type = block(x, y, z);

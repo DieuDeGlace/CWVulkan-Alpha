@@ -9,6 +9,8 @@
 #include "creatures/Strike.h"
 #include "creatures/Abilities.h"
 #include "creatures/Airships.h"
+#include "creatures/AngleStep.h"
+#include "net/RemoteCreatures.h"
 #include "creatures/Appearance.h"
 #include "creatures/Combat.h"
 #include "creatures/ControllerAim.h"
@@ -806,6 +808,41 @@ int main() {
             npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
         same((npcs.all().front().body.mode & AIMING) == 0 && glm::length(npcs.all().front().body.intent) == 0, 1,
              "beyond 8 blocks it stops facing and stays put");
+    }
+
+    // The shared angle step: within a quarter turn it reaches the target; beyond it folds
+    // (120 moves as 60, 180 does not move).
+    {
+        same(angleStep(0.f, 90.f, 1.f), 90, "a quarter turn is reached", 1e-4);
+        same(angleStep(0.f, 120.f, 1.f), 60, "120 folds to 60", 1e-4);
+        same(angleStep(0.f, 180.f, 1.f), 0, "180 does not move", 1e-4);
+        same(angleStep(10.f, 40.f, 0.5f), 25, "half the way", 1e-4);
+    }
+
+    // Remote smoothing (alpha-remote-creature-interpolation.md): a snap puts the drawn pose on
+    // the record; a smoothing receipt leaves it and lets it close the gap; a dead creature
+    // stays frozen.
+    {
+        auto air = [](int32_t, int32_t, int32_t) -> uint8_t { return 0; };
+        net::CreatureRecord record = net::CreatureRecord::nativeDefaults();
+        record.setPosition(0, 100ll << 16), record.setPosition(1, 100ll << 16), record.setPosition(2, 100ll << 16);
+        record.setHealth(50.f);
+        net::RemoteCreatures remotes;
+        remotes.receive(7, record, true);
+        same(remotes.find(7)->drawn[0], 100ll << 16, "a snap draws at the record");
+        record.setPosition(0, 104ll << 16); // a jump of 4 blocks, smoothed
+        remotes.receive(7, record, false);
+        same(remotes.find(7)->drawn[0], 100ll << 16, "a smoothing receipt leaves the drawn pose");
+        remotes.step(16, air, {});
+        const double moved = double(remotes.find(7)->drawn[0] - (100ll << 16)) / 65536.0;
+        same(moved > 0.5 && moved < 4.0, 1, "the drawn pose closes part of the gap in one update");
+        record.setHealth(0.f);
+        remotes.receive(7, record, false);
+        const int64_t frozen = remotes.find(7)->drawn[0];
+        remotes.step(16, air, {});
+        same(remotes.find(7)->drawn[0], frozen, "a dead creature's drawn pose stays frozen");
+        remotes.retain({});
+        same(remotes.find(7) == nullptr, 1, "unlisted creatures are forgotten");
     }
 
     // Steering §2.1: the angle helper reaches b within a quarter turn, and stays on the near

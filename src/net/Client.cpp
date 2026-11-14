@@ -187,6 +187,11 @@ std::vector<::creatures::KillRecord> Client::takeCredits() {
     return std::exchange(credits, {});
 }
 
+std::vector<Client::Receipt> Client::takeReceipts() {
+    std::lock_guard guard(lock);
+    return std::exchange(receipts, {});
+}
+
 void Client::setReceivedHealth(uint64_t key, float health) {
     std::lock_guard guard(lock);
     if (const auto actor = creatures.find(key); actor != creatures.end())
@@ -324,6 +329,7 @@ void Client::receiveLoop() {
             uint64_t id;
             std::memcpy(&id, plain.data(), 8);
             CreatureRecord decoded;
+            bool created = false;
             {
                 auto frame = lockFrame();
                 std::lock_guard guard(lock);
@@ -333,6 +339,7 @@ void Client::receiveLoop() {
                     auto [it, inserted] = creatures.try_emplace(id);
                     if (inserted)
                         it->second = CreatureRecord::nativeDefaults();
+                    created = inserted;
                     decoded = it->second;
                 }
             }
@@ -347,8 +354,15 @@ void Client::receiveLoop() {
                 std::lock_guard guard(lock);
                 if (id != ownId) {
                     const auto it = creatures.find(id);
-                    if (it != creatures.end())
+                    if (it != creatures.end()) {
+                        // Remote smoothing §1.3 step 7, against the creature's old record.
+                        constexpr size_t SNAP_FIELD = 0x1B0, SNAP_BYTES = 24;
+                        const bool fieldChanged = std::memcmp(it->second.bytes.data() + SNAP_FIELD,
+                                                              decoded.bytes.data() + SNAP_FIELD, SNAP_BYTES) != 0;
+                        const bool snap = created || fieldChanged || 0.f >= it->second.health();
+                        receipts.push_back({id, snap});
                         it->second = std::move(decoded);
+                    }
                 }
             }
             break;

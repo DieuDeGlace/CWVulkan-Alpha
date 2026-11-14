@@ -2186,3 +2186,25 @@ NaN-health player (the original's ordered >= 0 test). Already matching: the 32 m
 cadence and stun gate, and the finishing step for kind 4 (five appearance draws; it cannot
 set the boss or the 0x1000 flag) plus the follow-on equipment step's class-0x88 draw
 (`DescriptorEquipment::setup`). So the pilot is never a boss and never doubled in size.
+
+## Remote creature smoothing (round 16, held 2026-11-14)
+
+Held contract `docs/specs/alpha-remote-creature-interpolation.md` (SHA-256 24F15463...9551),
+read whole. (Process note from its author: one recursive search of the reconstruction's alpha
+folder returned file names, some in third-party subfolders; no third-party contents were
+opened. This concerns the source side only.) Implemented on the connected client:
+- `Client` records each applied creature record as a receipt with the original's decision:
+  snap for a new creature, a changed 24-byte snap field (record +0x1B0) or old health with
+  0.0 >= health; otherwise smooth (§1.3, §1.4).
+- `net::RemoteCreatures` keeps per creature a live body (every received field, §1.6), advanced
+  each world update by the ordinary movement step (§3.2; the unstuck routine is skipped for
+  received creatures, `Body::replica`), and a drawn pose: a copy while the flag is 0, else the
+  position closes (d x T(f)) / 65536 per axis plus a second binary32 vertical step, with
+  f the per-millisecond 0.015 approach, and each rotation component takes the angle step
+  (§2.1-§2.3). Dead creatures run no update (§2.5). Unlisted creatures are dropped (§1.5).
+- Remote creatures are drawn, lit and shattered at the drawn pose and drawn yaw.
+- The angle step 0x023F70 is now one exact shared routine (`creatures::angleStep`) used by
+  creature facing, airships and this smoothing; the earlier facing helper rounded the radians
+  and the sine difference differently.
+Not modelled: the drawn aim (§2.4), the type-1 batch message (the engine protocol sends type
+0 and end-of-update), and the gated server-only spans for remote creatures beyond the unstuck.

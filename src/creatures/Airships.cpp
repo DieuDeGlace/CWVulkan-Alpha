@@ -1,4 +1,5 @@
 #include "creatures/Airships.h"
+#include "creatures/AngleStep.h"
 #include <bit>
 #include <cmath>
 
@@ -42,21 +43,6 @@ struct Turn {
     explicit Turn(float degrees) : c(cosF(degrees * DEGREES)), s(sinF(degrees * DEGREES)) {}
     glm::vec3 operator()(glm::vec3 v) const { return {c * v.x + (-s) * v.y, s * v.x + c * v.y, v.z}; }
 };
-
-// Steering §2.1: a + the arcsine of sin(b - a), in degrees, scaled by t.
-float angleToward(float a, float b, float t) {
-    const auto radians = [](float degrees) { return float(double(degrees / 180.f) * PI); };
-    const float alpha = radians(a), beta = radians(b);
-    const double ca = cosF(alpha), sa = sinF(alpha), cb = cosF(beta), sb = sinF(beta);
-    float s = float(sb * ca - cb * sa);
-    if (s > 1.f)
-        s = 1.f;
-    else if (-1.f > s)
-        s = -1.f;
-    const double r = float(std::asin(double(s)));
-    const double k = (double(t) * 180.0) / PI;
-    return float(r * k) + a;
-}
 
 } // namespace
 
@@ -244,7 +230,7 @@ void Airships::steerShip(Ship &ship, int32_t dtMs, const worldgen::WorldMap &map
                    wrapAdd(s.home[2], toRaw(offset.z))};
     };
     // §1.6: states 0-2 turn their target yaw toward the heading.
-    const auto turnToHeading = [&] { approach(s.targetYaw, angleToward(s.targetYaw, s.heading, 1.f), dtMs, 0.005f); };
+    const auto turnToHeading = [&] { approach(s.targetYaw, angleStep(s.targetYaw, s.heading, 1.f), dtMs, 0.005f); };
     switch (ship.course) {
     case 1: { // §1.3: to home, slowing within 10 blocks
         const glm::vec3 d = toward(s.home);
@@ -301,7 +287,7 @@ void Airships::steerShip(Ship &ship, int32_t dtMs, const worldgen::WorldMap &map
             e.y = -1.f;
         const float arc = float(std::acos(double(e.y)));
         const float goal = float((double(e.x > 0.f ? -arc : arc) / PI) * 180.0);
-        approach(s.targetYaw, angleToward(s.targetYaw, goal, 1.f), dtMs, ARRIVED);
+        approach(s.targetYaw, angleStep(s.targetYaw, goal, 1.f), dtMs, ARRIVED);
         break;
     }
     default: break; // other states leave the ship as it is
@@ -326,7 +312,7 @@ void Airships::step(int32_t dtMs, bool steer, const worldgen::WorldMap &map,
             ship.position[k] = wrapAdd(ship.position[k], std::bit_cast<int64_t>(product) / 65536);
         }
         // Steering §2.2: the yaw follows the target yaw through the angle helper.
-        approach(ship.yaw, angleToward(ship.yaw, ship.state.targetYaw, 1.f), dtMs, 0.01f);
+        approach(ship.yaw, angleStep(ship.yaw, ship.state.targetYaw, 1.f), dtMs, 0.01f);
         // §6.3: carried creatures follow the pose change; those gone or beyond 64 blocks of
         // the target leave the set.
         const float turnBy = ship.yaw - yawBefore;

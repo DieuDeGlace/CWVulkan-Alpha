@@ -5,6 +5,7 @@
 #include "creatures/CreatedBehavior.h"
 #include "creatures/DescriptorEquipment.h"
 #include "creatures/CameraView.h"
+#include "creatures/AngleStep.h"
 #include "creatures/Names.h"
 #include <cassert>
 #include <bit>
@@ -1052,15 +1053,6 @@ float headingOf(float x, float y) {
     return float(double(signedAngle) / PI64 * 180.0);
 }
 
-// Routine 0x023F70: `from` turned toward `to` by at most a quarter turn (larger differences fold).
-float interpolateAngle(float from, float to, float factor) {
-    const double a = double(from) / 180.0 * PI64, b = double(to) / 180.0 * PI64;
-    const double sa = double(float(std::sin(a))), ca = double(float(std::cos(a)));
-    const double sb = double(float(std::sin(b))), cb = double(float(std::cos(b)));
-    const double s = std::clamp(sb * ca - cb * sa, -1.0, 1.0);
-    return float(double(from) + std::asin(s) * (double(factor) * 180.0 / PI64));
-}
-
 // "Blended over the step at rate r": the held camera recurrence, one approach per millisecond.
 float approach(float value, float target, int32_t step, float rate) {
     return camera_view::blend(value, target, camera_view::weight(step, rate));
@@ -1992,13 +1984,13 @@ void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Bod
         const glm::vec3 drawn = drawnLook;
         if (drawn.x * drawn.x + drawn.y * drawn.y > 0.f && !driven) {
             const float heading = headingOf(drawn.x, drawn.y);
-            yaw = approach(yaw, interpolateAngle(yaw, heading, 1.f), milliseconds, .1f);
+            yaw = approach(yaw, angleStep(yaw, heading, 1.f), milliseconds, .1f);
         }
         const float squared = (drawn.x * drawn.x + drawn.y * drawn.y) + drawn.z * drawn.z;
         if (squared > 0.f) {
             const float inverse = 1.f / float(std::sqrt(double(squared)));
             const float tilt = float(std::asin(double(drawn.z * inverse)) / PI64 * 180.0);
-            headPitch = approach(headPitch, interpolateAngle(headPitch, tilt, 1.f), milliseconds,
+            headPitch = approach(headPitch, angleStep(headPitch, tilt, 1.f), milliseconds,
                                  std::bit_cast<float>(0x3BA3D70Au));
         }
     } else if (body.dodgeMs == 0 && !driven) {

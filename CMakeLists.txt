@@ -157,6 +157,7 @@ add_library(engine STATIC
     src/creatures/Particles.cpp
     src/creatures/Physics.cpp
     src/creatures/Airships.cpp
+    src/creatures/AngleStep.cpp
     src/creatures/Visibility.cpp
     src/creatures/ControllerAim.cpp
     src/creatures/TargetSelection.cpp
@@ -219,6 +220,7 @@ add_library(engine STATIC
     src/ui/BenchScreen.cpp
     src/net/Protocol.cpp
     src/net/RemoteFighter.cpp
+    src/net/RemoteCreatures.cpp
     src/net/Socket.cpp
     src/net/Server.cpp
     src/net/CreaturePublication.cpp

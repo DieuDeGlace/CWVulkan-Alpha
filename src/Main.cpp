@@ -32,6 +32,7 @@
 #include "creatures/Credits.h"
 #include "creatures/Spirits.h"
 #include "creatures/Names.h"
+#include "net/RemoteCreatures.h"
 #include "creatures/Airships.h"
 #include "creatures/Npcs.h"
 #include "worldgen/Items.h"
@@ -585,6 +586,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // between updates so their swings play smoothly.
     creatures::ActorMap<net::RemoteFighter> otherFighters;
     std::map<uint64_t, net::CreatureRecord> receivedActors;
+    net::RemoteCreatures remotes; // remote smoothing: received creatures' live and drawn poses
     net::CreatureRecord own;
     own.setName(options.name.empty() ? "AlphaVulkan" : options.name);
     if (options.name.empty() && playing())
@@ -1620,6 +1622,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             scene.timeOfDayMs = clock->second;
         }
         receivedActors = client.connected() ? client.others() : std::map<uint64_t, net::CreatureRecord>{};
+        // Remote smoothing §1.3-§1.5: this frame's receipts, then forget the unlisted.
+        for (const net::Client::Receipt &receipt : client.takeReceipts())
+            if (const auto record = receivedActors.find(receipt.id); record != receivedActors.end())
+                remotes.receive(receipt.id, record->second, receipt.snap);
+        remotes.retain(receivedActors);
         std::erase_if(otherFighters, [&](const auto &entry) { return !receivedActors.contains(entry.first); });
         for (const auto &[id, record] : receivedActors) {
             auto snapshot = record.fighter();
@@ -2247,6 +2254,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
                             aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer);
                         stepAirships(elapsed); // world objects §6: after the creature loop
+                        if (client.connected()) // remote smoothing §3.2, §2: advance, then follow
+                            remotes.step(elapsed, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
+                                         npcs.objects);
                         const auto happened = aggregate.addedSince(npcEvents);
                         projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
                         for (const auto &event : happened.buffs)
@@ -2536,6 +2546,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (!client.connected())
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, block, aggregate);
                     stepAirships(elapsed);
+                    if (client.connected()) // remote smoothing §3.2, §2: advance, then follow
+                        remotes.step(elapsed, block, npcs.objects);
                 },
                 [&](creatures::NpcFrame &aggregate) {
                     applyReceivedRelationships();
@@ -2933,30 +2945,31 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (client.connected()) {
             const auto &otherRecords = receivedActors;
             for (const auto &[id, other] : otherRecords) {
-                const glm::vec3 p = view.toRender(glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
+                // Remote smoothing §2: drawn at the drawn pose (the record until the first update).
+                const net::RemoteCreatures::Remote *remote = remotes.find(id);
+                const std::array<int64_t, 3> drawn =
+                    remote ? remote->drawn : std::array<int64_t, 3>{other.position(0), other.position(1), other.position(2)};
+                const float drawnYaw = remote ? remote->drawnRotation.z : other.yaw();
+                const glm::dvec3 centre = glm::dvec3(double(drawn[0]), double(drawn[1]), double(drawn[2])) / 65536.0;
+                const glm::vec3 p = view.toRender(centre);
                 net::RemoteFighter &f = otherFighters[id];
 
                 creatures::Motion motion;
                 motion.velocity = other.velocity();
-                motion.yawDegrees = other.yaw();
+                motion.yawDegrees = drawnYaw;
                 motion.fighter = &f.fighter;
                 if (other.health() <= 0) { // particles §7.2
                     if (shattered.insert(id).second)
-                        creatureView.shatter(other.appearance(), otherPoses[id], motion,
-                                             glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
+                        creatureView.shatter(other.appearance(), otherPoses[id], motion, centre,
                                              [&] { return worldRandom.draw(); }, particles.list);
                     continue;
                 }
                 shattered.erase(id);
-                const glm::dvec3 centre = glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0;
                 if (creatureView.draw(items, other.appearance(), otherPoses[id], motion, p, seconds * 1000.f, &effects))
                     footstep(centre - glm::dvec3(0, 0, other.appearance().box.z * 0.5));
-                actionFlames(f.fighter, other.appearance().box.x,
-                             glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0);
+                actionFlames(f.fighter, other.appearance().box.x, centre);
                 // Core fields are current and resident buffs stay on the actor.
-                // Native interpolation and render scheduling remain separate.
-                creatureLights(f.fighter, {other.position(0), other.position(1), other.position(2)},
-                               centre, other.appearance().box.z, other.yaw());
+                creatureLights(f.fighter, {drawn[0], drawn[1], drawn[2]}, centre, other.appearance().box.z, drawnYaw);
             }
             if (player) {
                 creatures::Combatant &c = player->combat();
