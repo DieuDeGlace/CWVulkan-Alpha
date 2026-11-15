@@ -2497,3 +2497,23 @@ furniture tables, arch conditions and rotations, boss order). Only comments chan
 placement draws none; if the original draws there, every later dungeon draw shifts); the
 furniture style is the zone's byte +0x79 natively, which the engine takes as v (kinds only, no
 draws).
+## Provenance re-certification, regions and item generator (2026-11-14)
+
+Two inherited contracts were re-certified by fresh source-only authors against the original
+images (20 corrections; reversals in regions: sea elevation exactly -100, truncating index and
+window divisions, type 14 inside the queue pass; verification vectors removed; no
+reconstruction consulted) and read whole by a fresh implementer:
+- `alpha-worldgen-regions.md` (99AB8D3E...9C86)
+- `alpha-items-generator.md` (37B95AC2...4A5B)
+
+The engine already matched: cell creation, the sea elevation in effect, displacement and owner
+rules, the truncating blend window (two indices near the low world edge), region preparation
+(slot and queue passes, type 14, 15, 11/12 snaps, height clamps, counter order), the item
+candidates, materials, parities and draw counts. Changes, none affecting generated worlds: the
+cell snap and owner search use the truncating forms; the location lookup's slot index
+truncates (negative columns outside the world read slot 0); the rarity roll keeps the signed
+remainder for a negative argument (no caller passes one); divide-fault guards are commented as
+engine choices.
+Open discrepancy for the locations re-certification: the regions contract says the slot pass
+stores level 1 at +0x24, while the engine applies a climate-based minimum (1/10/15/20) taken
+from the not yet re-certified locations contract; zone levels depend on it, so it is unchanged.

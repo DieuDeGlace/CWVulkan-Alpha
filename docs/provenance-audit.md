@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-14 (after batches 1-7; 214 tracked contracts, local ignored variants excluded): 104 A, 61 B, 44 C (29700 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-14 (after batches 1-7; 214 tracked contracts, local ignored variants excluded): 106 A, 61 B, 42 C (28974 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -64,7 +64,8 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 `alpha-hit-threat-death-lifecycle.md` and `alpha-open-points-9.md`.
 Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-house-furniture.md`;
-then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alpha-open-points-7.md` and `alpha-open-points-8.md`.
+then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alpha-open-points-7.md` and `alpha-open-points-8.md`; `alpha-worldgen-regions.md` and
+`alpha-items-generator.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -160,7 +161,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-inventory-equality-consumers.md` | A | 94 | 0 |
 | `alpha-item-names.md` | C | 578 | 0 |
 | `alpha-item-services.md` | C | 605 | 2 |
-| `alpha-items-generator.md` | C | 364 | 0 |
+| `alpha-items-generator.md` | A | 426 | 0 |
 | `alpha-light-admission-plane-production.md` | A | 104 | 1 |
 | `alpha-light-propagation-lifecycle.md` | B | 100 | 2 |
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
@@ -265,7 +266,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
 | `alpha-worldgen-overview.md` | G | 210 | 4 |
 | `alpha-worldgen-random.md` | A | 306 | 0 |
-| `alpha-worldgen-regions.md` | C | 362 | 0 |
+| `alpha-worldgen-regions.md` | A | 440 | 0 |
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
 | `alpha-worldgen-terrain.md` | C | 437 | 0 |
 | `alpha-worldgen-trees.md` | C | 568 | 1 |

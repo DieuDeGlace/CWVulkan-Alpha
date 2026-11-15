@@ -6,16 +6,18 @@
 namespace worldgen {
 namespace {
 
-// §0: the pick, one draw among n candidates.
+// §0: the pick, one draw among n candidates (unsigned remainder). With n = 0 the original
+// faults on the division (§5); the engine returns an empty record after the draw instead.
 ItemRecord pick(Random &random, const std::vector<ItemRecord> &candidates) {
     const uint32_t d = (uint32_t)random.draw();
     return candidates.empty() ? ItemRecord{} : candidates[d % candidates.size()];
 }
 
-// §0: the rarity roll, always 4 draws.
+// §0: the rarity roll, always 4 draws. The remainder is signed (0..|m| - 1 for m < 0); m = 0
+// is the original's integer-divide fault (§5), guarded here as 0 (an engine choice).
 uint8_t rollRarity(Random &random, int32_t m) {
     const int32_t d = random.draw();
-    int32_t q = m > 0 ? d % m : 0;
+    int32_t q = m != 0 ? d % m : 0;
     if (random.draw() % 100 == 0)
         q++;
     if (random.draw() % 1000 == 0)

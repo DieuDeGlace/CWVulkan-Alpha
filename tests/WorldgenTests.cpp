@@ -12,6 +12,7 @@
 #include "worldgen/Prefab.h"
 #include "worldgen/Random.h"
 #include "worldgen/Regions.h"
+#include "worldgen/SpatialScalars.h"
 #include "worldgen/Terrain.h"
 #include "worldgen/Trees.h"
 #include "creatures/InventoryValue.h"
@@ -136,6 +137,79 @@ int main() {
         const std::string at = " at (" + std::to_string(b.x) + ", " + std::to_string(b.y) + ")";
         same(world.warmth(b.x, b.y), b.warmth, "warmth" + at);
         same(world.moisture(b.x, b.y), b.moisture, "moisture" + at);
+    }
+
+    // Regions spec §2.2 step 9 (re-certified): every sea cell is exactly -100, land is positive.
+    {
+        World probe(123);
+        int sea = 0;
+        for (int32_t rx = 490; rx < 536; rx++)
+            for (int32_t ry = 500; ry < 506; ry++) {
+                const RegionCell *c = probe.makeCell(rx, ry);
+                if (c->elevation <= 0) {
+                    sea++;
+                    same(c->elevation, -100, "sea cell (" + std::to_string(rx) + ", " + std::to_string(ry) + ") elevation");
+                }
+                same(c->x % SUBCELL, SUBCELL / 2, "cell point x snapped to a slot centre");
+                same(c->y % SUBCELL, SUBCELL / 2, "cell point y snapped to a slot centre");
+            }
+        same(sea > 0, 1, "the probed rows contain sea cells");
+    }
+
+    // Regions spec §3.2 (re-certified): the window divides toward zero, so 1 <= x < 16384 sees
+    // only indices 0 and 1 (x = 0 still sees -1, which is out of range: the blend default).
+    {
+        same(scalars::window(1, 16383).firstX, 0, "window first x at x = 1");
+        same(scalars::window(1, 16383).lastX, 1, "window last x at x = 1");
+        same(scalars::window(1, 16383).firstY, 0, "window first y at y = 16383");
+        same(scalars::window(0, 16384).firstX, -1, "window first x at x = 0");
+        same(scalars::window(0, 16384).firstY, 0, "window first y at y = 16384");
+        same(scalars::window(0, 16384).lastY, 2, "window last y at y = 16384");
+
+        World edge(123);
+        edge.makeCells(0, 0);
+        const int32_t x = 5000, y = 7000;
+        // An independent blend over indices 0..1 on both axes (§3.3 and §4).
+        const glm::vec2 dd = edge.displacement(x, y);
+        const int32_t px = (int32_t)((float)x + dd.x), py = (int32_t)((float)y + dd.y);
+        int32_t d2[2][2], d0 = std::numeric_limits<int32_t>::max();
+        for (int i = 0; i < 2; i++)
+            for (int j = 0; j < 2; j++) {
+                const RegionCell *c = edge.cell(i, j);
+                const float ex = (float)(((int64_t)c->x - px) * 65536) * (1.f / 65536.f);
+                const float ey = (float)(((int64_t)c->y - py) * 65536) * (1.f / 65536.f);
+                d2[i][j] = (int32_t)(ey * ey + ex * ex);
+                d0 = std::min(d0, d2[i][j]);
+            }
+        float total = 0, sum = 0;
+        for (int i = 0; i < 2; i++)
+            for (int j = 0; j < 2; j++) {
+                const float t = std::min((float)(d2[i][j] - d0) * 4.999999987e-07f, 1.f);
+                total += 1.f - t;
+                sum += edge.cell(i, j)->warmth * (1.f - t);
+            }
+        same(edge.warmth(x, y), sum / total, "warmth near the low world edge blends indices 0..1", 1e-6);
+        same(edge.warmth(0, y), 0.5, "warmth at x = 0 (window includes -1): default");
+        int32_t oi = -1, oj = -1;
+        same(edge.ownerIndex(x, y, oi, oj), 1, "owner near the low world edge");
+        same(oi >= 0 && oi <= 1 && oj >= 0 && oj <= 1, 1, "owner index inside the two-index window");
+    }
+
+    // Regions spec §6.3 (re-certified): the slot index truncates, so columns -2047..-1 read slot 0.
+    {
+        World edge(123);
+        const Terrain heights(edge);
+        heights.prepareRegion(0, 0);
+        const Region *r0 = edge.region(0, 0);
+        same(r0 != nullptr, 1, "region (0, 0) prepared");
+        if (r0) {
+            for (int32_t j = 0; j < 8; j++) {
+                const Location *want = r0->records[j].type ? &r0->records[j] : nullptr;
+                same(edge.location(-5, SUBCELL * j + 5) == want, 1, "location at x = -5, slot y " + std::to_string(j));
+                same(edge.location(5, SUBCELL * j + 5) == want, 1, "location at x = 5, slot y " + std::to_string(j));
+            }
+            same(edge.location(-SUBCELL - 5, 5) == nullptr, 1, "location at x = -2053 (slot -1): none");
+        }
     }
 
     // Terrain spec §6.2 and §6.5: colours.
@@ -445,6 +519,30 @@ int main() {
         same(l37.type * 100 + l37.product, 203, "loot recipe, srand(37)");
         same(l37.subtype, 4, "loot recipe subtype, srand(37)");
         same(l37.seed, 55, "loot recipe seed, srand(37)");
+    }
+    {
+        // Items spec §7.2 (re-certified): the material-27 block takes seeds 29, 86, 58, 95, 67
+        // from D15-D19. A class-4 call started at D15 draws exactly those five seeds first.
+        Random s(123);
+        for (int i = 0; i < 14; i++)
+            s.draw();
+        const ItemRecord a = armourItem(s, 5, 1, 4);
+        same(s.count(), 14 + 10, "class-4 armour draws");
+        same(a.type, 6, "class-4 armour pick (3966 mod 7 = 4): type");
+        same(a.material, 27, "class-4 armour pick: material");
+        same(a.seed, 67, "class-4 armour pick: seed from D19");
+        Random t(123);
+        for (int i = 0; i < 14; i++)
+            t.draw();
+        const int want[] = {29, 86, 58, 95, 67};
+        for (int k = 0; k < 5; k++)
+            same(t.draw() % 100, want[k], "material-27 seed " + std::to_string(k));
+        // §0 / §5: a negative m keeps the signed remainder (d mod -2 = d mod 2), so the
+        // unreachable r = -3 rolls the same rarity as r = 1.
+        Random n(123);
+        const ItemRecord l = lootItem(n, 5, -3);
+        same(l.type * 100 + l.material, 525, "loot(5, -3) pick");
+        same(l.rarity, 1, "loot(5, -3) rarity from the signed remainder");
     }
 
     // Structures spec §6.2: the prefab placer on a small model in an empty zone.

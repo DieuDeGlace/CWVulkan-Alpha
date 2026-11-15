@@ -82,8 +82,9 @@ const RegionCell *World::makeCell(int32_t rx, int32_t ry) const {
         c->y = REGION * ry + r.draw() % 15360 + 512;
         c->x = REGION * rx + 512 + r.draw() % 15360;
     }
-    c->x = floorDiv(c->x, SUBCELL) * SUBCELL + SUBCELL / 2;
-    c->y = floorDiv(c->y, SUBCELL) * SUBCELL + SUBCELL / 2;
+    // The snap truncates toward zero (2048 tdiv(v, 2048) + 1024); points are never negative.
+    c->x = c->x / SUBCELL * SUBCELL + SUBCELL / 2;
+    c->y = c->y / SUBCELL * SUBCELL + SUBCELL / 2;
 
     // Step 8: elevation from noise of the region index alone.
     const double Ad = (double)A();
@@ -98,7 +99,7 @@ const RegionCell *World::makeCell(int32_t rx, int32_t ry) const {
         if (home) {
             c->elevation = r.draw() % 50 + 20; // the home region is always land
         } else {
-            c->elevation = std::max(c->elevation - 100, -100);
+            c->elevation = -100; // max(e - 100, -100) with e <= 0: every sea cell is exactly -100
             if (r.draw() & 1) {
                 c->moisture = temperateMoisture(r);
                 c->warmth = temperateWarmth(r);
@@ -175,8 +176,10 @@ bool World::ownerIndex(int32_t x, int32_t y, int32_t &oi, int32_t &oj) const {
     displaced(x, y, px, py);
     bool found = false;
     int32_t best = 0;
-    for (int32_t i = floorDiv(x - REGION, REGION); i <= floorDiv(x + REGION, REGION); i++)
-        for (int32_t j = floorDiv(y - REGION, REGION); j <= floorDiv(y + REGION, REGION); j++) {
+    // §3.2: the same truncating window as the blends (two indices for 1 <= x < 16384).
+    const scalars::Window w = scalars::window(x, y);
+    for (int32_t i = w.firstX; i <= w.lastX; i++)
+        for (int32_t j = w.firstY; j <= w.lastY; j++) {
             const RegionCell *c = cell(i, j);
             if (!c)
                 continue;
@@ -302,8 +305,9 @@ glm::dvec2 World::grid(int32_t x, int32_t y) const {
 }
 
 const Location *World::location(int32_t x, int32_t y) const {
-    // §6.3: the record of the column's 2048-block sub-cell.
-    const int32_t lx = floorDiv(x, SUBCELL), ly = floorDiv(y, SUBCELL);
+    // §6.3: the record of the column's 2048-block sub-cell; the slot index truncates toward
+    // zero, so columns -2047..-1 read slot 0.
+    const int32_t lx = x / SUBCELL, ly = y / SUBCELL;
     if (lx < 0 || ly < 0 || lx >= 8192 || ly >= 8192)
         return nullptr;
     const Region *r = region(lx >> 3, ly >> 3);
