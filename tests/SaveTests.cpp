@@ -2,6 +2,7 @@
 // Alpha saves must parse and serialize back to the same bytes, and a written save must read
 // back. The owner's files are opened read-only and never written; writing uses a scratch file.
 // Usage: SaveTests [game folder]
+#include "Bytes.h"
 #include "Config.h"
 #include "CubModel.h"
 #include "DataStore.h"
@@ -52,6 +53,77 @@ int main(int argc, char **argv) {
         check(!db.get("1"), "removed entry is gone");
         WorldClock clock{5, 14615510};
         check(db.put("time", clock.serialize()) && WorldClock::parse(*db.get("time"))->timeOfDayMs == 14615510, "clock");
+
+        // Saves §0, §3.2: the character reader does not test the version, ignores trailing
+        // bytes, keeps earlier values for a truncated tail, and takes skills only for count 11.
+        std::vector<uint8_t> bytes = c.serialize();
+        bytes[0] = 2; // another version word
+        bytes.push_back(0xab);
+        const auto tolerant = CharacterRecord::parse(bytes);
+        check(tolerant && tolerant->name == "Scratch" && tolerant->skills == c.skills, "version untested, tail ignored");
+        bytes.pop_back();
+        bytes[0] = 1;
+        check(CharacterRecord::parse(bytes)->serialize() == bytes, "a whole record still round-trips");
+        std::vector<uint8_t> tenSkills = bytes;
+        tenSkills.resize(tenSkills.size() - 44 - 4);
+        ByteWriter ten;
+        ten.u32(10);
+        for (int i = 0; i < 10; i++)
+            ten.i32(5);
+        tenSkills.insert(tenSkills.end(), ten.data().begin(), ten.data().end());
+        const auto noSkills = CharacterRecord::parse(tenSkills);
+        check(noSkills && noSkills->skills.empty(), "a skill count other than 11 is not taken");
+        const auto written = noSkills->serialize();
+        check(ByteReader(written.data() + written.size() - 48, 4).u32() == 11, "the writer always writes 11 skills");
+        std::vector<uint8_t> cut(bytes.begin(), bytes.begin() + 4 + 24 + 12 + 4 + 2); // into the level
+        const auto truncated = CharacterRecord::parse(cut);
+        check(truncated && truncated->level == 1 && truncated->name.empty() && truncated->experience == c.experience,
+              "a truncated field keeps its prior value, and so do all later ones");
+
+        // Saves §3.1: creation and deletion of one key.
+        const fs::path listFile = scratch.parent_path() / "SaveTests-list.db";
+        const fs::path worldFile = scratch.parent_path() / "SaveTests-worlds.db";
+        {
+        SaveDb list;
+        fs::remove(listFile, ec);
+        check(list.open(listFile, SaveDb::Mode::ReadWrite), "list scratch");
+        CharacterRecord named[3];
+        for (int i = 0; i < 3; i++) {
+            named[i].name = "C" + std::to_string(i);
+            check(addCharacter(list, named[i]), "add character");
+        }
+        check(list.number("num") == 3u, "three characters");
+        list.put("1", {1, 2, 3}); // damaged: still listed in place
+        check(readCharacters(list).size() == 3 && readCharacters(list)[2].name == "C2", "list indices stay the keys");
+        check(deleteCharacter(list, 0) && list.number("num") == 2u && !list.get("2"), "delete renames down");
+        const auto left = readCharacters(list);
+        check(left.size() == 2 && left[1].name == "C2", "the later key moved down");
+        check(saveCharacter(list, 1, named[0]) && readCharacters(list)[1].name == "C0", "one key saved");
+
+        // Saves §4.1: world deletion writes every remaining entry under the selected key.
+        SaveDb worldList;
+        fs::remove(worldFile, ec);
+        check(worldList.open(worldFile, SaveDb::Mode::ReadWrite), "world list scratch");
+        for (uint32_t i = 0; i < 4; i++) {
+            WorldEntry e;
+            e.name = "W" + std::to_string(i);
+            e.seed = i;
+            worldList.put(std::to_string(i), e.serialize());
+        }
+        worldList.putNumber("num", 4);
+        check(deleteWorldEntry(worldList, 1), "delete world 1");
+        auto names = readWorlds(worldList);
+        check(names.size() == 3 && names[0].name == "W0" && names[1].name == "W3" && names[2].name == "W2" &&
+                  worldList.get("3").has_value(),
+              "the last entry takes the deleted key; nothing else moves or goes");
+        check(deleteWorldEntry(worldList, 2), "delete the last listed world");
+        names = readWorlds(worldList);
+        check(names.size() == 2 && names[0].name == "W0" && names[1].name == "W3", "the selection is pulled back inside");
+        worldList.put("0", {0xff, 0xff});
+        check(readWorlds(worldList).size() == 2 && readWorlds(worldList)[1].name == "W3", "a damaged entry keeps its place");
+        } // (both files closed)
+        fs::remove(listFile, ec);
+        fs::remove(worldFile, ec);
     }
     fs::remove(scratch, ec);
 
@@ -80,6 +152,8 @@ int main(int argc, char **argv) {
         check(again.open(folder, "scratch", 999, 0, &error), "session reopen: " + error);
         check(again.seed() == 123, "the world keeps its seed");
         check(again.clock.day == 10 && again.clock.timeOfDayMs == 43205000, "the clock comes back");
+        again.advance(4319.5); // to exactly 86,400,000
+        check(again.clock.day == 10 && again.clock.timeOfDayMs == 86400000u, "saves §5.1: 86,400,000 is held");
         const auto at = again.startPosition();
         check(at && at->x == 8396928.5 && at->y == 8396930.25 && at->z == 120, "the character comes back where it left");
         SaveDb worlds;

@@ -5,7 +5,9 @@
 #include "SqlitePath.h"
 #include "ZlibStream.h"
 #include <sqlite3.h>
+#include <algorithm>
 #include <bit>
+#include <cstdio>
 
 namespace {
 
@@ -40,6 +42,54 @@ template <size_t N> std::array<uint8_t, N> readArray(ByteReader &r) {
     return a;
 }
 
+// §0: Alpha's record readers are truncation-tolerant. A field is taken only when enough bytes
+// remain; otherwise reading stops and that field and every later one keep their prior values.
+class FieldReader {
+  public:
+    explicit FieldReader(const std::vector<uint8_t> &bytes) : r(bytes) {}
+    bool has(size_t n) {
+        if (!stopped && r.left() >= n)
+            return true;
+        stopped = true;
+        return false;
+    }
+    template <class T> bool field(T &out) {
+        if (!has(sizeof(T)))
+            return false;
+        out = r.get<T>();
+        return true;
+    }
+    template <size_t N> bool field(std::array<uint8_t, N> &out) {
+        if (!has(N))
+            return false;
+        r.read(out.data(), N);
+        return true;
+    }
+    bool string(std::string &out) {
+        uint32_t n = 0;
+        if (!field(n) || !has(n))
+            return false;
+        out = std::string(n, '\0');
+        r.read(out.data(), n);
+        return true;
+    }
+    bool bytes(std::vector<uint8_t> &out, size_t n) {
+        if (!has(n))
+            return false;
+        out = r.bytes(n);
+        return true;
+    }
+    size_t left() const { return r.left(); }
+
+  private:
+    ByteReader r;
+    bool stopped = false;
+};
+
+constexpr uint32_t SKILLS = 11; // §3.2 field 23
+// Engine bound: a stored count is not allowed to allocate more than this many entries.
+constexpr uint32_t MAX_ENTRIES = 1u << 16;
+
 } // namespace
 
 SaveDb::~SaveDb() { sqlite3_close(db); }
@@ -53,9 +103,9 @@ bool SaveDb::open(const std::filesystem::path &file, Mode mode, std::string *err
         result = sqlite3_open_v2(uri.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nullptr);
     } else {
         result = sqlite3_open_v2(utf8(file).c_str(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+        // §2: the table creation runs on every open; its failure (the table exists) is ignored.
         if (result == SQLITE_OK)
-            result = sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS blobs(key TEXT PRIMARY KEY, value BLOB);", nullptr,
-                                  nullptr, nullptr);
+            sqlite3_exec(db, "CREATE TABLE blobs(key TEXT PRIMARY KEY, value BLOB);", nullptr, nullptr, nullptr);
     }
     if (result != SQLITE_OK) {
         if (error)
@@ -85,6 +135,8 @@ bool SaveDb::put(const std::string &key, const std::vector<uint8_t> &value) {
         return u.blob(1, value).text(2, key).step() == SQLITE_DONE;
     }
     Statement i(db, "INSERT INTO blobs(key, value) VALUES(?, ?)");
+    if (db && !i.get()) // §2: the console line Alpha prints, only when the INSERT cannot be prepared
+        std::puts("DATABASE WRITE ERROR");
     return i.text(1, key).blob(2, value).step() == SQLITE_DONE;
 }
 
@@ -129,62 +181,65 @@ bool SaveDb::putNumber(const std::string &key, uint32_t value) {
 
 // §3.2
 std::optional<CharacterRecord> CharacterRecord::parse(const std::vector<uint8_t> &inflated) {
-    ByteReader r(inflated);
-    if (r.u32() != FORMAT)
-        return std::nullopt;
+    // §3.2 reader: the version is stored untested, every field is truncation-tolerant (§0), and
+    // bytes after the last field are not read. A record therefore always results.
+    FieldReader r(inflated);
     CharacterRecord c;
+    uint32_t version = 0;
+    r.field(version);
     for (auto &p : c.position)
-        p = r.i64();
+        r.field(p);
     for (auto &o : c.orientation)
-        o = r.f32();
-    c.health = r.f32();
-    c.experience = r.i32();
-    c.level = r.i32();
-    c.characterClass = r.u8();
-    c.specialization = r.u8();
-    c.unknown9 = r.u32();
-    c.unknown10 = r.u32();
+        r.field(o);
+    r.field(c.health);
+    r.field(c.experience);
+    r.field(c.level);
+    r.field(c.characterClass);
+    r.field(c.specialization);
+    r.field(c.unknown9);
+    r.field(c.unknown10);
     for (auto &item : c.equipment)
-        item = readArray<280>(r);
-    c.name = r.string();
-    c.extra = readArray<20>(r);
-    const uint32_t tabs = r.u32();
-    for (uint32_t t = 0; t < tabs && r.ok(); t++) {
-        const uint32_t n = r.u32();
-        if ((size_t)n * 284 > r.left())
-            return std::nullopt;
-        auto &tab = c.tabs.emplace_back(n);
-        for (auto &slot : tab) {
-            slot.count = r.u32();
-            slot.item = readArray<280>(r);
+        r.field(item);
+    r.string(c.name);
+    r.field(c.extra);
+    if (uint32_t tabs = 0; r.field(tabs)) {
+        c.tabs.clear();
+        for (uint32_t t = 0; t < tabs && t < MAX_ENTRIES && r.has(4); t++) {
+            uint32_t n = 0;
+            r.field(n);
+            // Each tab is resized to its stored count before its slots are copied.
+            auto &tab = c.tabs.emplace_back(std::min(n, MAX_ENTRIES));
+            for (auto &slot : tab)
+                if (!r.field(slot.count) || !r.field(slot.item))
+                    break;
         }
     }
-    c.money = r.u32();
-    c.platinum = r.u32();
-    const uint32_t known = r.u32();
-    if ((size_t)known * 280 > r.left())
-        return std::nullopt;
-    for (uint32_t i = 0; i < known; i++)
-        c.recipes.push_back(readArray<280>(r));
-    const uint32_t visits = r.u32();
-    for (uint32_t i = 0; i < visits && r.ok(); i++) {
-        WorldVisit v;
-        v.seed = r.u32();
-        v.name = r.string();
-        for (auto &p : v.position)
-            p = r.i64();
-        c.visits.push_back(v);
+    r.field(c.money);
+    r.field(c.platinum);
+    if (uint32_t known = 0; r.field(known))
+        for (uint32_t i = 0; i < known && i < MAX_ENTRIES; i++) {
+            ItemBytes item{};
+            if (!r.field(item))
+                break;
+            c.recipes.push_back(item);
+        }
+    if (uint32_t visits = 0; r.field(visits))
+        for (uint32_t i = 0; i < visits && i < MAX_ENTRIES; i++) {
+            WorldVisit v;
+            if (!r.field(v.seed) || !r.string(v.name) || !r.field(v.position[0]) || !r.field(v.position[1]) ||
+                !r.field(v.position[2]))
+                break;
+            c.visits.push_back(v);
+        }
+    r.field(c.lastWorldSeed);
+    r.string(c.lastWorldName);
+    r.field(c.manaCubes);
+    // Field 23: the 44 bytes are taken only when the count is exactly 11.
+    if (uint32_t skills = 0; r.field(skills) && skills == SKILLS && r.has(4 * SKILLS)) {
+        c.skills.assign(SKILLS, 0);
+        for (auto &s : c.skills)
+            r.field(s);
     }
-    c.lastWorldSeed = r.u32();
-    c.lastWorldName = r.string();
-    c.manaCubes = r.u32();
-    const uint32_t skills = r.u32();
-    if ((size_t)skills * 4 > r.left())
-        return std::nullopt;
-    for (uint32_t i = 0; i < skills; i++)
-        c.skills.push_back(r.i32());
-    if (!r.atEnd())
-        return std::nullopt;
     return c;
 }
 
@@ -229,21 +284,43 @@ std::vector<uint8_t> CharacterRecord::serialize() const {
     w.u32(lastWorldSeed);
     w.string(lastWorldName);
     w.u32(manaCubes);
-    w.u32((uint32_t)skills.size());
-    for (auto s : skills)
-        w.i32(s);
+    // Field 23 is always written as 11 levels (missing ones as 0, an engine default).
+    w.u32(SKILLS);
+    for (uint32_t i = 0; i < SKILLS; i++)
+        w.i32(i < skills.size() ? skills[i] : 0);
     return std::move(w.data());
 }
 
 std::vector<CharacterRecord> readCharacters(const SaveDb &db) {
+    // §3.1: keys 0..N-1, one record per key, so list indices stay the keys. A missing or damaged
+    // value gives what the tolerant reader makes of the bytes that inflate (§0).
     std::vector<CharacterRecord> out;
     const uint32_t n = db.number("num").value_or(0);
-    for (uint32_t i = 0; i < n; i++)
-        if (const auto value = db.get(std::to_string(i)))
-            if (const auto inflated = zlibInflate(*value))
-                if (auto c = CharacterRecord::parse(*inflated))
-                    out.push_back(std::move(*c));
+    for (uint32_t i = 0; i < n && i < MAX_ENTRIES; i++) {
+        const auto value = db.get(std::to_string(i));
+        const std::vector<uint8_t> inflated = value ? zlibInflatePartial(*value) : std::vector<uint8_t>{};
+        out.push_back(*CharacterRecord::parse(inflated));
+    }
     return out;
+}
+
+bool saveCharacter(SaveDb &db, uint32_t index, const CharacterRecord &character) {
+    return db.put(std::to_string(index), zlibCompress(character.serialize()));
+}
+
+bool addCharacter(SaveDb &db, const CharacterRecord &character) {
+    const uint32_t n = db.number("num").value_or(0);
+    return db.putNumber("num", n + 1) && saveCharacter(db, n, character);
+}
+
+bool deleteCharacter(SaveDb &db, uint32_t index) {
+    const uint32_t n = db.number("num").value_or(0);
+    if (index >= n)
+        return false;
+    bool ok = db.putNumber("num", n - 1) && db.remove(std::to_string(index));
+    for (uint32_t k = index + 1; k < n; k++)
+        ok &= db.rename(std::to_string(k), std::to_string(k - 1));
+    return ok;
 }
 
 bool writeCharacters(SaveDb &db, const std::vector<CharacterRecord> &characters) {
@@ -258,25 +335,27 @@ bool writeCharacters(SaveDb &db, const std::vector<CharacterRecord> &characters)
 
 // §4.2
 std::optional<WorldEntry> WorldEntry::parse(const std::vector<uint8_t> &value) {
-    ByteReader r(value);
+    // §4.2 with the tolerant reading of §0: an entry always results, and trailing bytes are not
+    // read. A preview that does not inflate to its full size is padded with zeros to it.
+    FieldReader r(value);
     WorldEntry e;
-    e.name = r.string();
-    e.seed = r.u32();
-    e.discovered = r.u32();
-    for (auto &s : e.previewSize)
-        s = r.i32();
-    if (e.previewSize[0] > 0 && e.previewSize[1] > 0 && e.previewSize[2] > 0) {
-        const uint32_t c = r.u32();
-        if (c > r.left())
-            return std::nullopt;
-        const auto packed = r.bytes(c);
-        const auto rgb = zlibInflate(packed);
-        if (!rgb || rgb->size() != (size_t)e.previewSize[0] * e.previewSize[1] * e.previewSize[2] * 3)
-            return std::nullopt;
-        e.previewRgb = *rgb;
+    r.string(e.name);
+    r.field(e.seed);
+    r.field(e.discovered);
+    int32_t size[3] = {};
+    if (!r.field(size[0]) || !r.field(size[1]) || !r.field(size[2]))
+        return e;
+    const uint64_t voxels = (uint64_t)std::max(size[0], 0) * (uint64_t)std::max(size[1], 0) * (uint64_t)std::max(size[2], 0);
+    constexpr uint64_t MAX_PREVIEW = 1u << 24; // engine bound on the voxels a preview may claim
+    if (voxels > MAX_PREVIEW)
+        return e;
+    std::copy(size, size + 3, e.previewSize);
+    if (voxels > 0) {
+        uint32_t c = 0;
+        if (std::vector<uint8_t> packed; r.field(c) && r.bytes(packed, c))
+            e.previewRgb = zlibInflatePartial(packed, (size_t)voxels * 3);
+        e.previewRgb.resize((size_t)voxels * 3);
     }
-    if (!r.atEnd())
-        return std::nullopt;
     return e;
 }
 
@@ -296,13 +375,34 @@ std::vector<uint8_t> WorldEntry::serialize() const {
 }
 
 std::vector<WorldEntry> readWorlds(const SaveDb &db) {
+    // §4.1: one entry per key 0..N-1, so list indices stay the keys.
     std::vector<WorldEntry> out;
     const uint32_t n = db.number("num").value_or(0);
-    for (uint32_t i = 0; i < n; i++)
-        if (const auto value = db.get(std::to_string(i)))
-            if (auto e = WorldEntry::parse(*value))
-                out.push_back(std::move(*e));
+    for (uint32_t i = 0; i < n && i < MAX_ENTRIES; i++) {
+        const auto value = db.get(std::to_string(i));
+        out.push_back(*WorldEntry::parse(value ? *value : std::vector<uint8_t>{}));
+    }
     return out;
+}
+
+bool deleteWorldEntry(SaveDb &db, uint32_t selected) {
+    // §4.1 (Alpha's own rewrite): the entry leaves the list, the selection is pulled back inside
+    // it, `num` becomes N-1, and every remaining entry is written in turn under the selected
+    // key, so the last one ends up there. (Alpha re-serialises its loaded entries; the stored
+    // bytes are rewritten here, which is the same for every entry its writer made.)
+    const uint32_t n = db.number("num").value_or(0);
+    if (selected >= n)
+        return false;
+    std::vector<std::vector<uint8_t>> remaining;
+    for (uint32_t i = 0; i < n && i < MAX_ENTRIES; i++)
+        if (i != selected)
+            remaining.push_back(db.get(std::to_string(i)).value_or(std::vector<uint8_t>{}));
+    if (selected >= remaining.size() && !remaining.empty())
+        selected = (uint32_t)remaining.size() - 1;
+    bool ok = db.putNumber("num", n - 1);
+    for (const auto &value : remaining)
+        ok &= db.put(std::to_string(selected), value);
+    return ok;
 }
 
 // §5.1

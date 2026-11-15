@@ -2446,3 +2446,39 @@ bounds. Already matching: generator streams, seed offsets, noise vectors, temper
 cover, plant and ground-item centring, lily height, house furniture rules. Not modelled: client
 world re-initialisation on a seed or name change; mid-field close semantics; the once-per-second
 zone request resend.
+## Provenance re-certification, network server and saves (2026-11-14)
+
+Two inherited contracts were re-certified by fresh source-only authors against the original
+images (34 corrections; reversals: the server's fallback seed follows srand(123) and at least 77
+draws, its "server full" reply is unreachable, zones are saved and unloaded by the generation
+thread, and appearance and creature type are derived on load from the style bytes; replacement
+advice removed; owner save files were not opened) and read whole by a fresh implementer:
+- `alpha-net-server.md` (BB684E10...FA2A)
+- `alpha-saves.md` (DD42AA73...5BEC)
+
+Server changes: the day rolls over only above 86,400,000; `time` is saved at 10,000 ms
+boundaries of a step accumulator and not at shutdown; the step marks zones modified and the
+generation thread saves a zone when it unloads it (once per second, if modified or holding
+edits), with every held zone saved at shutdown; the main loop replaces the generation request
+list each pass and the generation thread builds at most one zone per pass (nearest first,
+squared zone distance below 9, never outside 0..65535); shutdown order simulation, generation,
+connections, zone save; the join record spawns at z 0 with the two item records at 0x980 and
+0xA98; "Player <slot> joined." uses the zero-based slot; players and NPCs are listed together in
+id order under the one-new-creature-per-tick permission (NPC radius in binary32, skipped only
+above 40,000); burst and sound sections keep records strictly below 40,000 (sounds were
+previously unfiltered); a server.cfg without a number is no longer overwritten.
+Save changes: CREATE TABLE runs on every open with failure ignored; the write error is printed
+only when the INSERT cannot be prepared; the character reader is truncation-tolerant and the
+writer always writes 11 skill levels; character and world lists keep one record per key, so an
+unreadable record no longer shifts indices (fixing a slot-overwrite bug); single-key character
+save, add and delete in the native order; native world deletion (remaining entries rewritten
+under the selected key); the start position uses only the per-world table; the session clock
+rolls over only above 86,400,000.
+Engine choices kept and labelled: the 5 s handshake timeout, a reachable "server full" reply,
+Q or q quit, a thread per handshake, unknown packets close, packet size bounds, join health
+100, the 1.2/1.2/2.7 box, worlds matched by name, a fresh session clock, the read-only open
+mode and entry caps; the unseeded first rand() as fallback seed (native value unresolved).
+Not modelled: the join inventory and type-44 appearance; region unloading and region-record
+saves; the second world table; the 60 s character autosave; client zone saves only at unload;
+the map's discovered counter; the race-7 hair colour copy (the generic appearance routine
+forces 255 for types 13 and 14).

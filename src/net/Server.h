@@ -48,16 +48,34 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <set>
 #include <thread>
+#include <vector>
 
 namespace net {
 
 // Server buff-update admission contract: the day clock advances by elapsed x 100 when the
 // world-update scan finds a non-null role-zero creature in action 0x54 with health > 0, else
-// by elapsed x 10. Day rollover keeps the engine server's own rule.
+// by elapsed x 10. Net server §2.1 item 4: while the time of day exceeds 86,400,000 the day
+// advances and 86,400,000 is subtracted (exactly 86,400,000 stays).
 void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated);
+// Net server §2.1 item 4: dt is added to the step's millisecond accumulator; `time` is due when
+// the accumulator before and after fall into different multiples of 10,000 (signed, truncated).
+bool clockSaveDue(int32_t &accumulatorMs, int32_t dtMs);
 // Transport N-8: a player's zone in the server main loop, each division truncating toward zero.
 std::pair<int32_t, int32_t> serverZoneOf(int64_t x, int64_t y);
+// Net server §2.2: the one zone a generation pass makes, the not-loaded zone in 0..65,535 nearest
+// (squared zone distance below 9) some requested zone; ties go to the first found (requests in
+// list order, then x ascending, then y ascending).
+std::optional<std::pair<int32_t, int32_t>>
+nextZoneToGenerate(const std::vector<std::pair<int32_t, int32_t>> &requests,
+                   const std::function<bool(int32_t, int32_t)> &loaded);
+// Net server §4.1: two creature positions' squared distance in blocks, each axis's difference
+// converted to single precision and scaled by 1/65,536. An NPC is skipped above 40,000.
+float creatureDistanceSquared(const std::array<int64_t, 3> &a, const std::array<int64_t, 3> &b);
+// Net server §3.1: the record a joining player is given (`spawnX/Y`: the engine's --spawn).
+CreatureRecord newPlayerRecord(int32_t spawnX = 0, int32_t spawnY = 0);
 
 struct ServerOptions {
     uint32_t seed = 0;
@@ -101,7 +119,9 @@ class Server {
     ~Server();
 
     bool start(std::string *error = nullptr);
-    void stop(); // closes every connection and saves the clock
+    // Net server §6: stops the simulation, then the generation thread, then the connections, and
+    // saves the held zones. `time` is not written here (its last value is the periodic save).
+    void stop();
     uint16_t port() const { return listener.boundPort(); }
     int players() const;
     // The world clock (packet 5).
@@ -127,7 +147,8 @@ class Server {
     void receiveLoop(Connection &c);
     void sendLoop(Connection &c);
     void simulationLoop();
-    void generationLoop(); // §2.1
+    void generationLoop(); // net server §2.2
+    void unloadDistantZones(const std::vector<std::pair<int32_t, int32_t>> &requests); // under the lock
     void stepWorld(float dtMs); // §3, under the lock
     std::vector<std::pair<int32_t, int32_t>> playerZones() const; // under the lock
     void drop(Connection &c);
@@ -144,9 +165,15 @@ class Server {
     // §6: a placement from packet 6 kind 7, by the sender's record.
     void placeObject(const CreatureRecord &sender);
 
+    // Net server §6: saves every held zone the step changed (or that holds block edits).
+    void saveHeldZones(); // under the lock
+    bool zoneNeedsSave(int32_t zx, int32_t zy) const;
+
     ServerOptions options;
     Socket listener;
-    std::atomic<bool> running{false};
+    // Native's three flags (§2.1, §2.2, §2.3): the main loop's, the generation thread's and the
+    // server's (accept, receiver and sender threads); stop() clears them in that order.
+    std::atomic<bool> simulating{false}, generating{false}, running{false};
     std::thread acceptThread, simulationThread, generationThread;
     std::unique_ptr<worldgen::World> world;
     std::unique_ptr<worldgen::Terrain> terrain;
@@ -159,6 +186,12 @@ class Server {
     std::vector<std::array<uint8_t, 40>> events40;
     std::atomic<uint32_t> clockDay{0}, clockMs{43200000};
     worldgen::WorldMap zones; // the loaded zones (§4)
+    // Net server §2.1 item 7: the players' zones, replaced by the main loop each pass and read by
+    // the generation thread.
+    std::vector<std::pair<int32_t, int32_t>> generationRequests;
+    // Net server §1.2, §2.2: zones changed since their last save; written when the generation
+    // thread unloads them and at shutdown, not by the step.
+    std::set<std::pair<int32_t, int32_t>> modifiedZones;
     // Dedicated-world engine policy: one stream, serialized by lock. This does
     // not certify original-server RNG/thread/startup behavior.
     worldgen::Random worldRandom{1};

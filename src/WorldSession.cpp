@@ -55,7 +55,9 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
     if (!ensureGenerationProfile(worldFile(saveFolder, name), generationProfile, error))
         return false;
 
-    // §4: find the world in the list, or add it.
+    // §4: find the world in the list, or add it. Engine choice: the entry is found by name
+    // (Alpha adds a new entry unless seed and name both match); the menus always pass the
+    // entry's own seed, so they behave alike.
     SaveDb worlds;
     if (!worlds.open(saveFolder / "worlds.db", SaveDb::Mode::ReadWrite, error))
         return false;
@@ -79,7 +81,8 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
         }
     }
 
-    // §5.1: the clock; a new world starts at noon of day 0.
+    // §5.1: the clock; a new world starts at noon of day 0. (Alpha's setup keeps whatever clock
+    // its one world object holds when `time` is absent; each session here is a fresh world.)
     clock = WorldClock{};
     SaveDb world;
     if (world.open(worldFile(saveFolder, name), SaveDb::Mode::ReadWrite, error))
@@ -109,9 +112,9 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
 std::optional<glm::dvec3> WorldSession::startPosition() const {
     if (!character)
         return std::nullopt;
+    // Saves §3.1: the list load does not apply the stored field-2 position; the place in a
+    // world comes from the per-world table (field 19), which every save updates.
     auto toBlocks = [](const int64_t p[3]) { return glm::dvec3(p[0] / FIXED, p[1] / FIXED, p[2] / FIXED); };
-    if (character->lastWorldSeed == entry.seed && character->lastWorldName == entry.name)
-        return toBlocks(character->position);
     for (const auto &visit : character->visits)
         if (visit.seed == entry.seed && visit.name == entry.name)
             return toBlocks(visit.position);
@@ -123,7 +126,7 @@ void WorldSession::advance(double seconds) {
     const uint64_t whole = (uint64_t)pendingMs;
     pendingMs -= (double)whole;
     uint64_t ms = clock.timeOfDayMs + whole;
-    while (ms >= (uint64_t)alpha::DAY_MS) {
+    while (ms > (uint64_t)alpha::DAY_MS) { // saves §5.1: only above 86,400,000 does the day roll
         ms -= (uint64_t)alpha::DAY_MS;
         clock.day++;
     }
@@ -230,12 +233,9 @@ void WorldSession::leave(const glm::dvec3 &position) {
         std::copy(fixed, fixed + 3, visit.position);
         character->visits.push_back(visit);
     }
+    // Saves §3.1: the character is saved under its own key only.
     SaveDb characters;
-    if (!characters.open(saveFolder / "characters.db", SaveDb::Mode::ReadWrite))
-        return;
-    std::vector<CharacterRecord> all = readCharacters(characters);
-    if (characterIndex < (int)all.size()) {
-        all[characterIndex] = *character;
-        writeCharacters(characters, all);
-    }
+    if (characterIndex >= 0 && characters.open(saveFolder / "characters.db", SaveDb::Mode::ReadWrite) &&
+        (uint32_t)characterIndex < characters.number("num").value_or(0))
+        saveCharacter(characters, (uint32_t)characterIndex, *character);
 }

@@ -50,8 +50,8 @@ using ItemBytes = std::array<uint8_t, 280>;
 
 // §3.2: one character.
 struct CharacterRecord {
-    int64_t position[3] = {};
-    float orientation[3] = {};
+    int64_t position[3] = {};    // field 2: written on save, not applied by the list load (§3.1)
+    float orientation[3] = {};   // field 3: three words, meaning not established (U-2); kept as bits
     float health = 0;
     int32_t experience = 0, level = 1;
     uint8_t characterClass = 0, specialization = 0;
@@ -81,9 +81,16 @@ struct CharacterRecord {
     std::vector<uint8_t> serialize() const;
 };
 
-// §3: the character list.
+// §3: the character list. Reading keeps one record per key 0..num-1 (indices are the keys).
 std::vector<CharacterRecord> readCharacters(const SaveDb &db);
+// The whole list rewritten (fixtures and tools; the game itself uses the three below).
 bool writeCharacters(SaveDb &db, const std::vector<CharacterRecord> &characters);
+// §3.1: one character saved under its own key, as Alpha's save routine does.
+bool saveCharacter(SaveDb &db, uint32_t index, const CharacterRecord &character);
+// §3.1 creation: `num` = N + 1 first, then the character under key N.
+bool addCharacter(SaveDb &db, const CharacterRecord &character);
+// §3.1 deletion: `num` = N - 1 first, key `index` deleted, keys above renamed down in order.
+bool deleteCharacter(SaveDb &db, uint32_t index);
 
 // §4.2: one entry of the world list.
 struct WorldEntry {
@@ -96,7 +103,10 @@ struct WorldEntry {
     static std::optional<WorldEntry> parse(const std::vector<uint8_t> &value);
     std::vector<uint8_t> serialize() const;
 };
-std::vector<WorldEntry> readWorlds(const SaveDb &db);
+std::vector<WorldEntry> readWorlds(const SaveDb &db); // one entry per key 0..num-1
+// §4.1: Alpha's world-list deletion of key `selected` (every remaining entry is written in turn
+// under the selected key; no key is deleted or renamed).
+bool deleteWorldEntry(SaveDb &db, uint32_t selected);
 
 // §5.1: a world's clock.
 struct WorldClock {

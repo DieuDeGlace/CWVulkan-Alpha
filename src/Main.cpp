@@ -4097,23 +4097,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     std::string name;
                     for (char16_t ch : interface.nameText)
                         name += ch < 0x80 ? (char)ch : '?';
-                    std::vector<CharacterRecord> all = characters();
-                    all.push_back(newCharacter(name, choice, interface.creation.characterClass + 1,
-                                               [&] { return worldRandom.draw(); }));
+                    // Saves §3.1: `num` grows first, then the new character is saved under key N.
+                    const CharacterRecord created = newCharacter(name, choice, interface.creation.characterClass + 1,
+                                                                 [&] { return worldRandom.draw(); });
                     SaveDb db;
-                    if (db.open(saves / "characters.db", SaveDb::Mode::ReadWrite))
-                        writeCharacters(db, all);
-                    chosenCharacter = (int)all.size() - 1;
+                    if (db.open(saves / "characters.db", SaveDb::Mode::ReadWrite)) {
+                        chosenCharacter = (int)db.number("num").value_or(0);
+                        addCharacter(db, created);
+                    }
                     frontListsStale = true;
                     interface.front = ui::Interface::Front::Worlds;
                 } else if (request == R::DeleteCharacter) {
-                    std::vector<CharacterRecord> all = characters();
-                    if (interface.selectedCharacter < (int)all.size()) {
-                        all.erase(all.begin() + interface.selectedCharacter);
-                        SaveDb db;
-                        if (db.open(saves / "characters.db", SaveDb::Mode::ReadWrite))
-                            writeCharacters(db, all);
-                    }
+                    // Saves §3.1: `num` shrinks, the key goes and the later keys are renamed down.
+                    SaveDb db;
+                    if (interface.selectedCharacter >= 0 && db.open(saves / "characters.db", SaveDb::Mode::ReadWrite))
+                        deleteCharacter(db, (uint32_t)interface.selectedCharacter);
                     frontListsStale = true;
                 } else if (request == R::SelectWorld && interface.selectedWorld < (int)interface.worldList.size()) {
                     startWorld(interface.worldList[interface.selectedWorld].name, interface.worldList[interface.selectedWorld].seed);
@@ -4126,23 +4124,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         seed = seed * 10 + (uint32_t)(ch - u'0');
                     startWorld(name, seed);
                 } else if (request == R::DeleteWorld && interface.selectedWorld < (int)interface.worldList.size()) {
-                    // §4.5: the world's files go, and its entry. (The list is written back in order;
-                    // Alpha's own rewrite leaves its last world in the deleted one's place.)
-                    const std::string name = interface.worldList[interface.selectedWorld].name;
+                    // Saves §4.1: the world's two files go, then Alpha's list rewrite (every remaining
+                    // entry under the deleted entry's key, so the last world takes its place).
+                    const auto &selected = interface.worldList[interface.selectedWorld];
+                    const std::string name = selected.name;
                     fs::remove(saves / ("world_" + name + ".db"), ec);
                     fs::remove(saves / ("map_" + name + ".db"), ec);
-                    std::vector<WorldEntry> all = worlds();
-                    all.erase(std::remove_if(all.begin(), all.end(), [&](const WorldEntry &w) { return w.name == name; }),
-                              all.end());
-                    SaveDb db;
-                    if (db.open(saves / "worlds.db", SaveDb::Mode::ReadWrite)) {
-                        const uint32_t old = db.number("num").value_or(0);
-                        for (size_t i = 0; i < all.size(); i++)
-                            db.put(std::to_string(i), all[i].serialize());
-                        for (uint32_t i = (uint32_t)all.size(); i < old; i++)
-                            db.remove(std::to_string(i));
-                        db.putNumber("num", (uint32_t)all.size());
-                    }
+                    const std::vector<WorldEntry> all = worlds();
+                    // (The menu lists one kind of world; the entry's own key is its list index.)
+                    for (size_t i = 0; i < all.size(); i++)
+                        if (all[i].name == name && all[i].seed == selected.seed) {
+                            SaveDb db;
+                            if (db.open(saves / "worlds.db", SaveDb::Mode::ReadWrite))
+                                deleteWorldEntry(db, (uint32_t)i);
+                            break;
+                        }
                     frontListsStale = true;
                 }
                 // §3.9 Apply: the player wears the creation's choices (the hover colour too).
@@ -4365,15 +4361,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         saved.recipes = inventory.recipes;
         saved.manaCubes = (uint32_t)manaCubes;
     }
-    if (onlineCharacter && player) { // written back to its place in characters.db
+    if (onlineCharacter && player) { // written back under its own key in characters.db (saves §3.1)
         SaveDb db;
-        if (db.open(executableFolder() / "Save" / "characters.db", SaveDb::Mode::ReadWrite)) {
-            std::vector<CharacterRecord> all = readCharacters(db);
-            if (options.character < (int)all.size()) {
-                all[options.character] = *onlineCharacter;
-                writeCharacters(db, all);
-            }
-        }
+        if (db.open(executableFolder() / "Save" / "characters.db", SaveDb::Mode::ReadWrite) &&
+            (uint32_t)options.character < db.number("num").value_or(0))
+            saveCharacter(db, (uint32_t)options.character, *onlineCharacter);
     }
     if (session) {
         regionPass(player ? player->body().blocks() : view.worldPosition());

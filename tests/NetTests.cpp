@@ -477,7 +477,15 @@ int main() {
         check(day == 3 && ms == 3200, "server day clock runs at 100x while accelerated");
         ms = 86400000u - 500u;
         advanceServerClock(day, ms, 5, true);
-        check(day == 4 && ms == 0, "accelerated clock rolls the day over");
+        check(day == 3 && ms == 86400000u, "net server §2.1: exactly 86,400,000 does not roll over");
+        advanceServerClock(day, ms, 1, false);
+        check(day == 4 && ms == 10, "above 86,400,000 the day advances");
+        // §2.1 item 4: `time` at each 10,000 ms boundary of the accumulated dt.
+        int32_t accumulator = 0;
+        check(!clockSaveDue(accumulator, 9999) && accumulator == 9999, "no save before 10 s");
+        check(clockSaveDue(accumulator, 1) && accumulator == 10000, "the boundary saves");
+        check(!clockSaveDue(accumulator, 9999), "the next window waits");
+        check(clockSaveDue(accumulator, 25000), "a long pass saves once");
         CreatureRecord record;
         record.bytes[0x58] = 84;
         check(record.action() == 84, "record action byte is creature +0x68");
@@ -495,6 +503,56 @@ int main() {
         check(serverZoneOf(int64_t(300) * 65536, int64_t(511) * 65536) == std::pair(1, 1), "zone of a positive position");
         check(serverZoneOf(-1, -65537) == std::pair(0, 0), "negative positions truncate toward zero");
         check(serverZoneOf(int64_t(-257) * 65536, 0) == std::pair(-1, 0), "zone -1 only below block -256");
+    }
+    // Net server §2.2: one zone per pass, nearest first; ties by request order, x, then y.
+    {
+        using Z = std::pair<int32_t, int32_t>;
+        std::set<Z> held;
+        const auto loaded = [&](int32_t x, int32_t y) { return held.count({x, y}) > 0; };
+        check(nextZoneToGenerate({{10, 10}}, loaded) == Z(10, 10), "the requested zone comes first");
+        held.insert({10, 10});
+        check(nextZoneToGenerate({{10, 10}}, loaded) == Z(9, 10), "then distance 1, x ascending first");
+        check(nextZoneToGenerate({{10, 10}, {9, 10}}, loaded) == Z(9, 10), "a nearer zone of a later request wins");
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dy = -2; dy <= 2; dy++)
+                if (dx * dx + dy * dy < 4)
+                    held.insert({10 + dx, 10 + dy});
+        check(nextZoneToGenerate({{10, 10}}, loaded) == Z(8, 10), "distance 4 before the corners");
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dy = -2; dy <= 2; dy++)
+                if (dx * dx + dy * dy < 9)
+                    held.insert({10 + dx, 10 + dy});
+        check(!nextZoneToGenerate({{10, 10}}, loaded), "squared distance 8 is the limit");
+        check(nextZoneToGenerate({{0, 0}}, [](int32_t x, int32_t y) { return x == 0 && y == 0; }) == Z(0, 1),
+              "zones below 0 are never generated");
+        check(!nextZoneToGenerate({}, loaded), "no players, no generation");
+    }
+    // Net server §4.1: the NPC radius in f32; exactly 200 blocks is kept.
+    {
+        const std::array<int64_t, 3> origin{int64_t(5000) << 16, 0, 0};
+        check(creatureDistanceSquared({(int64_t(5000) + 200) << 16, 0, 0}, origin) == 40000.f, "200 blocks is 40,000");
+        check(creatureDistanceSquared({0, int64_t(-120) << 16, int64_t(160) << 16}, {0, 0, 0}) == 40000.f,
+              "axes add up");
+    }
+    // Net server §3.1: the joining record.
+    {
+        const CreatureRecord join = newPlayerRecord();
+        check(join.position(0) == 550301073408LL && join.position(1) == 550301073408LL && join.position(2) == 0,
+              "join spawn (8,396,928, 8,396,928, 0) blocks");
+        int64_t home[3];
+        std::memcpy(home, &join.bytes[0x1b0], 24);
+        check(home[0] == join.position(0) && home[1] == join.position(1) && home[2] == 0, "home copies the position");
+        check(join.controller() == 0 && join.fighter().type == 44 && join.fighter().level == 1 &&
+                  join.fighter().characterClass == 1,
+              "player, type 44, level 1, class 1");
+        bool items = true;
+        for (const size_t at : {size_t(0x980), size_t(0xa98)})
+            items &= join.bytes[at] == 3 && join.bytes[at + 1] == 2 && join.bytes[at + 0x0d] == 1;
+        check(items, "two type-3 subtype-2 item records at 0x980 and 0xA98");
+        bool zeroed = join.bytes[0x4c] == 0 && join.bytes[0x4d] == 0 && join.bytes[0x4e] == 0 && join.bytes[0x4f] == 0;
+        for (size_t at = 0x18; at < 0x30; at++)
+            zeroed &= join.bytes[at] == 0;
+        check(zeroed, "record 0x18..0x2F and 0x4C are zero");
     }
     // Transport §4: a failed inflate keeps the output produced before the failure.
     {
@@ -821,8 +879,10 @@ int main() {
     }
     // Server simulation §8, world items §3: Alice drops a sword, sees it in her zone's list
     // (section 7), picks it up and gets it back as a gift (section 9).
+    std::pair<int32_t, int32_t> aliceZone;
     {
         const int32_t zx = (int32_t)(ra.position(0) >> 24), zy = (int32_t)(ra.position(1) >> 24);
+        aliceZone = {zx, zy};
         std::array<uint8_t, 300> drop{};
         drop[0] = 3, drop[0x0d] = 1;
         drop[0x128] = 6;
@@ -1015,6 +1075,16 @@ int main() {
     crowd.clear();
     b.disconnect();
     server.stop();
+    {
+        // Net server §1.2: the step saves no zones; Alice's zone, with its placed slab's block
+        // edits, is written when it is unloaded after she leaves (§2.2) or at shutdown (§6).
+        SaveDb saved;
+        const auto record = saved.open(options.folder / "Save" / "world_server_2412123.db", SaveDb::Mode::ReadOnly)
+                                ? saved.get(zoneKey(aliceZone.first, aliceZone.second))
+                                : std::nullopt;
+        const auto zone = record ? ZoneSave::parse(*record) : std::nullopt;
+        check(zone && !zone->blockEdits.empty(), "shutdown saves the held zone with its block edits");
+    }
     std::filesystem::remove_all(options.folder);
 
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

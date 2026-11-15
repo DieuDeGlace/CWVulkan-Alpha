@@ -15,8 +15,15 @@ Classes:
 - **C, inherited.** No held status and never named in CLEANROOM.md: carried over from the
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
+- **E, engine documentation.** Describes engine extensions (owner mods ported), not the original;
+  not a native contract and not re-certified.
+- **G, implementation guidance.** A planning overview addressed to implementers; not a native
+  contract. Native facts it cites live in the topic contracts.
+- **S, superseded audit notes.** An audit compared against engine output whose native content is
+  covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
+  kept as history, not handed to authors.
 
-Snapshot 2026-11-14 (after batches 1-6 and transport; 214 tracked contracts, local ignored variants excluded): 100 A, 61 B, 53 C (32588 lines).
+Snapshot 2026-11-14 (after batches 1-7; 214 tracked contracts, local ignored variants excluded): 102 A, 61 B, 46 C (30247 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -57,7 +64,7 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 `alpha-hit-threat-death-lifecycle.md` and `alpha-open-points-9.md`.
 Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-house-furniture.md`;
-then `alpha-net-transport.md`.
+then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -164,7 +171,7 @@ then `alpha-net-transport.md`.
 | `alpha-missions.md` | C | 803 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
 | `alpha-net-packets.md` | C | 551 | 3 |
-| `alpha-net-server.md` | C | 288 | 7 |
+| `alpha-net-server.md` | A | 501 | 0 |
 | `alpha-net-transport.md` | A | 450 | 8 |
 | `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
 | `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
@@ -173,14 +180,14 @@ then `alpha-net-transport.md`.
 | `alpha-open-points-1.md` | C | 386 | 0 |
 | `alpha-open-points-10.md` | C | 474 | 1 |
 | `alpha-open-points-11.md` | A | 212 | 1 |
-| `alpha-open-points-12.md` | C | 357 | 1 |
+| `alpha-open-points-12.md` | S | 357 | 1 |
 | `alpha-open-points-2.md` | C | 359 | 1 |
 | `alpha-open-points-3.md` | C | 505 | 2 |
 | `alpha-open-points-4.md` | C | 577 | 1 |
 | `alpha-open-points-5.md` | C | 419 | 1 |
 | `alpha-open-points-6.md` | C | 688 | 0 |
-| `alpha-open-points-7.md` | C | 355 | 0 |
-| `alpha-open-points-8.md` | C | 357 | 0 |
+| `alpha-open-points-7.md` | C | 256 | 1 |
+| `alpha-open-points-8.md` | C | 291 | 0 |
 | `alpha-open-points-9.md` | A | 114 | 0 |
 | `alpha-particles.md` | C | 564 | 3 |
 | `alpha-path-expansion-order.md` | A | 124 | 1 |
@@ -213,7 +220,7 @@ then `alpha-net-transport.md`.
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | C | 783 | 2 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
-| `alpha-saves.md` | C | 352 | 3 |
+| `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
 | `alpha-server-hit-record-routing.md` | B | 77 | 1 |
@@ -256,7 +263,7 @@ then `alpha-net-transport.md`.
 | `alpha-worldgen-caves.md` | C | 449 | 0 |
 | `alpha-worldgen-clouds.md` | A | 91 | 0 |
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
-| `alpha-worldgen-overview.md` | C | 210 | 4 |
+| `alpha-worldgen-overview.md` | G | 210 | 4 |
 | `alpha-worldgen-random.md` | A | 306 | 0 |
 | `alpha-worldgen-regions.md` | C | 362 | 0 |
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
@@ -272,6 +279,6 @@ then `alpha-net-transport.md`.
 | `alpha-world-relationship-record-delivery.md` | B | 115 | 2 |
 | `alpha-yaw-trig-scalar-abi.md` | A | 77 | 1 |
 | `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
-| `shadows.md` | C | 194 | 3 |
-| `sky-and-clouds.md` | C | 481 | 6 |
-| `vegetation-wind.md` | C | 294 | 1 |
+| `shadows.md` | E | 194 | 3 |
+| `sky-and-clouds.md` | E | 481 | 6 |
+| `vegetation-wind.md` | E | 294 | 1 |

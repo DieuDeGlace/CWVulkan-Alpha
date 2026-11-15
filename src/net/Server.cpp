@@ -49,34 +49,20 @@ namespace {
 
 template <class T> void put(CreatureRecord &r, size_t offset, T value) { std::memcpy(&r.bytes[offset], &value, sizeof value); }
 
-// Server spec §3.1: the record a new player starts with (others see it for a moment, until the
-// player's own first update replaces it). `spawnX/Y` (blocks) move it from the home point.
-CreatureRecord newPlayer(int32_t spawnX, int32_t spawnY) {
-    CreatureRecord r;
-    const int64_t x = (int64_t)(spawnX ? spawnX : worldgen::HOME) << 16;
-    const int64_t y = (int64_t)(spawnY ? spawnY : worldgen::HOME) << 16, z = (int64_t)64 << 16;
-    r.setPosition(0, x);
-    r.setPosition(1, y);
-    r.setPosition(2, z);
-    put(r, 0x1b0, x); // home position
-    put(r, 0x1b8, y);
-    put(r, 0x1c0, z);
-    put(r, 0x070, 1.2f); // collision box (appearance +0x08)
-    put(r, 0x074, 1.2f);
-    put(r, 0x078, 2.7f);
-    put(r, 0x054, (int32_t)44); // creature type
-    put(r, 0x180, (int32_t)1);  // level
-    put(r, 0x130, (uint8_t)1);  // class: warrior
-    put(r, 0x15c, 100.f);       // health (the real maximum comes from stats not specified yet)
-    return r;
+// Simulation §5.5: an NPC's position as its record carries it.
+std::array<int64_t, 3> npcPosition(const creatures::Npc &n) {
+    const glm::dvec3 at = n.body.blocks();
+    return {(int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0), (int64_t)(at.z * 65536.0)};
 }
+
+std::array<int64_t, 3> recordPosition(const CreatureRecord &r) { return {r.position(0), r.position(1), r.position(2)}; }
 
 // Simulation §5.5: the record clients are sent for an NPC.
 CreatureRecord npcRecord(const creatures::Npc &n) {
     CreatureRecord r;
-    const glm::dvec3 at = n.body.blocks();
+    const auto at = npcPosition(n);
     for (int axis = 0; axis < 3; axis++)
-        r.setPosition(axis, (int64_t)(at[axis] * 65536.0));
+        r.setPosition(axis, at[axis]);
     r.setMotion(n.body.velocity, n.yaw, n.body.push, n.body.intent);
     r.setAppearance(n.looks);
     r.setFighter(n.fighter);
@@ -89,6 +75,68 @@ std::filesystem::path savePath(const ServerOptions &o) {
 }
 
 } // namespace
+
+// Net server §3.1. Others see this record for a moment, until the player's own first update
+// replaces it. Fields the contract leaves to the record initialiser (U-4) stay zero.
+CreatureRecord newPlayerRecord(int32_t spawnX, int32_t spawnY) {
+    CreatureRecord r;
+    // The world set-up's spawn point (8,396,928, 8,396,928, 0) blocks, x 65,536 truncated.
+    // `spawnX/Y` (engine --spawn option) move it.
+    const int64_t x = (int64_t)(spawnX ? spawnX : worldgen::HOME) << 16;
+    const int64_t y = (int64_t)(spawnY ? spawnY : worldgen::HOME) << 16, z = 0;
+    r.setPosition(0, x);
+    r.setPosition(1, y);
+    r.setPosition(2, z);
+    // Collision box (appearance +0x08): 1.5 x (0.8, 0.8, 1.8). (The operands' precision is not
+    // specified; in pure f32 the height would round to 2.6999998, so the stated 2.7 is kept.)
+    put(r, 0x070, 1.2f);
+    put(r, 0x074, 1.2f);
+    put(r, 0x078, 2.7f);
+    // (Record 0x18..0x2F and the u32 at 0x4C are zeroed natively; already zero here.)
+    put(r, 0x180, (int32_t)1); // level
+    // Health is the maximum computed before type and class are set. The engine's 100 equals
+    // that under the client-side record defaults (multiplier 100, level 1); U-4 leaves the
+    // server's own defaults open.
+    put(r, 0x15c, 100.f);
+    put(r, 0x054, (int32_t)44); // creature type (controller byte 0x50 stays 0: player)
+    put(r, 0x1b0, x);           // home position
+    put(r, 0x1b8, y);
+    put(r, 0x1c0, z);
+    for (const size_t item : {size_t(0x980), size_t(0xa98)}) { // two item records (slots: U-3)
+        r.bytes[item + 0x00] = 3; // type
+        r.bytes[item + 0x01] = 2; // subtype
+        r.bytes[item + 0x0d] = 1;
+    }
+    put(r, 0x130, (uint8_t)1); // class
+    return r;
+}
+
+float creatureDistanceSquared(const std::array<int64_t, 3> &a, const std::array<int64_t, 3> &b) {
+    constexpr float SCALE = 1.f / 65536.f;
+    float sum = 0;
+    for (int axis = 0; axis < 3; axis++) {
+        const float d = (float)(a[axis] - b[axis]) * SCALE;
+        sum += d * d;
+    }
+    return sum;
+}
+
+std::optional<std::pair<int32_t, int32_t>>
+nextZoneToGenerate(const std::vector<std::pair<int32_t, int32_t>> &requests,
+                   const std::function<bool(int32_t, int32_t)> &loaded) {
+    std::optional<std::pair<int32_t, int32_t>> best;
+    int32_t bestDistance = 9;
+    for (const auto &[px, py] : requests)
+        for (int32_t dx = -2; dx <= 2; dx++)
+            for (int32_t dy = -2; dy <= 2; dy++) {
+                const int32_t zx = px + dx, zy = py + dy, d = dx * dx + dy * dy;
+                if (d < bestDistance && zx >= 0 && zy >= 0 && zx <= 65535 && zy <= 65535 && !loaded(zx, zy)) {
+                    bestDistance = d;
+                    best = {zx, zy};
+                }
+            }
+    return best;
+}
 
 Server::Server(ServerOptions o) : options(std::move(o)) {
     npcs.onFatalObject = [this](const creatures::Combatant &fighter, creatures::NpcFrame &frame) {
@@ -223,7 +271,7 @@ bool Server::start(std::string *error) {
     terrain->prefabs = options.prefabs;
     terrain->finishSpawn = creatures::finishSpawn;
     terrain->swimmableWater = options.swimmableWater;
-    running = true;
+    running = generating = simulating = true;
     acceptThread = std::thread([this] { acceptLoop(); });
     simulationThread = std::thread([this] { simulationLoop(); });
     generationThread = std::thread([this] { generationLoop(); });
@@ -232,8 +280,18 @@ bool Server::start(std::string *error) {
 }
 
 void Server::stop() {
-    if (!running.exchange(false))
+    // §6 step 1-2: the main loop finishes its pass, then the generation thread stops.
+    if (!simulating.exchange(false))
         return;
+    if (simulationThread.joinable())
+        simulationThread.join();
+    say("stopping generation thread...");
+    generating = false;
+    if (generationThread.joinable())
+        generationThread.join();
+    // Step 3: the server object; per-connection threads stop on their next check.
+    say("Stopping server...");
+    running = false;
     listener.shutdown();
     listener.close();
     std::vector<std::shared_ptr<Connection>> all;
@@ -255,22 +313,28 @@ void Server::stop() {
     }
     for (auto &t : pending)
         t.join();
-    if (simulationThread.joinable())
-        simulationThread.join();
-    if (generationThread.joinable())
-        generationThread.join();
     for (auto &c : all) {
         if (c->receiver.joinable())
             c->receiver.join();
         if (c->sender.joinable())
             c->sender.join();
     }
-    {
-        std::lock_guard guard(lock);
-        connections.clear();
-    }
-    saveClock();
-    say("stopping generation thread...");
+    // Step 4: the world's held zones are saved; `time` is not.
+    std::lock_guard guard(lock);
+    connections.clear();
+    saveHeldZones();
+}
+
+bool Server::zoneNeedsSave(int32_t zx, int32_t zy) const {
+    const auto *list = edits.zone(zx, zy);
+    return modifiedZones.count({zx, zy}) || (list && !list->empty());
+}
+
+void Server::saveHeldZones() {
+    for (const auto &[key, zone] : zones.zones())
+        if (zoneNeedsSave(key.first, key.second))
+            saveZoneItems(key.first, key.second);
+    modifiedZones.clear();
 }
 
 int Server::players() const {
@@ -340,8 +404,8 @@ void Server::acceptLoop() {
 void Server::handshake(Socket socket) {
     // Engine choices (transport §2.1, §5.3): a read timeout during the handshake (Alpha has
     // none), and the free-id search after the version, answering a real 18 when all ten ids
-    // are taken (Alpha's full scan precedes the hello and can never fire; it says "accepted",
-    // then closes).
+    // are taken. Natively (net server §3.1 steps 4, 7) the 0/1 "full" flag is compared with 4,
+    // so 18 is never sent: Alpha sends 16, then closes the socket silently.
     socket.setReadTimeout(5000); // a client that says nothing is not kept waiting for
     uint32_t hello = 0, version = 0;
     if (!socket.readU32(hello) || hello != HELLO)
@@ -365,7 +429,7 @@ void Server::handshake(Socket socket) {
             socket.sendU32(FULL); // what Alpha meant to send (transport §2.3)
             return;
         }
-        c->creature = newPlayer(options.spawnX, options.spawnY);
+        c->creature = newPlayerRecord(options.spawnX, options.spawnY);
         c->socket = std::move(socket);
         connections[c->id] = c;
     }
@@ -382,7 +446,9 @@ void Server::handshake(Socket socket) {
         connections.erase(c->id);
         return;
     }
-    say("Player " + std::to_string(c->id) + " joined.");
+    // §3.1 step 11: the zero-based connection slot. Native slots and ids 1..10 are both taken
+    // lowest-free and freed together, so the slot is always id - 1.
+    say("Player " + std::to_string(c->id - 1) + " joined.");
     {
         std::lock_guard guard(lock);
         tellMods([this, id = c->id] {
@@ -513,31 +579,40 @@ SenderPacing serverPacing; // transport §3.3: one stamp shared by every server 
 } // namespace
 
 void Server::sendLoop(Connection &c) {
+    c.joined = Clock::now(); // §4.1: the 500 ms are measured from the sender thread's start
     while (c.alive && running) {
         ByteWriter w;
         {
             std::lock_guard guard(lock);
-            // §4.1: every visible creature, each against what this player was sent last tick.
+            // Net server §4.1: the entity table in id order, players and NPCs alike. NPCs farther
+            // than 200 blocks (squared > 40,000) are skipped; players never are. A creature not
+            // sent last tick needs the one-shot permission, available once 500 ms have passed.
+            const std::array<int64_t, 3> me = recordPosition(c.creature);
+            std::map<uint64_t, const creatures::Npc *> nearNpcs;
+            for (const creatures::Npc &n : npcs.all())
+                if (!connections.count(n.fighter.id) && // (players' ids win a clash)
+                    creatureDistanceSquared(npcPosition(n), me) <= 40000.f)
+                    nearNpcs.emplace(n.fighter.id, &n);
+            bool permission = Clock::now() - c.joined > std::chrono::milliseconds(500);
+            const auto admitted = [&](uint64_t id) {
+                if (c.known.count(id))
+                    return true;
+                return std::exchange(permission, false);
+            };
             std::map<uint64_t, CreatureRecord> toSend;
-            bool introduced = false;
-            const bool settled = Clock::now() - c.joined > std::chrono::milliseconds(500);
-            for (auto &[id, other] : connections) {
-                if (id == c.id || !other->alive)
-                    continue;
-                // (Players are visible at any distance; the 200-block radius is for NPCs.)
-                if (!c.known.count(id)) {
-                    if (!settled || introduced)
-                        continue;
-                    introduced = true;
+            auto player = connections.begin();
+            auto npc = nearNpcs.begin();
+            while (player != connections.end() || npc != nearNpcs.end()) {
+                const bool takePlayer = npc == nearNpcs.end() || (player != connections.end() && player->first < npc->first);
+                if (takePlayer) {
+                    const auto &[id, other] = *player++;
+                    if (id != c.id && other->alive && admitted(id))
+                        toSend.emplace(id, other->creature);
+                } else {
+                    const auto &[id, n] = *npc++;
+                    if (admitted(id))
+                        toSend.emplace(id, npcRecord(*n));
                 }
-                toSend[id] = other->creature;
-            }
-            // Simulation §5.5: the NPCs within 200 blocks.
-            const glm::dvec3 me = glm::dvec3(c.creature.position(0), c.creature.position(1), c.creature.position(2)) / 65536.0;
-            for (const creatures::Npc &n : npcs.all()) {
-                const glm::dvec3 d = n.body.blocks() - me;
-                if (glm::dot(d, d) < 200.0 * 200.0 && !connections.count(n.fighter.id)) // (ids of zones by (0, 0) could clash)
-                    toSend[n.fighter.id] = npcRecord(n);
             }
             for (auto &[id, record] : toSend) {
                 const auto it = c.known.find(id);
@@ -593,18 +668,25 @@ std::pair<int32_t, int32_t> serverZoneOf(int64_t x, int64_t y) {
 void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated) {
     // The time of day runs 10 (or 100) times as fast as real time (vegetation-wind.md §2).
     uint64_t ms = timeOfDayMs + (uint64_t)elapsedMs * (accelerated ? 100u : 10u);
-    while (ms >= 86400000) {
+    while (ms > 86400000) {
         ms -= 86400000;
         day++;
     }
     timeOfDayMs = (uint32_t)ms;
 }
 
+bool clockSaveDue(int32_t &accumulatorMs, int32_t dtMs) {
+    const int32_t before = accumulatorMs;
+    accumulatorMs = (int32_t)((uint32_t)before + (uint32_t)dtMs); // (wraps like the native i32)
+    return accumulatorMs / 10000 != before / 10000;
+}
+
 void Server::simulationLoop() {
-    auto last = Clock::now(), lastSave = last;
+    auto last = Clock::now();
     double leftoverMs = 0;
+    int32_t saveAccumulatorMs = 0; // world +0x8000BC
     std::vector<std::function<void()>> events;
-    while (running) {
+    while (simulating) {
         std::this_thread::sleep_for(std::chrono::milliseconds(TICK_MS));
         const auto now = Clock::now();
         leftoverMs += std::chrono::duration<double, std::milli>(now - last).count();
@@ -630,18 +712,19 @@ void Server::simulationLoop() {
                 for (const auto &s : shoots)
                     c->outgoing.sections[4].emplace_back(s.begin(), s.end());
             shoots.clear();
+            generationRequests = playerZones(); // §2.1 item 7: replaced each pass
             events.swap(modOutbox);
         }
+        // §2.1 item 4: `time` at each 10,000 ms boundary of the step's accumulator. (Written
+        // here with the lock released; the step itself saves no zones.)
+        if (clockSaveDue(saveAccumulatorMs, dt))
+            saveClock();
         // Mod SDK: this step's events and the frame, told without the lock.
         for (const auto &event : events)
             event();
         events.clear();
         if (options.modEvents.frame)
             options.modEvents.frame(dt / 1000.0);
-        if (now - lastSave > std::chrono::seconds(10)) {
-            saveClock();
-            lastSave = now;
-        }
     }
 }
 
@@ -655,41 +738,19 @@ std::vector<std::pair<int32_t, int32_t>> Server::playerZones() const {
     return out;
 }
 
-// Simulation §2.1: one zone per pass, the missing one nearest a player within the 5 x 5 block
-// round each player's zone; once a second, zones no player is near go.
+// Net server §2.2: per pass, at most one missing zone near the main loop's request list; at
+// most once a second, the zones no requested zone is near are saved (§1.2) and unloaded.
 void Server::generationLoop() {
     auto lastUnload = Clock::now();
-    while (running) {
+    while (generating) {
         std::optional<std::pair<int32_t, int32_t>> wanted;
         {
             std::lock_guard guard(lock);
-            int64_t best = INT64_MAX;
-            for (const auto &[px, py] : playerZones())
-                for (int32_t dx = -2; dx <= 2; dx++)
-                    for (int32_t dy = -2; dy <= 2; dy++) {
-                        const int64_t d = (int64_t)dx * dx + (int64_t)dy * dy;
-                        if (d < 9 && d < best && !zones.zone(px + dx, py + dy)) {
-                            best = d;
-                            wanted = {px + dx, py + dy};
-                        }
-                    }
+            const std::vector<std::pair<int32_t, int32_t>> requests = generationRequests;
+            wanted = nextZoneToGenerate(requests, [this](int32_t zx, int32_t zy) { return zones.zone(zx, zy) != nullptr; });
             if (Clock::now() - lastUnload > std::chrono::seconds(1)) {
                 lastUnload = Clock::now();
-                const auto near = playerZones();
-                std::vector<std::pair<int32_t, int32_t>> gone;
-                for (const auto &[key, zone] : zones.zones())
-                    if (std::none_of(near.begin(), near.end(), [&](const auto &p) {
-                            const int64_t dx = key.first - p.first, dy = key.second - p.second;
-                            return dx * dx + dy * dy < 9;
-                        }))
-                        gone.push_back(key);
-                for (const auto &key : gone) {
-                    zones.remove(key.first, key.second);
-                    items.forget(key.first, key.second);
-                    statics.forget(key.first, key.second);
-                    edits.forget(key.first, key.second);
-                    placedObjects.erase(key);
-                }
+                unloadDistantZones(requests);
             }
         }
         if (!wanted) {
@@ -704,6 +765,26 @@ void Server::generationLoop() {
         restoreZoneItems(*zone);
         zonesForMissions.insert({zone->zx, zone->zy}); // missions §2.6
         zones.add(std::move(zone));
+    }
+}
+
+void Server::unloadDistantZones(const std::vector<std::pair<int32_t, int32_t>> &requests) {
+    std::vector<std::pair<int32_t, int32_t>> gone;
+    for (const auto &[key, zone] : zones.zones())
+        if (std::none_of(requests.begin(), requests.end(), [&](const auto &p) {
+                const int64_t dx = key.first - p.first, dy = key.second - p.second;
+                return dx * dx + dy * dy < 9;
+            }))
+            gone.push_back(key);
+    for (const auto &key : gone) {
+        if (zoneNeedsSave(key.first, key.second)) // §1.2: modified, or holding block edits
+            saveZoneItems(key.first, key.second);
+        modifiedZones.erase(key);
+        zones.remove(key.first, key.second);
+        items.forget(key.first, key.second);
+        statics.forget(key.first, key.second);
+        edits.forget(key.first, key.second);
+        placedObjects.erase(key);
     }
 }
 
@@ -1237,16 +1318,15 @@ void Server::stepWorld(float dtMs) {
         who[index]->creature.setLinkedItem(fighters[index].linkedItem.source);
     }
 
-    // World items §3.5: changed zones are saved and listed to everyone.
+    // World items §3.5: changed zones are listed to everyone; interaction §4.5: changed statics
+    // are sent in section 6. Net server §1.2: the step does not save zones; changed ones are
+    // marked and written when the generation thread unloads them or at shutdown.
     const std::set<std::pair<int32_t, int32_t>> changedZones = items.takeChanged();
-    for (const auto &[zx, zy] : changedZones)
-        saveZoneItems(zx, zy);
-    // Interaction §4.5: changed statics are saved and sent in section 6.
     const std::set<std::pair<int32_t, int32_t>> changedStatics = statics.takeChanged();
-    for (const auto &[zx, zy] : changedStatics)
-        saveZoneItems(zx, zy);
-    for (const auto &[zx, zy] : edits.takeChanged()) // block edits §3 step 4
-        saveZoneItems(zx, zy);
+    modifiedZones.insert(changedZones.begin(), changedZones.end());
+    modifiedZones.insert(changedStatics.begin(), changedStatics.end());
+    for (const auto &key : edits.takeChanged()) // block edits §3 step 4
+        modifiedZones.insert(key);
     const auto objectsChanged = std::exchange(placedChanged, {});
     for (auto &[id, c] : connections) {
         WorldUpdate &out = c->outgoing;
@@ -1324,11 +1404,13 @@ void Server::stepWorld(float dtMs) {
                 }
             out.keyed[0].push_back(std::move(list));
         }
-        const glm::dvec3 me =
-            glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0;
-        for (const creatures::Burst &b : bursts) { // section 3, within 200 blocks
-            const glm::dvec3 d = glm::dvec3(b.position[0], b.position[1], b.position[2]) / 65536.0 - me;
-            if (glm::dot(d, d) <= 200.0 * 200.0) {
+        // Net server §4.2: wire sections 3 and 4 keep records strictly within 200 blocks
+        // (squared distance below 40,000) of this player. Section 3 uses the i64 position
+        // (difference scaled by 1/65,536; f32 as in §4.1), section 4 the record's f32 block
+        // position against the player's position reduced to f32 blocks.
+        const std::array<int64_t, 3> me = recordPosition(c->creature);
+        for (const creatures::Burst &b : bursts) {
+            if (creatureDistanceSquared({b.position[0], b.position[1], b.position[2]}, me) < 40000.f) {
                 const auto bytes = b.serialize();
                 out.sections[2].emplace_back(bytes.begin(), bytes.end());
             }
@@ -1337,7 +1419,12 @@ void Server::stepWorld(float dtMs) {
             c->chat.emplace_back(0, avPacket('Q', questBooks[id].save()));
             questBooksChanged.erase(id);
         }
+        const glm::vec3 meBlocks((float)me[0] * (1.f / 65536.f), (float)me[1] * (1.f / 65536.f),
+                                 (float)me[2] * (1.f / 65536.f));
         for (const creatures::SoundEvent &s : sounds) {
+            const glm::vec3 d = glm::vec3((float)s.position.x, (float)s.position.y, (float)s.position.z) - meBlocks;
+            if (!(d.x * d.x + d.y * d.y + d.z * d.z < 40000.f))
+                continue;
             ByteWriter w;
             w.f32((float)s.position.x), w.f32((float)s.position.y), w.f32((float)s.position.z);
             w.i32(s.sound), w.f32(s.pitch), w.f32(s.volume);

@@ -53,13 +53,17 @@ int main(int argc, char **argv) {
         }
     }
 
-    // The seed: server.cfg, or what Alpha's server would pick and write (its C runtime's first
-    // rand() with no srand, modulo 1000000; server open question S-1).
-    uint32_t seed = 0;
+    // Net server §1.1 steps 3-4: one decimal number from server.cfg; when the file cannot be
+    // opened, the fallback is written (no line ending). Natively the fallback is the rand() drawn
+    // after the world constructor's srand(123) and its >= 77 draws (exact value unresolved, U-1);
+    // the engine's fallback, the unseeded runtime's first rand(), is an engine choice, not parity.
+    // A file that opens but holds no number keeps the fallback and is not rewritten (U-2).
+    uint32_t seed = (uint32_t)(worldgen::Random(1).draw() % 1000000);
     const auto cfg = folder / "server.cfg";
-    if (std::ifstream in(cfg); in && (in >> seed)) {
+    if (std::ifstream in(cfg); in) {
+        if (uint32_t read = 0; in >> read)
+            seed = read;
     } else {
-        seed = (uint32_t)(worldgen::Random(1).draw() % 1000000);
         std::ofstream(cfg) << seed;
     }
 
@@ -167,8 +171,8 @@ int main(int argc, char **argv) {
     std::printf("World seed %u, port %u.\n", seed, server.port());
     std::fflush(stdout);
     bool quit = false;
-    // Engine choice: Alpha polls one character a second and quits only on a lowercase q
-    // (transport §5.1), despite printing "Enter Q"; here a line of either case quits.
+    // Engine choice: Alpha's console thread sleeps one second, then reads one character, and
+    // quits only on a lowercase q (net server §1.3); here a line of either case quits.
     for (std::string line; !quit && std::getline(std::cin, line);)
         quit = line == "Q" || line == "q";
     // Without a console to read (run as a background service) the server runs until stopped.
