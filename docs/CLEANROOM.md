@@ -2641,3 +2641,43 @@ per-edit chunk remesh. Not modelled: world flag 0xB8; type-25 effects on other c
 further section-9 routine; packet-3 storage; the window-close nodes and second sound source.
 The private reward-flow probe expectation was updated: the two platinum gifts add 20 experience
 (XP -13 instead of -33), as the held packets contract requires.
+## Provenance re-certification, travel, particles, crafting, open points 3; walk-flag ruling (2026-11-15)
+
+Four inherited contracts were re-certified by fresh source-only authors (76 corrections;
+reversals: exhausted climbing falls with a key held and hangs without one, the particle cull
+and leaf radii follow the view/fog distance, crafting over-removal works per bag, action 104's
+beam branch is unreachable and a charged throw stores its charge at P1; implementer advice,
+game-check procedures and the notes for a replacement removed; no reconstruction consulted), and
+a ruling settled the conflicts the implementer raised; all five were read whole by the implementer:
+- `alpha-travel.md` (DF3C8719...9B64)
+- `alpha-particles.md` (3F1398F3...C1F9)
+- `alpha-crafting.md` (195FF715...4595)
+- `alpha-open-points-3.md` (478AD903...BAD9)
+- `alpha-rulings-walk-flag-pitch.md` (EF0F037C...C579)
+
+Ruling: the walk-flag clause at 0x098318 runs only with Left Shift NOT held and clock < R0 + 200
+(or a sustained action), setting 0x04 (except actions 0x57/0x58/0x59/0x5C) and clearing 0x40,
+also while gliding: `alpha-controller-aim-writers.md` §4 is right and `alpha-travel.md` §2.2
+step 3 is wrong. The head-pitch decay (pitch x float(exp(float(step) x -0.01f))) runs every step for
+every creature first, then the aim blend; the climb-hold path skips both. The tick-period ruling
+and open points 3 agree (its P1 is the ruling's D).
+Engine changes (movement feel and visuals): player input runs before the mode-flag update and both
+are skipped during hit-stun; exhausted climbing follows from that order; blend weight iterated in
+binary64 and noise pi as the double 3.1415927; a wall crash keeps lift and wind with stun 1500;
+fall stun raised to at least 1500; the head-pitch decay as ruled, with the climb-hold test on the
+glider flag; G toggles only subtype 0 (glider) and 1 (boat), and the glider folds on another
+Special subtype; the pet under its rider copies its whole orientation. Particles: cull radius
+0.2 x (fog distance + 22.4) through the shared view test (`WorldView::viewAdmission`) and leaf
+reach 0.2 x fog distance + 32 horizontally (the believed view/fog floats map to the engine's fog
+distance); staff release spread 8 at the fixed-point aim position; the fire explosion window
+T - dt < D <= T; collision cells floor (one lower at exact negatives), light cells truncate;
+collision sub-step d x (1/m); shatter voxel order x, y, z; a dead creature failing the view test
+loses its once-flag without shattering; the action-28 burst at the target's record position.
+Crafting: the level-change notice and sound 0x1D play at the player on any level change; unlisted
+stations 0 and 2 always present; an ingredient-free listed key passes the button check; the row
+count needs a non-zero type (the adaptation price fix extension is unchanged). Open points 3:
+saurian model draws head, body, hand, tail (random-draw order); the unreachable action-104 sound
+16 removed; player action flames subtract the landing bob.
+Not modelled: obj +0x144 and several pet orientation fields; the preview panel's own lights; the
+start-up tab icon snapshot; P+0x1D40; the disenchant path; the native single spent-power field
+(the engine keeps separate ranged and melee fields); action 104 in the default handler.

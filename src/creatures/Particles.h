@@ -66,6 +66,17 @@ class Particles {
     void update(int32_t dtMs, const BlockType &block);
 };
 
+// §0: the block holding a fixed-point coordinate. Collision and world lookups truncate, one
+// lower when negative (so an exact negative multiple lands one block lower); the particle light
+// lookup (§6.3) truncates toward zero.
+int32_t collisionCell(int64_t fixed);
+int32_t lightCell(int64_t fixed);
+// §6.2: the particle cull radius R = 0.2 × (G+0x1D4 + 22.4) and §7.1 the leaf zone reach
+// 0.2 × G+0x1D0 + 32 (horizontal). Both natively read floats believed to be the view/fog
+// distance (open point AP-4); the engine passes its fog distance for each.
+inline float particleCullRadius(float fogDistance) { return 0.2f * (fogDistance + 22.4f); }
+inline float leafZoneReach(float fogDistance) { return 0.2f * fogDistance + 32.f; }
+
 // §5: the bursts of the producers. Block colours are 0..255.
 Burst bombBurst(glm::dvec3 at);                         // §5.1: a bomb goes off
 // §5.2 / strike-cell-helpers §8.1 step 6: a broken cell's burst at the unsnapped raw cell position.

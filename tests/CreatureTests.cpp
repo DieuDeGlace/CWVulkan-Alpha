@@ -248,6 +248,19 @@ int main() {
         generate(type, darker, &c, [] { return 0; });
         same(darker.model(Part::Hand), 431, "head 3 gets brown-hand");
     }
+    // Open points 3 §1.6: the saurian's model draws come head, body, hand (also +0x1a), tail,
+    // after the five choice draws.
+    {
+        Appearance s;
+        int32_t type = 119;
+        int call = 0;
+        static const int SEQUENCE[] = {0, 0, 0, 0, 0, 1, 4, 2, 1};
+        generate(type, s, nullptr, [&] { return call < 9 ? SEQUENCE[call++] : (call++, 0); });
+        same(s.model(Part::Head), 2146, "saurian head from draw 6");
+        same(s.model(Part::Body), 2137, "saurian body from draw 7");
+        same(s.model(Part::Hand) == 2144 && s.model(Part::Foot) == 2144, 1, "saurian hand from draw 8, twice");
+        same(s.model(Part::Tail), 2151, "saurian tail from draw 9");
+    }
 
     // Models §7.6: the walking hand targets at amplitude 1, phase π/3.
     {
@@ -520,12 +533,52 @@ int main() {
             Body body;
             ShotEffects fx;
             std::vector<Projectile> shots;
+            // The window is T - dt < D <= T (the staff's is T < D <= T + dt).
             launch(mage, body, glm::vec3(0), D - 10, 16, [] { return 0; }, shots, fx);
+            same(fx.bursts.size(), 0, "no explosion while T < D");
+            launch(mage, body, glm::vec3(0), D + 6, 16, [] { return 0; }, shots, fx);
             same(fx.bursts.size(), 1, "one explosion burst");
             same(fx.bursts.empty() ? 0 : fx.bursts[0].count, 80, "80 particles");
             same(fx.bursts.empty() ? 0 : fx.bursts[0].spread, 20, "spread 20");
             same(std::any_of(fx.sounds.begin(), fx.sounds.end(), [](const SoundEvent &e) { return e.sound == 81; }), 1,
                  "sound 81");
+        }
+        // §5.3: a staff's release, spread 8, at the creature plus the float vector x 65536.
+        {
+            Combatant mage;
+            mage.action = 30;
+            mage.aim = {1.5f, -2.25f, 0.1f};
+            const float D = (float)duration(mage, 30);
+            Body body;
+            body.place({10, 20, 30});
+            ShotEffects fx;
+            std::vector<Projectile> shots;
+            launch(mage, body, mage.aim, D - 10, 16, [] { return 0; }, shots, fx);
+            same(fx.bursts.size(), 1, "one staff burst");
+            const Burst *b = fx.bursts.empty() ? nullptr : &fx.bursts[0];
+            same(b ? b->spread : 0, 8, "staff spread 8");
+            same(b ? (double)b->position[0] : 0, 10.0 * 65536 + 1.5 * 65536, "staff burst x");
+            same(b ? (double)b->position[1] : 0, 20.0 * 65536 - 2.25 * 65536, "staff burst y");
+            same(b ? (double)b->position[2] : 0, 30.0 * 65536 + (double)(int64_t)(0.1f * 65536.f), "staff burst z");
+        }
+        // §0: the two block rules, §6.2 / §7.1 the distances (engine fog distance for both floats).
+        same(collisionCell(-65536), -2, "collision: an exact negative multiple goes one lower");
+        same(collisionCell(-1), -1, "collision: -1/65536 is block -1");
+        same(collisionCell(65536), 1, "collision: positive truncates");
+        same(lightCell(-1), 0, "light: truncates toward zero");
+        same(lightCell(-65537), -1, "light: -1.00002 is block -1");
+        same(particleCullRadius(640), 0.2 * (640 + 22.4), "cull radius", 1e-3);
+        same(leafZoneReach(640), 160, "leaf zone reach", 1e-4);
+        // §4 step 5: the sub-step is d x (1/m), the float reciprocal multiplied in.
+        {
+            Particle p;
+            p.collides = true;
+            p.velocity = {125, 0, 0};
+            p.ageMs = 0;
+            list.list = {p};
+            list.update(20, air);
+            const float s = 20 * 0.001f, d = 125.f * s, e = d * (1.f / 3.f);
+            same((double)list.list[0].position[0], 3.0 * (double)(int64_t)((double)e * 65536.0), "three sub-steps of d x (1/3)");
         }
 
         // Open points 3 §3.7 example 1: a staff's charge cone, flame 0 at wall clock 1000.
@@ -1131,6 +1184,79 @@ int main() {
             step(b, 16, air);
             same(b.crashed, 1, "wall crash");
             same((b.mode & GLIDER) != 0, 0, "the crash folds the glider");
+        }
+        // Travel §3.4 step 6, §3.6: a wall crash still applies the lift and the wind that step;
+        // its stun (1500 ms) lets go of the wall in the same step. A ground crash skips them.
+        {
+            Body b;
+            b.place({0.5, 0.5, 100});
+            b.local = true;
+            b.mode = GLIDER | RUN | CLIMB;
+            b.skills[3] = 1;
+            b.contact = ON_WALL;
+            b.wallNormal = {1, 0, 0};
+            b.velocity = {-9, 0, -1};
+            const float wz = wind(b.position).z;
+            step(b, 16, air);
+            same(b.crashed && b.stunMs == 1500 && !(b.mode & CLIMB), 1, "wall crash: stun 1500, wall let go");
+            same(b.velocity.z, -1.048 + 0.48 + wz * 0.016, "wall crash keeps the lift and the wind", 1e-4);
+            Body g;
+            g.place({0.5, 0.5, 100});
+            g.local = true;
+            g.mode = GLIDER | RUN;
+            g.skills[3] = 1;
+            g.contact = ON_GROUND;
+            g.bank = 60;
+            g.velocity = {0, 0, -1};
+            step(g, 16, air);
+            same(g.crashed, 1, "ground crash at bank 60");
+            same(g.velocity.z, -1 - 0.48, "a ground crash has no lift or wind", 1e-4);
+        }
+        // Travel §0 Blend and §6.4 head pitch.
+        same(blendWeight(0.001, 16), 0.015880, "Blend weight over 16 ms", 1e-6);
+        same(blendWeight(0.001, 0), 0, "no weight over 0 ms", 0);
+        same(stepHeadPitch(10, false, 16), (float)std::exp((double)(16.f * -0.01f)) * 10.f,
+             "head pitch x float(exp(double(float(dt) x -0.01f)))");
+        same(stepHeadPitch(0, true, 1), 0.225, "climbing: toward 45 at 0.005 per ms", 1e-6);
+        // Rulings walk-flag-pitch §2.2 in the shared facing block: aiming, the decay comes first
+        // and the aim blend reads the decayed pitch; on the climb hold neither runs.
+        {
+            Body body;
+            body.mode = AIMING;
+            Combatant fighter;
+            float yaw = 0, pitch = 10;
+            glm::vec3 drawn(0, 1, 0);
+            faceAfterStep(yaw, pitch, drawn, body, fighter, 0, 16);
+            const float decayed = stepHeadPitch(10, false, 16);
+            same(pitch < decayed && pitch > 0.f, 1, "decayed, then blended toward the level aim");
+            body.mode = AIMING | CLIMB;
+            body.contact = ON_WALL;
+            pitch = 10;
+            faceAfterStep(yaw, pitch, drawn, body, fighter, 0, 16);
+            same(pitch, stepHeadPitch(10, true, 16), "climb hold: toward 45 only");
+        }
+        // Travel §6.3, §6.5 reversal: exhausted, a held key cannot hold the wall (the drain clears
+        // 0x01 before the vertical stage, so full gravity applies); with no key the player hangs.
+        {
+            const auto wall = [](int32_t x, int32_t, int32_t) -> uint8_t { return x < 0 ? 1 : 0; };
+            Body b;
+            b.place({0.49, 0.5, 100});
+            b.local = true;
+            b.mode = CLIMB;
+            b.contact = ON_WALL;
+            b.stamina = 0.005f;
+            b.intent = {-80, 0, 0}; // a key held (the input ran on the previous step's cleared flag)
+            step(b, 16, wall);
+            same(!(b.mode & CLIMB) && b.stamina == 0.f, 1, "exhausted with a key: 0x01 cleared, stamina 0");
+            same(b.velocity.z < -0.4f, 1, "and the player falls");
+            Body h;
+            h.place({0.49, 0.5, 100});
+            h.local = true;
+            h.mode = CLIMB;
+            h.contact = ON_WALL;
+            h.stamina = 0.005f;
+            step(h, 16, wall);
+            same((h.mode & CLIMB) != 0 && h.velocity.z == 0.f && h.stamina == 0.005f, 1, "no key: hangs, stamina kept");
         }
         // Travel §4.3: sailing with boat driving 1, running: S = 15.273, stored 15.212.
         {
@@ -2861,6 +2987,32 @@ int main() {
                  itemMaterial(sword.ingredients[1].first) == 14 && itemRarity(sword.ingredients[1].first) == 2,
              1, "8 iron cubes and 2 sapphire nuggets");
         same(sword.station, ANVIL, "at an anvil");
+
+        // Crafting §5.3 step 2: over-removal works per bag with the same n in every bag. Bag 0
+        // holds 2, 5, 2 and bag 1 holds 1, 4 equal cubes; a need of 3 empties the 2, takes 3 of
+        // the 5 and leaves the later 2; in bag 1 it empties the 1 and takes 3 of the 4.
+        {
+            Inventory bags = Inventory::fresh();
+            for (auto &bag : bags.bags)
+                for (Stack &s : bag)
+                    s = {};
+            ItemRecord cube{};
+            cube[0] = 11, cube[1] = 10, cube[0x0d] = 1;
+            creatures::setItemLevel(cube, 1);
+            bags.bags[0][0] = {2, cube}, bags.bags[0][1] = {5, cube}, bags.bags[0][2] = {2, cube};
+            bags.bags[1][0] = {1, cube}, bags.bags[1][1] = {4, cube};
+            Recipe use;
+            use.product[0] = 1, use.product[1] = 5;
+            use.ingredients = {{cube, 3}};
+            same(craft(bags, use, [] { return 1; }).made.has_value(), 1, "made");
+            // (The product may land in an emptied slot, so count only cubes.)
+            const auto cubes = [&](size_t b, size_t s) {
+                const Stack &st = bags.bags[b][s];
+                return st.count > 0 && sameItem(st.item, cube) ? st.count : 0;
+            };
+            same(cubes(0, 0) == 0 && cubes(0, 1) == 2 && cubes(0, 2) == 2, 1, "bag 0: 2 emptied, 5 -> 2, the later 2 untouched");
+            same(cubes(1, 0) == 0 && cubes(1, 1) == 1, 1, "bag 1: the same n again (1 emptied, 4 -> 1)");
+        }
     }
 
     // Item services §1.6, §2.4: identifying Leftovers, and both adaption costs.

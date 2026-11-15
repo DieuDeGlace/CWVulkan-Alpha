@@ -139,11 +139,11 @@ void generate(int32_t &type, Appearance &a, const CharacterChoice *given, const 
 
     const TypeRecipe &r = TYPE_RECIPES[type];
     if (type == 119) {
-        // The reptile monster: models from draws 1-4 (hand and foot share draw 2, which makes
-        // the spec's draw numbers 5-8 for the head scale and the offsets line up).
+        // Open points 3 §1.6: the reptile monster's models from draws 1-4 in the order head,
+        // body, hand (written to +0x18 and +0x1a), tail; draws 5-8 follow as before.
         a.model(Part::Head) = (uint16_t)(2145 + draw() % 5);
-        a.model(Part::Hand) = a.model(Part::Foot) = (uint16_t)(2142 + draw() % 3);
         a.model(Part::Body) = (uint16_t)(2133 + draw() % 9);
+        a.model(Part::Hand) = a.model(Part::Foot) = (uint16_t)(2142 + draw() % 3);
         a.model(Part::Tail) = (uint16_t)(2150 + draw() % 2);
     } else {
         for (int i = 0; i < r.ruleCount; i++) {

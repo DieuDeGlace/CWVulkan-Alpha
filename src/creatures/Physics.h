@@ -136,6 +136,14 @@ bool gliding(const Body &body);
 glm::vec3 wind(const int64_t position[3]);
 // Travel §3.5: the 2-D value noise N2 the wind is made of.
 float valueNoise(double x, double y);
+// Travel §0 Blend: the weight w := w + (1 − w)·rate applied `dtMs` times from 0 in double
+// precision, rounded to a float (the caller mixes x := (1 − w)·x + w·target in single precision).
+float blendWeight(double rate, int32_t dtMs);
+// Travel §6.4 and rulings walk-flag-pitch §2: the head pitch (+0x58) over one world update of
+// `dtMs`, for every updated creature. On the climb-hold path (0x01, wall contact, 0x10 clear)
+// it relaxes toward 45 at 0.005 per millisecond (and the aim block is skipped); otherwise it
+// is first multiplied by float(exp(float(dt) × −0.01f)), before any aim blend.
+float stepHeadPitch(float pitch, bool climbing, int32_t dtMs);
 
 // §4.5: whether a static object's box overlaps the box from `lo` to `hi` (blocks). With
 // `axis` 0..2 the box just moved by `move` blocks on that axis, and only statics it moved

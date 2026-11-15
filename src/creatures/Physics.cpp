@@ -93,7 +93,7 @@ bool gliding(const Body &b) {
 float valueNoise(double x, double y) {
     const int32_t i = (int32_t)x, j = (int32_t)y;
     const double fx = x - i, fy = y - j;
-    const double pi = (double)3.1415927f;
+    const double pi = 3.1415927; // the seven-digit double constant, not π nor a float
     const double wx = (1 - std::cos(pi * fx)) / 2, wy = (1 - std::cos(pi * fy)) / 2;
     return (float)((corner(i, j) * (1 - wx) + corner(i + 1, j) * wx) * (1 - wy) +
                    (corner(i, j + 1) * (1 - wx) + corner(i + 1, j + 1) * wx) * wy);
@@ -105,6 +105,22 @@ glm::vec3 wind(const int64_t p[3]) {
             2 * valueNoise((double)(0x0D7F0000LL - trunc64(-0.05 * x)) / ONE, (double)(0x20F60000LL - trunc64(-0.05 * y)) / ONE),
             valueNoise((double)(0x108A0000LL - trunc64(-0.02 * x)) / ONE, (double)(0x14E10000LL - trunc64(-0.02 * y)) / ONE) +
                 0.5f};
+}
+
+float blendWeight(double rate, int32_t dt) {
+    double w = 0;
+    for (int32_t elapsed = 0; elapsed < dt; elapsed++)
+        w += (1 - w) * rate;
+    return (float)w;
+}
+
+float stepHeadPitch(float pitch, bool climbing, int32_t dt) {
+    if (climbing)
+        return relax(pitch, 45.f, 0.005f, dt);
+    // Rulings walk-flag-pitch §2.3: x = float(dt) × −0.01f; f = float(precise double exp(x)).
+    const float x = (float)dt * -0.01f;
+    const float f = (float)std::exp((double)x);
+    return f * pitch;
 }
 
 std::vector<int32_t> stepPieces(int32_t dt) {
@@ -354,8 +370,11 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     }
     // §3.7 / travel §3.4: the player's glider control.
     if (b.local && (b.mode & GLIDER)) {
+        // Travel §3.6: the stun (1500 ms for the player, controller kind 0) takes effect in this
+        // step, so the stun rule below also lets go of the wall.
         const auto crash = [&] {
             b.crashed = true;
+            b.stunMs = 1500;
             b.mode &= ~GLIDER;
         };
         if (inWater) {
@@ -363,9 +382,10 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         } else if (onGround) {
             if (std::abs(b.bank) > 40)
                 crash();
-        } else if (onWall && glm::dot(b.velocity, b.velocity) > 64 && glm::dot(oldNormal, b.velocity) < -4) {
-            crash();
         } else {
+            // A wall crash still lifts and blows the creature this step (ground and water do not).
+            if (onWall && glm::dot(b.velocity, b.velocity) > 64 && glm::dot(oldNormal, b.velocity) < -4)
+                crash();
             if ((b.mode & RUN) && b.velocity.z < 0)
                 b.velocity.z += 30.f * dts; // the lift
             b.velocity += wind(b.position) * dts;

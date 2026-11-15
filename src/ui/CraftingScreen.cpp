@@ -128,7 +128,8 @@ void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, flo
             name += u" +" + number(creatures::powerOf(creatures::itemLevel(product)));
         outlined(painter, name, corner + glm::vec2(ROW.y + 10, 10), 10, 2, glm::vec4(creatures::nameColour(product), 1),
                  plasma::WRAP, ROW.x - ROW.y - 20);
-        if (const int32_t n = creatures::timesCraftable(*inventory, list[i]); n > 0)
+        // §4.1: the count shows for a non-empty item type with a count above 0.
+        if (const int32_t n = creatures::timesCraftable(*inventory, list[i]); n > 0 && creatures::itemType(product) != 0)
             outlined(painter, number(n), corner + glm::vec2(ROW.x - 4, 37), 10, 2, glm::vec4(1), plasma::RIGHT);
         if (craftSelection && craftSelection->first == craftingTab && craftSelection->second == i && itemSelector) {
             placeWidget(*itemSelector, 0, corner);
@@ -208,10 +209,11 @@ void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, flo
     if (!stationThere)
         outlined(painter, utf16(creatures::stationText(recipe->station)), P + glm::vec2(15, PREVIEW.y - 40), 9, 3,
                  {1, 0.25f, 0.25f, 1}, plasma::WRAP, PREVIEW.x - 50);
-    // The button: white while something is missing, green when ready, cyan under the mouse.
+    // The button: white while something is missing, green when ready, cyan under the mouse. A
+    // listed key with no ingredients and no station passes (§2.1; no native grant makes one).
     if (craftButton) {
         const bool overButton = inside(mouse, P + BUTTON_AT, BUTTON_SIZE);
-        const bool ready = stationThere && !missing && !recipe->ingredients.empty();
+        const bool ready = stationThere && !missing;
         craftReady = ready && overButton;
         tint(*craftButton, craftButton->find("frame"), !ready ? glm::vec4(1) : overButton ? CYAN : GREEN);
         placeWidget(*craftButton, 0, P + BUTTON_AT);

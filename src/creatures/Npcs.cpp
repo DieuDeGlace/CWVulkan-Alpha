@@ -1983,6 +1983,9 @@ void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Bod
     // §7.2: in the climbing state the facing block is bypassed (the original's rule from
     // +0x11A0 is not closed; the caller's climbing turn stands in).
     const bool climbing = (body.mode & CLIMB) && (body.contact & ON_WALL) && !(body.mode & GLIDER);
+    // Rulings walk-flag-pitch §2.2: the head-pitch rule first (climb hold: toward 45; otherwise
+    // the exp decay), then the aim blend below reads the decayed pitch.
+    headPitch = stepHeadPitch(headPitch, climbing, milliseconds);
     if (climbing) {
     } else if ((body.mode & AIMING) && c.hitStun <= 0) {
         const glm::vec3 drawn = drawnLook;
@@ -2497,7 +2500,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                         npc.body.follow[k] = std::bit_cast<int64_t>(uint64_t(p.body.follow[k]) + add);
                     }
                     npc.body.velocity = npc.body.intent = glm::vec3(0);
-                    npc.yaw = p.yaw;
+                    // The whole orientation (+0x28) is the owner's.
+                    npc.yaw = p.yaw, npc.body.bank = p.body.bank, npc.body.swimPitch = p.body.swimPitch;
                     carried = true;
                 }
         if (!carried)

@@ -92,9 +92,11 @@ void CreatureView::shatter(const creatures::Appearance &a, creatures::PoseState 
             return !(bright == 1 && dark == 2);
         };
         const glm::vec3 tint = p.hairTint ? hair : glm::vec3(1);
-        for (int z = 0; z < m->sz; z++)
+        // Particles §7.2: voxels visited x outermost, then y, z innermost; per surface voxel the
+        // draws are the selection, then (if selected) the age and spin x, y, z.
+        for (int x = 0; x < m->sx; x++)
             for (int y = 0; y < m->sy; y++)
-                for (int x = 0; x < m->sx; x++) {
+                for (int z = 0; z < m->sz; z++) {
                     if (!filled(x, y, z))
                         continue;
                     if (filled(x - 1, y, z) && filled(x + 1, y, z) && filled(x, y - 1, z) && filled(x, y + 1, z) &&

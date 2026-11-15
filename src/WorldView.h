@@ -85,6 +85,9 @@ class WorldView {
     // published planes. The engine supplies the terrain gather's distance (fog + 22.4);
     // the kind-144 site's own distance argument is unresolved natively.
     bool lightViewAccepts(glm::dvec3 at, float cullingRadius, float fogDistance) const;
+    // The same view test with a caller's distance `reach`, built once for many fixed-point
+    // positions (the particle draw, particles §6.2); empty without a camera reference.
+    std::optional<terrain_lights::ViewAdmission> viewAdmission(float reach) const;
     // The camera's place in world blocks, and a world position in render-origin terms.
     glm::dvec3 worldPosition() const { return glm::dvec3(origin.x + (double)eye.x, origin.y + (double)eye.y, eye.z); }
     glm::vec3 toRender(glm::dvec3 at) const {

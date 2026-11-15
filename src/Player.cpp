@@ -72,19 +72,13 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         state.intent = glm::vec3(0);
     } else if (const glm::vec3 h(state.velocity.x, state.velocity.y, 0); glm::dot(h, h) > 0) {
         const glm::vec3 ahead = glm::normalize(h), side(-ahead.y, ahead.x, 0);
-        const float w = 1 - std::pow(0.999f, dtMs);
-        state.intent = (1 - w) * state.intent + w * 10.f * ahead;
+        const float w = blendWeight(0.001, milliseconds); // travel §0 Blend
+        state.intent = (1 - w) * state.intent + w * (10.f * ahead);
         state.intent -= 0.05f * state.bank * side;
     }
-    // Controller aim contract §4: the flags block. Bit 0x40 runs unless Left Shift is held (with
-    // the glider in the air, Space lifts instead), the face-aim bit follows the action and its
-    // clock, and Left Ctrl holds on to walls. While stunned (§5's gate) every bit keeps its value.
     const bool shift = held(GLFW_KEY_LEFT_SHIFT);
-    if (fighter.hitStun <= 0)
-        state.mode = controller_aim::flags(state.mode, fighter,
-            {shift, held(GLFW_KEY_LEFT_CONTROL), (state.mode & GLIDER) && !onGround,
-             held(GLFW_KEY_SPACE) && state.stamina > 0});
-    // Travel §3.1, §4.1: G opens or folds the glider, or boards or leaves the boat.
+    // Travel §3.1, §4.1: G (a window message, outside the stun gate) opens or folds the glider,
+    // or boards or leaves the boat. Only the Special slot's type and subtype are tested.
     const bool gDown = held(GLFW_KEY_G);
     if (gDown && !gWasDown) {
         const Item &special = fighter.equipment[11];
@@ -92,79 +86,91 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
             state.mode &= ~GLIDER;
             if (fighter.action == 107)
                 fighter.action = 0;
-        } else if (special.subtype != 1) {
+        } else if (special.subtype == 0) {
             const int64_t fallen = (int64_t)(state.fallStart * 65536.0) - state.position[2];
             const bool open = fallen < 2 * 65536 && !(state.mode & GLIDER);
             state.mode = open ? state.mode | GLIDER : state.mode & ~GLIDER;
             fighter.action = 0;
-        } else if (fighter.action == 107) {
-            fighter.action = 0;
-        } else if (inWater) {
-            fighter.action = 107;
-            fighter.actionMs = 0;
+        } else if (special.subtype == 1) {
+            if (fighter.action == 107)
+                fighter.action = 0;
+            else if (inWater)
+                fighter.action = 107, fighter.actionMs = 0;
         }
     }
     gWasDown = gDown;
 
-    // Player control §3: each held key (forward, back, left, right), then the analogue pair
-    // when non-zero, takes the first rule that applies.
-    const float A = gliding(state) ? 8.f : 80.f;
     const glm::vec3 f = camera.forward(), r = camera.right();
-    const glm::vec3 F = camera.direction(); // the camera's full forward axis, for swimming
     const glm::vec2 stick = usePad ? controller.move : glm::vec2(0); // (x right, y forward)
     const bool keys[4] = {held(GLFW_KEY_W), held(GLFW_KEY_S), held(GLFW_KEY_A), held(GLFW_KEY_D)};
     wish = ((float)keys[0] - (float)keys[1] + stick.y) * f + ((float)keys[3] - (float)keys[2] + stick.x) * r;
-    const bool climbing = (state.mode & CLIMB) && (state.contact & ON_WALL);
-    const bool dodgeAvailable = held(GLFW_KEY_LEFT_SHIFT) && state.stamina >= 0.25f; // evaluated once
-    const glm::vec3 along(-state.wallNormal.y, state.wallNormal.x, 0);
-    const auto input = [&](float up, float side, glm::vec3 walk, glm::vec3 swim, bool analogue) {
-        if (climbing) { // rule 1: up and down the wall, and along it
-            state.intent += 0.2f * A * (glm::vec3(0, 0, up) + side * along);
-        } else if (dodgeAvailable) { // rule 2: otherwise this input does nothing
-            if ((state.dodgeMs < 1 || fighter.action != 0) && (onGround || inWater)) {
-                state.velocity = 40.f * walk + glm::vec3(0, 0, 5); // the analogue direction is unnormalised
-                state.dodgeMs = 600;
-                state.stamina -= 0.25f;
-                fighter.action = 0;
+    // Travel §2 steps 2-4: while hit-stunned neither the input nor the flag update runs (the
+    // flags keep their values). Otherwise the input runs first, on the previous frame's flags,
+    // and the flags follow it.
+    if (fighter.hitStun <= 0) {
+        // Player control §3: each held key (forward, back, left, right), then the analogue pair
+        // when non-zero, takes the first rule that applies.
+        const float A = gliding(state) ? 8.f : 80.f;
+        const glm::vec3 F = camera.direction(); // the camera's full forward axis, for swimming
+        const bool climbing = (state.mode & CLIMB) && (state.contact & ON_WALL);
+        const bool dodgeAvailable = shift && state.stamina >= 0.25f; // evaluated once
+        const glm::vec3 along(-state.wallNormal.y, state.wallNormal.x, 0);
+        const auto input = [&](float up, float side, glm::vec3 walk, glm::vec3 swim, bool analogue) {
+            if (climbing) { // rule 1: up and down the wall, and along it
+                state.intent += 0.2f * A * (glm::vec3(0, 0, up) + side * along);
+            } else if (dodgeAvailable) { // rule 2: otherwise this input does nothing
+                if ((state.dodgeMs < 1 || fighter.action != 0) && (onGround || inWater)) {
+                    state.velocity = 40.f * walk + glm::vec3(0, 0, 5); // the analogue direction is unnormalised
+                    state.dodgeMs = 600;
+                    state.stamina -= 0.25f;
+                    fighter.action = 0;
+                }
+            } else if (inWater && (analogue || fighter.action != 107)) {
+                state.intent += A * swim; // rule 3: no action-107 exclusion for the analogue pair
+            } else if (!((state.mode & GLIDER) && !onGround && state.stamina <= 0)) {
+                state.intent += A * walk; // rule 5 (rule 4: a tired glider cannot steer)
             }
-        } else if (inWater && (analogue || fighter.action != 107)) {
-            state.intent += A * swim; // rule 3: no action-107 exclusion for the analogue pair
-        } else if (!((state.mode & GLIDER) && !onGround && state.stamina <= 0)) {
-            state.intent += A * walk; // rule 5 (rule 4: a tired glider cannot steer)
+        };
+        if (keys[0])
+            input(1, 0, f, F, false);
+        if (keys[1])
+            input(-1, 0, -f, -F, false);
+        if (keys[2])
+            input(0, -1, -r, -r, false);
+        if (keys[3])
+            input(0, 1, r, r, false);
+        if (glm::dot(stick, stick) != 0)
+            input(stick.y, stick.x, stick.x * r + stick.y * f, stick.x * r + stick.y * F, true);
+        // §3: after the target lock, action 52 ends.
+        if (fighter.action == 52)
+            fighter.action = 0;
+        // §4: jumping and swimming up.
+        if (!held(GLFW_KEY_SPACE)) {
+            jumpHeld = 0;
+        } else {
+            jumpHeld += dtMs;
+            if (jumpHeld >= 1) {
+                if (jumpHeld < 200 && (onGround || state.dodgeMs > 0) && state.velocity.z <= 0) {
+                    state.velocity.z = std::min(10.f, glm::length(glm::vec2(state.velocity)) + 2.f);
+                    jumpLock = 100;
+                }
+                if (inWater && state.velocity.z < 10) {
+                    jumpLock = 100;
+                    state.velocity.z += 0.001f * dtMs;
+                }
+            }
+            if (jumpLock > 0 && state.velocity.z < 10)
+                state.velocity.z = std::min(state.velocity.z + 0.08f * dtMs, 10.f);
         }
-    };
-    if (keys[0])
-        input(1, 0, f, F, false);
-    if (keys[1])
-        input(-1, 0, -f, -F, false);
-    if (keys[2])
-        input(0, -1, -r, -r, false);
-    if (keys[3])
-        input(0, 1, r, r, false);
-    if (glm::dot(stick, stick) != 0)
-        input(stick.y, stick.x, stick.x * r + stick.y * f, stick.x * r + stick.y * F, true);
-    // §3: after the target lock, action 52 ends.
-    if (fighter.action == 52)
-        fighter.action = 0;
-    // §4: jumping and swimming up.
-    if (!held(GLFW_KEY_SPACE)) {
-        jumpHeld = 0;
-    } else {
-        jumpHeld += dtMs;
-        if (jumpHeld >= 1) {
-            if (jumpHeld < 200 && (onGround || state.dodgeMs > 0) && state.velocity.z <= 0) {
-                state.velocity.z = std::min(10.f, glm::length(glm::vec2(state.velocity)) + 2.f);
-                jumpLock = 100;
-            }
-            if (inWater && state.velocity.z < 10) {
-                jumpLock = 100;
-                state.velocity.z += 0.001f * dtMs;
-            }
-        }
-        if (jumpLock > 0 && state.velocity.z < 10)
-            state.velocity.z = std::min(state.velocity.z + 0.08f * dtMs, 10.f);
+        jumpLock = std::max(0.f, jumpLock - dtMs);
+
+        // Controller aim contract §4: the flags block, after the input. Bit 0x40 runs unless Left
+        // Shift is held (with the glider in the air, Space lifts instead), the face-aim bit
+        // follows the action and its clock, and Left Ctrl holds on to walls.
+        state.mode = controller_aim::flags(state.mode, fighter,
+            {shift, held(GLFW_KEY_LEFT_CONTROL), (state.mode & GLIDER) && !onGround,
+             held(GLFW_KEY_SPACE) && state.stamina > 0});
     }
-    jumpLock = std::max(0.f, jumpLock - dtMs);
 
     // Behaviour §16.3: the ability bar's controls, M1, M2 and keys 1-4.
     fighter.dodgeMs = state.dodgeMs;
@@ -276,13 +282,17 @@ void Player::advance(int32_t dt, bool replica) {
     }
     if (state.action == 0 && (fighter.action == 106 || fighter.action == 107))
         fighter.action = 0, fighter.actionMs = 0; // the step ended the ride or the voyage
-    // Travel §3.2: the glider folds when the Special slot no longer holds it.
-    if (fighter.equipment[11].type != 23 || fighter.equipment[11].subtype == 1)
+    // Travel §3.2: the glider folds when the Special slot no longer holds it (type 23 subtype 0).
+    if (fighter.equipment[11].type != 23 || fighter.equipment[11].subtype != 0)
         state.mode &= ~GLIDER;
-    // Travel §3.6, §8: a crash or a hard landing stuns, with sound 23 (and the landing hurts).
+    // Travel §3.6, §8: a crash sets the stun to 1500 ms and a hard landing raises it to at least
+    // that (controller kind 0), each with sound 23; the landing also hurts.
     if (state.crashed || state.fallHurt > 0) {
         fighter.health -= state.fallHurt * maxHealth(fighter);
-        fighter.hitStun = std::max(fighter.hitStun, 1500);
+        if (state.crashed)
+            fighter.hitStun = 1500;
+        if (state.fallHurt > 0)
+            fighter.hitStun = std::max(fighter.hitStun, 1500);
         abilityEffects.sounds.push_back(23);
         state.crashed = false;
         state.fallHurt = 0;
@@ -291,8 +301,9 @@ void Player::advance(int32_t dt, bool replica) {
     fighter.mode = state.mode;
     advanceCharge(fighter, dtMs);
     state.mode = fighter.mode;
-    if ((state.mode & CLIMB) && (state.contact & ON_WALL) && !gliding(state)) {
-        // Travel §6.4: a climber turns to face the wall.
+    if ((state.mode & CLIMB) && (state.contact & ON_WALL) && !(state.mode & GLIDER)) {
+        // Travel §6.4, rulings walk-flag-pitch §2.2 path 1 (the glider flag, not the gliding
+        // test): a climber turns to face the wall; no pitch decay and no aim block.
         glm::vec2 u = -glm::vec2(state.wallNormal);
         if (glm::dot(u, u) > 0) {
             u = glm::normalize(u);
@@ -302,6 +313,7 @@ void Player::advance(int32_t dt, bool replica) {
             const float turn = (float)(std::asin(std::sin(glm::radians(theta - yaw))) * 180.0 / 3.141592653589793);
             yaw += turn * (1 - std::pow(1 - 0.005f, dtMs));
         }
+        headPitch = stepHeadPitch(headPitch, true, dt);
     } else if (dt > 0) {
         // Aim-triplet contract §3.7/§3.8: the shared facing and drawn-aim block after movement
         // (toward the drawn aim while facing it, else along a walk that follows the intent).

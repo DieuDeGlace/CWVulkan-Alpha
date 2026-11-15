@@ -280,8 +280,8 @@ void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const st
         }
         if (action == 94)
             out.push_back({at, 40, 1 + 0.1f * u(), 1});
-        if (action == 104)
-            out.push_back({at, 16, 1 + 0.25f * u(), 1});
+        // (Action 104 is served by the default handler: its beam-block sounds 5/16 never play,
+        // open points 3 §2.2.)
     }
     // Open points 3 §2.1: multi-hit actions swing again at every hit interval inside P2 (91 with
     // a punch too; 5 is silent).
@@ -330,19 +330,21 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
         const float D = (float)duration(c, action);
         if (t < D && std::floor(t / 200) != std::floor((t + dt) / 200))
             out.sounds.push_back({at, 36, 1 + 0.25f * u(), 1});
-        if (t < D && D <= t + dt) {
-            if (explosion) {
-                Burst b = Burst::at(at, {0, 0, 2}, glm::vec4(0), 0.25f, 80, FIRE);
-                b.spread = 20;
-                out.bursts.push_back(b);
-                out.sounds.push_back({at, 81, 1, 1});
-            } else {
-                const bool water = c.specialization == 1;
-                out.bursts.push_back(Burst::at(at + glm::dvec3(c.aim), {0, 0, 2},
-                                               water ? glm::vec4(0, 0.2f, 1, 1) : glm::vec4(0), 0.25f, 20,
-                                               water ? BRIGHT : FIRE));
-                out.sounds.push_back({at, water ? 41 : 38, 1, 1});
-            }
+        if (explosion && t - dt < D && D <= t) { // §5.4's own window, one step behind the staff's
+            Burst b = Burst::at(at, {0, 0, 2}, glm::vec4(0), 0.25f, 80, FIRE);
+            b.spread = 20;
+            out.bursts.push_back(b);
+            out.sounds.push_back({at, 81, 1, 1});
+        } else if (staff && t < D && D <= t + dt) {
+            // §5.3: at the creature plus the float vector at +0x160 (x 65536, truncated), spread 8.
+            const bool water = c.specialization == 1;
+            Burst b = Burst::at(glm::dvec3(0), {0, 0, 2}, water ? glm::vec4(0, 0.2f, 1, 1) : glm::vec4(0), 0.25f, 20,
+                                water ? BRIGHT : FIRE);
+            for (int k = 0; k < 3; k++)
+                b.position[k] = body.position[k] + (int64_t)(c.aim[k] * 65536.f);
+            b.spread = 8;
+            out.bursts.push_back(b);
+            out.sounds.push_back({at, water ? 41 : 38, 1, 1});
         }
     }
 

@@ -1789,7 +1789,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // craft timer and what a finished craft makes.
                 {
                     creatures::Combatant &c = player->combat();
+                    // On any level change (not only a rise): the level-up notice, sound 0x1d at the
+                    // player, then the grant of the new level only. (A character without a save
+                    // starts at 0 here: that first grant stands in for creation's, without notice.)
                     if (c.level != grantedLevel) {
+                        if (grantedLevel != 0) {
+                            interface.floating.push_back(ui::levelUpText(player->body().blocks()));
+                            playAt(0x1d, player->body().blocks(), 1, 1);
+                        }
                         grantedLevel = c.level;
                         creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [&] { return worldRandom.draw(); });
                     }
@@ -1802,6 +1809,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                                     (int32_t)std::floor(feet.z)).type() == worldgen::WATER;
                         }
                         const int32_t kind = creatures::stationKind(station);
+                        if (kind == 0)
+                            return true; // §3.2: ids 0, 2 and unlisted ones need nothing
                         const int32_t pzx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
                         const int32_t pzy = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::ZONE);
                         for (int32_t zx = pzx - 1; zx <= pzx + 1; zx++)
@@ -2419,11 +2428,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             interface.chatAdd("You gain " + std::to_string(happened.experience) + " XP.\n", {150, 128, 255});
                         }
                         for (int32_t l = (int32_t)before + 1; l <= c.level; l++)
-                            mods.levelUp(l);
-                        if (c.level > before) {
-                            audio.play("levelup2.wav");
-                            interface.floating.push_back(ui::levelUpText(player->body().blocks()));
-                        }
+                            mods.levelUp(l); // (the notice and sound follow in the level-change step)
                     }
                     // Flight follows every creature countdown. Player launches were inserted
                     // before NPC launches; both participate in this frame in that order.
@@ -2683,7 +2688,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         };
         if (player) {
             player->draw(items, creatureView, seconds * 1000.f, &effects);
-            actionFlames(player->combat(), player->body().size.x, player->body().blocks());
+            // (Less the landing bob, as for every other creature: open points 3 §3.3's base.)
+            actionFlames(player->combat(), player->body().size.x,
+                         player->body().blocks() - glm::dvec3(0, 0, player->body().bob));
         }
         // World-list sources precede fading and creature sources. Read canonical
         // fixed positions directly; drawing a projectile model is independent.
@@ -2746,18 +2753,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             motion.fighter = &npc.fighter;
             glm::dvec3 at = npc.body.blocks();
             at.z -= npc.body.bob;
-            // Particles §7.2: the dead are not drawn; they crumble once, a bomb with a flash.
+            // Particles §7.2: the dead are not drawn; they crumble once, a bomb with a flash. The
+            // once-flag is spent even when the creature fails the draw-visibility test, which
+            // then neither shatters it nor flashes.
             if (npc.fighter.health <= 0) {
                 if (shattered.insert(npc.fighter.id).second) {
-                    creatureView.shatter(npc.looks, npc.pose, motion, at, [&] { return worldRandom.draw(); },
-                                         particles.list);
-                    // alpha-terrain-light-source-lifecycle.md: the kind-144 fading light needs the
-                    // view test on the rendered position (engine +0x1180 lag is zero) with culling
-                    // radius +0x88, tripled for action 106.
+                    // alpha-terrain-light-source-lifecycle.md: the view test on the rendered
+                    // position (engine +0x1180 lag is zero) with culling radius +0x88, tripled for
+                    // action 106.
                     const float cull = npc.looks.box.z * (uint8_t(npc.fighter.action) == 106 ? 3.f : 1.f);
-                    if (npc.fighter.type == 144 && view.lightViewAccepts(at, cull, scene.fogDistance))
-                        flashes.append({{npc.body.position[0], npc.body.position[1], npc.body.position[2]},
-                                        {1, 0.8f, 0.5f}, 16, 0, 800});
+                    if (view.lightViewAccepts(at, cull, scene.fogDistance)) {
+                        creatureView.shatter(npc.looks, npc.pose, motion, at, [&] { return worldRandom.draw(); },
+                                             particles.list);
+                        if (npc.fighter.type == 144)
+                            flashes.append({{npc.body.position[0], npc.body.position[1], npc.body.position[2]},
+                                            {1, 0.8f, 0.5f}, 16, 0, 800});
+                    }
                 }
                 continue;
             }
@@ -2982,8 +2993,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 motion.yawDegrees = drawnYaw;
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
-                if (other.health() <= 0) { // particles §7.2
-                    if (shattered.insert(id).second)
+                if (other.health() <= 0) { // particles §7.2: once, and only if it passes the view test
+                    const float cull = other.appearance().box.z * (uint8_t(f.fighter.action) == 106 ? 3.f : 1.f);
+                    if (shattered.insert(id).second && view.lightViewAccepts(centre, cull, scene.fogDistance))
                         creatureView.shatter(other.appearance(), otherPoses[id], motion, centre,
                                              [&] { return worldRandom.draw(); }, particles.list);
                     continue;
@@ -3057,11 +3069,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     interface.chatAdd("You gain " + std::to_string(credit.experience) + " XP.\n", {150, 128, 255});
                 }
                 for (int64_t level = int64_t(previousLevel) + 1; level <= c.level; level++)
-                    mods.levelUp(int32_t(level));
-                if (c.level > previousLevel) {
-                    audio.play("levelup2.wav");
-                    interface.floating.push_back(ui::levelUpText(player->body().blocks()));
-                }
+                    mods.levelUp(int32_t(level)); // (the notice and sound follow in the level-change step)
             }
             const auto receivedBuffs = client.takeBuffs();
             if (!receivedBuffs.empty()) {
@@ -4221,6 +4229,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 particles.expand(b, [&] { return worldRandom.draw(); });
             const glm::dvec3 eye = view.worldPosition();
             const double reach = scene.fogDistance + 32;
+            const double leafReach = creatures::leafZoneReach(scene.fogDistance); // §7.1, horizontal
             // §7.1: as each world second passes, every kind-60 record of the zones in sight
             // lets one leaf in sixteen fall.
             const bool second = leafClockMs >= 0 && std::floor(leafClockMs / 1000) != std::floor(scene.timeOfDayMs / 1000);
@@ -4244,7 +4253,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const auto u = [&] { return (float)worldRandom.draw() / 32767.f; };
             for (const auto &[key, zone] : view.held().zones()) {
                 const glm::dvec2 centre = glm::dvec2(key.first + 0.5, key.second + 0.5) * (double)worldgen::ZONE;
-                if (glm::length(centre - glm::dvec2(eye)) > reach)
+                const double away = glm::length(centre - glm::dvec2(eye));
+                if (away > reach)
                     continue;
                 // Audio §3: birds sing from the crowns by day and owls call at night; crickets chirp
                 // in the flowers and grass in the afternoon and evening.
@@ -4264,8 +4274,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             worldRandom.draw() % 70 == 0)
                             playAt(plant.kind <= 1 ? 98 : 97, glm::dvec3(plant.x, plant.y, plant.z), 0.05f,
                                    0.9f + 0.2f * u());
+                // Per record and crossing: the mod-16 draw, then velocity y, x, then spin z, y, x.
                 for (const worldgen::LeafSource &s : zone->leafSources) {
-                    if (!second || worldRandom.draw() % 16 != 0)
+                    if (!second || away > leafReach || worldRandom.draw() % 16 != 0)
                         continue;
                     creatures::Particle p;
                     p.style = creatures::LEAF;
@@ -4299,7 +4310,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
             }
             particles.update((int32_t)std::lround(seconds * 1000.0), read);
+            // §6.2: a particle is drawn only within R of the camera and inside the view planes
+            // with a margin of its size.
+            const auto sight = view.viewAdmission(creatures::particleCullRadius(scene.fogDistance));
             for (const creatures::Particle &p : particles.list) {
+                if (!sight || !sight->accepts({p.position[0], p.position[1], p.position[2]}, p.size))
+                    continue;
                 glm::mat4 at = glm::translate(glm::mat4(1), view.toRender(p.blocks()));
                 at = glm::rotate(at, glm::radians(p.rotation.z), glm::vec3(0, 0, 1));
                 at = glm::rotate(at, glm::radians(p.rotation.y), glm::vec3(0, 1, 0));
@@ -4309,8 +4325,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // the others at full strength.
                 float light = 1;
                 if (p.style == creatures::LIT || p.style == creatures::LEAF) {
-                    const glm::dvec3 b = glm::floor(p.blocks());
-                    const auto x = (int32_t)b.x, y = (int32_t)b.y, z = (int32_t)b.z;
+                    // The light cell truncates toward zero, also for negative coordinates.
+                    const int32_t x = creatures::lightCell(p.position[0]), y = creatures::lightCell(p.position[1]),
+                                  z = creatures::lightCell(p.position[2]);
                     const uint8_t type = view.held().read(x, y, z).type();
                     const int value = type == 13 ? 255 : type == 0 || type == 2 ? std::max<int>(view.held().light(x, y, z), 5) : 0;
                     light = std::max(value / 255.f, 0.2f);

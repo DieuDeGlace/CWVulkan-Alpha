@@ -850,13 +850,17 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
 }
 
 bool WorldView::lightViewAccepts(glm::dvec3 at, float cullingRadius, float fogDistance) const {
-    const auto reference = terrain_lights::fromBlocks(worldPosition());
+    const auto view = viewAdmission(fogDistance + 22.4f);
     const auto position = terrain_lights::fromBlocks(at);
-    if (!reference || !position)
-        return false;
+    return view && position && view->accepts(*position, cullingRadius);
+}
+
+std::optional<terrain_lights::ViewAdmission> WorldView::viewAdmission(float reach) const {
+    const auto reference = terrain_lights::fromBlocks(worldPosition());
+    if (!reference)
+        return std::nullopt;
     const terrain_lights::FixedPosition shift{-int64_t(origin.x) * 65536, -int64_t(origin.y) * 65536, 0};
-    return terrain_lights::ViewAdmission(*reference, shift, storedLightPlanes, fogDistance + 22.4f)
-        .accepts(*position, cullingRadius);
+    return terrain_lights::ViewAdmission(*reference, shift, storedLightPlanes, reach);
 }
 
 std::string WorldView::status() const {

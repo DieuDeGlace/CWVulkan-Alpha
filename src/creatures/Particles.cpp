@@ -11,9 +11,11 @@ constexpr double PI = 3.141592653589793;
 
 // §0: a float distance in blocks as fixed point, truncated toward zero.
 int64_t fixed(float blocks) { return (int64_t)((double)blocks * 65536.0); }
-int32_t cellOf(int64_t v) { return (int32_t)std::floor((double)v / 65536.0); }
 
 } // namespace
+
+int32_t collisionCell(int64_t v) { return (int32_t)(v / 65536 - (v < 0 ? 1 : 0)); }
+int32_t lightCell(int64_t v) { return (int32_t)(v / 65536); }
 
 Burst Burst::at(glm::dvec3 blocks, glm::vec3 velocity, glm::vec4 colour, float size, int32_t count, int32_t style) {
     Burst b;
@@ -96,9 +98,10 @@ void Particles::update(int32_t dtMs, const BlockType &block) {
         // and the floor stops the particle dead.
         const glm::vec3 d = p.velocity * s;
         const int steps = std::min((int)glm::length(d) + 1, 10);
-        const glm::vec3 e = d / (float)steps;
+        const glm::vec3 e = d * (1.f / (float)steps); // the float reciprocal, multiplied in
         const auto blocks = [&] {
-            const uint8_t type = block(cellOf(p.position[0]), cellOf(p.position[1]), cellOf(p.position[2])) & 0x1f;
+            const uint8_t type =
+                block(collisionCell(p.position[0]), collisionCell(p.position[1]), collisionCell(p.position[2])) & 0x1f;
             if (type == 0 || type == 2)
                 return false;
             return !(p.style == LEAF && (type == 7 || type == 8));

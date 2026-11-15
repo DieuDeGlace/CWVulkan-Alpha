@@ -1,49 +1,49 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha crafting: recipes, stations, the crafting window and the NPC item windows
 
-Behavioural specification of crafting in Cube World **Alpha** `Cube.exe`: which recipes a
-character knows, what each recipe needs, which station it needs and how "near" is decided,
-the crafting window and its blueprint preview, what pressing the craft button does, and
-(briefly) the two item-service windows built next to it (`EnchantWidget`, `AdaptionWidget`).
-Written from the user's Ghidra decompile of the client and from the assembly (several
-switch tables were decoded from the binary, because the decompiler lost their case bodies).
-No code was copied; addresses are citations only.
+Behavioural specification of crafting in Cube World **Alpha** `Cube.exe` (32-bit PE, image
+base 0x400000): which recipes a character knows, what each recipe needs, which station it
+needs and how "near" is decided, the crafting window and its blueprint preview, what
+pressing the craft button does, and (briefly) the two item-service windows built next to it
+(the image's `EnchantWidget` and `AdaptionWidget` classes). Every address is an **RVA in
+Cube.exe**. Prose only; no code was copied.
 
-Read first (not repeated here): `alpha-ui-screens.md` §8 (window table, crafting host
-G+0x8008c0 350 × 285, InventoryWidget type 2, BlueprintPreviewWidget 350 × 330, tab titles,
-sounds 0x59/0x5a) and §8.1 (slots, bags, the add rule 0x46ebe0, the "can carry" test, wide
-rows, mouse rules, learning a formula); `alpha-interaction.md` §4.2 (static kinds) and §5.3
-(stations 65, 71–77 toggle the crafting window and pick tabs 3 / 5);
-`alpha-items-generator.md` (the recipe/formula generator, the weapon and armour
-generators); `alpha-item-names.md` (names of every item below).
+Companion contracts named as pointers (not repeated here, not re-checked by this document):
+`alpha-ui-screens.md` §8 (window table, InventoryWidget, slot/bag rules, the add rule, the
+"can carry" wording, tooltips), `alpha-interaction.md` (static kinds, interaction),
+`alpha-items-generator.md` (formula, weapon and armour generators), `alpha-item-names.md`
+(item names), `alpha-saves.md` (save fields).
 
-**Status.** The recipe table, the level grants, the station rule, the list building and
-ordering, the preview layout, the craft timer, ingredient removal and the product are read
-to the instruction. *Believed* marks readings that are not fully proven.
+*Believed* marks readings that are not fully proven. Items that could not be confirmed are
+listed under **Unresolved** (§8).
 
 ---
 
 ## 0. Conventions
 
-* "G" is the game object, "P" the local player's creature (G+0x8006d0). Positions are i64
-  in 1/65536 block (`alpha-interaction.md` §0).
-* An **item** is the 280-byte record (type +0x00, subtype +0x01, seed +0x04, product +0x08,
-  rarity +0x0c, material +0x0d, flags +0x0e, level/quantity i16 +0x10, spirits, spirit
-  count +0x114). Written here as **(type, subtype, material)**, with rarity 0, seed 0,
+* "G" is the game object, "P" the local player's creature (pointer at G+0x8006d0).
+  Positions are signed 64-bit values in 1/65536 block (P+0x10, +0x18, +0x20 for x, y, z).
+* An **item** is the 280-byte (0x118) record: type +0x00 (byte), subtype +0x01 (byte),
+  seed +0x04 (i32), product +0x08 (i32), rarity +0x0c (byte), material +0x0d (byte), flags
+  +0x0e (byte), level/quantity +0x10 (i16), 32 spirit entries of 8 bytes at +0x14, spirit
+  count +0x114 (i32). Written here as **(type, subtype, material)**, with rarity 0, seed 0,
   product 0, flags 0, level field 1 and no spirits unless stated.
-* **Equal items**: the full comparison 0x42f4a0 (type, subtype, seed, flags, product,
-  rarity, level field, material, spirit count and spirits). Ingredient matching uses it, so
-  an ingredient in the bags must match **exactly**, including rarity and the level field.
-  (Ingredients are type 11, a quantity type, so the add rule always stores them with level
-  field 1, which is what the recipes ask for.)
-* *L* = P's level (+0x190). Classes 1 warrior, 2 ranger, 3 mage, 4 rogue (P+0x140).
-* Ingredient names used below (from `alpha-item-names.md`): (11, 0, m) "*m* Nugget",
+* **Equal items** (RVA 0x2f4a0): equal when type, subtype, seed, flags, product, rarity,
+  level field, material and spirit count all match and every used spirit entry matches.
+  Ingredient matching uses it, so an ingredient in the bags must match **exactly**,
+  including rarity and the level field.
+* A bag slot is 0x11c bytes: an i32 count followed by an item. P's bags are a vector of
+  per-bag slot vectors at P+0x11dc/+0x11e0 (12 bytes per bag).
+* *L* = P's level (P+0x190, i32). Class byte P+0x140: 1 warrior, 2 ranger, 3 mage, 4 rogue.
+* Item names below follow `alpha-item-names.md` for readability; the (type, subtype,
+  material) identifiers are the normative content. Ingredients: (11, 0, m) "*m* Nugget",
   (11, 1, 2) Wood Log, (11, 5, 21) Plant Fiber, (11, 6, 0) Cobweb, (11, 9, m) "*m* Yarn"
   (25 Silk, 26 Linen, 27 Cotton), (11, 10, m) "*m* Cube" (1 Iron, 2 Wood, 11 Gold,
   12 Silver), (11, 11, 27) Cotton Capsule, (11, 12, 24) Glass Flask, (11, 15) Mushroom,
   (11, 16) Pumpkin, (11, 17) Pineapple, (11, 20) Ginseng Root, (11, 21) Onion Slice,
   (11, 22) Heartflower, (11, 23) Prickly Pear, (11, 24) Iceflower, (11, 26) Water Flask,
-  (11, 27) Snowberry. The game's own word for the "Cube" of a metal or wood is just "Cube";
-  "bar"/"plank" are not used.
+  (11, 27) Snowberry.
 
 ---
 
@@ -51,25 +51,24 @@ to the instruction. *Believed* marks readings that are not fully proven.
 
 ### 1.1 Known recipes (save field 18)
 
-P+0x1d28 points to a small object whose +0x14 is a doubly linked **list of items**, the
-**recipe keys**; +0x18 is its length. A key is simply the item the recipe makes. A key is
-"known" (0x444a90) when an equal item (0x42f4a0) is in the list. The list is saved as field
-18 (`alpha-saves.md`). Keys are added only by:
+P+0x1d28 points to a small object whose +0x14 is a doubly linked **list of items** (the
+**recipe keys**) and +0x18 its length. A key is simply the item the recipe makes. A key is
+"known" (RVA 0x44a90) when an equal item is in the list. The list is saved as field 18
+(`alpha-saves.md`). Keys are added by:
 
-* the **level grants** (§2.2) — at character creation (0x4772b0 empties the list, then
-  grants level 1) and on every level change (§2.2);
-* **learning a formula** (right-click a type-2 item, `alpha-ui-screens.md` §8.1.8): the key
-  is a copy of the formula with **type := its product byte (+0x08)** and **product := 0**;
-  subtype, seed, rarity, material, level and spirits are kept (the same transform as the
-  formula's name, `alpha-item-names.md` §4). Already known → sound 0x31, nothing else.
-  Otherwise the key is appended, one formula is taken from the stack, sound 0x2f at the
-  listener.
+* the **level grants** (§2.2): at character creation (RVA 0x772b0 empties the list, then
+  calls the grant with level 1 at RVA 0x777b6) and on every level change;
+* **learning a formula** (a press on a type-2 bag item in the item-press handler RVA
+  0x7b600): the key is a copy of the formula with **type := the formula's product field
+  (+0x08, low byte)** and **product := 0**; subtype, seed, rarity, material, level and
+  spirits are kept. Already known → sound 0x31 at the listener (G+0x140), nothing else.
+  Otherwise the key is appended to the end of the list, one formula is taken from the stack,
+  then sound 0x2f at the listener.
 
-Nothing ever removes a key except character creation.
+Appends always go to the end of the list; a key is appended only when it is not already
+known.
 
 ### 1.2 Recipe record (0x128 bytes)
-
-Built from a key by the **recipe builder** 0x59cff0 (it never fails):
 
 | Off | Size | Content |
 |---|---|---|
@@ -77,19 +76,27 @@ Built from a key by the **recipe builder** 0x59cff0 (it never fails):
 | +0x118 | i32 | **station** id (§3; 0 = none) |
 | +0x11c | 12 | **ingredients**: a vector of 0x11c-byte entries, each an item (0x118) followed by an i32 **count needed** |
 
-The same record lives in three places: the per-tab recipe lists (built by 0x4a14c0), the
-preview widget (+0x16c … +0x293) and the "recipe being crafted" G+0x1000e7c … (§5.4).
+The **recipe builder** (RVA 0x19cff0) copies the key into the product, appends ingredients,
+may write the station, and always reports success. It does not clear the station or the
+ingredient vector itself; every caller passes a freshly initialised record (station 0, no
+ingredients), so a recipe whose rule sets no station has station 0.
+
+The record lives in three places: the per-tab recipe lists built by RVA 0xa14c0, the
+preview widget (+0x16c … +0x293: product +0x16c, station +0x284, ingredients +0x288) and
+the "recipe being crafted" at G+0x1000e7c (ingredients at G+0x1000f98) (§5).
 
 ---
 
 ## 2. The recipe list
 
-### 2.1 Ingredients and station of every key (0x59cff0)
+### 2.1 Ingredients and station of every key (builder RVA 0x19cff0)
 
-The builder looks at the key's type and subtype (and material). Then, **for every key**, a
-**rarity surcharge** is appended last: key rarity *r* = 1, 2, 3 or 4 adds **2 × (11, 0,
-material 12 + *r*) with rarity *r*** — 2 Emerald (r 1), Sapphire (2), Ruby (3) or Diamond
-(4) Nuggets whose own rarity byte is *r*. Rarity 0 adds nothing.
+The builder looks at the key's type and subtype (and material). Each ingredient is a type-11
+item with rarity 0, seed 0, product 0, flags 0, level field 1 and no spirits unless stated.
+Then, **for every key** of any type, a **rarity surcharge** is appended last: key rarity
+*r* = 1, 2, 3 or 4 adds **2 × (11, 0, material 12 + *r*) with rarity byte *r*** (2 Emerald,
+Sapphire, Ruby or Diamond Nuggets for *r* = 1 … 4 respectively). Any other rarity adds
+nothing.
 
 **Consumables (type 1).** Category: subtypes 1 and 2 → **Alchemy** (tab 4), every other
 subtype → **Cooking** (tab 3).
@@ -98,130 +105,144 @@ subtype → **Cooking** (tab 3).
 |---|---|---|---|
 | (1, 1) | Life Potion | 1 Heartflower (11, 22, 0) + 1 Water Flask (11, 26, 0) | none |
 | (1, 2) | Cactus Potion | 1 Prickly Pear (11, 23, 0) + 1 Glass Flask (11, 12, 24) | none |
-| (1, 4) | Ginseng Soup | 1 Ginseng Root (11, 20, 0) | campfire |
+| (1, 4) | Ginseng Soup | 1 Ginseng Root (11, 20, 0) | campfire (9) |
 | (1, 5) | Snowberry Mash | 1 Snowberry (11, 27, 0) | none |
-| (1, 6) | Mushroom Spit | 1 Mushroom (11, 15, 0) + 1 Onion Slice (11, 21, 0) | campfire |
+| (1, 6) | Mushroom Spit | 1 Mushroom (11, 15, 0) + 1 Onion Slice (11, 21, 0) | campfire (9) |
 | (1, 8) | Pineapple Slice | 1 Pineapple (11, 17, 0) | none |
-| (1, 9) | Pumpkin Muffin | 1 Pumpkin (11, 16, 0) | campfire |
-| (1, 0), (1, 3), (1, 7) | Cookie, Mana Potion, Bomb | none | none |
+| (1, 9) | Pumpkin Muffin | 1 Pumpkin (11, 16, 0) | campfire (9) |
+| (1, any other subtype) | — | none | none |
 
-**Ingredients made from ingredients (type 11).** Category: **tab 5** (the tab titled
-"Formulas", icon `inventory-ingredients.png`, §4.1).
+**Ingredients made from ingredients (type 11).** Category: **tab 5** (header "Formulas",
+icon `inventory-ingredients.png`, §4.1).
 
 | Key | Product | Ingredients | Station |
 |---|---|---|---|
-| (11, 9, 25) | Silk Yarn | 1 Cobweb (11, 6, 0) | spinning wheel |
-| (11, 9, 26) | Linen Yarn | 1 Plant Fiber (11, 5, 21) | spinning wheel |
-| (11, 9, 27) | Cotton Yarn | 1 Cotton Capsule (11, 11, 27) | spinning wheel |
+| (11, 9, 25) | Silk Yarn | 1 Cobweb (11, 6, 0) | spinning wheel (5) |
+| (11, 9, 26) | Linen Yarn | 1 Plant Fiber (11, 5, 21) | spinning wheel (5) |
+| (11, 9, 27) | Cotton Yarn | 1 Cotton Capsule (11, 11, 27) | spinning wheel (5) |
 | (11, 9, other material) | — | none | none |
-| (11, 10, 2) | Wood Cube | 1 Wood Log (11, 1, 2) | sawbench ("Saw") |
-| (11, 10, *m* ≠ 2) | *m* Cube | 1 *m* Nugget (11, 0, *m*) | furnace |
-| (11, 22) | Heartflower | 1 Iceflower (11, 24, 0) | campfire |
-| (11, 26) | Water Flask | 1 Glass Flask (11, 12, 24) | water (§3.2) |
-| any other (11, *s*) | — | none | none |
+| (11, 10, 2) | Wood Cube | 1 Wood Log (11, 1, 2) | sawbench (7) |
+| (11, 10, *m* ≠ 2) | *m* Cube | 1 *m* Nugget (11, 0, *m*) | furnace (3) |
+| (11, 22, any) | Heartflower | 1 Iceflower (11, 24, 0) | campfire (9) |
+| (11, 26, any) | Water Flask | 1 Glass Flask (11, 12, 24) | water (1) |
+| (11, any other subtype) | — | none | none |
 
 **Weapons (type 3)**, category **Weapons** (tab 0). "Iron" = Iron Cube (11, 10, 1), "Wood" =
 Wood Cube (11, 10, 2).
 
 | Subtypes | Ingredients | Station |
 |---|---|---|
-| 0, 1, 2 (sword, axe, mace), 3 (dagger), 13 (shield) | 8 Iron | anvil |
-| 4 (fist) | 6 Iron + 2 Cotton Yarn (11, 9, 27) | anvil |
-| 5 (longsword), 15, 16, 17 (great weapons) | 16 Iron | anvil |
-| 6 (bow) | 15 Wood + 1 Linen Yarn (11, 9, 26) | workbench |
-| 7 (crossbow) | 6 Iron + 9 Wood + 1 Linen Yarn | workbench |
-| 8 (boomerang), 10 (staff), 11 (wand) | 16 Wood | workbench |
-| 12 (bracelet) | 8 Cubes of the bracelet's own material (11, 10, key material) | anvil |
+| 0, 1, 2, 3, 13 | 8 Iron | anvil (4) |
+| 4 | 6 Iron + 2 Cotton Yarn (11, 9, 27) | anvil (4) |
+| 5, 15, 16, 17 | 16 Iron | anvil (4) |
+| 6 | 15 Wood + 1 Linen Yarn (11, 9, 26) | workbench (8) |
+| 7 | 6 Iron + 9 Wood + 1 Linen Yarn | workbench (8) |
+| 8, 10, 11 | 16 Wood | workbench (8) |
+| 12 | 8 Cubes of the key's own material (11, 10, key material) | anvil (4) |
 | 9, 14 and ≥ 18 | none | none |
 
-**Armour (types 4–7)**, category **Armor** (tab 1). Count by type: chest (4) **20**, gloves
-(5) **6**, boots (6) **8**, shoulders (7) **8**.
+(Subtype readings per `alpha-item-names.md`: 0–2 sword/axe/mace, 3 dagger, 4 fist,
+5 longsword, 6 bow, 7 crossbow, 8 boomerang, 10 staff, 11 wand, 12 bracelet, 13 shield,
+15–17 great weapons.)
 
-* key material 1 (iron) → that many Iron Cubes, **anvil**;
-* any other material *m* → that many **Yarn of the same material** (11, 9, *m*) — Silk
-  (25), Linen (26), Cotton (27) — **loom**.
+**Armour (types 4–7)**, category **Armor** (tab 1). Count by type: 4 (chest) **20**,
+5 (gloves) **6**, 6 (boots) **8**, 7 (shoulders) **8**.
 
-**Amulets and rings**, category **Amulets** (tab 2): amulet (8) → 6 Cubes of its material
-(11, 10, *m*); ring (9) → 3 Cubes of its material; **no station**.
+* key material 1 → that many Iron Cubes (11, 10, 1), **anvil (4)**;
+* any other material *m* → that many (11, 9, *m*) Yarn of the same material, **loom (6)**.
 
-Types 2, 10 and every other type have no recipe content and are **not listed** in any tab
-(0x4a14c0 skips them).
+**Amulets and rings**, category **Amulets** (tab 2): type 8 → 6 Cubes of the key's material
+(11, 10, *m*); type 9 → 3 Cubes of the key's material; **no station**.
 
-*(Quirk, harmless.)* The builder's working ingredient keeps its material between pushes,
-which is why every row above states its material explicitly; the only places where it
-matters are already resolved in the tables.
+Types 2, 10, 0 and every type ≥ 12 are **not listed** in any tab (the list builder skips
+them), although the builder still appends a rarity surcharge for them.
 
-### 2.2 Level grants (0x47fae0, called with the new level)
+The builder's working ingredient keeps its material from one append to the next unless it is
+set again; every row above states the resulting material.
 
-Called with *L* = 1 at character creation (0x4777b6) and from the frame update whenever
-P's level differs from the last level seen (P+0x1d3c; 0x493d78 … 0x493ec4: the level-up
-text and sound 0x1d are shown, the last level := *L*, then the grant). Only the **new**
-level is granted; a jump of several levels skips the levels in between. Each grant is
-appended only if not already known. The key's level field is *L* unless stated; rarity 0.
+A listed key with no ingredients and no station (for example (1, 0), (1, 3), (1, 7)) would
+show count 0 but would pass every craft-button check (§4.2 step 6); none of these keys is
+produced by the native grants (§2.2).
 
-| Condition | Keys granted |
-|---|---|
-| *L* mod 4 = 1 | (1, 1) Life Potion, level *L* |
-| *L* mod 4 = 3 | (1, 2) Cactus Potion, level *L* |
-| *L* mod 5 = 1 | (1, 4) Ginseng Soup, then (1, 8) Pineapple Slice, level *L* |
-| *L* mod 5 = 2 | (1, 9) Pumpkin Muffin, level *L* |
-| *L* mod 5 = 3 | (1, 6) Mushroom Spit, level *L* |
-| *L* mod 5 = 4 | (1, 5) Snowberry Mash, level *L* |
-| *L* = 1 | (11, 26) Water Flask; (11, 22) Heartflower; rogue: (11, 9, 27) Cotton Yarn; ranger: (11, 9, 26) Linen Yarn; mage: (11, 9, 25) Silk Yarn (attempted twice, the second is a no-op); then (11, 10, 1) Iron, (11, 10, 2) Wood, (11, 10, 11) Gold, (11, 10, 12) Silver Cube — all level 1. Warriors get no yarn recipe. |
-| **every** *L* | one **armour** key and one **weapon** key (below) |
+### 2.2 Level grants (RVA 0x7fae0, called with the new level)
 
-**Armour key**: type by *L* mod 4: 0 → shoulders (7), 1 → chest (4), 2 → boots (6),
-3 → gloves (5); subtype 0; **seed = rand() mod 11** (first draw); material by class:
-warrior 1, ranger 26, mage 25, rogue 27 (any other class leaves the material at 12 from the
-level-1 block, or 0 — *believed* unreachable); level *L*.
+Called with level 1 at character creation (RVA 0x777b6) and from the frame update (RVA
+0x88ee0) whenever P's level (P+0x190) differs from the last level seen (P+0x1d3c): the check
+is at RVA 0x93d78; on a difference the frame update shows a level-up notice, plays sound
+0x1d at P's position, sets the last level seen := *L*, sets P+0x1d40 := 0, then calls the
+grant with *L* (RVA 0x93ec4). Only the **new** level is granted; a jump of several levels
+skips the levels in between. Each key is appended only if not already known. Keys have
+rarity 0, product 0, flags 0, no spirits; the level field is *L* unless stated.
 
-**Weapon key**: type 3, **seed = rand() mod 11** (next draw), level *L*, by class and
-*L* mod 3:
+Grant order:
+
+| Order | Condition | Keys granted |
+|---|---|---|
+| 1 | *L* mod 4 = 1 | (1, 1) Life Potion |
+| 2 | *L* mod 4 = 3 | (1, 2) Cactus Potion |
+| 3 | *L* mod 5 = 1 | (1, 4) Ginseng Soup, then (1, 8) Pineapple Slice |
+| 4 | *L* mod 5 = 2 | (1, 9) Pumpkin Muffin |
+| 5 | *L* mod 5 = 3 | (1, 6) Mushroom Spit |
+| 6 | *L* mod 5 = 4 | (1, 5) Snowberry Mash |
+| 7 | *L* = 1 | (11, 26, 0) Water Flask; (11, 22, 0) Heartflower; rogue: (11, 9, 27); ranger: (11, 9, 26); mage: (11, 9, 25), attempted twice (the second is a no-op); then (11, 10, 1), (11, 10, 2), (11, 10, 11), (11, 10, 12); all level 1. Warriors get no yarn key. |
+| 8 | every *L* | one **armour** key, then one **weapon** key (below) |
+
+**Armour key**: type by *L* mod 4: 0 → 7, 1 → 4, 2 → 6, 3 → 5; subtype 0; **seed =
+rand() mod 11** (first draw of the grant); material by class: warrior 1, ranger 26,
+mage 25, rogue 27 (any other class leaves the material at 12 after the level-1 block, else
+0; *believed* unreachable); level *L*.
+
+**Weapon key**: type 3, **seed = rand() mod 11** (second draw), level *L*; subtype and
+material by class and *L* mod 3:
 
 | Class | *L* mod 3 = 0 | = 1 | = 2 |
 |---|---|---|---|
-| warrior (material 1) | great weapon: subtype 15 + rand() mod 3 | sword/axe/mace: subtype rand() mod 3 | shield (13) |
-| ranger (material 2) | bow (6) | crossbow (7) | boomerang (8) |
-| mage | staff (10), material 2 | wand (11), material 2 | bracelet (12), material 12 if rand() is odd, 11 if even |
-| rogue (material 1) | dagger (3) | longsword (5) | fist (4) |
+| warrior (material 1) | subtype 15 + (rand() mod 3) | subtype rand() mod 3 | 13 |
+| ranger (material 2) | 6 | 7 | 8 |
+| mage | 10, material 2 | 11, material 2 | 12; material 12 if the next rand() is odd, 11 if even |
+| rogue (material 1) | 3 | 5 | 4 |
 
-Draws per grant: 2, plus 1 for a warrior with *L* mod 3 ∈ {0, 1} or a mage with *L* mod 3 =
-2. They come from the client's C runtime stream (no seed of their own), so two players of
-the same class get different seeds. Because the key includes the seed, a new pair of
-equipment recipes is (almost always) added at every level.
+(For another class the weapon key keeps subtype 0 and the armour key's material.)
+
+Draws per grant, in order: armour seed, weapon seed, then one more for a warrior with
+*L* mod 3 ∈ {0, 1} or a mage with *L* mod 3 = 2. They come from the C runtime `rand`
+(MSVCR110) with no re-seeding here, so the seeds depend on all earlier draws in the
+process. Because the key includes the seed, a new equipment key pair is usually added at
+every level.
 
 ### 2.3 Formula-taught equipment
 
-A formula comes from the recipe generator (`alpha-items-generator.md` §3): product type
-3–9, subtype/material/seed from the wrapped weapon or armour, level *L*g and rarity *R* of
-the generator call. Learning it (§1.1) gives the key (product type, subtype, seed 0–99,
-material, rarity *R*, level *L*g). Its recipe is §2.1 for that type/subtype/material plus
-the rarity surcharge for *R*. The product made is exactly the key: **its level is the
-formula's level, not the player's**, and its rarity is the formula's.
+A formula comes from the formula generator (`alpha-items-generator.md`). Learning it
+(§1.1) gives a key with the formula's product as type and the formula's subtype, seed,
+material, rarity *R* and level. Its recipe is §2.1 for that type/subtype/material plus the
+rarity surcharge for *R*. The product made is exactly the key: **its level is the formula's
+level, not the player's**, and its rarity is the formula's.
 
-### 2.4 Building the six tab lists (0x4a14c0, 0x4a19d0)
+### 2.4 Building the six tab lists (RVA 0xa14c0, per tab RVA 0xa19d0)
 
-Run when the crafting window is toggled (C, 0x488bd0, or a station, 0x4975b6), after a
-craft completes, on some window presses (0x47dd88), and when a world-update section-9 item
-arrives for P (0x48f8d0).
+Run when the crafting window is toggled by the C key (RVA 0x88bd0 toggles the crafting host
+G+0x8008c0 and then rebuilds; key dispatch at RVA 0x7e769, key code 0x43) or by a station
+(RVA 0x975b6), after a craft completes (RVA 0x70d5c), at the end of several bag/equipment
+press paths of the item-press handler (RVA 0x7dd88), and when an incoming item-list entry
+addressed to P is processed in the frame update (RVA 0x8f8d0; *believed*: the world-update
+item section).
 
 1. For every key in the known list (list order), build its recipe (§2.1) and put it in the
-   category of its type: 3 → 0 Weapons; 4–7 → 1 Armor; 8, 9 → 2 Amulets; 1 with subtype 1
-   or 2 → 4 Alchemy; other 1 → 3 Cooking; 11 → 5; anything else → dropped.
-2. **Sort** each category in **descending** order of **6 · level + rarity** (std::sort with
-   that key; for ≤ 32 recipes this is an insertion sort, which keeps list order among
-   equal keys; larger lists may reorder ties).
-3. Crafting bag *t* (G+0x800adc, one bag per tab) is cleared and refilled, one slot per
-   recipe: **count** = the number of times it can be made = min over its ingredients of
-   ⌊have / need⌋, where *have* = the sum of the counts of all bag slots (all bags, not the
-   item in hand) holding an equal item; a recipe without ingredients gets count **0**; the
-   slot's item = the product.
-4. If this tab and row are the crafting widget's selected slot (+0x18c, +0x190), the
-   preview's recipe := this recipe (product, station, ingredients).
+   category of its type: 3 → tab 0; 4–7 → tab 1; 8, 9 → tab 2; 1 with subtype 1 or 2 →
+   tab 4; other 1 → tab 3; 11 → tab 5; anything else → dropped.
+2. **Sort** each category in **descending** order of **6 · level + rarity** (level the i16
+   field, rarity the unsigned byte), with the MSVC standard sort: for 32 or fewer recipes an
+   insertion sort with a strict comparison, which keeps list order among equal keys; larger
+   lists use the introsort path, which may reorder ties.
+3. Crafting bag *t* (G+0x800adc, a vector of one slot vector per tab, grown if needed) is
+   cleared and refilled, one slot per recipe in sorted order: **count** = min over the
+   recipe's ingredients of ⌊have / need⌋, where *have* = the sum of the counts of all of P's
+   bag slots (all bags) holding an equal item; a recipe without ingredients gets count
+   **0**; the slot's item = the product.
+4. If this tab and row equal the crafting widget's (G+0x800958) selected tab +0x18c and row
+   +0x190, the preview's (G+0x800964) product, station and ingredients := this recipe's.
 
-Counts are therefore never negative: the "negative count drawn black" feature of the
-InventoryWidget (`alpha-ui-screens.md` §8.1.1) is never used by crafting, and the hover
-test 0x47b340 (tooltip source) would skip such rows anyway.
+Counts are therefore never negative.
 
 ---
 
@@ -231,7 +252,7 @@ test 0x47b340 (tooltip source) would skip such rows anyway.
 
 | Id | Needs | Static kind | Text (when missing) |
 |---|---|---|---|
-| 0, 2 | nothing | — | — |
+| 0, 2 and any unlisted id | nothing | — | — |
 | 1 | water | — | "Requires water" |
 | 3 | furnace | 71 | "Requires Furnace" |
 | 4 | anvil | 72 | "Requires Anvil" |
@@ -241,41 +262,46 @@ test 0x47b340 (tooltip source) would skip such rows anyway.
 | 8 | workbench | 76 | "Requires Workbench" |
 | 9 | campfire | 65 | "Requires Campfire" |
 
-The customization bench (77) is not a crafting station. Id 2 is never produced.
+Id 2 is never produced by the builder. Static kind 77 (customization bench) is not a
+crafting station: interacting with it opens the spirit editor (G+0x8008f4) and toggles the
+window G+0x8008dc, with the inventory made visible exactly when that window is (RVA
+0x97437 … 0x9747e).
 
-### 3.2 "Near" (decided every frame by the preview draw, 0x431afe … 0x43460c)
+### 3.2 "Near" (decided every frame by the preview draw, RVA 0x2f910)
 
 * **Static stations (3–9).** P's block x and y (position ÷ 65536, truncated toward zero),
-  then the 8-block **cell** (÷ 8, truncated toward zero). Every static listed in the 3 × 3
-  cells (cell x − 1 … + 1, cell y − 1 … + 1) of the zone cell index
-  (`alpha-interaction.md` §4.3, lookup 0x42f640) is tested: if its kind is the station's
-  kind and the **3-D squared distance** in blocks between its position (record +0x08,
-  +0x10, +0x18) and P's position is **< 16**, the station is present (search stops). So:
-  **within 4 blocks**, any direction, of the static's anchor point. The static's state
-  (open/closed) is not checked.
-* **Water (1).** Present when P's contact flags (+0x5c) have bit value 2 set (*believed*
-  "in water"), or the block at P's position lowered by half P's height (z − size.z/2,
-  P+0x88) has block type 3 (water; low 5 bits of the block's 4th byte).
-* **Station 0/2**: always present. So amulets, rings, potions, Snowberry Mash and
-  Pineapple Slice can be made anywhere, with the window opened by **C**.
+  then the 8-block **cell** (÷ 8, truncated toward zero). Every static in the 3 × 3 cells
+  (cell x − 1 … + 1, cell y − 1 … + 1, x outer loop) of the zone cell index (lookup RVA
+  0x2f640) is tested: if its kind is the station's kind and the **3-D squared distance** in
+  blocks between its position (record +0x08, +0x10, +0x18, i64 fixed point) and P's
+  position is **< 16**, the station is present and the search stops. So: **within 4
+  blocks**, in any direction, of the static's anchor point. No other static state is
+  checked.
+* **Water (1).** Present when P+0x5c has bit value 2 set (*believed* "in water"), or else
+  when the block at P's x, y and z lowered by half of P+0x88 (*believed* P's height, in
+  blocks, scaled by 65536) has block type 3 (water; low 5 bits of the block's byte 3).
+* **Every other id**: always present. So amulets, rings, Life and Cactus Potions,
+  Snowberry Mash and Pineapple Slice can be made anywhere, with the window opened by **C**.
 
-When missing, the text is drawn (§4.3) and the craft button is disabled (§5.1).
+When missing, the text is drawn (§4.2 step 5) and the craft button is disabled (step 6).
 
 ---
 
 ## 4. The crafting window
 
-### 4.1 The list window (InventoryWidget type 2, host G+0x8008c0, 350 × 285)
+### 4.1 The list window (crafting widget G+0x800958, host G+0x8008c0)
 
-* **Opening**: C or a crafting station toggles the host (and refreshes, §2.4); stations
-  65 → tab 3, 71/73/75 → tab 5 (`alpha-interaction.md` §5.3). X (skills) closes it; a
-  right press over no widget closes it (`alpha-ui-screens.md` §8.1.2). The preview host
-  (G+0x800ad4) is made visible exactly when the crafting host is, every frame (frame
-  update 0x488ee0, which also refreshes it while shown).
-* **Tabs** (built once at start-up, 0x4a1e50): six clones of `tab`, in order, with these
-  icons:
+* **Opening**: the C key toggles the host and rebuilds (§2.4). Interacting with a static of
+  kind 65 or 71–76 toggles the host (RVA 0x9756a), then selects tab 3 for kind 65 and tab 5
+  for kinds 71, 73 and 75 (kinds 72, 74, 76 keep the current tab), then rebuilds. Opening
+  the skills window (X key, RVA 0x88c70) hides the crafting host and the preview host.
+  Every frame (RVA 0x8c677 in the frame update) the preview host (G+0x800ad4) is made
+  visible exactly when the crafting host is, and while it is visible a widget routine of
+  the crafting widget is also run (RVA 0x87e60).
+* **Tabs** (built once at start-up, RVA 0xa1e50, called only from the start-up routine at
+  RVA 0x644f7): with P's class at that moment 1–4, six tab icons in order:
 
-  | Tab | Title | Icon (by P's class at start-up) |
+  | Tab | Header text when selected | Icon |
   |---|---|---|
   | 0 | "Weapons" | warrior `craft-melee-weapons.png`, ranger `craft-ranged-weapons.png`, mage `craft-magic-weapons.png`, rogue `craft-rogue-weapons.png` |
   | 1 | "Armor" | warrior `craft-heavy-armor.png`, ranger `craft-medium-armor.png`, mage `craft-light-armor.png`, rogue `craft-rogue-armor.png` |
@@ -284,174 +310,201 @@ When missing, the text is drawn (§4.3) and the craft button is disabled (§5.1)
   | 4 | "Alchemy" | `craft-alchemy.png` |
   | 5 | "Formulas" | `inventory-ingredients.png` |
 
-  For a class other than 1–4 the first two tabs are not made (open point C-1). Tab
-  placement, colours and sound 0x56 are the InventoryWidget rule (§8.1.3 there).
-* **Rows**: wide rows (`wideitembox`), one per recipe in sorted order; name + " +" + power
-  in the rarity colour (§8.1.3 there). For type 2 only, a row whose count > 0 also shows the
-  count: outlined text, 10 px, stroke 2, white, **right-aligned at (slot x + *s*w − 4,
-  slot y + 37)** (widget space). Count 0 rows are drawn normally with no number.
-* **Selection**: any mouse press while the crafting host is visible (0x47b600, 0x4c6610):
-  if a row is hovered it becomes the selection (tab, index), sound **0x55**, and the
-  `itemselector` moves to it. Then the preview recipe is rebuilt from the selected row's
-  product with the builder (§2.1); with no valid selection the preview gets an empty
-  recipe.
-* Hovering a row shows the product's tooltip (`alpha-ui-screens.md` §8.1.7).
+  For any other class only the last four icons are built. The header text is chosen from
+  the widget's current tab (+0x1b4; 0–4 as above, anything else "Formulas") by the
+  InventoryWidget draw (RVA 0xc2050).
+* **Rows**: one slot per recipe in sorted order, laid out by the InventoryWidget rules
+  (`alpha-ui-screens.md` §8.1). For a widget of type 2 (field +0x194), a row whose item
+  type is non-zero and whose count is > 0 also shows the count: outlined text, 10 px, an
+  outline pass with stroke 2 then a fill pass, white with black outline, alignment code 2
+  (*believed* right-aligned), at widget-space x = 6 + *sw* + col·(*sw* + 5) and
+  y = 37 + *sh* + row·(*sh* + 5), where *sw*/*sh* are the widget's cell width and height
+  (+0x1a8, +0x1ac) and col/row the slot's position after scrolling (i.e. slot x + *sw* − 4,
+  slot y + *sh* − 3 relative to the selector origin below). Count-0 rows show no number.
+* **Selection**: in the item-press handler (RVA 0x7b600), while the crafting host is
+  visible, the crafting widget's press routine (RVA 0xc6610) runs: if a row is hovered
+  (hover tab +0x184, row +0x188 ≥ 0) it becomes the selection (+0x18c, +0x190) and sound
+  **0x55** plays (non-positional); the selector child is shown at widget-space
+  (10 + col·(*sw* + 5), 40 + row·(*sh* + 5)) when the selected row is on screen, else
+  hidden. Then the preview recipe is rebuilt from the selected row's slot item with the
+  builder (§2.1); if the selection is out of range, the preview gets an empty recipe
+  (empty product, station 0, no ingredients).
 
-### 4.2 The preview window (BlueprintPreviewWidget, constructor 0x42f190, draw 0x42f910)
+### 4.2 The preview window (BlueprintPreviewWidget, constructor RVA 0x2f190, draw RVA 0x2f910)
 
-Panel 350 × 330 (`blackwidget` clone), left of the inventory under the crafting window
-(top at H/2 + 10). Fields: game +0x294, `itemshadow` +0x298 (not used by the draw,
-*believed*), `craftbutton` +0x29c and `craftbar` +0x2a0 (both made children of the panel;
-the bar's child `bar` at +0x2a4), recipe +0x16c, model turn angles +0x160/+0x164/+0x168
-(start −120°, 0°, 0°), hovered ingredient +0x2a8, hovered item +0x2ac, "button ready and
-hovered" +0x3c4. Positions of the button and bar come from their `gui.plx` templates.
+Fields: game +0x294, a second widget pointer +0x298 (*believed* the item shadow; not used
+by the draw), craft button +0x29c and craft bar +0x2a0 (both made children of the panel),
+the bar's child named `bar` at +0x2a4, recipe +0x16c, model angles in degrees
++0x160/+0x164/+0x168 (constructed −120, 0, 0), hovered ingredient index +0x2a8, hovered item
++0x2ac, "button ready and hovered" byte +0x3c4.
 
-Coordinates below are **panel-local** (w = 350, h = 330) for text and screen-space for
-models (panel top-left + local).
+Coordinates below are **panel-local** (*w*, *h* = the panel's width and height) unless
+stated; mouse tests use the mouse position relative to the panel.
 
 **Every frame:**
 
-1. **Model.** Recipe known → the product's model; else (empty selection) model slot 2396
-   and the word "Unknown". No model → nothing at all is drawn this frame.
-2. The model turns: +0x168 += frame ms × 0.02 (20°/s about z). Scale = 0.06 / (largest
-   model dimension), × **1.5** while the mouse is in the box x ∈ (w/2 − 60, w/2 + 60),
-   y ∈ (50, 170) — the product then becomes the hovered item (tooltip). Centre on screen:
-   (left + w/2, top + 110). Projection, view shift and centring as the item-model routine
-   (`alpha-ui-screens.md` §8.1.6: π/4, aspect −W/H, near 0.1, far 1000, 1 unit ahead);
-   lights: front (1, 1, 1), back (0.2, 0.2, 0.4), ambient (0.4, 0.4, 0.4), direction
-   (0.7, 0.5, −1)/√2; material colour (1, 1, 1, 0.9).
-3. **Name** (known): item name (+ " +" + power for non-quantity types, the §8.1.3 rule),
-   outlined, 12 px, stroke 3, **centred at (w/2, 30)**, wrapped to the widget width, in
-   the name colour *(believed: the rarity colour of §8.1.6 there)*. Unknown: "Unknown",
-   15 px, stroke 3, white, at (15, 65).
-4. **Ingredients** (known only), entry *k* of the list, *C* = trunc((w − 10)/45) columns
-   (**7** at w = 350):
-   * box: top-left (10 + 45·(*k* mod *C*), h − 120 + 45·⌊*k*/*C*⌋), 40 × 40; model at
-     its centre (+20, +20), scale **0.025**, **0.0375** while the mouse is in the box (that
-     ingredient becomes the hovered item, index in +0x2a8);
-   * "have/need": *have* = the §2.4 sum for that ingredient, *need* = its count; text
-     *have* + "/" + *need*, 10 px, stroke 2, **right-aligned at (50 + 45·col,
-     h − 75 + 45·row)** (the box's right edge, 5 px below it); fill **(0, 1, 0)** when
-     *have* ≥ *need*, **white** when short. Any short ingredient marks the recipe
-     "missing".
-5. **Station** (§3): if missing, the "Requires …" text: outlined, 9 px, stroke 3, fill
-   **(1, 0.25, 0.25, 1)**, left-aligned at **(15, h − 40)**, wrapped to w − 50.
-6. **Craft button frame** (`craftbutton`'s `frame`): white (disabled) when a station or an
-   ingredient is missing or the recipe is unknown; otherwise **(0, 1, 1)** when the mouse is
-   over the button (+0x3c4 := 1), else **(0, 1, 0)** (+0x3c4 := 0).
-7. **Craft bar**: visible exactly while a craft is running (timer ≥ 0, §5); its `bar`
-   child is scaled so its width is (bar width − 8) · timer (0x434c20).
+1. **Model.** If the preview's product is a **known key** (§1.1): the product's model.
+   Otherwise: model slot 2396 of the game's model table (nothing is drawn this frame if the
+   table is shorter). If the chosen model is absent, nothing at all is drawn this frame.
+2. The model turns: +0x168 += (frame time in ms, *believed*) × 0.02 (degrees). Scale =
+   0.06 / (largest model dimension), × **1.5** while the mouse is strictly inside x ∈
+   (*w*/2 − 60, *w*/2 + 60), y ∈ (50, 170); the product then becomes the hovered item.
+   The hovered index is reset to −1 and the hovered item cleared before this test, every
+   frame. Centre: panel origin + (*w*/2, 110). Projection: vertical field of view π/4,
+   near 0.1, far 1000 (depth terms 1.0001 and −0.10001), the model placed 1 unit ahead and
+   shifted so that its centre lands on that screen point. Lights: front (1, 1, 1, 1), back
+   (0.2, 0.2, 0.4, 1), ambient (0.4, 0.4, 0.4, 1), direction (0.7, 0.5, −1) normalised
+   (divided by √1.74); material colour (1, 1, 1, 0.9).
+3. **Name.** Known: item name, followed by " +" and the item's power unless the type is 0,
+   12, 13, 20, 21, 23, 24, 25, or 11 with a subtype other than 14; 12 px, an outline pass
+   with stroke 3 then a fill pass, alignment code 0x11 (*believed* centred with wrapping),
+   at (half the panel's horizontal extent, 30). Unknown: "Unknown", 15 px, stroke 3, white
+   with black outline, at (15, 65).
+4. **Ingredients** (known only), entry *k* of the list, *C* = trunc((*w* − 10)/45)
+   columns (**7** at *w* = 350):
+   * box: top-left (10 + 45·(*k* mod *C*), *h* − 120 + 45·⌊*k*/*C*⌋), 40 × 40; model at
+     its centre (+20, +20), scale **0.025**, **0.0375** while the mouse (screen position)
+     is in the box (left/top edges inclusive, right/bottom exclusive); that ingredient then
+     becomes the hovered item and its index goes to +0x2a8;
+   * "have/need": *have* = the sum of the counts of P's non-empty bag slots holding an
+     equal item, *need* = its count; text *have* + "/" + *need*, 10 px, outline pass stroke
+     2 then a fill pass, alignment code 2 (*believed* right-aligned), at (50 + 45·col,
+     *h* − 75 + 45·row); fill **(0, 1, 0, 1)** when *have* ≥ *need*, **white** when short.
+     Any short ingredient marks the recipe "missing".
+5. **Station** (§3, for every recipe including unknown ones): if missing, the
+   "Requires …" text: 9 px, outline pass stroke 3 then fill pass, fill
+   **(1, 0.25, 0.25, 1)**, black outline, alignment code 0x10 (*believed* left with
+   wrapping), at **(15, *h* − 40)**.
+6. **Craft button frame** (the button's child `frame`), only if the button exists: white
+   (1, 1, 1, 1) and +0x3c4 := 0 when a station or an ingredient is missing or the product is
+   not a known key; otherwise **(0, 1, 1, 1)** with +0x3c4 := 1 when the mouse is over the
+   button, else **(0, 1, 0, 1)** with +0x3c4 := 0.
+7. **Craft bar**: if it exists, it is visible exactly while the craft timer (§5) is ≥ 0.
+   Its `bar` child is scaled each frame by the frame update (RVA 0x34c20) by the factor
+   (bar width − 8) · max(timer, 0) / (the child's horizontal extent), i.e. its width
+   becomes (bar width − 8) · timer (*believed*).
 
-### 4.3 Worked layout (1280 × 720)
+### 4.3 Worked layout (panel-local offsets)
 
-Crafting window (80, 75) … (430, 360); preview panel (80, 370) … (430, 700). Product
-model centre (255, 480), hover box x 195 … 315, y 420 … 540. Name baseline centred at
-(255, 400). Ingredient 0 box (90, 580) … (130, 620), ingredient 1 (135, 580); 8th
-ingredient (row 1) at (90, 625). Count of ingredient 0 right edge 130, baseline 625.
-"Requires Anvil" baseline (95, 660).
+With *w* = 350, *h* = 330 and the panel's top-left at (*X*, *Y*): product model centre
+(*X* + 175, *Y* + 110); product hover box x *X* + 115 … *X* + 235, y *Y* + 50 … *Y* + 170;
+name at (*X* + 175, *Y* + 30); ingredient 0 box (*X* + 10, *Y* + 210) … (*X* + 50,
+*Y* + 250), ingredient 1 at *X* + 55; the 8th ingredient (row 1) at (*X* + 10, *Y* + 255);
+count text of ingredient 0 at (*X* + 50, *Y* + 255); "Requires …" at (*X* + 15,
+*Y* + 290).
 
 ---
 
-## 5. Crafting (frame update 0x48f183 … 0x48f23d; completion 0x4709c0)
+## 5. Crafting (frame update RVA 0x8f183 … 0x8f23d; completion RVA 0x709c0)
 
 ### 5.1 Start
 
-G+0x1000e78 is the **craft timer** (−1 = idle). Only while the preview is visible: if
-+0x3c4 is set (ready and hovered last frame), the **left mouse button is held** (G+0x04)
-and the timer is < 0 → timer := 0 and the preview's recipe is **copied** to
-G+0x1000e7c (product, station, ingredients). Nothing is sent, no player action or
-animation is started, no sound plays at the start.
+G+0x1000e78 is the **craft timer** (float; −1 = idle). Only while the preview host is
+visible: if the preview's +0x3c4 byte is set (as last written by the preview draw), the
+input byte G+0x04 is non-zero (*believed* left mouse button held) and the timer is < 0 →
+timer := 0 and the preview's recipe is **copied** to G+0x1000e7c (product, station,
+ingredients). Nothing is sent, no player action or animation is started, no sound plays at
+the start.
 
 ### 5.2 Progress
 
-While the preview is visible and timer ≥ 0: timer += frame ms × 0.001. When it reaches
-**1** (one second) the timer becomes −1 and the craft completes (§5.3). The bar shows the
-timer (§4.2 step 7). If the window is closed the timer **freezes** and resumes when it is
-reopened. Holding the button keeps crafting: the next craft starts on the first frame after
-completion if the recipe is still ready.
+Still only while the preview host is visible, in the same frame and after the start test:
+if timer ≥ 0, timer += (frame time in ms) × 0.001; if the result is ≥ **1** the timer
+becomes −1 and the craft completes (§5.3). The bar is then scaled from the timer (§4.2
+step 7). If the window is closed the timer **freezes** and resumes when it is reopened.
+Holding the button keeps crafting: the next craft starts on a later frame whenever the
+start conditions hold again.
 
-### 5.3 Completion (0x4709c0)
+### 5.3 Completion (RVA 0x709c0)
 
 Works on the copied recipe; it does **not** re-check the station or the ingredients.
 
-1. Copy the product. If P **cannot carry** it (`alpha-ui-screens.md` §8.1.1, types 1, 11,
-   20: 50 or more equal items already) → chat "You can't carry more of these items." in
-   (1, 0.2, 0.2, 1), sound 0x31 at P; nothing is consumed; stop.
-2. **Remove ingredients.** For each ingredient (count *n*), walk all bags in order and
-   their slots in order; at each slot holding an equal item:
-   * if *n* < slot count: slot count −= *n*, and go on with the **next bag** (the
-     remaining need is not cleared);
-   * else: the slot is emptied (count 0, item cleared) and *n* is reduced by the slot's
-     count **after** it was set to 0 — i.e. not at all — and the walk continues.
+1. Copy the product. If P **cannot carry** it (RVA 0x3e4a0: for product types 1, 11 and 20
+   the equal items in all bags, plus a matching item held on the cursor (P+0x11e8 count;
+   *believed* the cursor item), are counted; type 20 with any count > 0, or any of these
+   types with 50 or more, cannot be carried) → chat "You can't carry more of these items."
+   in (1, 0.2, 0.2, 1), sound 0x31 at P; nothing is consumed; stop.
+2. **Remove ingredients.** For each ingredient in order (count needed *n*), walk P's bags
+   in order and each bag's slots in order; at each slot holding an equal item:
+   * if *n* < slot count: slot count −= *n*, and the walk continues with the **next bag**
+     (the same *n* is still applied there);
+   * else: the slot is emptied (count 0, item replaced by an empty item) and *n* is reduced
+     by the slot's count **after** it was set to 0, i.e. not at all, and the walk continues
+     with the next slot.
 
-   With the usual single stack per ingredient this removes exactly *n* (or empties a stack
-   of exactly *n*). With several stacks the original over-removes (every stack ≤ *n* is
-   emptied, the first larger one loses *n*); see note N-1.
-3. If the product type is 3–9 (equipment): flags +0x0e **|= 1** — crafted equipment shows
-   " (adapted)" and cannot be adapted (§6.2).
-4. Sound **0x59** (`craft.wav`) at the listener.
-5. If the product is type 11 and its subtype is not 26 (Water Flask): with chance 1/5 a
-   **bonus**: quantity (+0x10) += 1, or += 2 if a second rand() mod 5 = 0, or += 3 if a
-   third is also 0 (P = 4/25, 4/125, 1/125 for +1/+2/+3); then sound **0x5a**
-   (`craft-proc.wav`). Draws: 1, 2 or 3 rand() calls only for these products.
-6. Add the product with the inventory add rule (0x46ebe0, auto bag; type 11 adds
-   quantity +0x10 and stores level 1), refresh the inventory scroll range, chat "You
-   receive …" (0x480fb0, `alpha-ui-screens.md` §8.1.9), rebuild the recipe lists (§2.4).
+   With a single stack per ingredient this removes exactly *n* (or empties a stack of
+   exactly *n*). With several equal stacks, in **each bag** every equal stack ≤ *n* before
+   the first larger one is emptied, that first larger one loses *n*, and later equal stacks
+   in the same bag are untouched.
+3. If the product type is 3–9: flags +0x0e |= 1 (crafted equipment counts as adapted and is
+   refused by the Adaption window, §6.2).
+4. Sound **0x59** at the listener (G+0x140).
+5. If the product type is 11 and its subtype is not 26: draw rand() mod 5; if 0, a
+   **bonus** of 1, then draw again: if 0 the bonus becomes 2 and a third draw: if 0 it
+   becomes 3. The bonus is added to the quantity field (+0x10) and sound **0x5a** plays at
+   the listener. Probabilities 4/25 (+1), 4/125 (+2), 1/125 (+3). Draws: 1, 2 or 3 calls,
+   only for these products.
+6. Add the product with the inventory add rule (RVA 0x6ebe0, automatic bag), run two
+   inventory-widget refresh routines (RVA 0xc6350, 0xc64c0), chat "You receive …" (RVA
+   0x80fb0), rebuild the recipe lists (§2.4).
 
-**The product's level** is the key's level (§2.2: the level at which the grant happened,
-or the formula's level); the player's current level plays no part.
+**The product's level** is the key's level (the level at which the grant happened, or the
+formula's level); the player's current level plays no part.
 
 ### 5.4 Network
 
-Crafting, learning formulas, level grants, identification and adaption are entirely
-**client-side**: they change only P's bags, money, platinum and known list, which are saved
-locally (`alpha-saves.md`). No packet is sent for them (no packet-6 record is queued; the
-only network-related call is the refresh on an incoming section-9 item). *Believed*: the
-server never learns crafted items unless they are dropped (packet 6) or equipped (creature
-update).
+The routines for crafting completion, formula learning, level grants, identification and
+adaption change only P's bags, money (P+0x1304), platinum (P+0x1308) and known list; none of
+them queues an outgoing network record (*believed*, from the routines read for this
+document).
 
 ---
 
 ## 6. The item-service windows (briefly)
 
-Both are built at start-up next to the inventory (right side, `alpha-ui-screens.md` §8.1.2)
-and fed by right/middle-pressing a bag slot or an equipment box while open (§8.1.8 there).
-Correction to `alpha-interaction.md` §5.2 b: NPC class **131** opens the **Identification**
-window (G+0x8008f8, mode := 1, source := none) and class **137** opens the **Adaption**
-window (G+0x800900); neither is a trainer or pet window.
+Both are built at start-up next to the inventory. NPC interaction (RVA 0x889e0): an NPC of
+class **131** shows the **Identification** host (G+0x8008f8) and sets its widget
+(G+0x8008fc) source := none (−1, −1) and mode (+0x168) := 1; an NPC of class **137** shows
+the **Adaption** host (G+0x800900). Bag-slot presses in the item-press handler set the
+Identification widget's source to (bag +0x160, slot +0x164) and the Adaption widget's
+(G+0x800904) source to (bag +0x164, slot +0x168) with its item pointer +0x160 := none
+(*believed*: while the respective window is open; the press conditions were not
+re-checked).
 
-### 6.1 EnchantWidget (0x44e910; draw 0x44ea30) — "Identification"
+### 6.1 EnchantWidget (constructor RVA 0x4e910, draw RVA 0x4ea30): "Identification"
 
-* Title "Identification" (15 px at (15, 25)); buttons "Identify" and "Goodbye!" (12 px,
-  bottom row); the source item's tooltip block (0x4a28c0) and model.
-* Source: a bag slot (+0x160, +0x164) whose item is **type 14** (shown "Leftovers" by the
-  name table; here it is the unidentified item). Other types are ignored.
-* Cost (0x450920): max(1, ⌊price(item)/2⌋) in copper (price §8.1.1 there), shown in
-  G/S/C right-aligned; greyed (0.7, 0.7, 0.7) when no valid source.
-* **Identify** (mode 1, money ≥ cost, button hovered; handler in 0x47b600): money −= cost, one item
-  taken from the stack, then rand(): even → weapon generator, odd → armour generator
-  (`alpha-items-generator.md` §2) with (level, rarity) = the source's level and rarity and
-  class −1; the result is added (add rule), sound 0x2e at P, chat "You receive …".
-* Mode 0 (*disenchant*: one item removed, 5 + rand() mod 6 items of type 10 with the
-  source's material pushed to the incoming-item queue, sound 0x2e) exists in the handler,
-  but nothing ever sets mode 0 — *believed* unreachable in Alpha.
-* "Goodbye!" closes the window.
+* Title "Identification", 12 px, stroke 3, at (15, 25); buttons "Identify" and "Goodbye!"
+  (12 px). The constructor sets mode := 1.
+* Source: a valid bag slot with non-zero count whose item is **type 14** (RVA 0x50b70).
+* Cost (RVA 0x50920): 0 without a source, else max(1, ⌊price/2⌋) with the item price of
+  RVA 0xc76e0 (in copper). The draw uses a grey (0.7, 0.7, 0.7) colour for the cost
+  (*believed* when it cannot be paid or there is no valid source).
+* **Identify** (in the item-press handler: host visible, the button test RVA 0x50ab0
+  passes, money ≥ cost, mode 1, valid type-14 source): money −= cost; one item is taken
+  from the stack (when the stack empties, its count and type/subtype bytes become 0 but the
+  other fields stay); then one rand(): even → weapon generator (RVA 0x1f8ad0), odd →
+  armour generator (RVA 0x1f51e0), each called with the source slot's level and rarity
+  (read after the take) and class −1 (`alpha-items-generator.md`); the result is added
+  (add rule), the inventory is refreshed, sound 0x2e at P, chat "You receive …".
+* A mode-0 path (*disenchant*) also exists: with a valid type-14 source whose material is
+  non-zero, it takes one item, clears the source if the stack is still non-empty, draws
+  5 + (rand() mod 6) and appends that many type-10 items of the source's material to a
+  list (*believed* an incoming-item queue), clears G+0x100e70 and plays 0x2e at P; then it
+  takes one more item regardless of material. No money is deducted. Nothing found sets
+  mode 0 (*believed* unreachable in Alpha).
 
-### 6.2 AdaptionWidget (0x40ecd0; draw 0x40f8f0) — "Adaption"
+### 6.2 AdaptionWidget (constructor RVA 0xecd0, draw RVA 0xf8f0): "Adaption"
 
-* Title "Adaption", button "Adapt". Source: a bag slot (+0x164, +0x168) or an equipment
-  slot pointer (+0x160); accepted only for types 3–9 **not already adapted** (flags bit 0
-  clear, 0x40f570).
-* **Cost** (0x40f4f0) in **platinum coins**: with *l* = item level, *r* = rarity,
-  *n* = *L* − *l*: if *n* ≤ 0 the cost is 0; else *q* = 2^((*l* + *r* − 1)·0.25) and the
-  cost starts at 0 and, *n* times, becomes trunc(cost + 2*q*).
-* **Adapt** (window open, button pressed, valid source, platinum ≥ cost): platinum −=
-  cost; item level := *L*; flags |= 1; sound 0x2e at P. The stats then follow the new level
-  (`alpha-creatures-behaviour.md` §10). Example: item level 5, rarity 1, player level 8:
-  *q* = 2^1.25 = 2.3784, 2*q* = 4.7568 → 4, 8, 13 → **13 platinum**.
-
-(The customization bench, static 77, opens a different window — G+0x8008dc with the spirit
-editor G+0x8008f4 — which edits an item's spirit cubes; it is not part of crafting.)
+* Title "Adaption" (12 px, stroke 3, at (15, 25)); buttons "Adapt" and "Goodbye!".
+* Source (RVA 0xf570): an item pointer (+0x160) if set, else a valid bag slot (+0x164,
+  +0x168) with non-zero count; accepted only for types 3–9 with flags bit 0 clear.
+* **Cost** (RVA 0xf4f0) in **platinum coins**: with *l* = item level (i16), *r* = rarity
+  byte: if *l* ≥ *L* the cost is 0; else *q* = 2^((*l* + *r* − 1) · 0.25) (computed in
+  double, then stored as single precision), and the cost starts at 0 and, *L* − *l* times,
+  becomes trunc(cost + 2*q*) (single-precision addition).
+* **Adapt** (host visible, the button pressed, valid source, platinum ≥ cost): platinum −=
+  cost; item level := *L*; flags |= 1; sound 0x2e at P. Example: item level 5, rarity 1,
+  player level 8: *q* = 2^1.25 ≈ 2.3784, 2*q* ≈ 4.7568; cost 4, 8, 12 → **12 platinum**.
 
 ---
 
@@ -460,76 +513,136 @@ editor G+0x8008f4 — which edits an item's spirit cubes; it is not part of craf
 ### 7.1 Cooking a Pumpkin Muffin at a campfire
 
 A ranger reached level 2: the grant (*L* mod 5 = 2) added key (1, 9) level 2; the same grant
-added boots (2 mod 4 = 2 → type 6) material 26 and a boomerang (2 mod 3 = 2).
+added boots (2 mod 4 = 2 → type 6) material 26 and a weapon of subtype 8 (2 mod 3 = 2)
+material 2.
 
-1. Bags: tab 2 holds 3 Pumpkins (11, 16, 0), count 3. The player stands at block
+1. The bags hold one stack of 3 Pumpkins (11, 16, 0). The player stands at
    (1000.5, 2000.5, 30.0); a campfire static (kind 65) sits at (1002.0, 2001.0, 30.0).
-2. R on the campfire toggles the crafting window, selects tab 3 "Cooking", rebuilds the
-   lists. The Cooking list holds (1, 9) level 2 → key 6·2 + 0 = 12 (it is the only entry).
-   Its row count = ⌊3/1⌋ = 3, drawn "3" at the row's right.
+2. Interacting with the campfire toggles the crafting window, selects tab 3 "Cooking" and
+   rebuilds the lists. The Cooking list holds (1, 9) level 2 → sort key 6·2 + 0 = 12 (the
+   only entry). Its row count = ⌊3/1⌋ = 3, drawn as "3".
 3. Clicking the row selects it (sound 0x55); the preview shows the muffin model, the name
-   "Pumpkin Muffin" (type 1 is not a quantity type, so " +5": *p* = trunc(g(2)·100 + 1) =
-   trunc(4.76 + 1) = 5), one ingredient box with "3/1" in green.
+   with " +" and its power (type 1 is not excluded), one ingredient box with "3/1" in green.
 4. Station 9: P's cell (125, 250); the campfire is in cell (125, 250); squared distance
    1.5² + 0.5² + 0 = 2.5 < 16 → present, no "Requires Campfire"; the button frame is green,
    cyan under the mouse.
-5. Holding the left button over it: timer 0 → 1 in 1 s, bar fills. Completion: can carry
-   (no muffins yet); the Pumpkin stack 3 > 1 → 2; type 1 → no adapted flag, no bonus; sound
-   0x59; the muffin (1, 9, level 2) goes to bag 1 ("Items"); chat "You receive Pumpkin
-   Muffin +5."; lists rebuilt → row count 2. Still holding → a second muffin a second later.
-   Its heal is 100·*F*(2, 0) (`alpha-ui-screens.md` §8.1.7).
+5. Holding the button: the timer runs 0 → 1 in about 1 s and the bar fills. Completion: can
+   carry (no muffins yet); the Pumpkin stack 3 > 1 → 2; type 1 → no adapted flag, no bonus,
+   no extra draw; sound 0x59; the muffin (1, 9, level 2) is added by the add rule; chat
+   "You receive …"; lists rebuilt → row count 2. Still holding → another muffin about a
+   second later.
 
-### 7.2 Forging an iron sword from a formula at an anvil
+### 7.2 Forging a sword from a formula at an anvil
 
-1. A warrior right-clicks "Formula: … Iron Sword": type 2, product 3, subtype 0, material
-   1, seed 37, rarity 2, level 6. Not known → key (3, 0, seed 37, material 1, rarity 2,
-   level 6, product 0) appended, one formula removed, sound 0x2f.
-2. Recipe (§2.1): **8 Iron Cubes** (11, 10, 1) + rarity surcharge **2 Sapphire Nuggets**
-   (11, 0, material 14, **rarity 2**); station 4 (anvil). Category Weapons; sort key
-   6·6 + 2 = 38 (above the level-1 to level-6 grant weapons with keys 6 … 36).
-3. Iron Cubes come from the furnace recipe (11, 10, 1): 1 Iron Nugget each, 1 s each, with
-   the 1/5 bonus (e.g. 10 nuggets typically give ~12 cubes).
-4. Bags: 12 Iron Cubes, 1 Sapphire Nugget of rarity 2. Preview: "12/8" green, "1/2" white →
+1. A warrior learns a formula: type 2, product 3, subtype 0, material 1, seed 37, rarity 2,
+   level 6. Not known → key (3, 0, seed 37, material 1, rarity 2, level 6, product 0)
+   appended, one formula removed, sound 0x2f.
+2. Recipe (§2.1): **8 Iron Cubes** (11, 10, 1) + rarity surcharge **2 × (11, 0, 14) with
+   rarity 2**; station 4 (anvil). Category tab 0; sort key 6·6 + 2 = 38 (above the grant
+   weapons of levels 1–6, keys 6 … 36).
+3. Iron Cubes come from the furnace recipe (11, 10, 1): 1 Iron Nugget each, about 1 s
+   each; the bonus adds 0.248 cubes per craft on average (10 nuggets give about 12.5 cubes
+   on average).
+4. Bags: 12 Iron Cubes, 1 matching Sapphire Nugget. Preview: "12/8" green, "1/2" white →
    missing; button white. Row count = min(⌊12/8⌋, ⌊1/2⌋) = 0 (no number). The player is
    3 blocks from an anvil: no "Requires Anvil", but the button stays disabled.
-5. With a second matching Sapphire Nugget (merged into the same stack, 2): "2/2" green,
-   row count 1, button green. Craft: Iron 12 → 4; Sapphires 2 = 2 → stack emptied; the
-   sword (3, 0, seed 37, material 1, rarity 2, level 6) gets flags bit 0; sound 0x59; added
-   to bag 0; chat "You receive <name> +21." (*p* = trunc(g(6)·100 + 1) = trunc(20 + 1) =
-   21; the name with its rarity-2/seed-37 adjective is `alpha-item-names.md` §3). The
-   tooltip line 2 reads "Power 21 (adapted)".
+5. With a second matching nugget in the same stack (2): "2/2" green, row count 1, button
+   green. Craft: Iron 12 → 4; nuggets 2 ≤ 2 → stack emptied; the sword (3, 0, seed 37,
+   material 1, rarity 2, level 6) gets flags bit 0; sound 0x59; added by the add rule; chat
+   "You receive …".
 
 ### 7.3 Grants of a new level-1 mage
 
-*L* = 1: Life Potion (1, 1); Ginseng Soup (1, 4); Pineapple Slice (1, 8); Water Flask;
-Heartflower; Silk Yarn; Iron, Wood, Gold and Silver Cubes; chest (4, 0, material 25, seed
-rand() mod 11, level 1); wand (3, 11, material 2, seed rand() mod 11, level 1). Two draws.
+*L* = 1, in order: (1, 1); (1, 4); (1, 8); (11, 26, 0); (11, 22, 0); (11, 9, 25) (second
+attempt a no-op); (11, 10, 1), (11, 10, 2), (11, 10, 11), (11, 10, 12); armour (4, 0,
+material 25, seed = first rand() mod 11, level 1); weapon (3, 11, material 2, seed = second
+rand() mod 11, level 1). Two draws.
 
 ---
 
-## 8. Notes for AlphaVulkan
+## 8. Unresolved
 
-* **N-1** The ingredient-removal quirk (§5.3 step 2) and the missing re-check at completion
-  are faithful readings; an implementation that wants "vanilla" results must keep them only
-  where they matter (they matter only with several stacks of one ingredient, which the add
-  rule normally prevents, or when ingredients are moved away during the 1-second timer).
-  Recommend: reproduce by default, behind a "strict vanilla" switch.
-* **N-2** Keep crafting client-side as Alpha does; a server-authoritative mode would be a
-  new feature (multiplayer anti-cheat), not parity.
-* **N-3** All tunables (counts, stations, 4-block range, 1-s time, bonus odds) are plain
-  data; put them in a recipe table so mods can add recipes (modding-friendly rule).
+* **U-1** Tab icons are chosen once at start-up from P's class (RVA 0xa1e50). If P has no
+  class 1–4 at that moment, only four icons are built; whether the running game reaches this
+  state is not established.
+* **U-2** The rarity-surcharge nuggets (11, 0, material 13–16) must carry rarity 1–4 to
+  match; whether such items are obtainable in Alpha is not established (otherwise
+  rarity ≥ 1 formulas cannot be crafted).
+* **U-3** The preview name's fill/outline colours (the draw passes white for the visible
+  colour arguments; any rarity colouring is not established), the semantics of the text
+  alignment codes 2, 0x10 and 0x11, the wrap widths, and the craft button/bar geometry
+  (from `gui.plx`).
+* **U-4** Type 14 as "unidentified item" versus the name table's wording; what model slot
+  2396 shows.
+* **U-5** The meaning of P+0x5c bit value 2 and of P+0x88 used by "Requires water".
+* **U-6** Whether loading a save (field 18) or any path other than character creation
+  removes keys from the known list was not re-checked.
+* **U-7** Not re-checked here (companion facts): the item names and sound file names; the
+  power value and its formula; which bag the add rule chooses; the absolute placement and
+  size of the crafting host and preview panel (companion: 350 × 330 panel); the identity
+  of the frame-time source and of input byte G+0x04; the mouse buttons that feed the
+  item-service windows; right-press closing behaviour of the crafting window.
+* **U-8** The cost-display format of the Identification window and the exact condition for
+  its grey colour.
 
-## 9. Open points
+---
 
-* **C-1** Tab icons are chosen once at start-up from P's class (0x4a1e50, only caller
-  0x4644f7). If P has no class then (before a character is loaded), only four tabs are
-  built and the icons shift; check in the running game whether the crafting tabs show the
-  class icons and six tabs.
-* **C-2** The rarity-surcharge gems (11, 0, material 13–16) must carry **rarity 1–4** to
-  match; confirm that such gems drop in Alpha (otherwise rarity ≥ 1 formulas are
-  uncraftable).
-* **C-3** The name colour in the preview (step 3) and the exact geometry of `craftbutton` /
-  `craftbar` (from `gui.plx`).
-* **C-4** Type 14 as "unidentified item" (Identification window) versus the name table's
-  "Leftovers"; and model slot 2396 (the preview's "Unknown" model).
-* **C-5** The P+0x5c bit (value 2) used by "Requires water".
+## Re-certification (2026-11-15)
+
+Checked against Cube.exe (SHA-256 84a7a132…30bf) decompile and assembly, with switch
+tables, constants and strings read from the original image bytes (dumpbin and direct reads).
+
+**Confirmed.** Item layout and the equality order; known-list location and the learning
+transform with sounds 0x31/0x2f; all recipe rows, counts, materials and stations of the
+builder, including the rarity surcharge and the material carry-over; category routing
+(switch table decoded) and the 6·level + rarity descending sort with the ≤ 32 insertion
+path; tab-bag counts (min of ⌊have/need⌋, 0 without ingredients) and the selected-row
+preview update; the level-grant order, conditions, materials, subtypes and the exact
+random-draw order (armour seed, weapon seed, optional third draw); character-creation
+clearing and grant(1); the level-change trigger and sound 0x1d; station ids, kinds and texts;
+the 3 × 3-cell, squared-distance < 16 test for all seven static stations; the water test;
+C-key and station toggles and tabs 3/5; the X key hiding the crafting windows; tab icon
+files and header texts; preview constants (angles −120/0/0, 0.02°/ms, 0.06 and × 1.5 scale,
+hover box, centre +110, 0.025/0.0375 ingredient scale, 7 columns, 45-px grid, h − 120 boxes,
+(50, h − 75) counts, green/white, "Requires" at (15, h − 40) in (1, 0.25, 0.25, 1), button
+colours and +0x3c4); timer 0.001 × ms to 1.0; completion order, can't-carry message and
+colour, adapted flag for types 3–9, sound 0x59, bonus draws and odds with sound 0x5a,
+rebuild; NPC classes 131/137; identification weapon/armour split by rand() parity; adaption
+acceptance and cost formula.
+
+**Corrected** (old → new):
+1. Light direction: "(0.7, 0.5, −1)/√2" → normalised, divided by √1.74.
+2. Adaption worked example: "4, 8, 13 → 13 platinum" → 4, 8, 12 → **12 platinum** (the
+   formula itself was right; gameplay number).
+3. Ingredient over-removal summary: "every stack ≤ *n* emptied, the first larger one loses
+   *n*" → applies **per bag**; later equal stacks in a bag are untouched and the same *n*
+   continues into every later bag (gameplay behaviour with several stacks).
+4. Can-carry: "types 1, 11, 20: 50 or more" → also type 20 with any count > 0, and a
+   matching cursor item is counted (*believed* cursor).
+5. Preview name power suffix: "non-quantity types" → the explicit excluded type list.
+6. Identification title: 15 px → 12 px; the mode/source fields belong to the widget
+   G+0x8008fc, not the host G+0x8008f8.
+7. Disenchant (mode 0) path: "one item removed" → one item, plus a second take; requires a
+   non-zero material; no money deducted (still *believed* unreachable).
+8. Crafting row count position: "slot y + 37" → y = 37 + *sh* + row·(*sh* + 5) (equal to
+   slot y + *sh* − 3); visibility also requires a non-zero item type.
+9. Station default: the builder does not initialise the station; callers pass station 0.
+10. Tab "titles" → header text chosen from the current tab; per-class icons via start-up
+    texture slots.
+11. Start and progress happen in the same frame (the timer advances on the start frame).
+12. The level-change step also clears P+0x1d40; sound 0x1d is played at P's position.
+13. "Two players of the same class get different seeds" → seeds depend on the shared CRT
+    `rand` state; no re-seeding here.
+14. All addresses converted from virtual addresses to RVAs in Cube.exe.
+
+No random-draw order was changed.
+
+**Removed.** The "Notes for AlphaVulkan" section (implementation advice and switches) and
+the open point asking for in-game checks; the claim about the hover test skipping negative
+rows and the InventoryWidget negative-count remark; power values (+5, +21), tooltip text,
+bag numbers and the 1280 × 720 absolute layout in the examples (not re-derived; the layout
+is restated as panel-local offsets); the claim that nothing but character creation removes
+keys (moved to U-6); the sound file names and server-knowledge statements (moved to U-7 or
+softened to the routines read).
+
+**Unresolved.** U-1 … U-8 above. The Infinite-Cubes reconstruction was not consulted.

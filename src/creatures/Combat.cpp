@@ -948,9 +948,13 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
         return out;
     auto r = [&] { return (float)draw() / 32767.f; };
     // Particles §5.8: a beam (action 28) throws sparks at what it hits, before anything else.
-    if (attacker && attacker->action == 28)
-        out.bursts.push_back(Burst::at(in.targetPosition, {0, 0, 10}, {0.6f, 0.6f, 1, 1},
-                                       (float)draw() * 0.1f / 32767.f + 0.1f, 8, FIRE)); // attack-routine E4
+    // The burst sits at the target's own position (+0x10) and sets its style and spread (3) inline.
+    if (attacker && attacker->action == 28) {
+        Burst sparks = Burst::at(glm::dvec3(0), {0, 0, 10}, {0.6f, 0.6f, 1, 1},
+                                 (float)draw() * 0.1f / 32767.f + 0.1f, 8, FIRE); // attack-routine E4
+        std::copy(in.targetRecordPosition.begin(), in.targetRecordPosition.end(), sparks.position);
+        out.bursts.push_back(sparks);
+    }
     auto sound = [&](int32_t id, float pitch) { out.sounds.push_back({in.targetPosition, id, pitch, 1}); };
     const auto targetPresentation = [&](int32_t kind, float scalar) {
         glm::dvec3 at;

@@ -61,7 +61,7 @@ void chargeSound(const Combatant &c, int32_t beforeMs, int32_t dtMs, glm::dvec3 
 void advanceCharge(Combatant &c, float dtMs);
 
 // Audio §6.2: the swing sounds of a creature's action this step (`beforeMs` as above), at `at`.
-// (The multi-hit swings and action 104's flag are open, audio AU-4.)
+// With open points 3 §2.1-§2.2: the multi-hit swings; action 104 has only the default handler's.
 void actionSounds(const Combatant &c, float beforeMs, float dtMs, glm::dvec3 at, const std::function<int()> &draw,
                   std::vector<SoundEvent> &out);
 

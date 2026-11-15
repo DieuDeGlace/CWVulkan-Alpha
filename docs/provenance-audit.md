@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-13; 217 tracked contracts, local ignored variants excluded): 121 A, 61 B, 30 C (23632 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-14; 218 tracked contracts, local ignored variants excluded): 126 A, 61 B, 26 C (21465 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -69,7 +69,8 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 `alpha-open-points-2.md`; `alpha-worldgen-terrain.md` and `alpha-open-points-5.md` (plus the new ruling
 `alpha-tick-period-rulings.md`); `alpha-worldgen-caves.md`, `alpha-spawn-objects.md`, `alpha-loot-rolls.md`,
 `alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`); `alpha-net-packets.md` and `alpha-skills.md`
-(plus the ruling `alpha-rulings-knockback-snap.md`).
+(plus the ruling `alpha-rulings-knockback-snap.md`); `alpha-travel.md`, `alpha-particles.md`,
+`alpha-crafting.md`, `alpha-open-points-3.md` (plus the ruling `alpha-rulings-walk-flag-pitch.md`).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -117,7 +118,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-common-hit-input-construction.md` | B | 203 | 1 |
 | `alpha-companion-direct-route-geometry.md` | A | 109 | 1 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
-| `alpha-crafting.md` | C | 536 | 2 |
+| `alpha-crafting.md` | A | 649 | 2 |
 | `alpha-created-actor-behavior.md` | B | 122 | 2 |
 | `alpha-created-actor-combat.md` | A | 379 | 0 |
 | `alpha-created-candidate-appearances.md` | A | 95 | 1 |
@@ -187,14 +188,14 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-open-points-11.md` | A | 212 | 1 |
 | `alpha-open-points-12.md` | S | 357 | 1 |
 | `alpha-open-points-2.md` | A | 465 | 1 |
-| `alpha-open-points-3.md` | C | 505 | 2 |
+| `alpha-open-points-3.md` | A | 696 | 0 |
 | `alpha-open-points-4.md` | C | 577 | 1 |
 | `alpha-open-points-5.md` | A | 485 | 0 |
 | `alpha-open-points-6.md` | C | 688 | 0 |
 | `alpha-open-points-7.md` | A | 256 | 1 |
 | `alpha-open-points-8.md` | A | 291 | 0 |
 | `alpha-open-points-9.md` | A | 114 | 0 |
-| `alpha-particles.md` | C | 564 | 3 |
+| `alpha-particles.md` | A | 607 | 0 |
 | `alpha-path-expansion-order.md` | A | 124 | 1 |
 | `alpha-path-following-update.md` | A | 108 | 2 |
 | `alpha-path-reroot-reference.md` | A | 14 | 0 |
@@ -227,6 +228,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
+| `alpha-rulings-walk-flag-pitch.md` | A | 163 | 0 |
 | `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
@@ -255,7 +257,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
 | `alpha-trails-poses-schedules.md` | C | 690 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
-| `alpha-travel.md` | C | 562 | 1 |
+| `alpha-travel.md` | A | 641 | 0 |
 | `alpha-ui-plasma.md` | C | 603 | 4 |
 | `alpha-ui-screens.md` | C | 3071 | 2 |
 | `alpha-vendor-stock-generation.md` | A | 113 | 1 |
