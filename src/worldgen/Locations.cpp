@@ -45,6 +45,18 @@ ZoneEntry &entryAt(Region &region, int64_t fx, int64_t fy) {
 
 } // namespace
 
+void sortCandidates(std::vector<LocationCandidate> &candidates) {
+    // §5: ascending by key only. A list of at most 32 entries is finished by the library's
+    // insertion sort, which moves an entry only past strictly larger keys, so equal keys keep
+    // slot order; the stable sort states exactly that. Tie order in longer lists (introsort
+    // partitioning) is unresolved (§14 item 1) and left to std::sort.
+    const auto byKey = [](const LocationCandidate &a, const LocationCandidate &b) { return a.key < b.key; };
+    if (candidates.size() <= 32)
+        std::stable_sort(candidates.begin(), candidates.end(), byKey);
+    else
+        std::sort(candidates.begin(), candidates.end(), byKey);
+}
+
 std::unique_ptr<Region> World::buildRegion(int32_t rx, int32_t ry,
                                            const std::function<float(int32_t, int32_t)> &H) const {
     // §2.1 steps 1-3.
@@ -82,11 +94,7 @@ std::unique_ptr<Region> World::buildRegion(int32_t rx, int32_t ry,
         minLevel = 20;
 
     // §4: phase A, the slots.
-    struct Candidate {
-        float key;
-        int32_t i, j;
-    };
-    std::vector<Candidate> candidates;
+    std::vector<LocationCandidate> candidates;
     const int32_t cxs = (C->x >> 11) & 7, cys = (C->y >> 11) & 7;
     for (int32_t i = 0; i < 8; i++)
         for (int32_t j = 0; j < 8; j++) {
@@ -125,15 +133,15 @@ std::unique_ptr<Region> World::buildRegion(int32_t rx, int32_t ry,
             candidates.push_back({key, i, j});
         }
 
-    // §5: phase B, ascending by key.
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate &a, const Candidate &b) { return a.key < b.key; });
+    // §5: phase B.
+    sortCandidates(candidates);
 
     // §6: phase C, the ranked assignment.
     const bool sea = C->elevation < 0;
     for (int32_t c = 0; c < 64 && !candidates.empty(); c++) {
         if (c & 1)
             continue;
-        const Candidate taken = candidates.front();
+        const LocationCandidate taken = candidates.front();
         candidates.erase(candidates.begin());
         Location &R = region->records[8 * taken.i + taken.j];
         if (R.height < 0)
@@ -202,7 +210,7 @@ std::unique_ptr<Region> World::buildRegion(int32_t rx, int32_t ry,
     // §7: phase D, up to five type-10 sites from what is left.
     for (int n = 0; n < 5 && !candidates.empty(); n++) {
         const uint32_t k = (uint32_t)random.draw() % (uint32_t)candidates.size();
-        const Candidate taken = candidates[k];
+        const LocationCandidate taken = candidates[k];
         candidates.erase(candidates.begin() + k);
         Location &R = region->records[8 * taken.i + taken.j];
         R.type = 10;

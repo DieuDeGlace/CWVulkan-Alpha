@@ -13,6 +13,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace worldgen {
 
@@ -25,7 +26,9 @@ struct RegionCell {
     int32_t elevation = 0; // negative: sea
 };
 
-// Locations spec §1.2: a location record (type 0: none).
+// Locations spec §1.2: a location record (type 0: none). Engine choice: the bytes the native
+// constructor leaves unwritten (+0x42..+0x43, +0x5d..+0x67) and the mission/monster areas are
+// not modelled; every modelled field starts at its constructor value (level 1, others 0).
 struct Location {
     int64_t x = 0, y = 0; // centre, 1/65536 block
     float radius = 0;
@@ -43,7 +46,8 @@ inline bool centredIn(const Location &L, int32_t zx, int32_t zy) {
     return L.x / 65536 / 256 == zx && L.y / 65536 / 256 == zy;
 }
 
-// Locations spec §1.1: one zone's entry in its region's table, copied into the zone.
+// Locations spec §1.1: one zone's entry in its region's table, copied into the zone. Engine
+// choice: the unwritten bytes +0xd..+0xf (and the unused +2, +3) are not modelled.
 struct ZoneEntry {
     uint8_t kind = 0;    // 0 none, 1 town quarter, 3 dungeon entrance, 4 type-10 site
     uint8_t variant = 0; // town quarter 1..4, dungeon style 0..5
@@ -59,6 +63,13 @@ struct Region {
     std::array<ZoneEntry, 64 * 64> zones{};   // entry 64 zxl + zyl
     uint32_t draws = 0;                      // draws made while preparing (for checks)
 };
+
+// Locations spec §4.2 step 6, §5: a slot queued for the ranked assignment, and its sort.
+struct LocationCandidate {
+    float key;
+    int32_t i, j;
+};
+void sortCandidates(std::vector<LocationCandidate> &candidates);
 
 // The world's home point (spawn), blocks (overview §2).
 constexpr int32_t HOME = 8396928;

@@ -847,9 +847,13 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     }
     // Item names §9: drinking (80) or eating (81) heals once per 200 ms of the action, a life
     // potion over 3 s and other food over 10 s; creatures other than players at half speed.
-    if ((c.action == 80 || c.action == 81) && c.held.type == 1) {
+    // Gate: the local player, or (context flag +0xB4 == 0) any creature whose controller kind
+    // is non-zero. Engine mapping (N-5 leaves the flag's meaning open): +0xB4 == 0 is read as
+    // "not a network replica". Ticks use signed integer division truncating toward zero.
+    const bool healGate = role.local || (!role.replica && c.controller != 0);
+    if (healGate && (c.action == 80 || c.action == 81) && c.held.type == 1) {
         const float limit = c.held.subtype == 1 ? 3000.f : 10000.f;
-        if (before < limit && std::floor(before / 200) != std::floor(c.actionMs / 200)) {
+        if (before < limit && before / 200 != c.actionMs / 200) {
             const float share = 200 / limit * (c.controller != 0 ? 0.5f : 1.f);
             const float amount = itemHeal(c.held) * share;
             if (amount > 0)

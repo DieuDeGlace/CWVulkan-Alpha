@@ -214,6 +214,76 @@ int main() {
         }
     }
 
+    // Locations spec §2.1 (re-certified): out-of-range region coordinates give no region.
+    {
+        World edge(123);
+        const Terrain heights(edge);
+        heights.prepareRegion(-1, 0);
+        heights.prepareRegion(0, 1024);
+        same(edge.region(-1, 0) == nullptr && edge.region(0, 1024) == nullptr, 1, "no region outside 0..1023");
+    }
+
+    // Locations spec §5 (re-certified): a candidate list of at most 32 entries keeps slot
+    // order for equal keys (insertion sort); only the key is compared.
+    {
+        std::vector<LocationCandidate> list{{1.f, 0, 0}, {0.5f, 0, 1}, {1.f, 0, 2}, {0.5f, 0, 3}, {1.f, 0, 4}};
+        sortCandidates(list);
+        std::string order;
+        for (const LocationCandidate &c : list)
+            order += std::to_string(c.j);
+        same(order == "13024", 1, "equal keys keep slot order: " + order);
+        std::vector<LocationCandidate> full;
+        for (int32_t n = 0; n < 32; n++)
+            full.push_back({float(n % 2), n / 8, n % 8});
+        sortCandidates(full);
+        bool ordered = true;
+        for (size_t n = 0; n < 16; n++)
+            ordered = ordered && full[n].key == 0 && full[n + 16].key == 1 &&
+                8 * full[n].i + full[n].j == int32_t(2 * n) && 8 * full[n + 16].i + full[n + 16].j == int32_t(2 * n + 1);
+        same(ordered, 1, "32 entries: ties stay in slot order");
+    }
+
+    // Locations spec §12 (re-certified): the climate minimum level is stored in the slot pass;
+    // type-10 sites and placed but unranked records keep it, and §8 carries it to the table.
+    {
+        World cold(123);
+        const Terrain heights(cold);
+        int checkedRegions = 0;
+        for (int32_t n = 0; n < 64 && checkedRegions < 2; n++) {
+            const int32_t rx = 500 + n % 8, ry = 500 + n / 8;
+            cold.makeCells(rx, ry);
+            const RegionCell *C = cold.cell(rx, ry);
+            if (!C)
+                continue;
+            int32_t minLevel = 1;
+            if (C->warmth < 0.2f) minLevel = 10;
+            if (C->moisture < 0.2f && C->warmth > 0.8f) minLevel = 15;
+            if (C->moisture > 0.8f && C->warmth > 0.8f) minLevel = 10;
+            if (C->fire) minLevel = 20;
+            if (minLevel == 1)
+                continue;
+            heights.prepareRegion(rx, ry);
+            const Region *region = cold.region(rx, ry);
+            if (!region)
+                continue;
+            checkedRegions++;
+            bool kept = true;
+            int keepers = 0;
+            for (const Location &L : region->records) {
+                const bool unranked = L.type == 10 || (L.type == 0 && L.radius > 0);
+                if (!unranked)
+                    continue;
+                keepers++;
+                kept = kept && L.level == minLevel;
+                const ZoneEntry &E = region->zones[64 * ((L.x / 65536 >> 8) & 63) + ((L.y / 65536 >> 8) & 63)];
+                kept = kept && E.level == minLevel;
+            }
+            same(kept, 1, "region " + std::to_string(rx) + "," + std::to_string(ry) + ": minLevel " +
+                 std::to_string(minLevel) + " kept by " + std::to_string(keepers) + " records and their zones");
+        }
+        same(checkedRegions > 0, 1, "a region with a climate minimum level was checked");
+    }
+
     // Terrain spec §6.2 and §6.5: colours.
     const Terrain terrain(world);
     auto colour = [&](glm::vec3 got, glm::vec3 want, const std::string &what) {
@@ -338,6 +408,25 @@ int main() {
         cell(104, 204, 62, 53, 220, 60, LEAVES, "leaf blob");
         cell(109, 197, 59, 47, 217, 60, LEAVES, "last leaves");
         same(zone.read(100, 200, 65).type(), AIR, "nothing above the crown");
+    }
+
+    // Trees spec §2.2, §4.10.4 step 5 (re-certified): in a zone of dry air every read-first
+    // write of a conifer is skipped, but its two top cells are written without a read.
+    {
+        Zone zone;
+        for (auto &c : zone.columns) {
+            c.warmth = 0.5f;
+            c.moisture = 0.5f;
+            c.bottom = 1;
+            c.blocks.assign(100, Block{255, 255, 255, 0x40});
+        }
+        Random random(7);
+        TreeBuilder(terrain, zone, random).build(100, 200, 50, 4, 10, 1); // t doubled: top at 70, 71
+        same(zone.read(100, 200, 71).type(), LEAVES, "conifer top cell z + t + 1 over dry air");
+        same(zone.read(100, 200, 70).type(), LEAVES, "conifer top cell z + t over dry air");
+        same((zone.read(100, 200, 70).typeByte & 0x40) == 0, 1, "the top write clears dry air");
+        same(zone.read(100, 200, 60).typeByte, 0x40, "trunk and discs skip dry air");
+        same(zone.read(101, 200, 66).typeByte, 0x40, "a disc cell stays dry");
     }
 
     // Caves spec §10: formations, roads and terraces.

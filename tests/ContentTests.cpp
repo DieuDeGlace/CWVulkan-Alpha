@@ -34,6 +34,36 @@ static void syntheticChecks() {
     check(hello && hello->text == "Hi [there $stress]\n  %\n  Bye", "text trimmed, markup kept");
     check(d.find("empty", "e") != nullptr, "self-closing entry");
     check(!d.parse("<root><name key=\"x\"><singular>a</plural></name></root>", &error), "mismatched tags rejected");
+
+    // Item names §3 step 6 (re-certified), on a made-up dictionary: a matched tag whose text has
+    // no "@" falls through to the first child in element-name order, and "#" is replaced in both
+    // branches; §3 step 4: a missing word just removes "@"; §7: the coin quantity is signed.
+    Dictionary names;
+    check(names.parse("<root>"
+                      "<name key=\"MaterialIron\"><singular>Iron</singular><item>Iron# @</item></name>"
+                      "<name key=\"MaterialCopper\"><singular>Copper</singular><item>Copper @</item></name>"
+                      "<name key=\"Sword\" tags=\"t\"><singular>Sword</singular></name>"
+                      "<name key=\"item:plain\"><t>no placeholder</t><b>B @</b><a>A @</a></name>"
+                      "<name key=\"item:used\"><t>T @</t><a>A @</a></name>"
+                      "</root>", &error),
+          "parse made-up names: " + error);
+    const auto record = [](uint8_t type, uint8_t sub, uint8_t material, uint32_t seed, uint8_t rarity) {
+        creatures::ItemRecord r{};
+        r[0] = type, r[1] = sub, r[0x0c] = rarity, r[0x0d] = material;
+        std::memcpy(&r[4], &seed, 4);
+        return r;
+    };
+    const std::string g1 = seedName(1), g5 = seedName(5);
+    std::string got = itemName(record(3, 0, 1, 1, 0), names); // d 1: item:plain, tag t has no "@"
+    check(got == "A Iron" + g1 + " Sword", "tag without @ falls back to the first child (got " + got + ")");
+    got = itemName(record(3, 0, 1, 5, 0), names); // d 5: item:used, tag t with "@"
+    check(got == "T Iron" + g5 + " Sword", "matched tag with @, then # (got " + got + ")");
+    got = itemName(record(3, 18, 1, 0, 0), names);
+    check(got == "Iron# ", "a missing word removes @ (got " + got + ")");
+    creatures::ItemRecord coins = record(12, 0, 10, 0, 0);
+    creatures::setItemLevel(coins, -5);
+    got = receivedText(coins, names);
+    check(got == "-5 Copper", "coin chat part: signed quantity and material word (got " + got + ")");
 }
 
 int main(int argc, char **argv) {

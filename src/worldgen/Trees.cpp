@@ -20,6 +20,14 @@ glm::vec3 mixColour(glm::vec3 a, glm::vec3 b, float u) {
     return {a.r * v + b.r * u, a.g * v + b.g * u, a.b * v + b.b * u};
 }
 
+// §0: a block coordinate the builder derives from its fixed-point centre v·65536 + 32768 by
+// signed division truncating toward zero: v for v >= 0, v + 1 for v < 0.
+int32_t centreBlock(int32_t v) { return (int32_t)(((int64_t)v * 65536 + 32768) / 65536); }
+
+// §4.10.2 step 7: the kind-5 cell read (RVA 0x02f860) subtracts 65536 from a negative
+// coordinate before dividing; the writes divide by truncation instead.
+int32_t readCellOf(int64_t v) { return (int32_t)((v < 0 ? v - 65536 : v) / 65536); }
+
 } // namespace
 
 bool TreeBuilder::dry(int32_t x, int32_t y, int32_t z) const {
@@ -106,6 +114,7 @@ void TreeBuilder::blob(int32_t x, int32_t y, int32_t z, float rH, float rV, Colo
 
 void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, int32_t k) {
     const double X0 = x + 0.5, Y0 = y + 0.5;
+    const int32_t xc = centreBlock(x), yc = centreBlock(y); // §0 (equal to x, y when x, y >= 0)
     const int32_t zx = zone.zx, zy = zone.zy;
     float w = terrain.climate(x, y, &zone).warmth;
     auto draw = [&] { return random.draw(); };
@@ -218,8 +227,8 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
                     ex = (i - X0) / r;
                     ey = (j - Y0) / r;
                 } else {
-                    ex = (double)(i - x) / r;
-                    ey = (double)(j - y) / r;
+                    ex = (double)(i - xc) / r;
+                    ey = (double)(j - yc) / r;
                 }
                 if (ey * ey + ex * ex > 1.0 || dry(ti, tj, c))
                     continue;
@@ -260,7 +269,7 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
         // §4.8.3: eight leaf models round the crown, each at its own height, through the prefab
         // placer. (Without the game's models only their draws are made.)
         const auto crown = [](int32_t at, float lean) {
-            return (int32_t)(((int64_t)at * 65536 + 32768 + (int64_t)f(lean * 65536.f)) >> 16);
+            return (int32_t)(((int64_t)at * 65536 + 32768 + (int64_t)f(lean * 65536.f)) / 65536); // signed, truncating
         };
         const int32_t Xc = crown(x, jx), Yc = crown(y, jy);
         PlacerWorld around;
@@ -310,7 +319,7 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
         const float phi = f(draw() * TWO_PI / 32767.0);
         const float sf = f(f((float)draw() * 0.8f) / 32767.f) + 0.6f;
         const float rC = f(((double)f(f((float)draw() * 1.25f) / 32767.f) + 2.0) * rA);
-        blob(x, y, z + t, rC, f(rC * sf), L1, L2, k);
+        blob(xc, yc, z + t, rC, f(rC * sf), L1, L2, k);
         for (int b = 0; b < nb; b++) {
             const float h = f(f(f((float)draw() * 0.5f) / 32767.f) + 0.5f);
             const float zb = f(f(h * (float)t) + (float)z);
@@ -367,10 +376,14 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
                 const int64_t PZ = (int64_t)(((double)f(j * 0.5f) + zl) * 65536.0);
                 const int64_t PY = (int64_t)(((double)f(e * ry) + Qy) * 65536.0);
                 const int64_t PX = (int64_t)(((double)f(e * rx) + Qx) * 65536.0);
-                const int32_t bx = (int32_t)(PX / 65536), by = (int32_t)(PY / 65536), bz = (int32_t)(PZ / 65536);
-                if (dry(bx, by, bz) || dry(bx, by, bz + 1))
+                // Reads (lower cell, then the upper one only when the lower is not dry) use the
+                // read conversion; writes and the clump use truncating division.
+                const int32_t rx0 = readCellOf(PX), ry0 = readCellOf(PY);
+                if (dry(rx0, ry0, readCellOf(PZ)) || dry(rx0, ry0, readCellOf(PZ + 65536)))
                     continue;
-                write(bx, by, bz + 1, col, WOOD_BYTE);
+                const int32_t bx = (int32_t)(PX / 65536), by = (int32_t)(PY / 65536);
+                const int32_t bz = (int32_t)(PZ / 65536), bzUp = (int32_t)((PZ + 65536) / 65536);
+                write(bx, by, bzUp, col, WOOD_BYTE);
                 write(bx, by, bz, col, WOOD_BYTE);
                 const bool clump = j == 2 * n || (j % 4 == 0 && draw() % 3 == 0);
                 if (!clump)
@@ -389,7 +402,7 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
                     CX = (int64_t)f(f(f((float)(256 * zx + 256) - rH) - 2.f) * 65536.f);
                 if (CY + RH + 65536 >= lowY + 256 * 65536)
                     CY = (int64_t)f(f(f((float)(256 * zy + 256) - rH) - 2.f) * 65536.f);
-                blob((int32_t)(CX / 65536), (int32_t)(CY / 65536), bz + 1, rH, rV, L1, L2, 5);
+                blob((int32_t)(CX / 65536), (int32_t)(CY / 65536), bzUp, rH, rV, L1, L2, 5);
                 if (falling)
                     leaves(CX, CY, PZ + 65536);
             }
@@ -460,9 +473,11 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
                     disc((int32_t)PX, (int32_t)PY, (int32_t)(PZ + 1.0), 2, terrain.snow(x, y), LEAF_BYTE);
                 disc((int32_t)PX, (int32_t)PY, (int32_t)PZ, 2, mixColour(C1, C2, fm), LEAF_BYTE);
             }
+            // §4.10.4 step 5: the two top cells, rewritten once per spoke and written directly,
+            // without the dry-air read, so they replace dry-air cells too.
+            write(x, y, z + t + 1, C1, LEAF_BYTE);
+            write(x, y, z + t, C1, LEAF_BYTE);
         }
-        write(x, y, z + t + 1, C1, LEAF_BYTE);
-        write(x, y, z + t, C1, LEAF_BYTE);
     }
 }
 

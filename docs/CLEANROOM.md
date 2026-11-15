@@ -2681,3 +2681,31 @@ saurian model draws head, body, hand, tail (random-draw order); the unreachable 
 Not modelled: obj +0x144 and several pet orientation fields; the preview panel's own lights; the
 start-up tab icon snapshot; P+0x1D40; the disenchant path; the native single spent-power field
 (the engine keeps separate ranged and melee fields); action 104 in the default handler.
+## Provenance re-certification, path search, locations, item names, trees (2026-11-15)
+
+Four inherited contracts were re-certified by fresh source-only authors (53 corrections;
+reversals in path search: the search round skips ignored statics, and the follower result is
+explicit; replacement advice, test vectors, dictionary display text and checking procedures
+removed; no reconstruction consulted) and read whole by a fresh implementer:
+- `alpha-path-search.md` (6AA57674...2DC9)
+- `alpha-worldgen-locations.md` (B1D8A5A8...72BB)
+- `alpha-item-names.md` (0BD58670...9688)
+- `alpha-worldgen-trees.md` (8A4292D9...E27E)
+
+The locations re-certification settled the open discrepancy from the regions batch: RVA 0x1EE4B0
+stores a climate minimum level (1/10/15/20) at +0x24 in the slot pass for owned non-town records;
+the queue pass overwrites ranked records; the rest carry it into zone-table levels. The engine
+already did this, so the regions contract's "level 1" holds only for skipped slots and the town.
+Engine changes: NPC pathing - the shared walk/spawn/interaction loop tests the node map once and
+stops strictly inside r; SpawnLocation runs the usual loop after its extra round (up to 11
+expansions in the starting update); WalkPath starts a search only when its path list is empty
+(an abandoned search waits for the 3000 ms re-plan). Locations - candidate lists of 32 or fewer
+keep slot order on ties (`sortCandidates`). Item names - a matched adjective tag without "@"
+falls back to the entry's first child, "#" replaced in both branches (English names unchanged);
+the healing gate for actions 80/81 uses the native condition (the +0xB4 flag read as "not a
+network replica", an engine reading) with signed truncating ticks. Trees - the two conifer top
+cells are written once per spoke without the dry-air read (same final blocks); centres and the
+kind-5 reads use the native truncating and read conversions (identical for non-negative play
+coordinates). Not modelled: the WalkPath radius source and Cube.exe path counterparts; the
+long-list tie order; region +0x04; the second healing effect, the 400 ms effect spawn and the
+" receives " form for others; the native record node layout and palm stamp internals.

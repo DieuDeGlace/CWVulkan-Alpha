@@ -711,7 +711,10 @@ bool Npcs::spawnLocation(Npc &n, const BlockType &block) {
         if (!ground)
             return false;
         n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), G, 4, n.body.size);
+        // alpha-path-search.md §4.6: one round right after the start, then the
+        // usual loop in the same update (up to 11 expansions).
         n.path.round(n.body.size, block);
+        n.path.rounds(n.body.size, 4, block);
         n.body.intent = glm::vec3(0);
         return true;
     }
@@ -839,7 +842,10 @@ bool Npcs::walkPath(Npc &n, float dtMs, const BlockType &block) {
         n.routeIndex++;
         return false;
     }
-    if (!n.path.searching()) {
+    // alpha-path-search.md §3, §8: a search starts only on an empty path list.
+    // After an abandoned search the path is the goal cell alone, so no restart
+    // here; the follower's 3000 ms re-plan restarts it.
+    if (n.path.empty()) {
         n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.1 - h * 0.5), T, n.routeRadius, n.body.size);
         n.path.round(n.body.size, block);
     }

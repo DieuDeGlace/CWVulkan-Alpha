@@ -1784,6 +1784,33 @@ int main() {
         same(search.state.path.back() == PathSearch::Cell{2, 2, 10}, 1, "round 2: best (2, 2)");
         search.round(box, flat);
         same(search.state.path.back() == PathSearch::Cell{3, 2, 10}, 1, "round 3: the goal");
+        // Path search §3, §4.6 (re-certified): the "as Companion" loop stops only when the
+        // last cell is strictly within r (squared < r^2): at r = 1 the cell (2, 2), squared
+        // distance 1, does not stop it, so the loop reaches the goal in the same update.
+        {
+            PathSearch strict;
+            strict.start({0.5, 0.5, 10.1}, {3.5, 2.5, 10.1}, 1, box);
+            strict.round(box, flat);
+            strict.rounds(box, 1, flat);
+            same(strict.state.path.back() == PathSearch::Cell{3, 2, 10}, 1, "strict stop: past (2, 2) to the goal");
+        }
+        // §4.2 step 1, §4.5 (re-certified): 501 open cells abandon the search; the rebuild in
+        // the same round leaves the single goal cell as the path and the ignored set empty.
+        {
+            PathSearch abandoned;
+            abandoned.start({0.5, 0.5, 10.1}, {3.5, 2.5, 10.1}, 2, box);
+            for (int32_t n = 0; n < 501; n++) {
+                abandoned.state.records[{100 + n, 0, 10}] = {1, 1, 2, {100 + n, 0, 10}};
+                abandoned.state.pending.insert({100 + n, 0, 10});
+            }
+            abandoned.round(box, flat);
+            same(!abandoned.searching() && abandoned.state.path.size() == 1 &&
+                 abandoned.state.path[0] == PathSearch::Cell{3, 2, 10} && abandoned.state.exclusions.empty(), 1,
+                 "abandoned: the path is the goal cell");
+            abandoned.rounds(box, 2, flat);
+            same(!abandoned.searching() && abandoned.state.path.size() == 1, 1,
+                 "no rounds without a node map (tested once before the loop)");
+        }
         // §6: a creature follows a search around a wall to its goal.
         auto blocked = [](int32_t x, int32_t y, int32_t z) -> uint8_t { return z <= 9 || (x == 3 && y >= -4 && y <= 4 && z <= 12) ? 1 : 0; };
         Body walker;

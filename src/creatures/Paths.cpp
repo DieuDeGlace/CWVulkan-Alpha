@@ -52,14 +52,19 @@ void PathSearch::round(glm::vec3 size, const BlockType &block) {
 }
 
 void PathSearch::rounds(glm::vec3 size, float stop, const BlockType &block) {
-    // Work/arrival policy for older engine callers remains a separate adapter.
-    // The held created-companion caller supplies its own strict stopping tests.
-    for (int i = 0; i < 10 && searching() && state.path.size() <= 50; i++) {
+    // alpha-path-search.md §4.6 for the WalkPath, SpawnLocation and
+    // RandomInteraction callers ("as Companion", §3): the node map is tested
+    // once before the loop; at most 10 rounds, each stopped first by a path of
+    // more than 50 cells or a last cell strictly within `stop` of the goal cell.
+    // Combat and the created companion run their own loops.
+    if (!searching())
+        return;
+    for (int i = 0; i < 10 && state.path.size() <= 50; i++) {
         if (!empty()) {
             const Cell goal = search::coordinate(state.goal);
             const Cell last = state.path.back();
             const double x = double(last[0]) - goal[0], y = double(last[1]) - goal[1], z = double(last[2]) - goal[2];
-            if ((x * x + y * y) + z * z <= double(stop) * stop)
+            if ((x * x + y * y) + z * z < double(stop) * stop)
                 break;
         }
         round(size, block);

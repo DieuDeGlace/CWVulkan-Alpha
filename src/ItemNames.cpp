@@ -39,29 +39,46 @@ std::string adjectiveKey(uint8_t rarity, uint32_t seed) {
     }
 }
 
-// §3 step 6: the adjective entry's child matching one of the word's tags, else its first.
-std::string adjective(const Dictionary &d, const std::string &key, const std::string &wordKey) {
+// §3 step 6 (0x199bbb ... 0x199ea5): applies one adjective child text to the name: its first
+// "@" becomes the current name when it has one, then the name's first "#" becomes G(seed).
+// Returns whether the "@" replacement happened.
+bool applyAdjective(std::string &name, const std::string &pattern, const std::string &generated) {
+    const bool replaced = pattern.find('@') != std::string::npos;
+    if (replaced)
+        name = fill(pattern, '@', name);
+    name = fill(name, '#', generated);
+    return replaced;
+}
+
+// §3 step 6: the child matching the first of the word's tags the adjective entry has; when
+// none matches, or the matched text has no "@", the entry's first child in element-name
+// order is applied the same way. A missing adjective entry changes nothing.
+void adjective(std::string &name, const Dictionary &d, const std::string &key, const std::string &wordKey,
+               const std::string &generated) {
     const DictionaryEntry *e = d.find("name", key);
     if (!e || e->fields.empty())
-        return {};
+        return;
     if (const DictionaryEntry *word = d.find("name", wordKey))
         if (const auto tags = word->attributes.find("tags"); tags != word->attributes.end()) {
+            // (Tag splitting on spaces and commas: open point N-3.)
             size_t from = 0;
             while (from <= tags->second.size()) {
                 size_t end = tags->second.find_first_of(" ,", from);
                 if (end == std::string::npos)
                     end = tags->second.size();
-                if (const std::string *t = e->field(tags->second.substr(from, end - from)))
-                    return *t;
+                if (const std::string *t = e->field(tags->second.substr(from, end - from))) {
+                    if (applyAdjective(name, *t, generated))
+                        return;
+                    break; // the first matching tag only; no "@": the fallback follows
+                }
                 from = end + 1;
             }
         }
-    // The first child in element-name order.
     const std::pair<std::string, std::string> *first = &e->fields.front();
     for (const auto &f : e->fields)
         if (f.first < first->first)
             first = &f;
-    return first->second;
+    applyAdjective(name, first->second, generated);
 }
 
 uint32_t u32At(const creatures::ItemRecord &item, size_t at) {
@@ -183,13 +200,8 @@ std::string itemName(const creatures::ItemRecord &item, const Dictionary &d) {
         return word;
     std::string name = fill(pattern, '@', word);
     const uint32_t seed = u32At(item, 0x04);
-    if (seed != 0 && itemRarity(item) <= 4) {
-        const std::string a = adjective(d, adjectiveKey(itemRarity(item), seed), wordKey);
-        if (!a.empty()) {
-            name = fill(a, '@', name);
-            name = fill(name, '#', seedName(seed));
-        }
-    }
+    if (seed != 0 && itemRarity(item) <= 4)
+        adjective(name, d, adjectiveKey(itemRarity(item), seed), wordKey, seedName(seed));
     return name;
 }
 

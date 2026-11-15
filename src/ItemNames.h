@@ -12,7 +12,7 @@ std::string itemKey(uint8_t type, uint8_t subtype);
 std::string materialKey(uint8_t material);
 // §3.1: the name a rarity-3 or rarity-4 item carries for "#".
 std::string seedName(uint32_t seed);
-// §2-§6 (0x598a50): an item's name, UTF-8.
+// §2-§6 (Cube RVA 0x198a50): an item's name, UTF-8.
 std::string itemName(const creatures::ItemRecord &item, const Dictionary &dictionary);
 // §7 and ui spec §8.1.9: what the chat says after "You receive ": "37 Copper", "2 X Mushroom",
 // "Iron Sword +17".
