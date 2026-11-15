@@ -1014,6 +1014,26 @@ int main() {
               }),
               "picking it up gives it back");
         check(!gifts.empty() && gifts[0][0] == 3 && gifts[0][0x0d] == 1, "the gift is the sword");
+        // Server simulation §8 kind 1: drinking a potion is answered by a heal hit from id 0.
+        {
+            creatures::ItemRecord potion{};
+            potion[0] = 1, potion[1] = 1;
+            creatures::setItemLevel(potion, 5);
+            std::array<uint8_t, 300> drink{};
+            std::memcpy(drink.data(), potion.data(), potion.size());
+            drink[0x128] = 1;
+            a.takeHits();
+            a.sendItemRequest(drink);
+            std::optional<Hit> heal;
+            check(waitFor([&] {
+                      for (const Hit &h : a.takeHits())
+                          if (h.target() == a.id() && h.amount() < 0)
+                              heal = h;
+                      return heal.has_value();
+                  }),
+                  "a potion's heal hit reaches the drinker");
+            check(heal && heal->attacker() == 0 && heal->kind() == 0, "the heal hit's attacker id is 0");
+        }
         // Block edits §6: a kind-7 request stamps the slab in front of Alice; its records come
         // in section 1 as the step makes them, and again whole when her zone is asked for.
         CreatureRecord placing = ra;

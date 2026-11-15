@@ -1948,8 +1948,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     else
                         refreshAirships();
                     const auto advancePlayer = [&](int32_t actorElapsed) {
-                        if (!client.connected()) // physics §4.4: hostile/inert creatures push the player
-                            player->body().separate = npcs.pushOnPlayer(player->body());
+                        // Physics §4.4: living creatures of kind 1 or 6 push the player (kind 0), the
+                        // overlap on their box enlarged by (1, 1, 0) unless kind 6, the push scaled by
+                        // their unenlarged x and by 0.1 while the player is stunned.
+                        if (!client.connected()) {
+                            creatures::Body &me = player->body();
+                            const bool stunned = player->combat().hitStun > 0;
+                            me.separate = glm::vec3(0);
+                            for (const creatures::Npc &o : npcs.all())
+                                if (o.fighter.health > 0 && (o.fighter.controller == 1 || o.fighter.controller == 6))
+                                    me.separate += creatures::separationPush(me.size, me.position, o.body.size,
+                                                                             o.fighter.controller != 6, o.body.position, stunned);
+                        }
                         player->body().obstacles = &airships, player->body().key = player->combat().id;
                         player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
                         player->advance(actorElapsed, client.connected());
@@ -2217,12 +2227,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     npcs.setExtraSpawns(zx, zy, zone->spawns.size(),
                                                         missions.zonePass(world, zx, zy, ground, players, worldRandom));
                             missions.discover(world, me);
-                            for (creatures::Npc &n : npcs.npcs()) {
-                                const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
-                                const Missions::Cell *cell = missions.cell(cx, cy);
-                                if ((n.looks.flags & 0x2000) && n.fighter.relations.threats.empty() && cell && cell->mission.state == 2)
-                                    n.fighter.health = 0;
-                            }
+                            npcs.killCompletedMissionTargets(missions);
                             // §7: the saves, of every cell of a region whose pass ran and of changed cells.
                             if (session) {
                                 std::set<std::pair<int32_t, int32_t>> cells = missions.takeChanged();
@@ -3968,7 +3973,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             if (session)
                                 session->clock.day = (uint32_t)scene.day, session->clock.timeOfDayMs = 7 * 3600000u;
                             audio.play("levelup2.wav", 0.75f);
-                            npcs.restAll();
+                            npcs.restAll(view.held());
                             missions.clearGenerated(); // missions §2.1: a new day's missions
                         }
                     }

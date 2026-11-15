@@ -160,12 +160,14 @@ const std::vector<WorldItem> *WorldItems::zone(int32_t zx, int32_t zy) const {
 void WorldItems::replace(int32_t zx, int32_t zy, std::vector<WorldItem> items) { lists[{zx, zy}] = std::move(items); }
 
 void WorldItems::step(int32_t dt, bool offline, const creatures::BlockType &block, const std::function<int()> &draw,
-                      std::vector<creatures::SoundEvent> &sounds) {
+                      std::vector<creatures::SoundEvent> &sounds, const std::set<Key> *active) {
     const auto solid = [&](int64_t x, int64_t y, int64_t z) {
         const uint8_t t = block((int32_t)(x >> 16), (int32_t)(y >> 16), (int32_t)(z >> 16)) & 0x1f;
         return t != 0 && t != 2;
     };
-    for (auto &[key, list] : lists)
+    for (auto &[key, list] : lists) {
+        if (active && !active->count(key))
+            continue;
         for (WorldItem &w : list) {
             // Paintings hang on a neighbouring wall; a later test wins.
             if (creatures::itemType(w.item) == 16) {
@@ -192,6 +194,7 @@ void WorldItems::step(int32_t dt, bool offline, const creatures::BlockType &bloc
                 }
             }
         }
+    }
 }
 
 bool WorldItems::drop(const creatures::ItemRecord &item, glm::dvec3 at, float factor, int32_t day,

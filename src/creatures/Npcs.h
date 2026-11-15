@@ -60,6 +60,9 @@ struct Npc {
     bool fatalRegionApplied = false; // regional service already admitted or rejected this invocation
     bool fatalRecipientsApplied = false; // synchronous cleanup/credit/grants must not replay in the corpse adapter
     bool fatalBackingApplied = false; // backing update was attempted, including rejected indices
+    // Server simulation §3 step 2: killed by the mission pre-pass, which zeroes the death timer
+    // each step; such a corpse never runs the death routine (no sound, loot or credit).
+    bool silentDeath = false;
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
     glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
     InventoryValue inventory;
@@ -285,13 +288,13 @@ class Npcs {
     static uint64_t spawnId(int32_t zx, int32_t zy, size_t index) {
         return (((uint64_t)(uint32_t)zy << 16) + (uint32_t)zx) * 256 + index;
     }
-    // Server §8 kind 2, talk §2.7: a night at the inn removes every NPC and resets the spawns'
-    // countdowns, so they come back from their spawns.
-    void restAll() {
-        list.clear();
-        actors.clear();
-        spawns.clear();
-    }
+    // Server simulation §8 kind 2 (S 0xd7ae0), talk §2.7: a night at the inn deletes every NPC
+    // that is not a pet and whose home spawn is loaded, setting that spawn's countdown to 0, so
+    // it comes back from its spawn. Pets, bombs and creatures without a loaded spawn stay.
+    void restAll(const worldgen::WorldMap &map);
+    // Server simulation §2.1: a zone's spawn objects go with the zone (its countdowns, schedule
+    // positions, mission adjustments and extra spawns); a regenerated zone starts afresh.
+    void forgetZone(int32_t zx, int32_t zy);
     // Missions §3: a zone's extra spawns, after the `base` ones its generator made. The old
     // extras' creatures are removed when `removeCreatures` (the zone pass); a completed
     // mission only drops the spawns (§3.4).
@@ -312,6 +315,10 @@ class Npcs {
     }
     // Missions §2.5 step 1: every mission target (flag 0x2000) whose home zone is in `zones`.
     void removeTargets(const std::set<std::pair<int32_t, int32_t>> &zones);
+    // Server simulation §3 step 2: a mission target (flag 0x2000) with an empty threat map whose
+    // home zone's map cell holds a mission (kind != 0) that is complete gets health 0 and death
+    // timer 0, silently (no death routine runs for it).
+    void killCompletedMissionTargets(const Missions &missions);
     // Called for each creature as it comes alive, before its equipment is made (behaviour
     // §9.2 step 6: a dungeon's creatures take the mission level).
     std::function<void(Npc &)> onActivate;
@@ -372,7 +379,15 @@ class Npcs {
         // snapshots remain shared and immutable; replacement drops this overlay.
         std::weak_ptr<const worldgen::Zone> sourceZone;
         std::unique_ptr<worldgen::Spawn> refreshed;
+        // Server simulation §3 step 7: the spawn's active block (position), overwritten by each
+        // schedule entry whose threshold has come and kept until another one does.
+        std::optional<std::array<int64_t, 3>> scheduled;
     };
+    // Whether spawn `index` of zone (zx, zy) exists in the loaded zone (generated or extra).
+    bool spawnPresent(const worldgen::WorldMap &map, int32_t zx, int32_t zy, size_t index) const;
+    // Server simulation §5.4, §6.3: removed creatures leave every threat map (and with `counts`
+    // every hit-counter map), NPCs' and players' alike.
+    void forgetCreatures(const std::set<uint64_t> &gone, std::span<PlayerView> players, bool counts);
     // §9.2 step 7: one creature of spawn `s` (zone `key`, index `index` among `base` zone
     // spawns) at `p`, added to the list.
     void spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base, uint64_t id,

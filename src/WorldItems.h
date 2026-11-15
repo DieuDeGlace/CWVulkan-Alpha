@@ -62,9 +62,10 @@ class WorldItems {
     std::set<Key> takeChanged() { return std::exchange(changed, {}); }
 
     // §3.1: one step: paintings snap to walls, the timers run, and offline a landing plays its
-    // sound.
+    // sound. With `active` (server simulation §3 step 5), only the items of those zones run,
+    // visited in ascending zone key (engine choice for the native zone-address order).
     void step(int32_t dtMs, bool offline, const creatures::BlockType &block, const std::function<int()> &draw,
-              std::vector<creatures::SoundEvent> &sounds);
+              std::vector<creatures::SoundEvent> &sounds, const std::set<Key> *active = nullptr);
     // §3.2: drops an item at `at` (blocks) with `factor` × 1/14 blocks per voxel; it falls to
     // the first solid block. False when the zone is not loaded (the item is lost).
     bool drop(const creatures::ItemRecord &item, glm::dvec3 at, float factor, int32_t day,

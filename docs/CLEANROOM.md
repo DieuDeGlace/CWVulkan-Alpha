@@ -2709,3 +2709,41 @@ kind-5 reads use the native truncating and read conversions (identical for non-n
 coordinates). Not modelled: the WalkPath radius source and Cube.exe path counterparts; the
 long-list tie order; region +0x04; the second healing effect, the 400 ms effect spawn and the
 " receives " form for others; the native record node layout and palm stamp internals.
+## Provenance re-certification, server simulation and physics/camera (2026-11-15)
+
+Two inherited contracts were re-certified by fresh source-only authors (59 corrections; reversals:
+the region unload routines' roles, NPC AI only with the online flag clear, all four wall probes
+run, the action-54 charge speed window, the step zeroing intent and velocity in attachment
+branches, the map zoom direction and the fallback camera ray; replacement advice and procedures
+removed; no reconstruction consulted) and read whole by two fresh implementers working on
+separate files:
+- `alpha-server-simulation.md` (E1197055...7389)
+- `alpha-physics-camera.md` (3CF792FF...92DF)
+
+Server changes (multiplayer): a healing item raises the server's copy of the player's health and
+its hit carries attacker 0; the inn searches by home spawn in table order (flag 0x80 ends it) and
+rest deletes only non-pet NPCs of loaded spawns and resets their countdowns; a silent kill of a
+mission target uses its home zone's map cell, needs a mission, zeroes the death timer and runs no
+death routine; schedule entries overwrite a persistent active position; despawned and deleted
+creatures are stripped from every threat and hit-counter map; pet revival and the packet-6 pet
+reset clear targets; a new step makes everyone forget dead targets; world items count down only in
+active zones; unloading drops a zone's spawn state and, with no player within fewer than 3 zones,
+saves a region's cells and its "missions generated" flag; fallback mission rewards go to every
+connected player. Active zones are visited in ascending (zx, zy) order (an engine choice for the
+native memory-address order).
+Physics and camera changes (movement feel): box block indexes truncate then go one lower when
+negative; truncating wall-probe columns with the facing-gated corner probes; the action-54 charge
+speed while time < P1 + X; ground slam needs time < duration; intent clears the lens/sitting mode
+and ends actions 83/84; action 81 then 83 with S = 0; dodge cancels actions (not 50/96 in their
+duration); climbing and the ledge shove test the glider flag; a running action clears climb and
+glider; static-object hits take the full axis response; fall damage at the moved position in
+fixed-point stages; the stuck flag needs stun <= 0; kind 6 never in water; boat friction first;
+end-of-step glider and lantern equipment checks, bob decay and the dodge sound for any creature;
+`separationPush` with fixed-point overlap and the unenlarged scale for the player. Camera
+defaults, zoom, smoothing and focus already matched.
+Conflicts reported for rulings: the camera's corner offset (contract +/-0.5, camera-follow contract
++/-0.25), the meaning of mode 0x400 (sitting versus lens), and the map's pan rule.
+Not modelled: the attachment branches; 3x3 static sectors; the listed-screen focus override and
+per-screen orbit; NPC-side copies of the new step outputs (to follow); the second per-region block;
+spawn activation gating for unnamed worlds.
+The private player diagnostic expects the lantern bit cleared without a lantern equipped.

@@ -327,6 +327,9 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
                 if (map.zones().count({zx + i, zy + j}))
                     active.insert({zx + i, zy + j});
     }
+    // Engine choice: native visits the active zones in their objects' memory-address order
+    // (server simulation §3 step 2, unresolved); the engine visits them in ascending (zx, zy),
+    // which fixes the cross-zone order of activation draws.
     for (const auto &key : active) {
         const auto &zone = map.zones().at(key);
         const auto extra = extras.find(key);
@@ -342,6 +345,11 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
             }
             const worldgen::Spawn &s = state.refreshed ? *state.refreshed :
                 i < base ? zone->spawns[i] : extra->second.second[i - base];
+            // Server simulation §3 step 7: schedule entries whose threshold has come overwrite the
+            // active block in list order; the countdown falls without a clamp.
+            for (const worldgen::ScheduleStop &stop : s.schedule)
+                if (timeOfDayMs >= stop.timeMs)
+                    state.scheduled = std::array<int64_t, 3>{stop.x, stop.y, stop.z};
             state.countdownMs -= dtMs;
             if (!activation::inWindow(s.windowStart, s.windowEnd, readClock))
                 continue;
@@ -352,11 +360,7 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
                 state.countdownMs = 0;
             if (state.countdownMs != 0 && state.deathDay == day)
                 continue;
-            std::array<int64_t, 3> position{s.x, s.y, s.z};
-            // Effective descriptor position, retaining its raw coordinates through schedule selection.
-            for (const worldgen::ScheduleStop &stop : s.schedule)
-                if (timeOfDayMs >= stop.timeMs)
-                    position = {stop.x, stop.y, stop.z};
+            const std::array<int64_t, 3> position = state.scheduled.value_or(std::array<int64_t, 3>{s.x, s.y, s.z});
             const bool near = std::any_of(players.begin(), players.end(), [&](const PlayerView &v) {
                 return activation::inRange(v.body.position, position, s.radius);
             });
@@ -463,23 +467,74 @@ void Npcs::trimMissionSpawns(const Combatant &target, const worldgen::WorldMap &
 
 bool Npcs::markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day) {
     const auto &backing = target.backing;
-    if (backing.x < 0 || backing.y < 0 || backing.x >= 65536 || backing.y >= 65536 || backing.index < 0)
-        return false;
-    const auto *zone = map.zone(backing.x, backing.y);
-    if (!zone)
-        return false;
-    size_t count = zone->spawns.size();
-    if (const auto extra = extras.find({backing.x, backing.y}); extra != extras.end()) {
-        if (extra->second.first != count)
-            return false; // invalid engine prefix ownership is outside the retained-vector contract
-        count += extra->second.second.size();
-    }
-    if (size_t(backing.index) >= count)
+    if (backing.x < 0 || backing.y < 0 || backing.x >= 65536 || backing.y >= 65536 || backing.index < 0 ||
+        !spawnPresent(map, backing.x, backing.y, size_t(backing.index)))
         return false;
     auto &state = spawns[{backing.x, backing.y, size_t(backing.index)}];
     state.countdownMs = 1200000;
     state.deathDay = day;
     return true;
+}
+
+void Npcs::killCompletedMissionTargets(const Missions &missions) {
+    for (Npc &n : list) {
+        if (!(n.looks.flags & 0x2000) || !n.fighter.relations.threats.empty())
+            continue;
+        const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
+        const Missions::Cell *cell = missions.cell(cx, cy);
+        if (cell && cell->mission.kind != 0 && cell->mission.state == 2) {
+            n.fighter.health = 0;
+            n.deadMs = 0;
+            n.silentDeath = true;
+        }
+    }
+}
+
+bool Npcs::spawnPresent(const worldgen::WorldMap &map, int32_t zx, int32_t zy, size_t index) const {
+    const auto *zone = map.zone(zx, zy);
+    if (!zone)
+        return false;
+    size_t count = zone->spawns.size();
+    if (const auto extra = extras.find({zx, zy}); extra != extras.end()) {
+        if (extra->second.first != count)
+            return false; // invalid engine prefix ownership is outside the retained-vector contract
+        count += extra->second.second.size();
+    }
+    return index < count;
+}
+
+void Npcs::restAll(const worldgen::WorldMap &map) {
+    std::erase_if(list, [&](const Npc &n) {
+        if (n.fighter.controller == 5 || n.spawn == Npc::NO_SPAWN ||
+            !spawnPresent(map, n.zone.first, n.zone.second, n.spawn))
+            return false;
+        spawns[{n.zone.first, n.zone.second, n.spawn}].countdownMs = 0;
+        return true;
+    });
+    actors.clear(); // (rebuilt by the next step)
+}
+
+void Npcs::forgetZone(int32_t zx, int32_t zy) {
+    for (auto it = spawns.lower_bound({zx, zy, 0}); it != spawns.end() && std::get<0>(it->first) == zx &&
+                                                    std::get<1>(it->first) == zy;)
+        it = spawns.erase(it);
+    extras.erase({zx, zy});
+}
+
+void Npcs::forgetCreatures(const std::set<uint64_t> &gone, std::span<PlayerView> players, bool counts) {
+    if (gone.empty())
+        return;
+    const auto strip = [&](Relations &r) {
+        for (const uint64_t id : gone) {
+            r.threats.erase(id);
+            if (counts)
+                r.counts.erase(id);
+        }
+    };
+    for (Npc &n : list)
+        strip(n.fighter.relations);
+    for (PlayerView &p : players)
+        strip(p.fighter.relations);
 }
 
 uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
@@ -2317,7 +2372,15 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         const double r = n.despawnRadius + 20.0;
         return m > r * r;
     };
-    list.erase(std::remove_if(list.begin(), list.end(), despawns), list.end());
+    // Listed NPCs leave every creature's threat map, then are deleted.
+    std::set<uint64_t> despawned;
+    for (const Npc &n : list)
+        if (despawns(n))
+            despawned.insert(n.fighter.id);
+    if (!despawned.empty()) {
+        std::erase_if(list, despawns);
+        forgetCreatures(despawned, players, false);
+    }
     // Quests: a freed prisoner is gone after its minute.
     for (Npc &n : list)
         if (n.leaveMs >= 0 && (n.leaveMs -= dtMs) < 0)
@@ -2524,6 +2587,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     // §9.4, §12.3, server §6.2: deaths. At the moment of death the spawn's countdown starts and
     // every player in the threat map is credited (hostile creatures only); the body is
     // removed 1000 ms later.
+    std::set<uint64_t> removed;
     for (auto it = list.begin(); it != list.end();) {
         Npc &n = *it;
         if (n.fighter.health > 0) {
@@ -2547,6 +2611,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                     n.fighter.health = maxHealth(n.fighter);
                     n.body.place(p.body.blocks());
                     n.target = 0;
+                    n.fighter.relations.contact = 0; // server simulation §6.3: target cleared
                     n.fighter.relations.threats.clear();
                     p.fighter.relations.counts.clear();
                     n.deadMs = 0;
@@ -2554,7 +2619,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             ++it;
             continue;
         }
-        if (n.deadMs == 0) {
+        if (n.deadMs == 0 && !n.silentDeath) {
             n.fighter.health = 0;
             if (!n.fatalBackingApplied && n.spawn != Npc::NO_SPAWN) {
                 SpawnState &state = spawns[{n.zone.first, n.zone.second, n.spawn}];
@@ -2606,7 +2671,32 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         n.body.intent = glm::vec3(0);
         n.body.obstacles = obstacles, n.body.key = n.fighter.id;
         worldStep(n.body, (int32_t)dtMs, block, objects);
-        it = n.deadMs >= 1000 ? list.erase(it) : std::next(it);
+        if (n.deadMs >= 1000) {
+            removed.insert(n.fighter.id);
+            it = list.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    // Server simulation §6.3: a removed corpse leaves every threat and hit-counter map.
+    forgetCreatures(removed, players, true);
+
+    // Server simulation §3 step 14: a creature whose target (+0x11d0) names a creature with
+    // health <= 0 forgets it.
+    std::set<uint64_t> dead;
+    for (const Npc &n : list)
+        if (n.fighter.health <= 0)
+            dead.insert(n.fighter.id);
+    for (const PlayerView &p : players)
+        if (p.fighter.health <= 0)
+            dead.insert(p.fighter.id);
+    if (!dead.empty()) {
+        for (Npc &n : list)
+            if (dead.count(n.fighter.relations.contact))
+                n.fighter.relations.contact = 0;
+        for (PlayerView &p : players)
+            if (dead.count(p.fighter.relations.contact))
+                p.fighter.relations.contact = 0;
     }
 }
 

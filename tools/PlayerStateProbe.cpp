@@ -54,7 +54,9 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
     require(actor.mode == 0xa660 && body.mode == actor.mode,
             "Input lost copied flags or retained stale climb state");
     player.advance(20);
-    require(actor.mode == 0xa660 && body.mode == actor.mode, "Physics lost copied mode flags");
+    // Physics-camera contract, end of step: without a lantern equipped the step clears the
+    // lantern bit 0x200; every other copied flag survives.
+    require(actor.mode == 0xa460 && body.mode == actor.mode, "Physics lost copied mode flags");
 
     actor.mode = 0x5a00;
     player.readInput(window, 20, false, nullptr, &noMouse);
@@ -79,9 +81,10 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
     actor.mode = 0xa671;
     actor.hitStun = 100;
     player.advance(20);
-    require(actor.mode == 0xa660 && body.mode == actor.mode, "Stun left the two production views inconsistent");
+    // Stun clears climb and glider; with no lantern equipped the step also clears 0x200.
+    require(actor.mode == 0xa460 && body.mode == actor.mode, "Stun left the two production views inconsistent");
     player.advance(20);
-    require(actor.mode == 0xa660 && body.mode == actor.mode, "The next piece revived cleared movement flags");
+    require(actor.mode == 0xa460 && body.mode == actor.mode, "The next piece revived cleared movement flags");
     std::array<creatures::ItemRecord, creatures::SLOT_COUNT> ownedEquipment{};
     for (size_t slot = 0; slot < ownedEquipment.size(); slot++) {
         auto &item = ownedEquipment[slot];

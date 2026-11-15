@@ -231,7 +231,10 @@ void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
 }
 
 void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
-    owner.relations.counts.clear(); // §13 step 2: the pet's Combat has nothing left to fight
+    // §13 step 2, server simulation §8 kind 8: the player's hit-counter map and target are
+    // cleared, so the pet's Combat has nothing left to fight.
+    owner.relations.counts.clear();
+    owner.relations.contact = 0;
     if (Npc *pet = findNpc(owner.linkedId); pet && pet->fighter.controller == 5 && pet->fighter.ownerId == owner.id) {
         pet->fighter.relations.threats.clear();
         pet->target = 0;

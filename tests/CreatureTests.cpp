@@ -1,5 +1,6 @@
 // Checks the creature code against the worked examples and test vectors of
 // docs/specs/alpha-creatures-models.md and alpha-physics-camera.md.
+#include "GameOptions.h"
 #include "ItemNames.h"
 #include "Loot.h"
 #include "Quests.h"
@@ -1367,6 +1368,141 @@ int main() {
             for (int i = 0; i < 200 && !(b.contact & ON_GROUND); i++)
                 step(b, 16, floor);
             same(b.fallHurt, 0.25, "30-block fall (stopped up to a substep above the floor)", 2e-2);
+            // §4.2: the damage scales by the maximum health; the landing sound is any creature's.
+            Body heavy;
+            heavy.place({0.5, 0.5, 1 + 30 + 1.08 + 0.01});
+            heavy.local = true;
+            heavy.maxHealth = 200;
+            Body other = heavy;
+            other.local = false;
+            for (int i = 0; i < 200 && !(heavy.contact & ON_GROUND); i++)
+                step(heavy, 16, floor), step(other, 16, floor);
+            same(heavy.fallHurt, 50, "30-block fall takes a quarter of 200", 4);
+            same(other.fallHurt == 0 && other.thudded, 1, "a non-local creature thuds but takes no fall damage");
+        }
+        // Re-certified physics regressions.
+        {
+            // §0: the box conversion truncates, then goes one lower when negative.
+            same(boxBlock(0), 0, "box block of 0");
+            same(boxBlock(65536), 1, "box block of 1.0");
+            same(boxBlock(-1), -1, "box block just below 0");
+            same(boxBlock(-65536), -2, "box block of exactly -1.0 goes one lower");
+            // §3.2 (reversal): action 54 charges at 40 only before P1 + X.
+            const auto charged = [&](float ms) {
+                Body b;
+                b.place({0.5, 0.5, 100});
+                b.action = 54, b.actionMs = ms, b.windUpMs = 400, b.activeMs = 100, b.durationMs = 420;
+                b.velocity = {30, 0, 0};
+                step(b, 16, air);
+                return b;
+            };
+            same(charged(0).velocity.x, 30, "action 54 before P1 + X: S = 40", 1e-4);
+            same(charged(600).velocity.x, 6, "action 54 after P1 + X: S = 6", 1e-4);
+            // §2 item 2: the slam needs time < duration as well.
+            same(charged(450).velocity.z > -1, 1, "no slam past the duration");
+            Body slam = charged(-1);
+            slam.action = 54, slam.actionMs = 450, slam.durationMs = 1000;
+            step(slam, 16, air);
+            same(slam.velocity.z, -60 - 0.48, "slam inside P1 < time < duration, time < P1 + X", 1e-3);
+            // §5.4 (reversal): all four axis probes run; N may be diagonal.
+            {
+                auto walls = [](int32_t x, int32_t y, int32_t) -> uint8_t { return x >= 2 || y < 1 ? 1 : 0; };
+                Body b;
+                b.place({1.5, 1.5, 100});
+                step(b, 16, walls);
+                same(b.wallNormal.x == -1 && b.wallNormal.y == 1 && (b.contact & ON_WALL), 1, "diagonal N (-1, +1)");
+            }
+            // §5.4: the probe columns truncate toward zero (-1.18 is column -1, not -2).
+            {
+                auto distant = [](int32_t x, int32_t, int32_t) -> uint8_t { return x == -2 ? 1 : 0; };
+                Body b;
+                b.place({-0.5, 0.5, 100});
+                step(b, 16, distant);
+                same((b.contact & ON_WALL) != 0, 0, "truncating probe columns miss block -2");
+            }
+            // §5.4: with no axis hit, the corner columns the creature faces.
+            {
+                auto post = [](int32_t x, int32_t y, int32_t) -> uint8_t { return x == 1 && y == 1 ? 1 : 0; };
+                Body b;
+                b.place({0.5, 0.5, 100});
+                b.yaw = 0; // facing +y
+                step(b, 16, post);
+                same(b.wallNormal.x == -1 && b.wallNormal.y == -1 && (b.contact & ON_WALL), 1, "corner probe N (-1, -1)");
+                Body away;
+                away.place({0.5, 0.5, 100});
+                away.yaw = 180; // facing -y: the (+, +) corner is behind
+                step(away, 16, post);
+                same((away.contact & ON_WALL) != 0, 0, "no corner probe behind the creature");
+            }
+            // §4.4: overlap is max >= min on one side and min < max on the other; the push scales
+            // by the other's unenlarged x; a zero-length u is skipped.
+            {
+                const glm::vec3 box(1, 1, 2);
+                const int64_t me[3] = {0, 0, 0};
+                const int64_t right[3] = {3 * 32768, 0, 0}, left[3] = {-3 * 32768, 0, 0};
+                same(separationPush(box, me, box, true, right, false).x, -5, "touching at my max: pushed by 5 x 1/1");
+                same(separationPush(box, me, box, true, left, false).x, 0, "touching at my min: no overlap");
+                same(separationPush(box, me, glm::vec3(0.5f, 1, 2), true, me, false).x, 0, "zero-length u skipped");
+                const int64_t close[3] = {32768, 0, 0};
+                same(separationPush(box, me, glm::vec3(0.5f, 1, 2), true, close, true).x, -0.25, "unenlarged 0.5, stunned 0.1",
+                     1e-6);
+            }
+            // §2 item 4: intent ends sitting and the lens mode; §3.2: a dodge cancels the action
+            // except a dodge attack within its duration; action 81 stands, then becomes 83.
+            {
+                Body sit;
+                sit.place({0.5, 0.5, 100});
+                sit.action = 83, sit.mode = LENS, sit.intent = {80, 0, 0};
+                step(sit, 16, air);
+                same(sit.action == 0 && !(sit.mode & LENS), 1, "intent ends sitting and mode 0x400");
+                Body roll;
+                roll.place({0.5, 0.5, 100});
+                roll.action = 3, roll.actionMs = 300, roll.dodgeMs = 300;
+                step(roll, 16, air);
+                same(roll.action, 0, "a dodge cancels a swing");
+                roll.action = 50, roll.actionMs = 300, roll.durationMs = 800, roll.dodgeMs = 300;
+                step(roll, 16, air);
+                same(roll.action, 50, "a dodge attack within its duration stays");
+                Body eat;
+                eat.place({0.5, 0.5, 100});
+                eat.action = 81, eat.actionMs = 500, eat.useLimitMs = 1000;
+                eat.velocity = {5, 0, 0};
+                step(eat, 16, air);
+                same(eat.velocity.x == 0 && eat.action == 81, 1, "eating: S = 0 within the use length");
+                eat.actionMs = 1500;
+                step(eat, 16, air);
+                same(eat.action, 83, "eating past the use length becomes 83");
+            }
+            // §2 item 12: a running action lets go of the wall; item 18.2: the equipment checks.
+            {
+                Body b;
+                b.place({0.5, 0.5, 100});
+                b.mode = CLIMB | LANTERN;
+                b.action = 3, b.actionMs = 300, b.durationMs = 600;
+                b.lanternEquipped = false;
+                step(b, 16, air);
+                same((b.mode & (CLIMB | LANTERN)) != 0, 0, "running action clears 0x01; no lantern clears 0x200");
+                Body g;
+                g.place({0.5, 0.5, 100});
+                g.mode = GLIDER;
+                g.skills[3] = 1;
+                g.gliderEquipped = false;
+                step(g, 16, air);
+                same((g.mode & GLIDER) != 0, 0, "no glider equipped clears 0x10");
+            }
+            // §5.1: controller kind 6 is never in water; §5.3: type 101 pitches up in action 51.
+            {
+                Body bomb;
+                bomb.place({0.5, 0.5, 5});
+                bomb.controller = 6;
+                step(bomb, 16, sea);
+                same((bomb.contact & IN_WATER) != 0, 0, "kind 6 never in water");
+                Body flyer;
+                flyer.place({0.5, 0.5, 100});
+                flyer.type = 101, flyer.action = 51, flyer.actionMs = 100;
+                step(flyer, 16, air);
+                same(flyer.swimPitch > 0, 1, "type 101 pitches toward 60 in action 51");
+            }
         }
     }
 
@@ -1381,6 +1517,21 @@ int main() {
         same(d.z, -0.5, "camera d.z", 1e-6);
         c.look(40, 0);
         same(c.targetYaw, -10, "40 counts turn 10 degrees");
+        // Re-certified §7.1: the built-in defaults cameraSpeed 50, cameraSmoothness 80 and
+        // minTimeStep 9; §7.3: k at 80 is 0.014427; the map zoom divides by 0.9 on wheel up.
+        const GameOptions options;
+        same(c.options.speed == 50 && c.options.smoothness == 80, 1, "camera option defaults 50 and 80");
+        same(options[GameOptions::CAMERA_SMOOTHNESS] == 80 && options[GameOptions::MIN_TIME_STEP] == 9, 1,
+             "options.cfg defaults: smoothness 80, minTimeStep 9");
+        camera_follow::State s;
+        s.targetAngles = {1, 0, 0};
+        camera_follow::smooth(s, 1, 80);
+        same(s.angles[0], 0.014427, "smoothness 80: one millisecond moves k = 0.014427", 2e-6);
+        s.targetScale = 1;
+        camera_follow::wheel(s, 1, true);
+        same(s.targetScale, 1 / 0.9, "map zoom: wheel up divides by 0.9", 1e-6);
+        camera_follow::wheel(s, -1, true);
+        same(s.targetScale, 1, "map zoom: wheel down multiplies by 0.9", 1e-6);
     }
 
     // Behaviour §4.1, §8.4: a level 1 player warrior (health multiplier 100) has 260 health.
@@ -2377,9 +2528,12 @@ int main() {
         const double gap = pet ? glm::length(glm::dvec2(pet->body.blocks() - body.blocks())) : 99;
         same(gap < 4.5, 1, "it follows to within 4 blocks");
         body.place({300.5, 30.5, 1 + 1.08 + 0.01});
+        me.relations.contact = 77, me.relations.counts[77] = 1;
         npcs.callPet(me, body.blocks());
         pet = npcs.petOf(me);
         same(pet && glm::length(glm::dvec2(pet->body.blocks() - body.blocks())) < 0.01, 1, "T brings it from 270 blocks");
+        same(me.relations.contact == 0 && me.relations.counts.empty(), 1,
+             "server simulation §8 kind 8: the reset clears the player's target and hit-counter map");
         npcs.npcs()[0].fighter.health = 0;
         for (int i = 0; i < 1300; i++) // 20.8 s
             step();
@@ -2529,6 +2683,89 @@ int main() {
         npcs.npcs()[0].target = 0;
         step(16);
         same(npcs.all().empty(), 1, "despawned beyond 220 blocks");
+    }
+
+    // Server simulation §2.1, §3 steps 2, 7, 14, §5.4, §6.3, §8 kind 2: spawn-object state, the
+    // inn rest, removal from threat maps, target clean-up and the silent mission-target kill.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 300ll << 16, s.y = 10ll << 16, s.z = 10ll << 16;
+        s.type = 2;
+        s.controller = 3;
+        // §3 step 7: the 10:00 entry overwrites the active block (300, 230).
+        s.schedule = {{300ll << 16, 230ll << 16, 10ll << 16, 10 * 3600000}};
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto flat = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 10 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        const auto at = [&](double x, double y) { body.place({x, y, 10 + 1.08 + 0.01}); };
+        Npcs npcs;
+        const auto step = [&](double time, int32_t day = 0) {
+            return npcs.step(16, map, {{me, body, 0, me.actionMs}}, time, day, flat);
+        };
+        const double night = 1 * 3600000.0;
+        at(500, 120); // in the zone, beyond 200 blocks of both positions
+        step(11 * 3600000.0);
+        same(npcs.all().empty(), 1, "nobody near the scheduled position at 11:00");
+        at(300, 240); // within 200 of the scheduled position, 230 from the raw one
+        step(night);
+        same(npcs.all().size() == 1 && std::abs(npcs.all()[0].home.y - 230) < 0.01, 1,
+             "after midnight the spawn keeps its last scheduled active block");
+        const uint64_t id = Npcs::spawnId(1, 0, 0);
+
+        // §8 kind 2: the inn deletes spawn NPCs (their countdown set to 0) and keeps a bomb.
+        npcs.markFatalBacking(npcs.all()[0].fighter, map, 0); // countdown 1,200,000, died today
+        const uint64_t bomb = npcs.placeBomb(body.blocks() + glm::dvec3(5, 0, 0), 1);
+        npcs.restAll(map);
+        same(npcs.all().size() == 1 && npcs.all()[0].fighter.id == bomb, 1, "the rest deletes the spawn NPC only");
+        npcs.npcs().clear(); // (the bomb is not under test)
+        step(night);
+        same(npcs.all().size(), 1, "its countdown was reset, so it comes back the same day");
+
+        // §3 step 14: a player whose target names a dead creature forgets it.
+        me.relations.contact = id;
+        npcs.npcs()[0].fighter.health = 0;
+        step(night);
+        same(me.relations.contact, 0, "the target naming a dead creature is cleared");
+        // §6.3: the removed corpse leaves the player's threat and hit-counter maps.
+        me.relations.threats[id] = 3, me.relations.counts[id] = 1;
+        for (int i = 0; i < 70 && !npcs.all().empty(); i++)
+            step(night);
+        same(npcs.all().empty() && !me.relations.threats.count(id) && !me.relations.counts.count(id), 1,
+             "a deleted corpse is stripped from every threat and hit-counter map");
+
+        // §5.4: a despawned NPC leaves the player's threat map (its hit counter stays).
+        step(night, 1); // (the next day: back from its spawn)
+        same(npcs.all().size(), 1, "back the next day");
+        me.relations.threats[id] = 2, me.relations.counts[id] = 4;
+        at(300, 500); // beyond 220 blocks; the 3 x 3 round zone (1, 1) still holds (1, 0)
+        step(night, 1);
+        same(npcs.all().empty() && !me.relations.threats.count(id) && me.relations.counts.count(id), 1,
+             "despawn strips threat maps only");
+
+        // §3 step 2: a completed mission's target nobody fights dies silently and stays a corpse.
+        at(300, 240);
+        step(night, 1);
+        same(npcs.all().size(), 1, "the creature is back");
+        Missions missions;
+        missions.edit(0, 0).mission.kind = 1;
+        missions.edit(0, 0).mission.state = 2;
+        npcs.npcs()[0].looks.flags |= 0x2000;
+        npcs.npcs()[0].fighter.relations.threats.clear();
+        bool routine = false;
+        for (int i = 0; i < 100; i++) {
+            npcs.killCompletedMissionTargets(missions);
+            const NpcFrame f = step(night, 1);
+            routine |= !f.deaths.empty() || !f.kills.empty() ||
+                       std::any_of(f.sounds.begin(), f.sounds.end(), [](const SoundEvent &e) { return e.sound == 27; });
+        }
+        same(npcs.all().size() == 1 && npcs.all()[0].fighter.health == 0 && !routine, 1,
+             "no death routine runs and the zeroed timer keeps the corpse");
     }
 
     // Hostility test §2.4: identity, role 6, one role 1, differing exemption, toggle bit 0x20.

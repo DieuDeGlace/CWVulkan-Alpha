@@ -5,9 +5,13 @@
 // ground and step-down (§5), and friction (§6). Travel (docs/specs/alpha-travel.md): the
 // glider and its wind, sailing, riding, climbing and fall damage, with the skills' factors.
 //
-// Creature separation (§4.4) and static objects (§4.5) are in, given by the caller.
+// Creature separation (§4.4), static objects and voxel objects (§4.5) are in, given by the
+// caller.
 //
-// Not in yet: voxel objects (§4.5).
+// Not in yet: the attachment branches (§2 item 17, obj +0x11c0), the static-object 3 x 3
+// sector restriction and the first-sector-only scan after a z cell hit (§4.1, §4.5; the
+// caller's ObjectTest scans zones), the debug speed (S = 20) and the dodge-cancel exception
+// bytes (§3.2, unresolved).
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -33,6 +37,8 @@ enum Mode : uint32_t {
     GLIDER = 0x10, // the glider is open
     AIMING = 0x04, // facing its look vector (a fighter in range)
     RUN = 0x40,    // normal speed ×2 (Left Shift not held); while gliding, the lift (Space)
+    LANTERN = 0x200, // physics §2 item 18.2: cleared unless the lantern is equipped
+    LENS = 0x400,    // physics §2 item 4, §7.4: cleared by any intent (the 30° field of view)
 };
 
 // Travel §0: a skill's factor v(n) = 1 − 1/(0.1·n + 1).
@@ -89,6 +95,15 @@ struct Body {
     uint16_t appearanceFlags = 0;
     float actionMs = 0, windUpMs = 0, activeMs = 0, durationMs = 0; // the action's time, P1, X (P2), duration
     float haste = 1; // the haste buff's factor (buff kind 12), 1 without it
+    // §3.2 sneak: a non-player's skill when its own is 0 (obj +0x190 / 2 + tier + 1).
+    int32_t skillFallback = 0;
+    // §3.2 action 81: the use length (RVA 0xc6b80 on obj +0x1e8); negative when not supplied,
+    // which leaves the rule out.
+    float useLimitMs = -1;
+    // §2 item 18.2: equipment byte +0xf08/+0xf09 holds the glider (0x17, 0) and +0xdf0 the
+    // lantern (0x18). Callers that do not supply them keep the modes.
+    bool gliderEquipped = true, lanternEquipped = true;
+    float maxHealth = 1; // §4.2 fall damage scale (1: fallHurt is a share of maximum health)
     bool targetInContact = false; // §3.3: a hostile creature within contact range (the caller's test)
     bool slowed = false, hastened = false; // §3.2: record fields 18 and 19 running
     glm::vec3 look{0}; // record field 26: where it aims, used while mode 0x04 is set
@@ -100,10 +115,11 @@ struct Body {
 
     // What the step did, for the game to act on; the game clears them.
     bool crashed = false; // travel §3.6: the glider crashed (stun 1500 ms, sound 23)
-    float fallHurt = 0;   // travel §8: the share of maximum health a landing took
+    float fallHurt = 0;   // §4.2 step 2: the local player's fall damage (× maxHealth)
     bool splashed = false; // §5.3: water entered falling faster than 3 blocks/s (a splash, sound 31)
-    bool thudded = false;  // §4.2 step 1: the local player landed faster than 2 blocks/s (sound 32)
-    bool rolled = false;   // §2 step 15: the local player's dodge passed 500 ms left (sound 26)
+    // §4.2 step 1, §2 item 18.5: any creature; the sound plays only when a local player exists.
+    bool thudded = false;  // landed faster than 2 blocks/s (sound 32)
+    bool rolled = false;   // the dodge passed 500 ms left (sound 26)
 
     glm::dvec3 blocks() const {
         return glm::dvec3((double)position[0], (double)position[1], (double)position[2]) / 65536.0;
@@ -125,8 +141,13 @@ bool lunges(int32_t action, float ms);
 // §3.3 (0x5a7b50): whether a creature with box `size` at `self` is in contact range of another.
 bool inContact(glm::vec3 size, glm::dvec3 self, glm::vec3 other, glm::dvec3 them);
 
-// §4.4: how fast (blocks per second) a creature with box `size` at `self` is pushed away from
-// another at `them` whose box `other` (already enlarged as the rule says) overlaps it.
+// §4.4: how fast (blocks per second) a creature with box `size` at `self` (raw) is pushed away
+// from another at `them` (raw) with box `other`. The overlap uses the other box enlarged by
+// (1, 1, 0) when `enlarge` (every kind but 6); the push scales by the unenlarged other.x.
+glm::vec3 separationPush(glm::vec3 size, const int64_t self[3], glm::vec3 other, bool enlarge, const int64_t them[3],
+                         bool stunned);
+// Older form taking the other box already enlarged; the overlap test is the same, but the push
+// scales by the enlarged x (callers should move to separationPush).
 glm::vec3 separation(glm::vec3 size, glm::vec3 other, glm::dvec3 self, glm::dvec3 them, bool stunned);
 
 // Physics §3.5 / travel §2.1: gliding in the physics sense (mode 0x10, falling, in the air,
@@ -161,5 +182,8 @@ void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &ob
 
 // §1 test helper: the pieces a frame is cut into.
 std::vector<int32_t> stepPieces(int32_t dtMs);
+// §0: the box conversion of a fixed coordinate to a block index: truncate toward zero, then
+// one less when negative (so an exact negative multiple of 65536 goes one block lower).
+int32_t boxBlock(int64_t fixed);
 
 } // namespace creatures

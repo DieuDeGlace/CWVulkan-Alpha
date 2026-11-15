@@ -266,11 +266,20 @@ void Player::advance(int32_t dt, bool replica) {
         state.durationMs = (float)duration(fighter, fighter.action);
         state.haste = fighter.hasBuff(12) ? 1 + skillFactor(fighter.skills[8]) : 1.f;
         state.slowed = fighter.slowMs > 0, state.hastened = fighter.hasteMs > 0;
+        // Physics §3.2 action 81: the use length of the held item, as item names §9 (and the
+        // heal ticks) read it: a life potion 3 s, other food 10 s; no length otherwise.
+        state.useLimitMs = fighter.held.type == 1 ? (fighter.held.subtype == 1 ? 3000.f : 10000.f) : -1.f;
     }
+    // Physics §2 item 18.2: the glider (Special slot, type 23 subtype 0) and the lantern (slot 10,
+    // type 24) must be equipped to keep their modes.
+    state.gliderEquipped = fighter.equipment[11].type == 23 && fighter.equipment[11].subtype == 0;
+    state.lanternEquipped = fighter.equipment[10].type == 24;
+    state.maxHealth = maxHealth(fighter);
     state.stunMs = fighter.hitStun;
     state.yaw = yaw;
     if (dt > 0)
         worldStep(state, dt, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, objects);
+    yaw = state.yaw; // physics §3.3: the spin (action 72) turns the creature
     const auto u = [&] { return (float)random.draw() / 32767.f; };
     if (std::exchange(state.thudded, false)) // physics §4.2 step 1
         abilityEffects.placed.push_back({state.blocks(), 32, 1 + 0.2f * u(), 0.5f});
@@ -280,15 +289,18 @@ void Player::advance(int32_t dt, bool replica) {
         abilityEffects.bursts.push_back(splashBurst(state.blocks()));
         abilityEffects.sounds.push_back(31);
     }
-    if (state.action == 0 && (fighter.action == 106 || fighter.action == 107))
-        fighter.action = 0, fighter.actionMs = 0; // the step ended the ride or the voyage
-    // Travel §3.2: the glider folds when the Special slot no longer holds it (type 23 subtype 0).
-    if (fighter.equipment[11].type != 23 || fighter.equipment[11].subtype != 0)
-        state.mode &= ~GLIDER;
-    // Travel §3.6, §8: a crash sets the stun to 1500 ms and a hard landing raises it to at least
-    // that (controller kind 0), each with sound 23; the landing also hurts.
+    // Physics §2, §3.2: the step ends or changes the action (the ride, the voyage, sitting on any
+    // intent, eating into sitting, a dodge). Ending the ride or the voyage also clears its clock.
+    if (state.action != fighter.action) {
+        if (state.action == 0 && (fighter.action == 106 || fighter.action == 107))
+            fighter.actionMs = 0;
+        fighter.action = state.action;
+    }
+    // Travel §3.6, physics §4.2: a crash sets the stun to 1500 ms and a hard landing raises it
+    // to at least that (controller kind 0), each with sound 23; the landing also hurts, health
+    // clamped at 0.
     if (state.crashed || state.fallHurt > 0) {
-        fighter.health -= state.fallHurt * maxHealth(fighter);
+        fighter.health = std::max(0.f, fighter.health - state.fallHurt);
         if (state.crashed)
             fighter.hitStun = 1500;
         if (state.fallHurt > 0)

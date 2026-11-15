@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-15; 218 tracked contracts, local ignored variants excluded): 130 A, 61 B, 22 C (19178 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-16; 218 tracked contracts, local ignored variants excluded): 132 A, 61 B, 20 C (18005 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -71,7 +71,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 `alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`); `alpha-net-packets.md` and `alpha-skills.md`
 (plus the ruling `alpha-rulings-knockback-snap.md`); `alpha-travel.md`, `alpha-particles.md`,
 `alpha-crafting.md`, `alpha-open-points-3.md` (plus the ruling `alpha-rulings-walk-flag-pitch.md`); `alpha-path-search.md`, `alpha-worldgen-locations.md`,
-`alpha-item-names.md` and `alpha-worldgen-trees.md`.
+`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -207,7 +207,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-periodic-hit-application-details.md` | B | 98 | 2 |
 | `alpha-periodic-hit-producer-state.md` | A | 127 | 2 |
 | `alpha-pets-bombs.md` | C | 781 | 2 |
-| `alpha-physics-camera.md` | C | 592 | 0 |
+| `alpha-physics-camera.md` | A | 944 | 0 |
 | `alpha-player-control.md` | A | 406 | 0 |
 | `alpha-pose-owner-inputs.md` | A | 212 | 1 |
 | `alpha-pose-selectors-01-18.md` | A | 360 | 0 |
@@ -235,7 +235,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
 | `alpha-server-hit-record-routing.md` | B | 77 | 1 |
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
-| `alpha-server-simulation.md` | C | 581 | 1 |
+| `alpha-server-simulation.md` | A | 732 | 0 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
 | `alpha-skills.md` | A | 624 | 0 |
 | `alpha-spatial-association-producers.md` | A | 94 | 1 |

@@ -120,6 +120,14 @@ class Missions {
     // §2.1: whether region (rx, ry)'s pass has run today; midnight and inn rests clear all.
     bool generated(int32_t rx, int32_t ry) const { return done.count({rx, ry}) != 0; }
     void clearGenerated() { done.clear(); }
+    // Server simulation §2.1 (S 0xd7960): a dropped region's cells and "missions generated" flag
+    // are deleted (the caller saves them first).
+    void forgetRegion(int32_t rx, int32_t ry) {
+        std::erase_if(cells, [&](const auto &entry) {
+            return worldgen::floorDiv(entry.first.first, 8) == rx && worldgen::floorDiv(entry.first.second, 8) == ry;
+        });
+        done.erase({rx, ry});
+    }
     // §2.3 - §2.6 (without the zone pass, which the caller runs for the loaded zones): the
     // day's monsters and missions of region (rx, ry). Every cell whose mission changed is
     // listed for section 13 (takeChanged).

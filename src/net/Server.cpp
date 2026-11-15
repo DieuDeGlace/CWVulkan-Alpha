@@ -8,6 +8,7 @@
 #include "worldgen/Regions.h"
 #include <algorithm>
 #include <bit>
+#include <cstdlib>
 #include <cstring>
 #include <set>
 
@@ -787,6 +788,28 @@ void Server::unloadDistantZones(const std::vector<std::pair<int32_t, int32_t>> &
         statics.forget(key.first, key.second);
         edits.forget(key.first, key.second);
         placedObjects.erase(key);
+        npcs.forgetZone(key.first, key.second); // the zone's spawn objects go with it
+    }
+    // Simulation §2.1 (S 0xd7960): a region no player zone's region is within 2 of on both axes
+    // has its map cells saved (`mission`, `monster`) and is dropped with its "missions generated"
+    // flag. (The second per-region block of S 0xd78e0 has no engine counterpart.)
+    const auto nearRegion = [&](const std::pair<int32_t, int32_t> &region) {
+        return std::any_of(requests.begin(), requests.end(), [&](const auto &p) {
+            return std::abs(p.first / 64 - region.first) < 3 && std::abs(p.second / 64 - region.second) < 3;
+        });
+    };
+    for (auto region = missionRegionsRead.begin(); region != missionRegionsRead.end();) {
+        if (nearRegion(*region)) {
+            ++region;
+            continue;
+        }
+        const auto [rx, ry] = *region;
+        std::set<std::pair<int32_t, int32_t>> cells;
+        for (int32_t k = 0; k < 64; k++)
+            cells.insert({8 * rx + k / 8, 8 * ry + k % 8});
+        saveMissionCells(cells);
+        missions.forgetRegion(rx, ry);
+        region = missionRegionsRead.erase(region);
     }
 }
 
@@ -908,9 +931,21 @@ void Server::stepWorld(float dtMs) {
                 if (creatures::itemType(item) == 1 && creatures::itemSubtype(item) == 7) {
                     npcs.placeBomb(at, creatures::itemLevel(item));
                 } else {
+                    // The server's copy of the player's health rises by the healing value (held to
+                    // the maximum by the step's clamp); the client is told by a hit from id 0.
                     const float heal = creatures::itemHeal(creatures::Item::parse(item.data()));
+                    const float healed = std::min(c->creature.health() + heal, creatures::maxHealth(c->creature.fighter()));
+                    c->creature.setHealth(healed);
+                    for (size_t k = 0; k < who.size(); k++)
+                        if (who[k] == c)
+                            fighters[k].health = healed;
                     itemSounds.push_back({at, 44, 1, 1}); // drink2.wav
-                    healHits.push_back(Hit::make(id, id, -heal, 0, glm::vec3(0), 0));
+                    creatures::HitRecord record;
+                    record.attacker = 0;
+                    record.target = id;
+                    record.amount = -heal;
+                    record.position = recordPosition(c->creature);
+                    healHits.push_back(Hit::from(record));
                 }
                 break;
             case 2: { // §8 kind 2: talking to an innkeeper at night rests the world to 7:00
@@ -921,15 +956,32 @@ void Server::stepWorld(float dtMs) {
                 const uint64_t npcId = creatures::Npcs::spawnId(target[0], target[1], (size_t)target[2]);
                 if (options.extendedQuests)
                     questTalk(id, npcId, at, gifts, itemSounds);
-                bool innkeeper = false;
+                // Simulation §8 kind 2: the creatures whose home (zone, spawn index) is the target,
+                // in creature-table order. One with appearance flag 0x80 ends the search; an
+                // innkeeper (class 132) between 18:00 and 6:00 rests the world.
+                std::vector<const creatures::Npc *> homed;
                 for (const creatures::Npc &n : npcs.all())
-                    innkeeper |= n.fighter.id == npcId && n.fighter.characterClass == 132;
+                    if (n.spawn != creatures::Npc::NO_SPAWN && n.zone == std::pair(target[0], target[1]) &&
+                        n.spawn == (size_t)(uint32_t)target[2])
+                        homed.push_back(&n);
+                std::sort(homed.begin(), homed.end(), [](const creatures::Npc *a, const creatures::Npc *b) {
+                    return creatures::ActorKeyLess{}(a->fighter.id, b->fighter.id);
+                });
                 const uint32_t ms = clockMs;
-                if (innkeeper && (ms >= 18 * 3600000u || ms <= 6 * 3600000u)) {
+                bool inn = false;
+                for (const creatures::Npc *n : homed) {
+                    if (n->looks.flags & 0x80)
+                        break;
+                    if (n->fighter.characterClass == 132 && (ms >= 18 * 3600000u || ms <= 6 * 3600000u)) {
+                        inn = true;
+                        break;
+                    }
+                }
+                if (inn) {
                     clockDay = clockDay + 1;
                     clockMs = 7 * 3600000u;
-                    itemSounds.push_back({at, 29, 1, 0.75f}); // levelup2.wav
-                    npcs.restAll();
+                    itemSounds.push_back({at, 29, 1, 0.75f}); // levelup2.wav, at the requesting player
+                    npcs.restAll(zones);
                     missions.clearGenerated(); // missions §2.1: a new day's missions
                 }
                 break;
@@ -950,7 +1002,17 @@ void Server::stepWorld(float dtMs) {
         }
         c->itemRequests.clear();
     }
-    items.step((int32_t)dtMs, true, block, draw, itemSounds);
+    // Simulation §3 step 2, step 5: only items in the active zones (the loaded zones of the 3 x 3
+    // round each player's current zone) count down and land.
+    std::set<WorldItems::Key> activeZones;
+    for (const auto &c : who) {
+        const auto [zx, zy] = serverZoneOf(c->creature.position(0), c->creature.position(1));
+        for (int32_t i = -1; i <= 1; i++)
+            for (int32_t j = -1; j <= 1; j++)
+                if (zones.zone(zx + i, zy + j))
+                    activeZones.insert({zx + i, zy + j});
+    }
+    items.step((int32_t)dtMs, true, block, draw, itemSounds, &activeZones);
     // Interaction §6.3, §6.4: the statics' timers; a seat is freed when its player leaves it.
     std::map<StaticStates::Key, const worldgen::Zone *> held;
     for (const auto &[key, zone] : zones.zones())
@@ -1110,12 +1172,7 @@ void Server::stepWorld(float dtMs) {
                 npcs.setExtraSpawns(zx, zy, zone->spawns.size(), missions.zonePass(w, zx, zy, ground, mplayers, worldRandom));
         for (const Missions::Player &p : mplayers)
             missions.discover(w, p.position);
-        for (creatures::Npc &n : npcs.npcs()) {
-            const auto [cx, cy] = cellOfZone(n.zone.first, n.zone.second);
-            const Missions::Cell *cell = missions.cell(cx, cy);
-            if ((n.looks.flags & 0x2000) && n.fighter.relations.threats.empty() && cell && cell->mission.state == 2)
-                n.fighter.health = 0;
-        }
+        npcs.killCompletedMissionTargets(missions);
     }
 
     if (options.extendedQuests) {
@@ -1217,16 +1274,21 @@ void Server::stepWorld(float dtMs) {
 
     // Gift generation retains the later engine adapter; hit-driven regional
     // admission, snapshots and extra-spawn disposal have already run.
+    // Simulation §6.2 step 7 (multiplayer): a hostile victim's completed mission gifts every
+    // player creature, in creature-table order, whether or not it is in the threat map.
     const auto rewardMission = [&](const MissionProgress &progress) {
-        if (progress.rewardsApplied || !progress.completed() || progress.victimRole != 1 || !connections.count(progress.contributor))
+        if (progress.rewardsApplied || !progress.completed() || progress.victimRole != 1)
             return;
-        const auto who = connections.at(progress.contributor);
-        for (const auto &item : missionRewards(progress.mission, who->creature.fighter().characterClass, worldRandom)) {
-            const auto record = creatures::toRecord(item);
-            std::array<uint8_t, 288> gift{};
-            std::memcpy(gift.data(), &progress.contributor, 8);
-            std::memcpy(gift.data() + 8, record.data(), 280);
-            gifts.push_back(gift);
+        for (const auto &[player, who] : connections) {
+            if (!who->alive)
+                continue;
+            for (const auto &item : missionRewards(progress.mission, who->creature.fighter().characterClass, worldRandom)) {
+                const auto record = creatures::toRecord(item);
+                std::array<uint8_t, 288> gift{};
+                std::memcpy(gift.data(), &player, 8);
+                std::memcpy(gift.data() + 8, record.data(), 280);
+                gifts.push_back(gift);
+            }
         }
     };
     for (const auto &progress : frame.missions)
