@@ -20,8 +20,24 @@ float floatF(int64_t fixed) { return (float)fixed * (1.f / 65536.f); }
 int64_t snapLayer(int64_t fixed) { return fixed / 65536 - (fixed < 0 ? 1 : 0); }
 constexpr int64_t SNAP_LIFT = 66191; // -trunc(1.01 * -65536.0), both snaps' lift above the layer
 
-// "Relax x toward t at rate r per ms", dt times.
-float relax(float x, float t, float r, int32_t dt) { return t + (x - t) * std::pow(1.f - r, (float)dt); }
+// "Relax x toward t at rate r per ms", dt times: x + (t - x) r, rounded each time (player
+// control §0, scalar helper 0x411d40); nothing for a count that is not positive.
+float relax(float x, float t, float r, int32_t dt) {
+    for (int32_t elapsed = 0; elapsed < dt; elapsed++)
+        x += (t - x) * r;
+    return x;
+}
+
+// Player control §8.3: ground friction is withheld in action 48, in action 54 until the
+// time passes P1 + P2, and in actions 6, 7, 10 and 17-20 until it reaches P1.
+bool groundFriction(const Body &b) {
+    switch (b.action) {
+    case 48: return false;
+    case 54: return b.actionMs > b.windUpMs + b.activeMs;
+    case 6: case 7: case 10: case 17: case 18: case 19: case 20: return b.actionMs >= b.windUpMs;
+    default: return true;
+    }
+}
 glm::vec3 relax(glm::vec3 x, glm::vec3 t, float r, int32_t dt) {
     for (int32_t elapsed = 0; elapsed < dt; elapsed++) {
         const glm::vec3 difference = t - x;
@@ -518,7 +534,7 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     }
     // §6: friction, then the push.
     const float R = glm::dot(b.intent, b.intent) > 0 ? 0.0025f : 0.005f;
-    if (b.contact & ON_GROUND)
+    if ((b.contact & ON_GROUND) && groundFriction(b))
         b.velocity = relax(b.velocity, glm::vec3(0), R, dt);
     if ((b.contact & (ON_GROUND | IN_WATER)) || (b.mode & GLIDER) || b.pathActive)
         b.push = relax(b.push, glm::vec3(0), R, dt);
@@ -536,29 +552,32 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         };
         const int32_t yLo = (int32_t)std::floor(p.y - b.size.y / 2 - m), yHi = (int32_t)std::floor(p.y + b.size.y / 2 + m);
         const int32_t xLo = (int32_t)std::floor(p.x - b.size.x / 2 - m), xHi = (int32_t)std::floor(p.x + b.size.x / 2 + m);
-        // (The diagonal corner probes, chosen by facing, are not in yet.)
+        // Player control §8.2: the normal is reset, then all four axis probes are tested in
+        // this order, each hit writing one component (a later hit overwrites the same one).
+        // (The diagonal fallback probes, whose geometry is open, are not in yet.)
         const struct {
             bool hit;
-            glm::vec3 normal;
+            int axis;
+            float value;
         } probes[] = {
-            {column(box.lo[0], box.hi[0], yLo, yLo), {0, 1, 0}},
-            {column(box.lo[0], box.hi[0], yHi, yHi), {0, -1, 0}},
-            {column(xLo, xLo, box.lo[1], box.hi[1]), {1, 0, 0}},
-            {column(xHi, xHi, box.lo[1], box.hi[1]), {-1, 0, 0}},
+            {column(box.lo[0], box.hi[0], yLo, yLo), 1, 1},
+            {column(box.lo[0], box.hi[0], yHi, yHi), 1, -1},
+            {column(xLo, xLo, box.lo[1], box.hi[1]), 0, 1},
+            {column(xHi, xHi, box.lo[1], box.hi[1]), 0, -1},
         };
+        b.wallNormal = glm::vec3(0);
         for (const auto &probe : probes)
             if (probe.hit) {
-                b.wallNormal = probe.normal;
+                b.wallNormal[probe.axis] = probe.value;
                 b.contact |= ON_WALL;
-                break;
             }
     }
     // §5.3: water drag and the swim pitch; a boat glides with a tenth of the friction
     // sideways (travel §4.2) and sits level.
     if (wet && b.action == 107) {
-        const float keep = std::pow(1.f - 0.1f * R, (float)dt);
-        b.velocity.x *= keep;
-        b.velocity.y *= keep;
+        // Player control §8.3: x and y relax toward 0 at 0.1 R, one rounded step per ms.
+        b.velocity.x = relax(b.velocity.x, 0.f, 0.1f * R, dt);
+        b.velocity.y = relax(b.velocity.y, 0.f, 0.1f * R, dt);
         b.velocity.z = relax(b.velocity.z, 0.f, R, dt);
         b.swimPitch = relax(b.swimPitch, 0.f, 0.01f, dt);
     } else if (wet) {

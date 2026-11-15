@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14 (after batches 1-5; 214 tracked contracts, local ignored variants excluded): 94 A, 61 B, 59 C (34241 lines).
+Snapshot 2026-11-14 (after batches 1-5 and 6b; 214 tracked contracts, local ignored variants excluded): 96 A, 61 B, 57 C (33772 lines).
 
 ## Remediation
 
@@ -55,6 +55,7 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-consumer.md`,
 `alpha-client-buff-action-boundaries.md`, `alpha-hit-application-mutations.md`,
 `alpha-hit-threat-death-lifecycle.md` and `alpha-open-points-9.md`.
+Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -145,7 +146,7 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 | `alpha-hit-scalar-reduction-order.md` | A | 70 | 0 |
 | `alpha-hit-threat-death-lifecycle.md` | A | 157 | 1 |
 | `alpha-hostility-test.md` | A | 188 | 0 |
-| `alpha-house-furniture.md` | C | 159 | 1 |
+| `alpha-house-furniture.md` | C | 222 | 1 |
 | `alpha-interaction.md` | C | 587 | 3 |
 | `alpha-inventory-equality-consumers.md` | A | 94 | 0 |
 | `alpha-item-names.md` | C | 578 | 0 |
@@ -169,7 +170,7 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 | `alpha-opaque-output-transfer-state.md` | A | 105 | 1 |
 | `alpha-open-points-1.md` | C | 386 | 0 |
 | `alpha-open-points-10.md` | C | 474 | 1 |
-| `alpha-open-points-11.md` | C | 224 | 2 |
+| `alpha-open-points-11.md` | A | 212 | 1 |
 | `alpha-open-points-12.md` | C | 357 | 1 |
 | `alpha-open-points-2.md` | C | 359 | 1 |
 | `alpha-open-points-3.md` | C | 505 | 2 |
@@ -191,7 +192,7 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 | `alpha-periodic-hit-producer-state.md` | A | 127 | 2 |
 | `alpha-pets-bombs.md` | C | 781 | 2 |
 | `alpha-physics-camera.md` | C | 592 | 0 |
-| `alpha-player-control.md` | C | 402 | 0 |
+| `alpha-player-control.md` | A | 406 | 0 |
 | `alpha-pose-owner-inputs.md` | A | 212 | 1 |
 | `alpha-pose-selectors-01-18.md` | A | 360 | 0 |
 | `alpha-pose-selectors-19-24.md` | A | 354 | 0 |
@@ -259,7 +260,7 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
 | `alpha-worldgen-terrain.md` | C | 437 | 0 |
 | `alpha-worldgen-trees.md` | C | 568 | 1 |
-| `alpha-worldgen-vegetation.md` | C | 263 | 0 |
+| `alpha-worldgen-vegetation.md` | C | 357 | 0 |
 | `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |
 | `alpha-world-hit-target-admission.md` | B | 101 | 2 |
 | `alpha-world-item-list-population.md` | A | 163 | 0 |

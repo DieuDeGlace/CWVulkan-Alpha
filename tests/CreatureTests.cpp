@@ -1168,6 +1168,30 @@ int main() {
             step(c, 16, wall);
             same(c.stamina, 1 - (1 / 1.1) * 0.0005 * 16, "climbing stamina at skill 0", 1e-5);
         }
+        // Player control §8.2: every axis probe is tested; a corner sets both components.
+        {
+            auto corner = [](int32_t x, int32_t y, int32_t) -> uint8_t { return x >= 1 || y >= 1 ? 1 : 0; };
+            Body b;
+            b.place({0.5, 0.5, 100});
+            step(b, 16, corner);
+            same((b.contact & ON_WALL) != 0, 1, "corner touches a wall");
+            same(b.wallNormal.x, -1, "corner normal x");
+            same(b.wallNormal.y, -1, "corner normal y");
+            step(b, 16, air);
+            same(glm::dot(b.wallNormal, b.wallNormal), 0, "normal reset without a wall");
+        }
+        // Player control §8.3: no ground friction in action 54 before P1 + P2.
+        {
+            const auto slide = [&](int32_t action) {
+                Body b;
+                b.place({0.5, 0.5, 1 + 1.08 + 0.01});
+                step(b, 16, floor);
+                b.action = action, b.actionMs = 0, b.windUpMs = 400, b.activeMs = 100;
+                b.velocity = {5, 0, 0};
+                step(b, 16, floor);
+                return b.velocity.x;
+            };
+            same(slide(54) > slide(0), 1, "action 54 withholds ground friction");        }
         // Travel §8: a 30-block fall takes a quarter of the player's health.
         {
             Body b;

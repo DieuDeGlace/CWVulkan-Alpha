@@ -106,46 +106,46 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     }
     gWasDown = gDown;
 
-    // Player control §3: the keys add to the intent, each by the first rule that applies.
+    // Player control §3: each held key (forward, back, left, right), then the analogue pair
+    // when non-zero, takes the first rule that applies.
     const float A = gliding(state) ? 8.f : 80.f;
     const glm::vec3 f = camera.forward(), r = camera.right();
-    float ahead = (float)held(GLFW_KEY_W) - (float)held(GLFW_KEY_S);
-    float aside = (float)held(GLFW_KEY_D) - (float)held(GLFW_KEY_A);
-    if (usePad) // the left stick, as far as it is pushed
-        ahead += controller.move.y, aside += controller.move.x;
-    wish = ahead * f + aside * r;
+    const glm::vec3 F = camera.direction(); // the camera's full forward axis, for swimming
+    const glm::vec2 stick = usePad ? controller.move : glm::vec2(0); // (x right, y forward)
+    const bool keys[4] = {held(GLFW_KEY_W), held(GLFW_KEY_S), held(GLFW_KEY_A), held(GLFW_KEY_D)};
+    wish = ((float)keys[0] - (float)keys[1] + stick.y) * f + ((float)keys[3] - (float)keys[2] + stick.x) * r;
     const bool climbing = (state.mode & CLIMB) && (state.contact & ON_WALL);
-    if (climbing) {
-        // Rule 1: up and down the wall, and along it.
-        const glm::vec3 along(-state.wallNormal.y, state.wallNormal.x, 0);
-        state.intent += 0.2f * A * (glm::vec3(0, 0, ahead) + aside * along);
-    } else if (held(GLFW_KEY_LEFT_SHIFT) && glm::dot(wish, wish) > 0 && state.stamina >= 0.25f &&
-               (state.dodgeMs < 1 || fighter.action != 0) && (onGround || inWater)) {
-        // Rule 2: the dodge (Left Shift) needs stamina and ground or water.
-        state.velocity = 40.f * glm::normalize(wish) + glm::vec3(0, 0, 5);
-        state.dodgeMs = 600;
-        state.stamina -= 0.25f;
+    const bool dodgeAvailable = held(GLFW_KEY_LEFT_SHIFT) && state.stamina >= 0.25f; // evaluated once
+    const glm::vec3 along(-state.wallNormal.y, state.wallNormal.x, 0);
+    const auto input = [&](float up, float side, glm::vec3 walk, glm::vec3 swim, bool analogue) {
+        if (climbing) { // rule 1: up and down the wall, and along it
+            state.intent += 0.2f * A * (glm::vec3(0, 0, up) + side * along);
+        } else if (dodgeAvailable) { // rule 2: otherwise this input does nothing
+            if ((state.dodgeMs < 1 || fighter.action != 0) && (onGround || inWater)) {
+                state.velocity = 40.f * walk + glm::vec3(0, 0, 5); // the analogue direction is unnormalised
+                state.dodgeMs = 600;
+                state.stamina -= 0.25f;
+                fighter.action = 0;
+            }
+        } else if (inWater && (analogue || fighter.action != 107)) {
+            state.intent += A * swim; // rule 3: no action-107 exclusion for the analogue pair
+        } else if (!((state.mode & GLIDER) && !onGround && state.stamina <= 0)) {
+            state.intent += A * walk; // rule 5 (rule 4: a tired glider cannot steer)
+        }
+    };
+    if (keys[0])
+        input(1, 0, f, F, false);
+    if (keys[1])
+        input(-1, 0, -f, -F, false);
+    if (keys[2])
+        input(0, -1, -r, -r, false);
+    if (keys[3])
+        input(0, 1, r, r, false);
+    if (glm::dot(stick, stick) != 0)
+        input(stick.y, stick.x, stick.x * r + stick.y * f, stick.x * r + stick.y * F, true);
+    // §3: after the target lock, action 52 ends.
+    if (fighter.action == 52)
         fighter.action = 0;
-    } else if ((state.mode & GLIDER) && !onGround && state.stamina <= 0) {
-        // Rule 4: a tired glider cannot steer.
-    } else if (inWater && fighter.action != 107) {
-        // Rule 3: swimming follows the camera in three dimensions.
-        const glm::vec3 F = camera.direction(); // the camera's full forward axis
-        glm::vec3 swim(0);
-        if (held(GLFW_KEY_W))
-            swim += F;
-        if (held(GLFW_KEY_S))
-            swim -= F;
-        if (held(GLFW_KEY_D))
-            swim += r;
-        if (held(GLFW_KEY_A))
-            swim -= r;
-        if (usePad)
-            swim += controller.move.y * F + controller.move.x * r;
-        state.intent += A * swim;
-    } else {
-        state.intent += A * wish; // rule 5: walking
-    }
     // §4: jumping and swimming up.
     if (!held(GLFW_KEY_SPACE)) {
         jumpHeld = 0;

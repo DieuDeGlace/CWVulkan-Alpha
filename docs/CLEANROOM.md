@@ -2383,3 +2383,32 @@ Not modelled: the position-list distance test of the formation pass (its list is
 the type-6 gap fill of the native writer (the engine fills implicit solid; formations never
 write below the column bottom); the positive-timer state helper and cooldown refresh; the
 native socket reader's error/close index behaviour (the engine decodes whole buffers).
+## Provenance re-certification, batch 6b (2026-11-14)
+
+Two inherited contracts were re-certified by a fresh source-only author against the original
+image (21 corrections, five reversals in player control; implementer advice, logging
+procedures and replacement diagnosis removed; no reconstruction consulted) and read whole by
+the implementer:
+- `alpha-player-control.md` (A8FEC1FB...B6AF)
+- `alpha-open-points-11.md` (1EEEA981...0328)
+
+Engine changes (player movement feel changes):
+- Input (`Player.cpp`): each held key (forward, back, left, right), then the analogue pair
+  when non-zero, takes the first applicable rule: climb, dodge, swim, tired glider, walk. With
+  the dodge key held and enough stamina, an input that cannot dodge does nothing (no steering in
+  the air with the dodge key held). A key dodge goes along that key's unit direction; a stick
+  dodge uses the unnormalised stick vector. The analogue pair swims even in action 107. Action
+  52 ends after the movement rules. The gamepad stick (owner extension) is the analogue pair.
+- Wall normals (`Physics.cpp`): reset each step; all four axis probes are tested in order, each
+  writing one component (a corner gives (-1, -1)).
+- Ground friction is withheld in action 48, in action 54 until P1 + P2, and in actions 6, 7, 10
+  and 17-20 until P1.
+- The scalar relaxation helper (bank, swim pitch, boat) and boat x/y friction step per
+  millisecond with rounding instead of a pow shortcut.
+Already matching: regeneration only in action 84 for kind 0; the local day clock x100/x10; the
+1.1-block unstick lift once; absent zones not solid; default and water substitution blocks;
+20 ms sub-steps; frame-dependent jump boost; the collision box bytes.
+Not modelled: the target lock (the engine aims by pick), input acting on a separate mounted
+creature, the negative-health unstick skip (health never goes negative), diagonal probes, the
+input-call interface gates. Open: block-index conversion at exact negative multiples (physics
+contract) and the climbing lateral sign convention (probe frame unresolved).
