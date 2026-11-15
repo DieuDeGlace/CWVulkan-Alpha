@@ -1326,7 +1326,8 @@ void receiveHit(Combatant &controlled, Body &body, const HitRecord &hit, std::ve
             }
         return;
     }
-    if ((hit.kind != HIT_DAMAGE && hit.kind != HIT_IMMUNE) || !(controlled.health > 0))
+    // Packets §5.1: every other kind (0, 2, 3, 4, ...) takes the damage path, while health > 0.
+    if (!(controlled.health > 0))
         return;
     if (hit.amount > 0) {
         const float quarterAmount = hit.amount * .25f;

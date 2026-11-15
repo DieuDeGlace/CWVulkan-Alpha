@@ -254,6 +254,8 @@ void Client::sendLoop() {
             previous = ownSent;
             first = !sentOnce;
         }
+        // Packets §0.1: packet 0, at most one chat line, at most one item record, then every
+        // hit, event-40 and shoot, then the requests.
         ByteWriter w;
         const uint64_t mask = changedFields(current, first ? nullptr : &previous);
         w.bytes(compressed(encodeDelta(ownId, current, mask)));
@@ -262,6 +264,10 @@ void Client::sendLoop() {
             w.u32(CHAT);
             w.u32((uint32_t)units.size());
             w.write(units.data(), units.size() * 2);
+        }
+        if (item) {
+            w.u32(ITEM_RECORD);
+            w.write(item->data(), item->size());
         }
         for (const Hit &hit : batchHits) {
             w.u32(HIT);
@@ -274,10 +280,6 @@ void Client::sendLoop() {
         for (const auto &shot : batchShoots) {
             w.u32(SHOOT);
             w.write(shot.data(), shot.size());
-        }
-        if (item) {
-            w.u32(ITEM_RECORD);
-            w.write(item->data(), item->size());
         }
         for (const auto &[zx, zy] : zones) {
             w.u32(ZONE_REQUEST);
@@ -302,6 +304,16 @@ void Client::sendLoop() {
     // nothing (transport §5.2); here a failed connection returns the client to offline play.
     online = false;
     socket.shutdown();
+}
+
+void Client::commit(uint64_t id, CreatureRecord &&decoded, bool created) {
+    // Remote smoothing §1.3 step 7, against the creature's old record (packets §2.3: created,
+    // field 0x1B0 changed, or health <= 0 snaps; otherwise the creature interpolates).
+    constexpr size_t SNAP_FIELD = 0x1B0, SNAP_BYTES = 24;
+    CreatureRecord &held = creatures[id];
+    const bool fieldChanged = std::memcmp(held.bytes.data() + SNAP_FIELD, decoded.bytes.data() + SNAP_FIELD, SNAP_BYTES) != 0;
+    receipts.push_back({id, created || fieldChanged || 0.f >= held.health()});
+    held = std::move(decoded);
 }
 
 void Client::receiveLoop() {
@@ -356,19 +368,70 @@ void Client::receiveLoop() {
             {
                 auto frame = lockFrame();
                 std::lock_guard guard(lock);
-                if (id != ownId) {
-                    const auto it = creatures.find(id);
-                    if (it != creatures.end()) {
-                        // Remote smoothing §1.3 step 7, against the creature's old record.
-                        constexpr size_t SNAP_FIELD = 0x1B0, SNAP_BYTES = 24;
-                        const bool fieldChanged = std::memcmp(it->second.bytes.data() + SNAP_FIELD,
-                                                              decoded.bytes.data() + SNAP_FIELD, SNAP_BYTES) != 0;
-                        const bool snap = created || fieldChanged || 0.f >= it->second.health();
-                        receipts.push_back({id, snap});
-                        it->second = std::move(decoded);
-                    }
-                }
+                if (id != ownId && creatures.contains(id))
+                    commit(id, std::move(decoded), created);
             }
+            break;
+        }
+        case CREATURE_BATCH: {
+            // Packets §3.2: i32 count, then per creature u64 id, u64 mask and the masked fields,
+            // uncompressed. Each entry is gathered as a packet-0 plain payload and decoded below.
+            int32_t count = 0;
+            ok = socket.readExact(&count, 4);
+            std::vector<std::vector<uint8_t>> entries;
+            for (int32_t k = 0; ok && k < count; k++) {
+                std::vector<uint8_t> plain(16);
+                ok = socket.readExact(plain.data(), 16);
+                uint64_t mask = 0;
+                std::memcpy(&mask, plain.data() + 8, 8);
+                ok = ok && (mask >> 48) == 0; // (engine choice: bits 48-63 are never set)
+                for (size_t n = 0; ok && n < CREATURE_FIELDS.size(); n++)
+                    if (mask & (1ull << n)) {
+                        const size_t at = plain.size();
+                        plain.resize(at + CREATURE_FIELDS[n].size);
+                        ok = socket.readExact(plain.data() + at, CREATURE_FIELDS[n].size);
+                    }
+                entries.push_back(std::move(plain));
+            }
+            if (!ok)
+                break;
+            auto frame = lockFrame();
+            std::lock_guard guard(lock);
+            // Decoded onto copies of the current records; then every creature not in the batch is
+            // deleted (all of them for a count <= 0); then the others' records are committed.
+            struct Decoded {
+                uint64_t id;
+                CreatureRecord record;
+                bool created;
+            };
+            std::vector<Decoded> decoded;
+            std::set<uint64_t> listed;
+            for (const auto &plain : entries) {
+                uint64_t id;
+                std::memcpy(&id, plain.data(), 8);
+                const auto held = creatures.find(id);
+                const bool created = id != ownId && held == creatures.end();
+                Decoded d{id, id == ownId ? own : created ? CreatureRecord::nativeDefaults() : held->second, created};
+                applyDelta(plain, d.record);
+                listed.insert(id);
+                if (id != ownId)
+                    decoded.push_back(std::move(d));
+            }
+            std::erase_if(creatures, [&](const auto &entry) { return !listed.contains(entry.first); });
+            for (Decoded &d : decoded)
+                commit(d.id, std::move(d.record), d.created);
+            updatedThisBatch.insert(listed.begin(), listed.end());
+            break;
+        }
+        case STATIC_OBJECTS: {
+            // Packets §3.3: i32 count; for count <= 0 nothing else is read. The engine keeps no
+            // static-object map (Alpha's server never sends this), so the records are read and
+            // dropped to keep the stream in step.
+            int32_t count = 0;
+            ok = socket.readExact(&count, 4);
+            std::array<uint8_t, 120> record;
+            for (int32_t k = 0; ok && k < count; k++)
+                ok = socket.readExact(record.data(), record.size());
             break;
         }
         case END_OF_BATCH: { // packets §2.4: whoever was not listed is gone
@@ -403,12 +466,13 @@ void Client::receiveLoop() {
                 break;
             auto frame = lockFrame();
             std::lock_guard guard(lock);
-            for (int s : {1, 2}) // target application and foreign-source presentation are separate frame decisions
-                for (const auto &bytes : update->sections[s]) {
-                    Hit h;
-                    std::memcpy(h.bytes.data(), bytes.data(), h.bytes.size());
-                    hits.push_back(h);
-                }
+            // Section 2 only: target application and foreign-source presentation are separate
+            // frame decisions. Section 3 is not hit handling (packets §3.4); it is the bursts below.
+            for (const auto &bytes : update->sections[1]) {
+                Hit h;
+                std::memcpy(h.bytes.data(), bytes.data(), h.bytes.size());
+                hits.push_back(h);
+            }
             for (const auto &bytes : update->sections[12]) // section 13: map-cell missions
                 if (bytes.size() == 56) {
                     std::array<uint8_t, 56> record;
@@ -481,11 +545,12 @@ void Client::receiveLoop() {
             break;
         }
         case CHAT: {
+            // Packets §3.10: for n <= 0 nothing more is read. (The 4096-unit bound is an engine choice.)
             uint64_t from = 0;
-            uint32_t n = 0;
-            ok = socket.readExact(&from, 8) && socket.readU32(n) && n <= 4096;
-            std::vector<uint16_t> units(ok ? n : 0);
-            ok = ok && socket.readExact(units.data(), n * 2);
+            int32_t n = 0;
+            ok = socket.readExact(&from, 8) && socket.readExact(&n, 4) && n <= 4096;
+            std::vector<uint16_t> units(ok && n > 0 ? size_t(n) : 0);
+            ok = ok && socket.readExact(units.data(), units.size() * 2);
             if (ok && n > 0) {
                 auto frame = lockFrame();
                 std::lock_guard guard(lock);

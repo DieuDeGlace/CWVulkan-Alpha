@@ -153,9 +153,28 @@ static void checkPlatinumAdaption() {
           "a zero-price selection still receives the player's low level word and adapted flag");
 }
 
+// Skills §3.1, §5.3, §5.4.
+static void checkSkillTooltip() {
+    check(skillTooltipPunctuation(u":") && skillTooltipPunctuation(u"/") && skillTooltipPunctuation(u")") &&
+              skillTooltipPunctuation(u"-") && !skillTooltipPunctuation(u"a:") && !skillTooltipPunctuation(u"10/20") &&
+              !skillTooltipPunctuation(u"(1)") && !skillTooltipPunctuation(u"("),
+          "skill tooltip punctuation is exact equality, also for : / )");
+    const creatures::SkillLevels none{};
+    auto zero = skillTooltipVariables(0, 1, 0, none), one = skillTooltipVariables(1, 1, 0, none);
+    check(zero["@ridingspeed"] == "0%" && one["@ridingspeed"] == "109.09%", "@ridingspeed is 0 % below level 1");
+    check(zero["@sneakcooldown"] == "0" && one["@sneakcooldown"] == "0", "@sneakcooldown has no length entry");
+    const auto two = skillTooltipVariables(2, 1, 0, none);
+    check(two.at("@smashcooldown") == "17.67" && two.at("@warfrenzycooldown") == "55" &&
+              skillTooltipVariables(3, 1, 0, none).at("@smashcooldown") == "16.77",
+          "worked-example cooldowns, 60000 - 30000 v for war frenzy");
+    check(creatures::skillPoints(10, 5) == 19 && creatures::skillPoints(1, -5) == -1,
+          "skill budget divides the cube counter truncating toward zero");
+}
+
 int main(int argc, char **argv) {
     checkPlatinumAdaption();
     checkMenuRequests();
+    checkSkillTooltip();
     // §8.2
     check(plasma::unscramble({0x78, 0x87, 0x81, 0x6D, 0xBD, 0x3D, 0x2F, 0xC7, 0x6E, 0x99, 0xAC, 0x39, 0x28, 0xD1}) ==
               "PlasmaGraphics",

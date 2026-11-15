@@ -29,8 +29,9 @@ struct Server::Connection {
     std::deque<std::pair<uint64_t, std::vector<uint16_t>>> chat;
     WorldUpdate outgoing;
     std::deque<std::array<uint8_t, 300>> itemRequests;     // packet 6, for the next step
-    std::set<std::pair<int32_t, int32_t>> wantedZones;     // packet 11, answered in section 7
-    std::set<std::pair<int32_t, int32_t>> wantedRegions;   // packet 12, answered in section 13
+    // Packets 11 and 12 in arrival order; duplicates are kept and each copy is answered (§4.4).
+    std::vector<std::pair<int32_t, int32_t>> wantedZones;   // answered in sections 1, 6 and 7
+    std::vector<std::pair<int32_t, int32_t>> wantedRegions; // answered in section 13
     std::thread receiver, sender;
     std::atomic<bool> alive{true};
     std::atomic<bool> receiverDone{false}; // the sender waits for it before freeing (transport §5.2)
@@ -525,11 +526,11 @@ void Server::receiveLoop(Connection &c) {
             shoots.push_back(record);
             break;
         }
-        case CHAT: { // to everyone, the sender included (packets §4.3)
-            uint32_t n;
-            ok = c.socket.readU32(n) && n <= 4096;
-            std::vector<uint16_t> units(ok ? n : 0);
-            ok = ok && c.socket.readExact(units.data(), n * 2);
+        case CHAT: { // to everyone, the sender included (packets §4.3); n <= 0 is ignored
+            int32_t n = 0;
+            ok = c.socket.readExact(&n, 4) && n <= 4096; // (the 4096-unit bound is an engine choice)
+            std::vector<uint16_t> units(ok && n > 0 ? size_t(n) : 0);
+            ok = ok && c.socket.readExact(units.data(), units.size() * 2);
             if (ok && n > 0) {
                 std::lock_guard guard(lock);
                 if (avMessage(units, '1')) { // an AlphaVulkan client: not a line to pass on
@@ -550,14 +551,14 @@ void Server::receiveLoop(Connection &c) {
             int32_t zone[2];
             ok = c.socket.readExact(zone, 8);
             std::lock_guard guard(lock);
-            c.wantedZones.insert({zone[0], zone[1]});
+            c.wantedZones.push_back({zone[0], zone[1]});
             break;
         }
         case REGION_REQUEST: { // net packets §4.4: answered with the region's 64 cell records
             int32_t region[2];
             ok = c.socket.readExact(region, 8);
             std::lock_guard guard(lock);
-            c.wantedRegions.insert({region[0], region[1]});
+            c.wantedRegions.push_back({region[0], region[1]});
             break;
         }
         default:
@@ -589,9 +590,10 @@ void Server::sendLoop(Connection &c) {
             // sent last tick needs the one-shot permission, available once 500 ms have passed.
             const std::array<int64_t, 3> me = recordPosition(c.creature);
             std::map<uint64_t, const creatures::Npc *> nearNpcs;
+            // (Packets §2.4: the radius applies by controller kind, so a kind-0 NPC is listed at any distance.)
             for (const creatures::Npc &n : npcs.all())
                 if (!connections.count(n.fighter.id) && // (players' ids win a clash)
-                    creatureDistanceSquared(npcPosition(n), me) <= 40000.f)
+                    (n.fighter.controller == 0 || creatureDistanceSquared(npcPosition(n), me) <= 40000.f))
                     nearNpcs.emplace(n.fighter.id, &n);
             bool permission = Clock::now() - c.joined > std::chrono::milliseconds(500);
             const auto admitted = [&](uint64_t id) {
@@ -1360,12 +1362,30 @@ void Server::stepWorld(float dtMs) {
         sounds.insert(sounds.end(), itemSounds.begin(), itemSounds.end());
         for (const auto &g : gifts) // section 9: the gifts, for the named player's client
             out.sections[8].emplace_back(g.begin(), g.end());
+        // Packets §4.4: every copy of a request is answered. The first copy of each goes through
+        // the merged lists below; each further copy is answered again after them.
+        std::set<std::pair<int32_t, int32_t>> requestedZones, requestedRegions;
+        std::vector<std::pair<int32_t, int32_t>> repeatedZones, repeatedRegions;
+        for (const auto &key : c->wantedZones)
+            if (!requestedZones.insert(key).second)
+                repeatedZones.push_back(key);
+        for (const auto &key : c->wantedRegions)
+            if (!requestedRegions.insert(key).second)
+                repeatedRegions.push_back(key);
         // Section 7: every changed zone's items, and those of the zones this player asked for.
         std::set<std::pair<int32_t, int32_t>> listed = changedZones;
-        for (const auto &key : c->wantedZones)
+        for (const auto &key : requestedZones)
             if (items.zone(key.first, key.second))
                 listed.insert(key);
-        statics.appendUpdates(zones, frame.staticStates, changedStatics, c->wantedZones, out.sections[5]);
+        statics.appendUpdates(zones, frame.staticStates, changedStatics, requestedZones, out.sections[5]);
+        for (const auto &[zx, zy] : repeatedZones)
+            if (const auto *zone = zones.zone(zx, zy); zone && statics.zone(zx, zy)) {
+                const size_t count = std::min(zone->statics.size(), statics.zone(zx, zy)->size());
+                for (size_t index = 0; index < count; index++) {
+                    const auto record = statics.record(*zone, (int32_t)index);
+                    out.sections[5].emplace_back(record.begin(), record.end());
+                }
+            }
         // Block edits §3, §10: this step's edits go to everyone; a requested zone's whole list
         // goes to whoever asked. Section 8: the changed placed-object lists.
         for (const BlockEdit &e : stepEdits) {
@@ -1391,13 +1411,21 @@ void Server::stepWorld(float dtMs) {
         c->wantedZones.clear();
         // Missions §6.2: changed cells to everyone; a requested region's 64 to whoever asked.
         std::set<std::pair<int32_t, int32_t>> requestedCells;
-        for (const auto &[rx, ry] : c->wantedRegions)
+        for (const auto &[rx, ry] : requestedRegions)
             if (world->region(rx, ry))
                 for (int32_t k = 0; k < 64; k++)
                     requestedCells.insert({8 * rx + k / 8, 8 * ry + k % 8});
         c->wantedRegions.clear();
         missions.appendUpdates(frame.missions, missionCells, requestedCells, out.sections[12]);
-        for (const auto &[zx, zy] : listed) {
+        for (const auto &[rx, ry] : repeatedRegions)
+            if (world->region(rx, ry))
+                for (int32_t k = 0; k < 64; k++) {
+                    const int32_t x = 8 * rx + k / 8, y = 8 * ry + k % 8;
+                    const auto *entry = missions.cell(x, y);
+                    const auto record = (entry ? entry->mission : MissionArea{}).record(x, y);
+                    out.sections[12].emplace_back(record.begin(), record.end());
+                }
+        const auto zoneItemList = [&](int32_t zx, int32_t zy) {
             WorldUpdate::KeyedList list;
             list.key = (uint64_t)(uint32_t)zx | (uint64_t)(uint32_t)zy << 32;
             if (const auto *zoneItems = items.zone(zx, zy))
@@ -1406,7 +1434,12 @@ void Server::stepWorld(float dtMs) {
                     list.records.emplace_back(record.begin(), record.end());
                 }
             out.keyed[0].push_back(std::move(list));
-        }
+        };
+        for (const auto &[zx, zy] : listed)
+            zoneItemList(zx, zy);
+        for (const auto &[zx, zy] : repeatedZones)
+            if (items.zone(zx, zy))
+                zoneItemList(zx, zy);
         // Net server §4.2: wire sections 3 and 4 keep records strictly within 200 blocks
         // (squared distance below 40,000) of this player. Section 3 uses the i64 position
         // (difference scaled by 1/65,536; f32 as in §4.1), section 4 the record's f32 block

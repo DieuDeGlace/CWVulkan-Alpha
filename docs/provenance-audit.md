@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-12; 216 tracked contracts, local ignored variants excluded): 118 A, 61 B, 32 C (24898 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-13; 217 tracked contracts, local ignored variants excluded): 121 A, 61 B, 30 C (23632 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -68,7 +68,8 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 `alpha-items-generator.md`; `alpha-projectiles.md`, `alpha-open-points-1.md`, `alpha-world-items.md` and
 `alpha-open-points-2.md`; `alpha-worldgen-terrain.md` and `alpha-open-points-5.md` (plus the new ruling
 `alpha-tick-period-rulings.md`); `alpha-worldgen-caves.md`, `alpha-spawn-objects.md`, `alpha-loot-rolls.md`,
-`alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`).
+`alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`); `alpha-net-packets.md` and `alpha-skills.md`
+(plus the ruling `alpha-rulings-knockback-snap.md`).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -174,7 +175,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
 | `alpha-missions.md` | C | 803 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
-| `alpha-net-packets.md` | C | 642 | 0 |
+| `alpha-net-packets.md` | A | 642 | 0 |
 | `alpha-net-server.md` | A | 501 | 0 |
 | `alpha-net-transport.md` | A | 450 | 8 |
 | `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
@@ -225,6 +226,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-rendering.md` | C | 783 | 2 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
+| `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
 | `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
@@ -232,7 +234,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
 | `alpha-server-simulation.md` | C | 581 | 1 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
-| `alpha-skills.md` | C | 624 | 0 |
+| `alpha-skills.md` | A | 624 | 0 |
 | `alpha-spatial-association-producers.md` | A | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |

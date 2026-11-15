@@ -215,9 +215,10 @@ static void heldStorage() {
         snapshot.heldSource[0x113] ^= 0x7f;
         net::CreatureRecord changed = encoded;
         changed.setFighter(snapshot);
-        const auto mask = net::changedFields(changed, &encoded);
-        check(mask == (uint64_t(1) << 43), "an inactive held byte changes only existing wire field43");
-        check(net::applyDelta(net::encodeDelta(88, changed, mask), encoded) == 88,
+        // Packets §2.2: field 43 compares by the item equality test, which skips sub-entries
+        // beyond the count, so this byte alone never sets a bit; a sent field 43 still carries it.
+        check(net::changedFields(changed, &encoded) == 0, "an inactive held byte alone sets no mask bit");
+        check(net::applyDelta(net::encodeDelta(88, changed, uint64_t(1) << 43), encoded) == 88,
               "the actual partial-delta reader accepts held field43");
         remote.refresh(encoded.fighter(), 20);
         const auto retained = remote.fighter.heldRecord();

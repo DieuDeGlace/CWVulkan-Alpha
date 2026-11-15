@@ -947,6 +947,8 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
             }
         }
     }
+    if (startScreen) // skills §1.3: the start screen (U-7 reading) closes the skill window and the inventory
+        skillsOpen = inventoryOpen = false;
     if (craftingOpen)
         skillsOpen = false; // §1.3: they share the spot left of the inventory
     benchOpen = benchOpen && inventoryOpen; // the bench closes with the inventory

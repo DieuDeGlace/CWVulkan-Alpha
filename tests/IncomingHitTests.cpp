@@ -13,7 +13,8 @@ void check(bool okay, const char *message) {
 }
 
 int main() {
-    for (uint8_t kind : {uint8_t(0), uint8_t(3)}) {
+    // Packets §5.1: every kind but 1 and 5 takes the default path (0, 2, 3, 4, ...).
+    for (uint8_t kind : {uint8_t(0), uint8_t(2), uint8_t(3), uint8_t(4), uint8_t(7)}) {
         Combatant actor;
         actor.controller = 2;
         actor.characterClass = 0;

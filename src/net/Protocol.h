@@ -36,7 +36,9 @@ struct SenderPacing {
 // Packet ids (packets §0, transport §2).
 enum Packet : uint32_t {
     CREATURE = 0,
+    CREATURE_BATCH = 1, // uncompressed; understood by the client, never sent by Alpha (§3.2)
     END_OF_BATCH = 2,
+    STATIC_OBJECTS = 3, // in game; understood by the client, never sent by Alpha (§3.3)
     WORLD_UPDATE = 4,
     CLOCK = 5,
     ITEM_RECORD = 6,
@@ -108,10 +110,18 @@ struct CreatureRecord {
 // Packets §2.1: one field of the record.
 struct CreatureField {
     uint16_t offset, size;
-    enum Kind : uint8_t { BYTES, FLOATS, NAME } kind; // how a change is detected (§2.2)
+    // How a change is detected (§2.2): integers by value, floats as floats, the appearance by its
+    // field comparison (§1.2), items by the item equality test (§1.1), the name as a C string.
+    enum Kind : uint8_t { BYTES, FLOATS, NAME, APPEARANCE, ITEMS } kind;
 };
 extern const std::array<CreatureField, 48> CREATURE_FIELDS;
 constexpr uint64_t ALL_FIELDS = 0x0000FFFFFFFFFFFFull;
+
+// Packets §1.1: the server's item equality. Bytes 0x02-0x03, 0x0f, 0x12-0x13 and sub-entries
+// beyond the count never make two items unequal.
+bool sameWireItem(const uint8_t *a, const uint8_t *b);
+// Packets §1.2: the appearance comparison; byte 0x05 is not compared, floats compare as floats.
+bool sameWireAppearance(const uint8_t *a, const uint8_t *b);
 
 // §2.2: the fields of `now` that differ from `before` (all of them when `before` is null).
 uint64_t changedFields(const CreatureRecord &now, const CreatureRecord *before);

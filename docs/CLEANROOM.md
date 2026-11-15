@@ -2610,3 +2610,34 @@ the finishing pass, faction and ring draws, loot slots, recipe parity, re-roll w
 glow rates and carve order. Not modelled: constructor write order, inventory +0x1094/+0x1098 and
 the +0xF7C item, the 0x1DC6E0 branch choice, home placement with a null model, the leader's
 +0x48 argument. The type-9 guardian z has no test (no such location near home).
+## Provenance re-certification, network packets and skills; knock-back/snap ruling (2026-11-15)
+
+Two inherited contracts were re-certified by fresh source-only authors (32 corrections; two
+reversals in the packets: world-update section 3 is only appended to a client-side list, and the
+"event 40" relay in section 12 is withdrawn; replacement advice, test vectors and recorded values
+removed; no reconstruction consulted), and a new ruling settled two conflicts the implementer
+raised; all three were read whole by a fresh implementer:
+- `alpha-net-packets.md` (9E49926D...A52C)
+- `alpha-skills.md` (CAD7F796...1533)
+- `alpha-rulings-knockback-snap.md` (51D80D29...0B10)
+
+Ruling: a kind-1 hit's vector is copied into velocity (not added; never written to +0x4C), and
+the display snap tests the OLD health (0.0 >= old, NaN does not snap); the packets contract's
+§5.1 and §2.3 are wrong there. The engine already did both.
+Network changes (wire-affecting): the creature delta compares typed fields (item and appearance
+equality), so uncompared bytes set no mask bit; packet 1 (creature batch) and packet 3 (static
+objects) are read instead of disconnecting; send order 0, 10, 6, 7, 8, 9, 11, 12; only section 2
+feeds hit handling (section 3 goes to bursts); a non-positive chat count is ignored; the NPC
+radius applies only to non-zero controllers; duplicate zone and region requests are each
+answered; hit kinds other than 1 and 5 take the damage path; a type-13 item in section 9 adds ten
+times its field 0x10 to the local player's experience, and a type-25 one sets action 0x6D;
+/name, /namepet, /connect and /disconnect match the exact first word.
+Skills (visible): skill 9 is positioned and clickable but not drawn; @ridingspeed shows 0 % below
+1; ":", "/", ")" are punctuation only by exact equality; word widths truncate; the cube term is
+c/4 signed; the start screen closes the skill window and inventory; non-zero movement intent
+closes the inventory, crafting and skill windows.
+Kept engine choices: unknown packet ids disconnect; length bounds; merged zone item lists;
+per-edit chunk remesh. Not modelled: world flag 0xB8; type-25 effects on other creatures; the
+further section-9 routine; packet-3 storage; the window-close nodes and second sound source.
+The private reward-flow probe expectation was updated: the two platinum gifts add 20 experience
+(XP -13 instead of -33), as the held packets contract requires.

@@ -33,7 +33,8 @@ bool skillLocked(const SkillLevels &draft, int32_t i) {
     return parent >= 0 && draft[parent] < 5;
 }
 
-int32_t skillPoints(int32_t level, int32_t cubes) { return 2 * level - 2 + std::max(cubes, 0) / 4; }
+// (Signed division truncating toward zero, as in the raise test.)
+int32_t skillPoints(int32_t level, int32_t cubes) { return 2 * level - 2 + cubes / 4; }
 
 int32_t pointsUsed(const SkillLevels &draft) {
     int32_t used = 0;

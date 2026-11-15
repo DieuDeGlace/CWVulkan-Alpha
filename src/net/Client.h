@@ -112,6 +112,8 @@ class Client {
   private:
     void receiveLoop();
     void sendLoop();
+    // Under both locks: another creature's decoded update replaces its record, with a receipt.
+    void commit(uint64_t id, CreatureRecord &&decoded, bool created);
 
     Socket socket;
     std::atomic<bool> online{false};

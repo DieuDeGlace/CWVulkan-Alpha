@@ -129,6 +129,86 @@ static void checkIdentityAdoption() {
     }
 }
 
+// Packets §0.1, §3.2-§3.4, §3.10: the client's per-tick order, and the packets an Alpha server
+// never sends but its client understands.
+static void checkClientPackets() {
+    Socket listener;
+    if (!listener.listen(0, nullptr, "127.0.0.1")) { check(false, "packet fixture listens"); return; }
+    std::atomic<bool> deleteAll{false}, finish{false};
+    std::atomic<int> itemBeforeHit{0}; // 1 in order, -1 out of order
+    std::thread peer([&] {
+        Socket socket = listener.accept();
+        socket.setReadTimeout(3000);
+        uint32_t packet = 0, version = 0;
+        if (!socket.readU32(packet) || packet != HELLO || !socket.readU32(version)) return;
+        const CreatureRecord initial;
+        ByteWriter w;
+        w.u32(ACCEPTED), w.u32(CREATURE), w.u64(1);
+        w.write(initial.bytes.data(), initial.bytes.size());
+        w.u32(SEED), w.u32(7);
+        const std::vector<uint8_t> object(120, 0xab);
+        w.u32(STATIC_OBJECTS), w.i32(0);
+        w.u32(STATIC_OBJECTS), w.i32(1), w.write(object.data(), object.size());
+        w.u32(CHAT), w.u64(19), w.i32(-1); // nothing more is read
+        WorldUpdate update;
+        std::vector<uint8_t> burst(72, 0);
+        burst[8] = 1; // (a target id of the local player, were it read as a hit)
+        update.sections[2].push_back(burst);
+        w.u32(WORLD_UPDATE), w.bytes(compressed(update.encode()));
+        CreatureRecord remote;
+        remote.setPosition(0, 4242);
+        w.u32(CREATURE_BATCH), w.i32(3);
+        for (const uint64_t id : {uint64_t(19), uint64_t(23), uint64_t(1)}) {
+            w.u64(id), w.u64(1);
+            w.write(remote.bytes.data(), 24);
+        }
+        if (!socket.send(w.data())) return;
+        bool item = false;
+        while (!finish && itemBeforeHit == 0 && socket.readU32(packet)) {
+            uint32_t skip = 0;
+            switch (packet) {
+            case CREATURE: if (!socket.readU32(skip)) return; break;
+            case CHAT: if (!socket.readU32(skip)) return; skip *= 2; break;
+            case ITEM_RECORD: item = true, skip = 300; break;
+            case HIT: itemBeforeHit = item ? 1 : -1; skip = 72; break;
+            case EVENT40: skip = 40; break;
+            case SHOOT: skip = 112; break;
+            case ZONE_REQUEST: case REGION_REQUEST: skip = 8; break;
+            default: return;
+            }
+            std::vector<uint8_t> bytes(skip);
+            if (!socket.readExact(bytes.data(), skip)) return;
+        }
+        while (!deleteAll && !finish) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ByteWriter none;
+        none.u32(CREATURE_BATCH), none.i32(-1);
+        if (!socket.send(none.data())) return;
+        while (!finish) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    });
+    Client client;
+    check(client.connect("127.0.0.1", listener.boundPort()), "packet fixture connects");
+    {
+        auto frame = client.lockFrame();
+        client.sendHit(Hit::make(1, 19, 1, 0, {}, 0));
+        client.sendItemRequest({});
+    }
+    check(waitFor([&] {
+        const auto others = client.others();
+        return others.size() == 2 && others.count(19) && others.count(23) && others.at(19).position(0) == 4242;
+    }), "packet 1 decodes uncompressed entries onto new creatures and skips the local player");
+    const auto receipts = client.takeReceipts();
+    check(receipts.size() == 2 && receipts[0].snap && receipts[1].snap, "creatures created by packet 1 snap");
+    check(waitFor([&] { return itemBeforeHit != 0; }) && itemBeforeHit == 1, "packet 6 is sent before the tick's hits");
+    check(client.takeHits().empty() && client.takeBursts().size() == 1, "section 3 is not passed to hit handling");
+    check(client.takeChat().empty() && client.connected(),
+          "packet 3 (count 0 and 1) and a negative chat count keep the stream in step");
+    deleteAll = true;
+    check(waitFor([&] { return client.others().empty(); }), "a packet-1 count <= 0 deletes every other creature");
+    finish = true;
+    client.disconnect();
+    peer.join();
+}
+
 static void checkCombatTransport() {
     Socket listener;
     std::string bindError;
@@ -466,6 +546,7 @@ static void checkCombatTransport() {
 
 int main() {
     checkIdentityAdoption();
+    checkClientPackets();
     checkCombatTransport();
     // Server buff-update admission: the day clock factor is 10, or 100 when the scan found
     // a living role-zero creature in action 0x54.
@@ -615,6 +696,28 @@ int main() {
     const float minus = -0.f;
     std::memcpy(&negativeZero.bytes[0x15c], &minus, 4);
     check(changedFields(negativeZero, &same) == 0, "-0 health is not a change");
+    {
+        // Packets §2.2: the items and the appearance use their typed tests, so bytes those tests
+        // skip never set a mask bit.
+        CreatureRecord base;
+        const int32_t four = 4;
+        std::memcpy(&base.bytes[0x2f0 + 0x114], &four, 4); // equipment slot 0 uses 4 sub-entries
+        CreatureRecord other = base;
+        other.bytes[0x1d8 + 0x02] = other.bytes[0x1d8 + 0x0f] = other.bytes[0x1d8 + 0x12] = 9;
+        other.bytes[0x2f0 + 0x118 * 5 + 0x03] = 9;
+        other.bytes[0x2f0 + 0x14 + 8 * 4] = 9; // the fifth sub-entry, beyond the count
+        other.bytes[0x68 + 0x05] = 9;
+        std::memcpy(&other.bytes[0x68 + 0x24], &minus, 4);
+        check(changedFields(other, &base) == 0, "uncompared item and appearance bytes never set a bit");
+        other.bytes[0x2f0 + 0x14 + 8 * 3 + 7] = 9; // the fourth sub-entry's last byte
+        check(changedFields(other, &base) == uint64_t(1) << 44, "a used sub-entry is compared whole");
+        other = base;
+        other.bytes[0x1d8 + 0x0e] = 1;
+        check(changedFields(other, &base) == uint64_t(1) << 43, "item byte 0x0e is compared");
+        other = base;
+        other.bytes[0x68 + 0x06] = 1;
+        check(changedFields(other, &base) == uint64_t(1) << 13, "appearance word 0x06 is compared");
+    }
     {
         CreatureRecord motion, response;
         const glm::vec3 velocity{1, 2, 3}, intent{4, 5, 6}, impulse{-7, 8, -9};
@@ -953,6 +1056,21 @@ int main() {
         for (const auto &r : cells)
             missionCount += r[24] != 0;
         check(missionCount > 0, "the region response contains its restored or generated missions");
+        // Packets §4.4: duplicate requests are not merged; each copy is answered.
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        a.takeMissionRecords();
+        const std::pair<int32_t, int32_t> region{zx / 64, zy / 64};
+        a.requestRegions({region, region});
+        size_t answered = 0;
+        check(waitFor([&] {
+                  for (auto &r : a.takeMissionRecords()) {
+                      int32_t x = 0, y = 0;
+                      MissionArea::fromRecord(r.data(), x, y);
+                      answered += std::pair(x / 8, y / 8) == region;
+                  }
+                  return answered >= 128;
+              }),
+              "a repeated region request is answered once per copy");
     }
     {
         uint64_t target = 0;

@@ -2039,6 +2039,16 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 creatures::ItemRecord got;
                                 std::memcpy(got.data(), gift.data(), 280);
                                 receive(got);
+                                // Packets §3.6, after the inventory: a type-13 item adds ten times its
+                                // field 0x10 to record field 34; a type-25 one sets record 0x58 to 0x6d
+                                // and 0x5C to 0. (Other creatures' type-25 records are not modelled.)
+                                creatures::Combatant &c = player->combat();
+                                const uint8_t type = creatures::itemType(got);
+                                if (type == 13)
+                                    c.experience = std::bit_cast<int32_t>(uint32_t(c.experience) +
+                                                                          uint32_t(10 * int32_t(creatures::itemLevel(got))));
+                                else if (type == 25)
+                                    c.action = 0x6d, c.actionMs = 0;
                             }
                         }
                         for (const creatures::SoundEvent &s : landed)
@@ -2513,6 +2523,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     player->timeOfDay = [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); };
                     player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
                                       interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates);
+                    // Skills §1.3: every input pass with a non-zero walking intent (object +0x40)
+                    // hides the inventory, crafting and skill windows. (The other nodes it hides are
+                    // not identified; movement keys stay gated while a window holds the mouse.)
+                    if (const glm::vec3 intent = player->body().intent; glm::dot(intent, intent) > 0)
+                        interface.inventoryOpen = interface.craftingOpen = interface.skillsOpen = false;
                     updatePlayerInterface();
                     publishPlayerEffects();
                     // Held initial-state contract: the front-end rotation assigns
@@ -3089,17 +3104,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
         }
         // Screens §9: what was typed. /name renames the player; /namepet checks its length;
-        // /connect and /disconnect need a restart here; anything else is said.
+        // /connect and /disconnect need a restart here; anything else is said. Packets §4.3:
+        // these are recognised as commands (the first word exactly) and never sent.
         for (const std::string &line : interface.chatSubmitted) {
-            if (line.rfind("/name ", 0) == 0) {
-                own.setName(line.substr(6));
-            } else if (line.rfind("/namepet ", 0) == 0) {
+            const size_t space = line.find(' ');
+            const std::string command = line.substr(0, space);
+            const std::string argument = space == std::string::npos ? std::string() : line.substr(space + 1);
+            if (command == "/name") {
+                if (!argument.empty()) // (engine choice: without an argument /name and /namepet change nothing)
+                    own.setName(argument);
+            } else if (command == "/namepet") {
                 // Pets §15: the name goes into the pet item, one character (low byte) per entry;
                 // the next pet pass rebuilds the pet with it.
-                const std::vector<uint16_t> name = net::toUtf16(line.substr(9));
+                const std::vector<uint16_t> name = net::toUtf16(argument);
                 if (name.size() >= 16) {
                     interface.chatAdd("Pet name too long\n", {255, 51, 51});
-                } else if (creatures::itemType(inventory.equipment[12]) == 19) {
+                } else if (!argument.empty() && creatures::itemType(inventory.equipment[12]) == 19) {
                     creatures::ItemRecord &pet = inventory.equipment[12];
                     const int32_t count = (int32_t)name.size();
                     std::memcpy(pet.data() + 0x114, &count, 4);
@@ -3110,7 +3130,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     }
                     wearInventory();
                 }
-            } else if (line.rfind("/connect", 0) == 0 || line == "/disconnect") {
+            } else if (command == "/connect" || command == "/disconnect") {
                 interface.chatAdd("Start AlphaVulkan with --connect to join a server.\n", {255, 51, 51});
             } else if (client.connected()) {
                 client.say(line);

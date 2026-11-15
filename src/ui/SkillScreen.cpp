@@ -64,6 +64,54 @@ std::string rounded(float x) {
 
 } // namespace
 
+bool skillTooltipPunctuation(std::u16string_view word) {
+    for (const char16_t *mark : {u".", u"-", u",", u";", u"!", u"?", u":", u"/", u")"})
+        if (word == mark)
+            return true;
+    return false;
+}
+
+std::map<std::string, std::string> skillTooltipVariables(int32_t n, int32_t cls, int32_t specialization,
+                                                         const creatures::SkillLevels &committedSkills) {
+    std::map<std::string, std::string> v;
+    const float vn = n < 1 ? 0.f : 1.f - 1.f / (0.1f * (float)n + 1.f);
+    const float kn = 1.f - 1.f / (0.1f * (float)(n + 1) + 1.f);
+    v["@level"] = std::to_string(n);
+    v["@health"] = rounded(50 * vn) + "%";
+    v["@ridingspeed"] = (n < 1 ? std::string("0") : rounded(100 * (1 + vn))) + "%";
+    v["@climbingpower"] = rounded(100 * kn) + "%";
+    v["@flyingspeed"] = (n < 1 ? std::string("0") : rounded(100 * (3 * vn + 1.5f))) + "%";
+    v["@swimmingspeed"] = (n < 1 ? std::string("50") : rounded(100 * (0.5f * vn + 0.5f))) + "%";
+    v["@boatspeed"] = (n < 1 ? std::string("0") : rounded(100 * (3 * vn + 1))) + "%";
+    creatures::Combatant c;
+    c.characterClass = (uint8_t)cls;
+    c.specialization = (uint8_t)specialization;
+    c.skills.fill(n);
+    const std::pair<const char *, int32_t> COOLDOWNS[] = {
+        {"smash", 54},        {"cyclone", 86},  {"bulwark", 101},      {"warfrenzy", 102},   {"rangerkick", 21},
+        {"retreat", 50},      {"aim", 99},      {"swiftness", 100},    {"fireexplosion", 88}, {"manashield", 103},
+        {"teleport", 49},     {"intercept", 48}, {"shuriken", 96},     {"camouflage", 97},   {"sneak", 79}};
+    for (const auto &[name, id] : COOLDOWNS)
+        v[std::string("@") + name + "cooldown"] = rounded((float)creatures::cooldownLength(c, id) / 1000.f);
+    v["@cycloneduration"] = "5";
+    v["@bulwarkduration"] = v["@warfrenzyduration"] = v["@swiftnessduration"] = "10";
+    v["@manashieldduration"] = "30";
+    v["@bulwarkamount"] = rounded(100 * (0.3f * creatures::abilityValue(c, 101) + 0.25f)) + "%";
+    v["@warfrenzyamount"] = rounded(100 * (9 * creatures::abilityValue(c, 102) + 1)) + "%";
+    for (const char *name : {"@rangerkickknockback", "@retreatdistance", "@aimstealth", "@swiftnessamount",
+                             "@fireexplosionknockback"})
+        v[name] = rounded(100 * vn) + "%";
+    v["@manashieldpower"] = rounded(100 * creatures::abilityValue(c, 103)) + "%";
+    v["@healingstreamcost"] = rounded(100 * (1 - 0.75f * creatures::abilityValue(c, 34)));
+    creatures::Combatant committed = c; // (the camouflage duration reads the committed level)
+    for (size_t i = 0; i < committedSkills.size(); i++)
+        committed.skills[i] = committedSkills[i];
+    v["@camouflageduration"] = rounded((12000 * creatures::abilityValue(committed, 97) + 8000) / 1000);
+    v["@sneakspeed"] = rounded(100 * 0.4f * creatures::abilityValue(c, 79)) + "%";
+    v["@sneakstealth"] = rounded(100 * creatures::abilityValue(c, 79)) + "%";
+    return v;
+}
+
 void Interface::loadSkills() {
     if (const int32_t n = gui.find("blackwidget"); n >= 0) {
         skillsPanel = clone(gui, n);
@@ -129,7 +177,10 @@ void Interface::drawSkills(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
             hovered = std::pair{i, -1};
         tint(doc, doc.find("frame"), over ? CYAN : glm::vec4(1));
         anchor(doc, O + skillCorner(i));
-        painter.draw(doc, 0, Transform(1));
+        // §2.4 step 5: skill 9 is positioned, updated and hovered, then hidden again after the
+        // loop, so it is never drawn.
+        if (i != 9)
+            painter.draw(doc, 0, Transform(1));
     }
     // §5.1: the texts.
     outlined(painter, u"Skills", O + glm::vec2(15, 25), 12, 3, glm::vec4(1));
@@ -175,46 +226,7 @@ void Interface::drawSkillTooltip(Painter &painter, glm::vec2, glm::vec2 X, int32
         painter.draw(*preview, 0, Transform(1));
     }
     const int cls = sheet.characterClass;
-    // §5.4: the variables at level n.
-    const auto variables = [&](int32_t n) {
-        std::map<std::string, std::string> v;
-        const float vn = n < 1 ? 0.f : 1.f - 1.f / (0.1f * (float)n + 1.f);
-        const float kn = 1.f - 1.f / (0.1f * (float)(n + 1) + 1.f);
-        v["@level"] = std::to_string(n);
-        v["@health"] = rounded(50 * vn) + "%";
-        v["@ridingspeed"] = rounded(100 * (1 + vn)) + "%";
-        v["@climbingpower"] = rounded(100 * kn) + "%";
-        v["@flyingspeed"] = (n < 1 ? std::string("0") : rounded(100 * (3 * vn + 1.5f))) + "%";
-        v["@swimmingspeed"] = (n < 1 ? std::string("50") : rounded(100 * (0.5f * vn + 0.5f))) + "%";
-        v["@boatspeed"] = (n < 1 ? std::string("0") : rounded(100 * (3 * vn + 1))) + "%";
-        creatures::Combatant c;
-        c.characterClass = (uint8_t)cls;
-        c.specialization = (uint8_t)draftSpecialization;
-        c.skills.fill(n);
-        const std::pair<const char *, int32_t> COOLDOWNS[] = {
-            {"smash", 54},        {"cyclone", 86},  {"bulwark", 101},      {"warfrenzy", 102},   {"rangerkick", 21},
-            {"retreat", 50},      {"aim", 99},      {"swiftness", 100},    {"fireexplosion", 88}, {"manashield", 103},
-            {"teleport", 49},     {"intercept", 48}, {"shuriken", 96},     {"camouflage", 97},   {"sneak", 79}};
-        for (const auto &[name, id] : COOLDOWNS)
-            v[std::string("@") + name + "cooldown"] = rounded((float)creatures::cooldownLength(c, id) / 1000.f);
-        v["@cycloneduration"] = "5";
-        v["@bulwarkduration"] = v["@warfrenzyduration"] = v["@swiftnessduration"] = "10";
-        v["@manashieldduration"] = "30";
-        v["@bulwarkamount"] = rounded(100 * (0.3f * creatures::abilityValue(c, 101) + 0.25f)) + "%";
-        v["@warfrenzyamount"] = rounded(100 * (9 * creatures::abilityValue(c, 102) + 1)) + "%";
-        for (const char *name : {"@rangerkickknockback", "@retreatdistance", "@aimstealth", "@swiftnessamount",
-                                 "@fireexplosionknockback"})
-            v[name] = rounded(100 * vn) + "%";
-        v["@manashieldpower"] = rounded(100 * creatures::abilityValue(c, 103)) + "%";
-        v["@healingstreamcost"] = rounded(100 * (1 - 0.75f * creatures::abilityValue(c, 34)));
-        creatures::Combatant committed = c; // (the camouflage duration reads the committed level)
-        for (size_t i = 0; i < playerSkills.size(); i++)
-            committed.skills[i] = playerSkills[i];
-        v["@camouflageduration"] = rounded((12000 * creatures::abilityValue(committed, 97) + 8000) / 1000);
-        v["@sneakspeed"] = rounded(100 * 0.4f * creatures::abilityValue(c, 79)) + "%";
-        v["@sneakstealth"] = rounded(100 * creatures::abilityValue(c, 79)) + "%";
-        return v;
-    };
+    const auto variables = [&](int32_t n) { return skillTooltipVariables(n, cls, draftSpecialization, playerSkills); };
     // §5.3: the entries rendered into pages, each page a paragraph.
     std::vector<SpeechPage> pages;
     const auto render = [&](const std::string &key, const std::map<std::string, std::string> &vars) {
@@ -251,9 +263,9 @@ void Interface::drawSkillTooltip(Painter &painter, glm::vec2, glm::vec2 X, int32
         bool glue = true;
         for (const SpeechSegment &segment : pages[p]) {
             const std::u16string word = utf16(segment.text);
-            const float d = painter.textWidth(word, style);
-            const bool punct = word == u"." || word == u"-" || word == u"," || word == u";" || word == u"!" || word == u"?" ||
-                               word.find_first_of(u":/)") != std::u16string::npos;
+            // §5.3: the measured width truncated to an integer; punctuation-like words are exact.
+            const float d = std::trunc(painter.textWidth(word, style));
+            const bool punct = skillTooltipPunctuation(word);
             if (!glue)
                 x += punct ? 3 : size;
             glue = word == u"-";

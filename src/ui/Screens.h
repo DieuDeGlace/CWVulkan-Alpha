@@ -83,6 +83,13 @@ std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, b
 FloatingText levelUpText(glm::dvec3 player);
 FloatingText experienceText(int32_t gain, glm::dvec3 player);
 
+// Skills §5.3: a word is punctuation-like only when it is exactly one of . - , ; ! ? : / ).
+bool skillTooltipPunctuation(std::u16string_view word);
+// Skills §5.4: the skill tooltip's variables V(i, n) at level `n` for the player's class, the
+// draft specialization and the committed levels (read by @camouflageduration).
+std::map<std::string, std::string> skillTooltipVariables(int32_t n, int32_t cls, int32_t specialization,
+                                                         const creatures::SkillLevels &committedSkills);
+
 class Interface {
   public:
     // Loads the fonts and the .plx files from the install folder.

@@ -22,7 +22,7 @@ const std::array<CreatureField, 48> CREATURE_FIELDS = {{
     {0x030, 12, CreatureField::FLOATS}, {0x03c, 12, CreatureField::FLOATS}, {0x048, 4, CreatureField::FLOATS},
     {0x04c, 4, CreatureField::BYTES},   {0x050, 1, CreatureField::BYTES},   {0x054, 4, CreatureField::BYTES},
     {0x058, 1, CreatureField::BYTES},   {0x05c, 4, CreatureField::BYTES},   {0x060, 4, CreatureField::BYTES},
-    {0x064, 4, CreatureField::BYTES},   {0x068, 172, CreatureField::BYTES}, {0x114, 2, CreatureField::BYTES},
+    {0x064, 4, CreatureField::BYTES},   {0x068, 172, CreatureField::APPEARANCE}, {0x114, 2, CreatureField::BYTES},
     {0x118, 4, CreatureField::BYTES},   {0x11c, 4, CreatureField::BYTES},   {0x120, 4, CreatureField::BYTES},
     {0x124, 4, CreatureField::BYTES},   {0x128, 4, CreatureField::BYTES},   {0x12c, 4, CreatureField::FLOATS},
     {0x130, 1, CreatureField::BYTES},   {0x131, 1, CreatureField::BYTES},   {0x134, 4, CreatureField::FLOATS},
@@ -32,7 +32,7 @@ const std::array<CreatureField, 48> CREATURE_FIELDS = {{
     {0x180, 4, CreatureField::BYTES},   {0x184, 4, CreatureField::BYTES},   {0x188, 8, CreatureField::BYTES},
     {0x190, 8, CreatureField::BYTES},   {0x198, 1, CreatureField::BYTES},   {0x19c, 4, CreatureField::BYTES},
     {0x1a0, 12, CreatureField::BYTES},  {0x1b0, 24, CreatureField::BYTES},  {0x1cc, 12, CreatureField::BYTES},
-    {0x1c8, 1, CreatureField::BYTES},   {0x1d8, 280, CreatureField::BYTES}, {0x2f0, 3640, CreatureField::BYTES},
+    {0x1c8, 1, CreatureField::BYTES},   {0x1d8, 280, CreatureField::ITEMS}, {0x2f0, 3640, CreatureField::ITEMS},
     {0x1158, 16, CreatureField::NAME},  {0x1128, 44, CreatureField::BYTES}, {0x1154, 4, CreatureField::BYTES},
 }};
 
@@ -214,6 +214,40 @@ void CreatureRecord::setName(const std::string &name) {
     std::memcpy(&bytes[0x1158], name.data(), std::min<size_t>(name.size(), 15));
 }
 
+namespace {
+// Floats compare as floats: +0 equals -0, a NaN always differs.
+bool sameFloats(const uint8_t *a, const uint8_t *b, size_t size) {
+    for (size_t i = 0; i < size; i += 4) {
+        float x, y;
+        std::memcpy(&x, a + i, 4);
+        std::memcpy(&y, b + i, 4);
+        if (!(x == y))
+            return false;
+    }
+    return true;
+}
+} // namespace
+
+bool sameWireItem(const uint8_t *a, const uint8_t *b) {
+    if (a[0x00] != b[0x00] || a[0x01] != b[0x01] || std::memcmp(a + 0x04, b + 0x04, 8) != 0 ||
+        std::memcmp(a + 0x0c, b + 0x0c, 3) != 0 || std::memcmp(a + 0x10, b + 0x10, 2) != 0)
+        return false;
+    int32_t count, other;
+    std::memcpy(&count, a + 0x114, 4);
+    std::memcpy(&other, b + 0x114, 4);
+    if (count != other)
+        return false;
+    // (A count above 32 would run past the list; the engine counts such items unequal.)
+    if (count > 32)
+        return false;
+    return count <= 0 || std::memcmp(a + 0x14, b + 0x14, size_t(count) * 8) == 0;
+}
+
+bool sameWireAppearance(const uint8_t *a, const uint8_t *b) {
+    return std::memcmp(a, b, 5) == 0 && std::memcmp(a + 0x06, b + 0x06, 2) == 0 && sameFloats(a + 0x08, b + 0x08, 12) &&
+           std::memcmp(a + 0x14, b + 0x14, 16) == 0 && sameFloats(a + 0x24, b + 0x24, 0xac - 0x24);
+}
+
 uint64_t changedFields(const CreatureRecord &now, const CreatureRecord *before) {
     if (!before)
         return ALL_FIELDS;
@@ -226,16 +260,18 @@ uint64_t changedFields(const CreatureRecord &now, const CreatureRecord *before) 
         case CreatureField::BYTES:
             differs = std::memcmp(a, b, f.size) != 0;
             break;
-        case CreatureField::FLOATS: // compared as floats: +0 equals -0, NaN always differs
-            for (uint16_t i = 0; i < f.size && !differs; i += 4) {
-                float x, y;
-                std::memcpy(&x, a + i, 4);
-                std::memcpy(&y, b + i, 4);
-                differs = !(x == y);
-            }
+        case CreatureField::FLOATS:
+            differs = !sameFloats(a, b, f.size);
             break;
         case CreatureField::NAME:
             differs = std::strncmp((const char *)a, (const char *)b, f.size) != 0;
+            break;
+        case CreatureField::APPEARANCE:
+            differs = !sameWireAppearance(a, b);
+            break;
+        case CreatureField::ITEMS: // the single slot, or the 13 equipment slots item by item
+            for (size_t i = 0; i < f.size && !differs; i += ITEM_SIZE)
+                differs = !sameWireItem(a + i, b + i);
             break;
         }
         if (differs)
