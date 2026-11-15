@@ -2482,3 +2482,18 @@ Not modelled: the join inventory and type-44 appearance; region unloading and re
 saves; the second world table; the 60 s character autosave; client zone saves only at unload;
 the map's discovered counter; the race-7 hair colour copy (the generic appearance routine
 forces 255 for types 13 and 14).
+## Provenance re-certification, open points 7 and 8 (2026-11-14)
+
+Two inherited dungeon-generation contracts were re-certified by fresh source-only authors
+against the original images (14 corrections, no rule reversed; recording comparisons and
+implementer remarks removed; no reconstruction consulted) and read whole by the implementer:
+- `alpha-open-points-7.md` (9EC97116...A59D)
+- `alpha-open-points-8.md` (F9051468...4A37)
+
+The dungeon builder already matched both (link tables per s, corridor and line rules with the
+stair flag 0x01 on the lower cell, cell pass order and draw costs, ceiling, walls, torch and
+furniture tables, arch conditions and rotations, boss order). Only comments changed in
+`Dungeon.cpp`. Open: the native arch stamping's draw count is unresolved (the engine's mode-0
+placement draws none; if the original draws there, every later dungeon draw shifts); the
+furniture style is the zone's byte +0x79 natively, which the engine takes as v (kinds only, no
+draws).

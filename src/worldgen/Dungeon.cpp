@@ -820,7 +820,9 @@ class Builder : StructureWriter {
         return o;
     }
 
-    // §1.10.6: everything inside the open cells.
+    // §1.10.6: everything inside the open cells. (Open points 8 §1: the loops follow the grid's
+    // logical extents, which swap with an odd rotation; the grid is a 22-cell cube, so they are
+    // 22 on every axis either way.)
     void interior() {
         for (int32_t a = 0; a < N; a++)
             for (int32_t b = 0; b < N; b++)
@@ -1018,6 +1020,8 @@ class Builder : StructureWriter {
             }
             if (random.draw() & 7) {
                 const glm::i64vec3 p = spot(random.draw() & 3, HALF, 1);
+                // Open points 8 §3: Alpha passes the zone's byte +0x79 as the furniture style,
+                // not v; whether the two are equal is unresolved (kinds only, never draws).
                 zone.statics.push_back(furniture(p.x, p.y, p.z, s.facing, v));
             } else {
                 const glm::i64vec3 p = spot(random.draw() & 3, ONE, 1);
@@ -1089,6 +1093,9 @@ class Builder : StructureWriter {
         if (k == ENTRANCE || grid.kind(a, b, c + 1) == OPEN)
             return;
         const int32_t X = cellX(a), Y = cellY(b), Z = cellZ(c);
+        // Open points 8 §1: a template, the world block (X, Y, Z + 10) solid, then per side a
+        // neighbour kind other than 3; rotations -x 0, +x 2, -y 3, +y 1, type 70 (0x46). The
+        // stamping's draws are unresolved natively (§6); the engine's mode-0 placement draws none.
         if (arch && blockSolid(X, Y, Z + 10)) {
             const int32_t sides[4][3] = {{-1, 0, 0}, {1, 0, 2}, {0, -1, 3}, {0, 1, 1}};
             for (const auto &s : sides) {

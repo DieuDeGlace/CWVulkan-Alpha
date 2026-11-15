@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-14 (after batches 1-7; 214 tracked contracts, local ignored variants excluded): 102 A, 61 B, 46 C (30247 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-14 (after batches 1-7; 214 tracked contracts, local ignored variants excluded): 104 A, 61 B, 44 C (29700 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -64,7 +64,7 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 `alpha-hit-threat-death-lifecycle.md` and `alpha-open-points-9.md`.
 Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-house-furniture.md`;
-then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`.
+then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alpha-open-points-7.md` and `alpha-open-points-8.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -186,8 +186,8 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`.
 | `alpha-open-points-4.md` | C | 577 | 1 |
 | `alpha-open-points-5.md` | C | 419 | 1 |
 | `alpha-open-points-6.md` | C | 688 | 0 |
-| `alpha-open-points-7.md` | C | 256 | 1 |
-| `alpha-open-points-8.md` | C | 291 | 0 |
+| `alpha-open-points-7.md` | A | 256 | 1 |
+| `alpha-open-points-8.md` | A | 291 | 0 |
 | `alpha-open-points-9.md` | A | 114 | 0 |
 | `alpha-particles.md` | C | 564 | 3 |
 | `alpha-path-expansion-order.md` | A | 124 | 1 |
