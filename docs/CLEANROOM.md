@@ -2330,3 +2330,28 @@ written; the fatal snapshot list). Not modelled: the native P/reference adjustme
 the four attachment series (the engine keeps trail points relative to the displayed position);
 the model-point transform and collection argument; the server's double target lookup, list
 node size and packet-9-after-packet-8 loop order; apply replacing immutable zone fields.
+## Provenance re-certification, batch 4 (2026-11-14)
+
+Five inherited contracts were re-certified by a fresh source-only author against the
+original image (16 corrections; no reconstruction consulted) and read whole by the
+implementer:
+- `alpha-terrain-light-source-lifecycle.md` (041392BD...331E)
+- `alpha-worldgen-clouds.md` (7A47B72F...B1B9)
+- `alpha-periodic-hit-producer-state.md` (C0BAC1F0...9DB2)
+- `alpha-backing-reference-producers.md` (DCBABA05...6290)
+- `alpha-creature-yaw-light-gates.md` (EC18275D...3099)
+
+Engine changes:
+- Cloud height (`Clouds.cpp`): the base H + 100 M and the lift 50 N + 170 are each made fixed
+  (binary32 x 65536, truncated); the base is clamped at zero in fixed point and the lift added
+  as an integer. Placement moves by under 1/65536 block; which cells hold a cloud is unchanged.
+- The dying kind-144 creature's fading light needs the shared light view test
+  (`WorldView::lightViewAccepts`) with culling radius +0x88, tripled for action 106. The
+  native distance argument at this site is unresolved; the engine supplies the terrain
+  gather's distance (fog + 22.4). Out-of-view bomb deaths no longer light terrain.
+Not modelled: the Sleep(5) of the quarter-duration branch (a native timing side effect); the
+two presentation draws near 0x0AD3B9; the per-frame retry of the kind-144 trigger byte (the
+engine stays one-shot per death); the online client's kind-144 flash; the flash joining the
+same frame's candidates (the original appends after the gather); cloud gates sampled at the
+camera column with floor (native: the controlled creature, truncation); the cloud render-state
+setup. Engine extension kept: optional cloud drift.

@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14 (after batches 1-3; 214 tracked contracts, local ignored variants excluded): 83 A, 61 B, 70 C (35435 lines).
+Snapshot 2026-11-14 (after batches 1-4; 214 tracked contracts, local ignored variants excluded): 88 A, 61 B, 65 C (34889 lines).
 
 ## Remediation
 
@@ -45,6 +45,9 @@ Batch 3b: `alpha-light-admission-plane-production.md`, `alpha-hit-item-presentat
 `alpha-opaque-output-transfer-state.md` and `alpha-terrain-color-pipeline-public.md`.
 Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-event-transmission.md`,
 `alpha-spatial-association-producers.md` and `alpha-fatal-object-association-producers.md`.
+Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
+`alpha-periodic-hit-producer-state.md`, `alpha-backing-reference-producers.md` and
+`alpha-creature-yaw-light-gates.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -55,7 +58,7 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 | `alpha-airship-steering.md` | A | 240 | 0 |
 | `alpha-attack-routine.md` | A | 418 | 1 |
 | `alpha-audio.md` | C | 396 | 5 |
-| `alpha-backing-reference-producers.md` | C | 113 | 0 |
+| `alpha-backing-reference-producers.md` | A | 127 | 0 |
 | `alpha-beam-height-leftovers.md` | A | 228 | 0 |
 | `alpha-behavior-target-selection.md` | B | 78 | 0 |
 | `alpha-block-edits.md` | C | 623 | 3 |
@@ -102,7 +105,7 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 | `alpha-creatures-behaviour.md` | C | 1237 | 1 |
 | `alpha-creatures-models.md` | C | 1543 | 0 |
 | `alpha-creature-update-phases.md` | B | 170 | 2 |
-| `alpha-creature-yaw-light-gates.md` | C | 115 | 1 |
+| `alpha-creature-yaw-light-gates.md` | A | 125 | 1 |
 | `alpha-critical-and-haste-stat-numerics.md` | B | 137 | 0 |
 | `alpha-data-stores.md` | A | 155 | 0 |
 | `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
@@ -178,7 +181,7 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 | `alpha-path-world-fallback.md` | A | 60 | 1 |
 | `alpha-periodic-buff-hit.md` | B | 117 | 2 |
 | `alpha-periodic-hit-application-details.md` | B | 98 | 2 |
-| `alpha-periodic-hit-producer-state.md` | C | 111 | 2 |
+| `alpha-periodic-hit-producer-state.md` | A | 127 | 2 |
 | `alpha-pets-bombs.md` | C | 781 | 2 |
 | `alpha-physics-camera.md` | C | 592 | 0 |
 | `alpha-player-control.md` | C | 249 | 0 |
@@ -202,7 +205,7 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
 | `alpha-saves.md` | C | 352 | 3 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
-| `alpha-server-buff-update-admission.md` | C | 119 | 2 |
+| `alpha-server-buff-update-admission.md` | C | 144 | 3 |
 | `alpha-server-hit-record-routing.md` | B | 77 | 1 |
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
 | `alpha-server-simulation.md` | C | 581 | 1 |
@@ -223,7 +226,7 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 | `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
 | `alpha-terrain-chunk-point-lights.md` | B | 92 | 0 |
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
-| `alpha-terrain-light-source-lifecycle.md` | C | 123 | 1 |
+| `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
 | `alpha-trails-poses-schedules.md` | C | 690 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
@@ -241,7 +244,7 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 | `alpha-world-call-phase-boundary.md` | B | 82 | 1 |
 | `alpha-world-creature-health-admission.md` | A | 84 | 0 |
 | `alpha-worldgen-caves.md` | C | 449 | 0 |
-| `alpha-worldgen-clouds.md` | C | 109 | 0 |
+| `alpha-worldgen-clouds.md` | A | 91 | 0 |
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
 | `alpha-worldgen-overview.md` | C | 210 | 4 |
 | `alpha-worldgen-random.md` | C | 229 | 0 |

@@ -1,7 +1,17 @@
 #include "worldgen/Clouds.h"
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 
 namespace worldgen {
+namespace {
+// Clouds contract §0: binary32 times 65536, truncated to signed 64-bit. Out-of-range or
+// unordered input has no ordinary contract; the engine uses the minimum (clamped to 0 below).
+int64_t toFixed(float value) {
+    const float scaled = value * 65536.f;
+    return double(scaled) >= -0x1p63 && double(scaled) < 0x1p63 ? int64_t(scaled) : INT64_MIN;
+}
+} // namespace
 
 std::optional<CloudPlacement> CloudField::cell(int32_t X, int32_t Y) {
     const auto key = std::make_pair(X, Y);
@@ -18,8 +28,12 @@ std::optional<CloudPlacement> CloudField::cell(int32_t X, int32_t Y) {
         // Step 3: local moisture.
         if (w.moisture(px, py) >= 0.3f) {
             // Step 4: height over the ground and the mountains.
-            const float zb = std::max(terrain.height(px, py) + 100.f * terrain.mountains(px, py), 0.f);
-            const double z = (double)(int64_t)(zb * 65536.f) / 65536.0 + (50.f * noise(17.0 * X, 19.0 * Y) + 170.f);
+            // Each binary32 term is made fixed (x 65536, truncated) on its own; the base is clamped
+            // in fixed point and the lift added there (clouds contract §3 step 4).
+            const float zb = terrain.height(px, py) + 100.f * terrain.mountains(px, py);
+            const int64_t base = std::max(toFixed(zb), int64_t(0));
+            const int64_t lift = toFixed(50.f * noise(17.0 * X, 19.0 * Y) + 170.f);
+            const double z = (double)std::bit_cast<int64_t>(uint64_t(base) + uint64_t(lift)) / 65536.0;
             // Steps 5-6: size and quarter-turn rotation.
             const float scale = 2.f * noise(15.0 * X, 23.0 * Y) + 7.f;
             result = CloudPlacement{(double)px, (double)py, z, scale, (float)((X + Y) * 90)};

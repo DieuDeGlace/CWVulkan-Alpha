@@ -1,3 +1,5 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha creature yaw light gates
 
 This is an original-client contract for four creature-dependent terrain-light sites in renderer RVA `0x0AC260`. The evidence root is `disassembled alpha cube world`. The supported `binary/Cube.exe` is 3,885,568 bytes, SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, preferred image base `0x00400000`. Every address below is an RVA. Supporting original sources are `decompiled/client/assembly.txt`, the image's bytes and import table, and the individually identified function files cited below. No reconstruction, other project contract, replacement implementation or runtime artifact was read for this audit.
@@ -111,4 +113,12 @@ The inspected helpers write temporary matrices, outputs and locals, and the cand
 
 The closed arithmetic relations assume valid storage, ordinary finite values, in-range conversions and unchanged input fields during a local evaluation. Production and synchronization of the angle vectors, rendered position, creature fields, equipment records and buff list are unresolved dependencies. The audit does not close floating-control-state changes, NaN/unordered comparisons, infinities, subnormal handling, signed integer overflow, fixed-point overflow, zero denominators, out-of-range conversion behavior with different exception masks, malformed lists, runtime math error handling, all renderer/caller gates, downstream candidate sorting or shader lighting. Other action cases of `0x03CAA0` and gameplay meanings of the numeric fields are not inferred.
 
-Status: FINAL / STABLE / HELD after complete author readback. All prior held artifacts remain unopened and unchanged for this scope.
+## Re-certification (2026-11-14)
+
+The supported image hash was re-verified. The four renderer site bodies were re-read in the original listing. The helpers `0x03CAA0` (dispatch at `0x03CAA9–0x03CAC1`, the cited branches and common result), `0x047700`, `0x0478B0`, `0x0C7C00`, `0x045FF0`, `0x043F10`, `0x024610`, `0x0248A0`, `0x088E50`, `0x02C460`, `0x02C800` and `0x00E420` were checked against original instructions and function files. The cited literals were read from image bytes: 600, 1200, 500, 5000, 400, 0.0625, 0.75, 0.05, 3, 0.25, binary64 2 and 3, 0.1, 0.2, 20 and 0.001. The three math thunks and their `MSVCR110.dll` import-slot names were re-resolved from the import table. No reconstruction was consulted.
+
+Confirmed: every gate, order, radius, RGB, attachment, transform, conversion, threshold, stat, item and import statement in this contract, including the sign-tested −1 selector, the action groupings (88 and 92 fall to the 400 default), the truncating integer threshold, the strict clock comparison, the doubled `0x044CB0` call, the unsigned modulo-21 coefficient, the 0.001 floor with equality surviving, and the absence of random calls in the scoped bodies and helpers.
+
+Corrected: none.
+
+Unresolved: only the dependencies and exceptional-state limits already stated above.

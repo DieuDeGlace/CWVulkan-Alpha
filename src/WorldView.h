@@ -81,6 +81,10 @@ class WorldView {
     // and rebuild each terrain chunk's resident light records.
     void finishLighting(Scene &scene, const WorldItems &items, int32_t sourceClockMs,
                         std::optional<terrain_lights::FixedPosition> controlled = std::nullopt) const;
+    // The shared light view test on an absolute block position against the last
+    // published planes. The engine supplies the terrain gather's distance (fog + 22.4);
+    // the kind-144 site's own distance argument is unresolved natively.
+    bool lightViewAccepts(glm::dvec3 at, float cullingRadius, float fogDistance) const;
     // The camera's place in world blocks, and a world position in render-origin terms.
     glm::dvec3 worldPosition() const { return glm::dvec3(origin.x + (double)eye.x, origin.y + (double)eye.y, eye.z); }
     glm::vec3 toRender(glm::dvec3 at) const {

@@ -1019,8 +1019,8 @@ Differences from the Steam engine that shape the plan:
   the engine, server, AlphaSetup, examples, SDK, player docs and licences, with
   SHA-256 sums, into a new timestamped directory/archive under `dist/`. Existing
   packages are retained. Release acceptance/provenance gates remain open.
-- [ ] Specification provenance gate (`docs/provenance-audit.md`): 83 held and recorded, 61
-  held without a recorded hash, 70 inherited without a held status (20 re-certified so
+- [ ] Specification provenance gate (`docs/provenance-audit.md`): 88 held and recorded, 61
+  held without a recorded hash, 65 inherited without a held status (25 re-certified so
   far). Each B/C document is re-certified by a fresh source-only author and re-read by the
   implementer before release.
 - [x] Setup: when no Alpha install is found, a folder picker asks for it (checked for Cube.exe and

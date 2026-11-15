@@ -849,6 +849,16 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
     renderer.setTerrainLights(lightSelector.rebuild(lightCandidates, lightChunks, shift));
 }
 
+bool WorldView::lightViewAccepts(glm::dvec3 at, float cullingRadius, float fogDistance) const {
+    const auto reference = terrain_lights::fromBlocks(worldPosition());
+    const auto position = terrain_lights::fromBlocks(at);
+    if (!reference || !position)
+        return false;
+    const terrain_lights::FixedPosition shift{-int64_t(origin.x) * 65536, -int64_t(origin.y) * 65536, 0};
+    return terrain_lights::ViewAdmission(*reference, shift, storedLightPlanes, fogDistance + 22.4f)
+        .accepts(*position, cullingRadius);
+}
+
 std::string WorldView::status() const {
     size_t plantCount = 0;
     for (const auto &[key, list] : plants)

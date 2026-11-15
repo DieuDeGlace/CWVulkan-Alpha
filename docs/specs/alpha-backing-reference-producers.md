@@ -1,3 +1,5 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha backing-reference producers and preservation boundaries
 
 ## Evidence and scope
@@ -95,7 +97,7 @@ The completed per-record builders at `0x1BF7C0` and `0x1F6E20` likewise initiali
 
 ## What the consumers establish, and what they do not
 
-The fatal-processing routine RVA `0x195A60` uses the creature's two reference coordinates for a cell lookup at `0x196193–0x19619F`. In that cell it traverses the separate spatial value vector. For a kind-5 record it compares `M+0x178` with `C+0x1B8` (`0x1961B4–0x1961C5`) and then tests the record's active byte at `+0x30`. Advancing that scan by `0x188` does not assign its scan ordinal to either field. This establishes an equality relationship used by this consumer, not a producer or a universal uniqueness rule.
+The hit-application callback at RVA `0x195A60` has a fatal branch, entered at `0x196133` only when the target's binary32 health at `+0x16C` is no longer positive. That branch uses the creature's two reference coordinates for a cell lookup at `0x196193–0x19619F`. In that cell it traverses the separate spatial value vector. A record matches only when its 32-bit kind is 5, `M+0x178` equals `C+0x1B8` (`0x1961B4–0x1961C5`), and the record's active byte at `+0x30` is nonzero. Advancing that scan by `0x188` does not assign its scan ordinal to either field. This establishes an equality relationship used by this consumer, not a producer or a universal uniqueness rule.
 
 A later part of the same routine uses `C+0x1B8` to index a cell's descriptor pointer vector at `+0x18`, after checking signed nonnegativity and strict signed-less-than count (`0x196C13–0x196C2D`). RVA `0x1A4980` demonstrates the same descriptor-vector indexing boundary at `0x1A4A09–0x1A4A22`. Zero passes these index checks when the vector is nonempty; an index equal to the count does not. Negative values are rejected there. The earlier kind-5 equality test itself does not impose those index checks. Evidence: original instructions in `decompiled/client/assembly.txt` at the cited addresses.
 
@@ -109,4 +111,16 @@ The complete generators spanning RVAs `0x1AF170`, `0x1CC510` and `0x1E4850`, eve
 
 Copying and vector relocation preserve values; they do not validate a relationship's lifetime. No general guarantee is established that descriptor-array edits rebase surviving creatures, that spatial records are uniquely paired with descriptors, or that a copied reference remains valid after cell removal/reconstruction. Full descriptor activation admission, fatal side effects, deletion ownership and the persistence of nested record objects are not specified here. These gaps must remain separate from the concrete default, ordinal assignment and preservation facts above.
 
-Status: FINAL / STABLE / HELD after complete author readback.
+## Re-certification (2026-11-14)
+
+The supported image hash was re-verified. Every cited store, load, call and comparison was re-read in the original listing or with MSVC dumpbin on the original image, and checked against the cited original function files. No reconstruction was consulted.
+
+Confirmed: the `C+0x10` data base; the constructor's zero-then-(−1, −1) order at `0x03C2B5/0x03C2BB/0x03C2C5` (the register stored is zeroed beforehand); the reset order at `0x046701/0x04670B/0x046715`; the reconstruction entry's reset at `0x04BE7F` and its fresh-data assignment at `0x04BF84–0x04BF93`; the descriptor traversal (zeroing at `0x20FB94`, end-minus-begin over four, four-byte slot indexing, increment at `0x210439` and signed-less-than continuation); the `0x1E60` allocation with the identifier at descriptor `+0x48`; the destination order (`Q+0x60`, `Q+0x64`, ordinal) through `0x02C500` and `0x011E30`; both data copiers; both copy callers; the serializer's three-word compare, force byte and 12-byte group; the memory reader's present/absent/truncated behaviour; the socket reader's direct incremental writes; the spatial constructor tail and the three builder tails; copy constructor ordering; the four temporary-origin pairs and four existing-element copy pairs; the placement-helper calls (`0x1F4DA0` at `0x1AD4BC`, `0x1AD79B`, `0x1DDFBA`, `0x1DE57B`; `0x1CB3B0` at `0x1F1856`), neither of which references `+0x178`; append and relocation through `0x18EA10`; both indexed consumers with their sign and bound checks.
+
+Corrected (does not reverse an earlier claim):
+- Consumer description: old "the fatal-processing routine 0x195A60"; new: the fatal branch of the hit-application callback `0x195A60`, entered at `0x196133` on non-positive health. The match also requires a nonzero active byte, not just a test of that byte.
+
+Unresolved:
+- The first nondefault producer of `M+0x178`, as stated under the explicit limits.
+- For the builders at `0x1BF7C0` and `0x1F6E20`, the −1 tail is written into a stack temporary at `ebp−0x20..−0x18`. Its identity with the copied record's `+0x178` was inferred from the following copy-constructor call, not traced byte for byte.
+- Every scope limit stated above.

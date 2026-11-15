@@ -2734,7 +2734,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (shattered.insert(npc.fighter.id).second) {
                     creatureView.shatter(npc.looks, npc.pose, motion, at, [&] { return worldRandom.draw(); },
                                          particles.list);
-                    if (npc.fighter.type == 144)
+                    // alpha-terrain-light-source-lifecycle.md: the kind-144 fading light needs the
+                    // view test on the rendered position (engine +0x1180 lag is zero) with culling
+                    // radius +0x88, tripled for action 106.
+                    const float cull = npc.looks.box.z * (uint8_t(npc.fighter.action) == 106 ? 3.f : 1.f);
+                    if (npc.fighter.type == 144 && view.lightViewAccepts(at, cull, scene.fogDistance))
                         flashes.append({{npc.body.position[0], npc.body.position[1], npc.body.position[2]},
                                         {1, 0.8f, 0.5f}, 16, 0, 800});
                 }

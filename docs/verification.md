@@ -1703,3 +1703,4 @@ ItemIdentityTests (zero hand count swaps; hand count 1 with category 20 swaps). 
 pass, the player diagnostic and five live runs pass, and the six captures match the
 preceding batch.Provenance batch 3b (2026-11-14). No behaviour change (comment only); all 60 CTests pass.
 Provenance batch 3a (2026-11-14). No behaviour change; all 60 CTests pass.
+Provenance batch 4 (2026-11-14). WorldgenTests: every cloud placed at home (seed 123) matches the fixed-point height composition. All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures match the preceding batch (clouds unchanged to the eye).

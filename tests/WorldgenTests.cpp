@@ -6,6 +6,7 @@
 #include "BlockEdits.h"
 #include "Missions.h"
 #include "worldgen/Builders.h"
+#include "worldgen/Clouds.h"
 #include "worldgen/Items.h"
 #include "worldgen/MapTile.h"
 #include "worldgen/Prefab.h"
@@ -126,6 +127,24 @@ int main() {
     colour(terrain.grass(HOME, HOME), {163.84413146972656f, 224.4915313720703f, 0}, "grass at home");
     colour(terrain.snow(0, 0), {132.31939697265625f, 194.3641815185547f, 255}, "snow(0, 0)");
     colour(terrain.snow(1000, 2000), {138.51609802246094f, 197.11827087402344f, 255}, "snow(1000, 2000)");
+
+    // Clouds contract §3 step 4: base and lift are made fixed separately (x 65536, truncated),
+    // the base clamped at zero in fixed point, then summed.
+    {
+        CloudField field(terrain);
+        int checked = 0;
+        for (const auto &c : field.place(HOME, HOME, HOME, HOME)) {
+            const int32_t X = int32_t(c.x) / 200, Y = (int32_t(c.y) - 100 * (X % 2)) / 200;
+            const int32_t px = 200 * X, py = 200 * Y + 100 * (X % 2);
+            const float zb = terrain.height(px, py) + 100.f * terrain.mountains(px, py);
+            const int64_t base = std::max<int64_t>(int64_t(zb * 65536.f), 0);
+            const int64_t lift = int64_t((50.f * noise(17.0 * X, 19.0 * Y) + 170.f) * 65536.f);
+            same(c.z, double(base + lift) / 65536.0, "cloud height in fixed point");
+            checked++;
+        }
+        if (checked == 0)
+            std::printf("note: no clouds at home for this seed\n");
+    }
 
     // Locations spec §12.1: the home region of seed 123, a named world.
     {
