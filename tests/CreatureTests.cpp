@@ -642,7 +642,7 @@ int main() {
         StaticStates states;
         states.generated(zone);
         const std::map<StaticStates::Key, const worldgen::Zone *> held{{{0, 0}, &zone}};
-        const auto none = [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &) { return false; };
+        const auto none = [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &, int32_t &) { return false; };
         const auto level5 = [](glm::dvec3) { return 5; };
         std::vector<HitRecord> hits;
         std::vector<SoundEvent> sounds;
@@ -716,6 +716,11 @@ int main() {
         same(states.blocks(map, lo, hi), 1, "it overlaps");
         same(states.blocks(map, lo, hi, 0, 0.1), 0, "walking out on +x is free");
         same(states.blocks(map, lo, hi, 0, -0.1), 1, "walking further in is not");
+        // §2.2 step 4: q = trunc(fixed difference x d), so a product below one unit skips.
+        same(states.blocks(map, lo, hi, 0, -1e-6), 0, "a sub-unit approach product skips the static");
+        // §2.3: the lower faces compare with <=, the upper ones strictly.
+        same(states.blocks(map, {7.5, 9.5, 5.2}, {8.5, 10.5, 7.2}), 1, "touching its -x face (X - hx = pos + w/2) hits");
+        same(states.blocks(map, {11.5, 9.5, 5.2}, {12.5, 10.5, 7.2}), 0, "touching its +x face does not");
     }
 
     // Open points 2 §1: the search walks round a stand 3.5 blocks tall; as read (§1.4, the
@@ -1550,6 +1555,18 @@ int main() {
         for (int i = 0; i < 30; i++)
             step(top, 16, flat, crate);
         same(std::abs(top.blocks().z - (2 + 1.08)) < 0.05 && (top.contact & ON_GROUND), 1, "standing on the crate");
+        // Open points 2 §2: on z the statics are tested after a cell hit too (a rug lying on the
+        // ground under a standing creature is touched); x and y are not.
+        int rugAxes = 0;
+        const ObjectTest rug = [&](glm::dvec3, glm::dvec3, int axis, double, const IgnoredStatics *) {
+            rugAxes |= 1 << axis;
+            return true;
+        };
+        Body still;
+        still.place({20.5, 0.5, 1 + 1.08});
+        for (int i = 0; i < 5; i++)
+            step(still, 16, flat, rug);
+        same(rugAxes == 4 && (still.contact & ON_OBJECT) != 0, 1, "a z cell hit still tests the statics");
         const glm::vec3 push = separation({0.96f, 0.96f, 2.16f}, {1.96f, 1.96f, 2.16f}, {1, 0, 0}, {0.5, 0, 0}, false);
         same(push.x, 5 * 1.96 / 0.96, "pushed away at 5 s'x/sx blocks a second", 1e-4);
     }
@@ -2086,7 +2103,10 @@ int main() {
             same(pulse(timing.windUp - 8), 1, "the update crossing the wind-up pulses");
             same(caster->fighter.mana < 0.71f, 1, "action 0x5F pays 0.3 mana at its first crossing");
             same(pulse(timing.windUp + 20), 0, "no pulse inside the same 200 ms period");
+            caster->fighter.deferred = {99};
             same(pulse(timing.windUp + 190), 1, "the next 200 ms boundary pulses");
+            // Open points 1 §3.1 step 4: a tick clears the evaded set (+0x11B4) too.
+            same(caster->fighter.deferred.empty(), 1, "the beam tick clears the evaded set");
             same(pulse(timing.windUp + timing.active), 0, "no pulse once the active window is over");
             // Beam-leftovers contract §1.4: mana driven below zero skips the rest of the case.
             same(pulse(timing.windUp - 8, 0.2f), 0, "a first crossing without the mana loses its pulse");
@@ -2585,6 +2605,52 @@ int main() {
         same(world.zone(1, 2)->size(), 1, "a drop older than three days is left out");
     }
 
+    // World items (re-certified) §4.3: the settling pass lowers generated records with tag bit 0
+    // clear onto solid ground (through water); tag-1 loot stays. §2.4: the tumble runs while
+    // T != 0, the hop only while T > 0. §2 step 5: the mana-cube filter.
+    {
+        worldgen::Zone zone;
+        zone.zx = 0, zone.zy = 0;
+        for (auto &column : zone.columns)
+            column.bottom = 5; // implicit solid below z = 5, air above
+        zone.items.push_back({20, 20, 12, 11, 15, 0, 1});              // vegetation, tag 2
+        worldgen::ItemDrop loot;
+        loot.x = 30ll << 16, loot.y = 30ll << 16, loot.z = 12ll << 16; // scale 0.06, tag 1
+        loot.item.type = 11;
+        zone.drops.push_back(loot);
+        loot.scale = 0.1f; // tag 2
+        zone.drops.push_back(loot);
+        WorldItems world;
+        world.generated(zone);
+        const std::vector<WorldItem> &list = *world.zone(0, 0);
+        same(list[0].origin == 1 && list[0].position[2] == (12ll << 16), 1, "tag-1 loot is not moved");
+        same(list[1].origin == 2 && list[1].position[2] == (5ll << 16), 1, "tag-2 loot settles on the ground");
+        same(list[2].position[2], 5ll << 16, "a vegetation item settles block by block");
+
+        WorldItem w;
+        w.item[0] = 5;
+        const glm::vec3 size(4, 4, 4);
+        WorldItem rest = w;
+        const glm::mat4 still = worldItemPose(rest, size, 0);
+        w.landingMs = -3600; // whole turns of both tumble angles (3600 and 2520 degrees)
+        same(std::abs(worldItemPose(w, size, 0)[3][2] - still[3][2]) < 1e-3f, 1, "no hop while T <= 0");
+        w.landingMs = 3600;
+        same(std::abs(worldItemPose(w, size, 0)[3][2] - still[3][2]) > 1, 1, "the hop while T > 0");
+        w.landingMs = -40; // a received, overshot timer
+        same(worldItemPose(w, size, 0) != still, 1, "the tumble still turns the item while T != 0");
+
+        ItemRecord cube{};
+        cube[0] = 25;
+        const int32_t number = 107;
+        std::memcpy(cube.data() + 4, &number, 4);
+        same(manaCubeFor(cube, 107), 1, "the cube of counter 107");
+        same(manaCubeFor(cube, 207), 1, "a counter above 100 reads as 100 + counter mod 100");
+        same(manaCubeFor(cube, 106), 0, "another player's mana cube is hidden");
+        ItemRecord other{};
+        other[0] = 3;
+        same(manaCubeFor(other, 0), 1, "other types pass");
+    }
+
     // Interaction §8 examples 5 and 6: a chest opened spills its loot; a door toggles and
     // swings over a second; a stool seats the player and frees when they walk off.
     {
@@ -2621,23 +2687,34 @@ int main() {
         same((*statics.zone(0, 0))[0].state, 0, "the chest is open");
         same(sounds.size() == 1 && sounds[0].sound == 54, 1, "with sound 54");
         // (A door closed for 25 s: the setter's 1000 - timer rule gives 0, §8 example 2.)
-        statics.step(25000, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &) { return false; }, {});
+        statics.step(25000, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &, int32_t &) { return false; }, {});
         use(1);
         same((*statics.zone(0, 0))[1].state, 0, "the door opens");
         (void)statics.takeChanged();
-        statics.step(500, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &) { return false; }, {});
+        statics.step(500, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &, int32_t &) { return false; }, {});
         same(openFraction(1, (*statics.zone(0, 0))[1]), 0.5, "half open after half a second", 1e-6);
         use(2);
         same(body.blocks().z, 101.4, "seated on the stool", 1e-4);
         same(yaw, 270, "facing (1 + 2) x 90");
         same(me.action, 83, "sitting");
         std::map<StaticStates::Key, const worldgen::Zone *> held{{{0, 0}, &zone}};
-        const auto where = [&](uint64_t, glm::dvec3 &at, glm::vec3 &intent, int32_t &action) {
-            at = body.blocks(), intent = body.intent, action = me.action;
+        const auto where = [&](uint64_t, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
+            at = body.blocks(), intent = body.intent, action = me.action, stun = me.hitStun;
             return true;
         };
         statics.step(16, where, held);
         same((*statics.zone(0, 0))[2].occupant, 1, "still seated");
+        // Open points 1 §1.6: a stunned occupant releases the seat (its action unchanged), and
+        // only a non-remote world releases.
+        me.hitStun = 500;
+        statics.step(16, where, held, false);
+        same((*statics.zone(0, 0))[2].occupant, 1, "a remote world keeps the occupant");
+        statics.step(16, where, held);
+        same((*statics.zone(0, 0))[2].occupant, 0, "hit-stun frees the stool");
+        same(me.action, 83, "the release leaves the action alone");
+        me.hitStun = 0;
+        use(2);
+        same((*statics.zone(0, 0))[2].occupant, 1, "seated again");
         body.intent = {1, 0, 0};
         statics.step(16, where, held);
         same((*statics.zone(0, 0))[2].occupant, 0, "walking off frees the stool");

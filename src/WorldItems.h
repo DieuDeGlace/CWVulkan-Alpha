@@ -38,6 +38,11 @@ struct WorldItem {
 // `size` voxels, at `clockMs`; `forBox` gives the pose of the item-target box (§2.6).
 glm::mat4 worldItemPose(const WorldItem &w, glm::vec3 size, double clockMs, bool forBox = false);
 
+// §2 step 5, §3.3 step 2 (0x3e550): a mana cube (type 25) is drawn for, and picked up by, only
+// the creature whose mana-cube counter equals its 32-bit +0x04, a counter above 100 reading
+// as 100 + counter mod 100. Every other type passes.
+bool manaCubeFor(const creatures::ItemRecord &item, int32_t counter);
+
 class WorldItems {
   public:
     using Key = std::pair<int32_t, int32_t>;
@@ -66,8 +71,10 @@ class WorldItems {
               const creatures::BlockType &block, const std::function<int()> &draw);
     bool drop(const creatures::ItemRecord &item, const int64_t at[3], float factor, int32_t day,
               const creatures::BlockType &block, const std::function<int()> &draw);
-    // §3.3 kind 5: takes item `index` of a zone for a creature at `from` (within 4 blocks).
-    std::optional<creatures::ItemRecord> pickUp(int32_t zx, int32_t zy, int32_t index, glm::dvec3 from);
+    // §3.3 kind 5: takes item `index` of a zone for a creature at `from` (within 4 blocks),
+    // after the mana-cube filter against `manaCounter` when the caller knows it.
+    std::optional<creatures::ItemRecord> pickUp(int32_t zx, int32_t zy, int32_t index, glm::dvec3 from,
+                                                std::optional<int32_t> manaCounter = std::nullopt);
 
   private:
     std::map<Key, std::vector<WorldItem>> lists;

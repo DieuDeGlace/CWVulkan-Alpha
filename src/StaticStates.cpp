@@ -2,6 +2,7 @@
 #include "WorldItems.h"
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstring>
 
 float openFraction(int32_t kind, const StaticState &s) {
@@ -333,22 +334,23 @@ void StaticStates::use(const worldgen::Zone &zone, int32_t index, creatures::Com
     // point I-3.)
 }
 
-void StaticStates::step(int32_t dt, const std::function<bool(uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &)> &where,
-                        const std::map<Key, const worldgen::Zone *> &held) {
+void StaticStates::step(int32_t dt, const Occupant &where, const std::map<Key, const worldgen::Zone *> &held,
+                        bool release) {
     for (auto &[key, list] : zones) {
         const auto z = held.find(key);
         for (size_t i = 0; i < list.size(); i++) {
             StaticState &s = list[i];
             s.timerMs += dt;
-            if (!s.occupant || z == held.end() || i >= z->second->statics.size())
+            if (!release || !s.occupant || z == held.end() || i >= z->second->statics.size())
                 continue;
             const worldgen::StaticObject &o = z->second->statics[i];
             glm::dvec3 at;
             glm::vec3 intent;
-            int32_t action;
+            int32_t action = 0, stun = 0;
             const glm::dvec3 seat = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
-            const bool stays = where(s.occupant, at, intent, action) && glm::dot(at - seat, at - seat) <= 16 &&
-                               glm::dot(intent, intent) == 0 && (action == 83 || action == 84);
+            const bool stays = where(s.occupant, at, intent, action, stun) && stun <= 0 &&
+                               glm::dot(at - seat, at - seat) <= 16 && glm::dot(intent, intent) == 0 &&
+                               (action == 83 || action == 84);
             if (!stays) {
                 s.occupant = 0;
                 changed.insert(key);
@@ -449,10 +451,16 @@ bool StaticStates::blocks(const worldgen::WorldMap &map, glm::dvec3 lo, glm::dve
                 const bool turned = ((o.rotation % 2) + 2) % 2 == 1;
                 const double sx = turned ? o.scale[1] : o.scale[0], sy = turned ? o.scale[0] : o.scale[1];
                 const glm::dvec3 c = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
-                if (axis >= 0 && (centre[axis] - c[axis]) * move >= 0)
-                    continue; // moving away from it, or level with its reference point
+                // Open points 2 §2.2 step 4: q = trunc(float(fixed-point difference) x d); q >= 0
+                // (moving away, level, or below one fixed-point unit) skips the static.
+                if (axis >= 0) {
+                    const float difference = (float)((centre[axis] - c[axis]) * 65536.0);
+                    if (std::trunc(difference * (float)move) >= 0)
+                        continue;
+                }
+                // §2.3: X - hx <= pos + w/2 and pos - w/2 < X + hx on each axis (z from the base).
                 const glm::dvec3 olo(c.x - sx / 2, c.y - sy / 2, c.z), ohi(c.x + sx / 2, c.y + sy / 2, c.z + o.scale[2]);
-                if (lo.x < ohi.x && hi.x > olo.x && lo.y < ohi.y && hi.y > olo.y && lo.z < ohi.z && hi.z > olo.z)
+                if (olo.x <= hi.x && lo.x < ohi.x && olo.y <= hi.y && lo.y < ohi.y && olo.z <= hi.z && lo.z < ohi.z)
                     return true;
             }
         }

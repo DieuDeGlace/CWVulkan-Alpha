@@ -114,8 +114,14 @@ class World {
     // Open points 5 §1 (0x59a9b0): the level of a point: the level of the location of its own
     // sub-cell when the point is inside that location's rim, otherwise 1. No draws.
     int32_t levelAt(int32_t x, int32_t y) const;
+    // Open points 1 §1.5 step 2 (0x19a9b0 on a raw position, 1/65536 blocks): cell x =
+    // (X / 65536) / 2048, cell y = trunc(Y x 1/2048 in double) / 65536 (all toward zero), and
+    // the rim test at the raw point.
+    int32_t levelAtFx(int64_t X, int64_t Y) const;
 
   private:
+    // §6.3: the typed location record of sub-cell (lx, ly), null outside 0..8191 or if none.
+    const Location *locationCell(int64_t lx, int64_t ly) const;
     // §3.3: the integer squared distance from the displaced column to a cell.
     static int32_t squaredDistance(const RegionCell &c, int32_t px, int32_t py);
     // Float attributes use two passes; boolean predicates use a membership pass

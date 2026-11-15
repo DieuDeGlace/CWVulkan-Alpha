@@ -2517,3 +2517,45 @@ engine choices.
 Open discrepancy for the locations re-certification: the regions contract says the slot pass
 stores level 1 at +0x24, while the engine applies a climate-based minimum (1/10/15/20) taken
 from the not yet re-certified locations contract; zone levels depend on it, so it is unchanged.
+## Provenance re-certification, projectiles, world items, open points 1 and 2 (2026-11-15)
+
+Four inherited contracts were re-certified by fresh source-only authors against the original
+images (69 corrections; reversals: the projectile landed flag resets every sub-step and a
+shooterless projectile skips the eligibility tests; the no-attacker hit path leaves velocity
+untouched and pushes through the application vector; world-item tag bit 0 lowers generated
+records onto the ground; low non-exempt statics do block sideways path moves; verification
+material and implementer remarks removed; no reconstruction consulted) and read whole by a
+fresh implementer:
+- `alpha-projectiles.md` (A76F2F03...99DD)
+- `alpha-open-points-1.md` (2DF6B799...5030)
+- `alpha-world-items.md` (6EBB945D...3613)
+- `alpha-open-points-2.md` (11067776...5195)
+
+Engine changes:
+- Projectiles: the action-dependent weapon set (bow/crossbow alone; action 96 off hand then
+  main hand; otherwise main hand plus an off-hand bracelet) and 2^g in binary64; bow and salvo
+  products in the contract's order with the record's strength; the type-101 spell offset and the
+  class-3 element on the thrown rock; the healer burst only for action 94 at the end of a native
+  200-block ray from the attack origin (`Npcs::attackOrigin`); time rescale ratio first;
+  16.16 boomerang catch; kind-3 sub-steps computed normally with a creature scan each; still
+  projectile knock-back (0, 0, 3c); destroy, landed and wall flags reset per sub-step; world-unit
+  overlap with a strict upper bound; native line of sight and flight ray; no eligibility tests
+  without a shooter; contact and burst dodges recorded in the shooter's evaded set; burst
+  half-size 5 with shooter-only exemptions; a landed hit advances the combo and resets its timer.
+- Beam ticks clear the evaded set; trap level lookup uses the raw position with the y cell via a
+  binary64 multiply by 1/2048 (`World::levelAtFx`); seat release on hit-stun without touching
+  the action, local worlds only.
+- World items: tumble while T != 0, hop while T > 0; generated records with tag bit 0 clear settle
+  block by block onto solid ground (world generation); the mana-cube counter filter.
+- Physics: on z, statics are tested after a cell hit unless already standing on an object; the
+  static approach test truncates (fixed difference x d) and boxes use <= on lower and < on upper
+  faces (creature-static collision changes; path search already matched).
+Random-draw order: the native ray and line of sight, the 5-block burst, multi-sub-step kind-3
+scans and per-sub-step landed flags can change which creatures consume critical, damage and
+proc draws.
+Open conflicts between held contracts, sent to a source-side ruling: the trap pass period
+(100 ms in open points 1, 200 ms in hazards-blast-ticks) and the beam tick (100 ms of t - D in
+open points 1, first crossing plus 200 ms in aim-triplet); the engine keeps 200 ms meanwhile.
+Not modelled: the 89/90 channel sound for remote creatures, the +0x11C0 exclusion, field 18,
+statics in the projectile ray, the action-104 beam entry and water-mage visual, seat re-pin to
+actions 83/84, physics 3x3 index cells.

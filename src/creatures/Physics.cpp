@@ -425,14 +425,22 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         for (int k = 0; k < 3; k++) {
             const int64_t move = fixedOf(d[k]);
             b.position[k] += move;
-            if (!any(cellsOf(b.position, b.size), blocks)) {
+            const bool cellHit = any(cellsOf(b.position, b.size), blocks);
+            // Open points 2 §2: on z the statics are also tested after a cell hit, unless the
+            // creature already stands on an object this update; the airships never are.
+            if (cellHit && k == 2 && !onObject && move != 0 && objectHere(k, move)) {
+                touchedObject = true;
+                stepAllowed = false;
+                onObject = b.velocity.z < 0;
+            }
+            if (!cellHit) {
                 // §4.5: a static object stops this axis too (no step-up onto it); landing on
-                // one counts as standing.
+                // one (z velocity below 0) counts as standing.
                 if (move != 0 && objectHere(k, move)) {
                     b.position[k] -= move;
                     touchedObject = true;
                     stepAllowed = false;
-                    if (k == 2 && move < 0) {
+                    if (k == 2 && b.velocity.z < 0) {
                         onObject = true;
                         b.velocity.z = 0;
                         b.fallStart = (float)(b.position[2] / ONE);

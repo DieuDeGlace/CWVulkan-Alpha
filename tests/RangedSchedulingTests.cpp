@@ -412,6 +412,96 @@ int main() {
         check(shots.size() == 1, "the following update can emit from equality at that boundary");
         check(std::abs(actor.mana - .7f) < 1e-6f, "later repeated emission does not repeat the anticipation cost");
     }
+    // Re-certified projectiles contract (2026-11-14).
+    {
+        // §2.2: W sums the action's weapon set; a bow in hand counts alone (no off-hand weapon).
+        auto actor = ranger(22);
+        actor.equipment[OFF_HAND] = {3, SHIELD, 1, 0, 1, 0};
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        launch(actor, body, {1, 0, 0}, (float)phases(actor, 22).windUp, 16, [] { return 0; }, shots, effects);
+        check(shots.size() == 1 && std::abs(shots[0].damage - 11.25f) < 1e-4f,
+              "a bow counts alone in the weapon set: the off-hand shield adds nothing");
+    }
+    for (int action : {5, 94}) {
+        // §2.6: only the handler of 28, 94, 95 places the healer's burst (28 and 95 in the beam).
+        Combatant healer;
+        healer.characterClass = 3, healer.specialization = 1;
+        healer.action = action;
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        launch(healer, body, {1, 0, 0}, (float)phases(healer, action).windUp, 16, [] { return 0; }, shots, effects,
+               [](int32_t x, int32_t, int32_t) { return uint8_t(x >= 7 ? 1 : 0); });
+        const bool burst = shots.size() == 1 && shots[0].kind == BURST && shots[0].element == 2;
+        check(action == 94 ? burst : shots.empty(), "the healer's burst comes from actions 28, 94, 95 only");
+        if (action == 94 && burst)
+            check(shots[0].position[0] == 7 * 65536, "the burst sits where the 200-block ray meets the wall");
+    }
+    {
+        // §2.5: the element applies to the thrown rock too.
+        Combatant mage;
+        mage.characterClass = 3, mage.specialization = 1;
+        mage.action = 108;
+        mage.mana = 1;
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        launch(mage, body, {1, 0, 0}, (float)phases(mage, 108).windUp, 16, [] { return 0; }, shots, effects);
+        check(shots.size() == 1 && shots[0].kind == ROCK && shots[0].element == 2, "a water mage's rock is water");
+    }
+    {
+        // §5.1 step 4: a dodging target joins the shooter's evaded-by set; no hit.
+        Collision c;
+        c.world.list[0].kind = ARROW;
+        c.target.dodgeMs = 1;
+        c.step([] { return 0; }, {false, &c.source});
+        check(c.effects.hits.empty() && c.source.deferred.size() == 1 && c.source.deferred[0] == c.target.id,
+              "a dodge is recorded in the shooter's +0x11B4 set");
+    }
+    {
+        // §5: a still projectile pushes (0, 0, 3c).
+        Collision c;
+        c.world.list[0].strength = 2;
+        c.step([] { return 32767; }, {false, &c.source});
+        check(!c.effects.hits.empty() && c.effects.hits[0].record.knockBack.x == 0 &&
+              c.effects.hits[0].record.knockBack.z == 6, "a still spell's knock-back is (0, 0, 3c)");
+    }
+    {
+        // §6.4: the burst cube has a half-size of 5 blocks (10 wide).
+        Collision c;
+        auto &shot = c.world.list[0];
+        shot.special = 1;
+        shot.velocity = {50, 0, 0};
+        shot.position[0] = 32768;
+        c.targetBody.place({0.5, 4, 0});
+        c.world.step(16, {{&c.source, &c.sourceBody}, {&c.target, &c.targetBody}},
+            [&](uint64_t id) { return id == c.source.id ? &c.source : nullptr; },
+            [](int32_t x, int32_t, int32_t) { return uint8_t(x == 1 ? 1 : 0); }, [] { return 32767; }, c.effects,
+            {false, &c.source});
+        check(c.world.list.empty() && c.effects.hits.size() == 1, "a burst 4 blocks away reaches the target");
+    }
+    {
+        // §4 step 1: the boomerang catch scales by F = trunc(f x 65536) twice in fixed point.
+        Combatant thrower;
+        thrower.id = 5;
+        Body home;
+        home.place({10, 0, 0});
+        Projectiles world;
+        Projectile shot;
+        shot.shooter = thrower.id;
+        shot.kind = BOOMERANG_SHOT;
+        shot.age = 1133;
+        world.list.push_back(shot);
+        ShotEffects effects;
+        world.step(1, {{&thrower, &home}}, {}, [](int32_t, int32_t, int32_t) { return uint8_t(0); },
+                   [] { return 0; }, effects);
+        const int64_t gap = home.position[0];
+        const int64_t F = (int64_t)(0.33f * 65536.f);
+        check(!world.list.empty() && world.list[0].position[0] == (gap * F / 65536) * F / 65536,
+              "the catch moves by the 16.16 fixed-point product");
+    }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

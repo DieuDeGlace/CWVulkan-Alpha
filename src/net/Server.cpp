@@ -954,7 +954,7 @@ void Server::stepWorld(float dtMs) {
     for (const auto &[key, zone] : zones.zones())
         held[key] = zone.get();
     statics.step((int32_t)dtMs,
-                 [this](uint64_t who, glm::dvec3 &at, glm::vec3 &intent, int32_t &action) {
+                 [this](uint64_t who, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
                      const auto it = connections.find(who);
                      if (it == connections.end() || !it->second->alive) {
                          for (const creatures::Npc &n : npcs.npcs()) // seated residents
@@ -962,14 +962,17 @@ void Server::stepWorld(float dtMs) {
                                  at = n.body.blocks();
                                  intent = n.body.intent;
                                  action = n.fighter.action;
+                                 stun = n.fighter.hitStun;
                                  return true;
                              }
                          return false;
                      }
                      const CreatureRecord &r = it->second->creature;
+                     const creatures::Combatant fighter = r.fighter();
                      at = glm::dvec3(r.position(0), r.position(1), r.position(2)) / 65536.0;
                      intent = glm::vec3(0); // (only the action tells the server the player got up)
-                     action = r.fighter().action;
+                     action = fighter.action;
+                     stun = fighter.hitStun;
                      return true;
                  },
                  held);
@@ -1008,7 +1011,7 @@ void Server::stepWorld(float dtMs) {
             trapHits.insert(trapHits.end(), out.records.begin(), out.records.end());
         };
         statics.traps((int32_t)dtMs, here, held,
-                      [this](glm::dvec3 at) { return world->levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
+                      [this](glm::dvec3 at) { return world->levelAtFx((int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0)); },
                       trapStrike, itemSounds);
         for (const creatures::HitRecord &h : trapHits)
             if (!connections.count(h.target))

@@ -307,14 +307,23 @@ glm::dvec2 World::grid(int32_t x, int32_t y) const {
 const Location *World::location(int32_t x, int32_t y) const {
     // §6.3: the record of the column's 2048-block sub-cell; the slot index truncates toward
     // zero, so columns -2047..-1 read slot 0.
-    const int32_t lx = x / SUBCELL, ly = y / SUBCELL;
+    return locationCell(x / SUBCELL, y / SUBCELL);
+}
+
+const Location *World::locationCell(int64_t lx, int64_t ly) const {
     if (lx < 0 || ly < 0 || lx >= 8192 || ly >= 8192)
         return nullptr;
-    const Region *r = region(lx >> 3, ly >> 3);
+    const Region *r = region((int32_t)(lx >> 3), (int32_t)(ly >> 3));
     if (!r)
         return nullptr;
     const Location &L = r->records[8 * (lx & 7) + (ly & 7)];
     return L.type ? &L : nullptr;
+}
+
+int32_t World::levelAtFx(int64_t X, int64_t Y) const {
+    const int64_t cellY = (int64_t)((double)Y * (1.0 / 2048.0)) / 65536;
+    const Location *L = locationCell(X / 65536 / SUBCELL, cellY);
+    return L && locationDistanceFx(*L, X, Y) <= 1.f ? L->level : 1;
 }
 
 float World::locationDistance(const Location &L, int32_t x, int32_t y) const {

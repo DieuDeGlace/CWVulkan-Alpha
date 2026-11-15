@@ -943,7 +943,8 @@ class Builder : StructureWriter {
             trap.kind = 7;
             trap.x = (int64_t)(X + 5) * ONE, trap.y = (int64_t)(Y + 5) * ONE, trap.z = (int64_t)(Z + 1) * ONE;
             trap.scale[0] = trap.scale[1] = trap.scale[2] = 10;
-            trap.rotation = random.draw() & 3;
+            // Open points 1 §1.2: placement draw d0 % 40, then rotation d1 % 4, then timer d2 % 4000.
+            trap.rotation = random.draw() % 4;
             trap.timer = random.draw() % 4000;
             zone.statics.push_back(trap);
             return;

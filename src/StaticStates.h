@@ -82,11 +82,14 @@ class StaticStates {
     void use(const worldgen::Zone &zone, int32_t index, creatures::Combatant &c, creatures::Body &body, float &yaw,
              WorldItems &items, int32_t day, const creatures::BlockType &block, const std::function<int()> &draw,
              std::vector<creatures::SoundEvent> &sounds);
-    // §6.3 timers and §6.4 occupants: a seat is freed when its occupant has gone, moves, is
-    // more than 4 blocks away or stops sitting or sleeping. `where(id)` gives a creature's
-    // position, walking intent (+0x40) and action, or false when it no longer exists.
-    void step(int32_t dtMs, const std::function<bool(uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &)> &where,
-              const std::map<Key, const worldgen::Zone *> &held);
+    // §6.3 timers and §6.4 occupants (open points 1 §1.6, every static kind): a seat is freed
+    // when its occupant has gone, is stunned (+0x12C > 0), moves, is more than 4 blocks away or
+    // stops sitting or sleeping; the occupant's action is not changed. `where(id)` gives a
+    // creature's position, walking intent (+0x40), action and hit-stun, or false when it no
+    // longer exists. Timers advance on every world; `release` is false on a remote world.
+    using Occupant = std::function<bool(uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &action, int32_t &stun)>;
+    void step(int32_t dtMs, const Occupant &where, const std::map<Key, const worldgen::Zone *> &held,
+              bool release = true);
 
     // Traps (hazards-blast-ticks contract §3, site 1), where the world is run (offline, the
     // server), after `step`: an active trap goes inactive after 2 s; an inactive one activates

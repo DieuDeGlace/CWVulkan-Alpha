@@ -82,7 +82,7 @@ int main() {
         published.clear();
         states.appendUpdates(map, frame.staticStates, {}, {{2, 3}}, published);
         check(published.size() == 7, "an explicit zone request retains its complete response after immediate output");
-        states.step(20, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &) { return false; }, {{{2, 3}, held.get()}});
+        states.step(20, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &, int32_t &) { return false; }, {{{2, 3}, held.get()}});
         published.clear();
         states.appendUpdates(map, frame.staticStates, {{2, 3}}, {}, published);
         check(published.size() == 7, "later state changes remain publishable after an earlier immediate snapshot");

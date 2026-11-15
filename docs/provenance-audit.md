@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-14 (after batches 1-7; 214 tracked contracts, local ignored variants excluded): 106 A, 61 B, 42 C (28974 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-10; 214 tracked contracts, local ignored variants excluded): 110 A, 61 B, 38 C (27587 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -65,7 +65,8 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-house-furniture.md`;
 then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alpha-open-points-7.md` and `alpha-open-points-8.md`; `alpha-worldgen-regions.md` and
-`alpha-items-generator.md`.
+`alpha-items-generator.md`; `alpha-projectiles.md`, `alpha-open-points-1.md`, `alpha-world-items.md` and
+`alpha-open-points-2.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -178,14 +179,14 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
 | `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
 | `alpha-opaque-output-transfer-state.md` | A | 105 | 1 |
-| `alpha-open-points-1.md` | C | 386 | 0 |
+| `alpha-open-points-1.md` | A | 522 | 0 |
 | `alpha-open-points-10.md` | C | 474 | 1 |
 | `alpha-open-points-11.md` | A | 212 | 1 |
 | `alpha-open-points-12.md` | S | 357 | 1 |
-| `alpha-open-points-2.md` | C | 359 | 1 |
+| `alpha-open-points-2.md` | A | 465 | 1 |
 | `alpha-open-points-3.md` | C | 505 | 2 |
 | `alpha-open-points-4.md` | C | 577 | 1 |
-| `alpha-open-points-5.md` | C | 419 | 1 |
+| `alpha-open-points-5.md` | C | 485 | 0 |
 | `alpha-open-points-6.md` | C | 688 | 0 |
 | `alpha-open-points-7.md` | A | 256 | 1 |
 | `alpha-open-points-8.md` | A | 291 | 0 |
@@ -209,7 +210,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-pose-selectors-25-30.md` | A | 289 | 1 |
 | `alpha-pose-selectors-31-49.md` | A | 536 | 0 |
 | `alpha-power-helper-call-boundary.md` | B | 69 | 3 |
-| `alpha-projectiles.md` | C | 378 | 0 |
+| `alpha-projectiles.md` | A | 565 | 0 |
 | `alpha-projectile-world-ownership.md` | B | 105 | 3 |
 | `alpha-projection-input-production.md` | A | 97 | 2 |
 | `alpha-protection-state-producers.md` | B | 107 | 1 |
@@ -268,13 +269,13 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-worldgen-random.md` | A | 306 | 0 |
 | `alpha-worldgen-regions.md` | A | 440 | 0 |
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
-| `alpha-worldgen-terrain.md` | C | 437 | 0 |
+| `alpha-worldgen-terrain.md` | C | 517 | 0 |
 | `alpha-worldgen-trees.md` | C | 568 | 1 |
 | `alpha-worldgen-vegetation.md` | A | 357 | 0 |
 | `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |
 | `alpha-world-hit-target-admission.md` | B | 101 | 2 |
 | `alpha-world-item-list-population.md` | A | 163 | 0 |
-| `alpha-world-items.md` | C | 410 | 0 |
+| `alpha-world-items.md` | A | 547 | 0 |
 | `alpha-world-objects.md` | A | 249 | 0 |
 | `alpha-world-random-stream-boundaries.md` | B | 116 | 2 |
 | `alpha-world-relationship-record-delivery.md` | B | 115 | 2 |

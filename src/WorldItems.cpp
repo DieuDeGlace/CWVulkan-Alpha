@@ -68,14 +68,17 @@ glm::mat4 worldItemPose(const WorldItem &w, glm::vec3 size, double clockMs, bool
     } else {
         pose = about(w.angle, Z) * glm::translate(glm::mat4(1), -glm::vec3(c.x, c.y, 0));
     }
-    // §2.4: the tumble while landing (innermost), and the hop.
+    // §2.4: the tumble (innermost) while T != 0, and the hop while T > 0 (T - 250 formed as
+    // an integer before conversion).
     glm::mat4 tumble(1);
     glm::vec3 hop(0);
-    if (w.landingMs > 0 && !forBox) {
+    if (w.landingMs != 0 && !forBox) {
         const float T = (float)w.landingMs;
         tumble = glm::translate(glm::mat4(1), c) * about(T, X) * about(0.7f * T, Y) * glm::translate(glm::mat4(1), -c);
-        const float k = (T - 250) / 250;
-        hop.z = 5 * (1 - k * k);
+        if (w.landingMs > 0) {
+            const float k = (float)(w.landingMs - 250) / 250;
+            hop.z = 5 * (1 - k * k);
+        }
     }
     // The spec's model space spans [0, size]; the engine's meshes are centred on x and y.
     return glm::translate(glm::mat4(1), hop) * glm::scale(glm::mat4(1), glm::vec3(w.scale)) * pose * tumble *
@@ -114,6 +117,22 @@ void WorldItems::generated(const worldgen::Zone &zone) {
             w.item[0x0d] = 9;
         w.origin = g.category == 25 || mushroom ? 0 : 2;
         list.push_back(w);
+    }
+    // §4.3 settling pass: a record whose tag has bit 0 clear is lowered by whole blocks while
+    // the block holding (x, y, z - 0.5 blocks) is not solid; tag-1 loot stays put. (Zone-local
+    // reads: below the column is implicit solid, so the walk ends.)
+    for (WorldItem &w : list) {
+        if (w.origin & 1)
+            continue;
+        const int32_t bx = (int32_t)(w.position[0] >> 16), by = (int32_t)(w.position[1] >> 16);
+        if (!zone.contains(bx, by))
+            continue;
+        const auto solidBelow = [&](int64_t z) {
+            const uint8_t t = zone.read(bx, by, (int32_t)((z - 32768) >> 16)).type() & 0x1f;
+            return t != 0 && t != 2;
+        };
+        while (!solidBelow(w.position[2]))
+            w.position[2] -= 65536;
     }
 }
 
@@ -222,11 +241,22 @@ bool WorldItems::drop(const creatures::ItemRecord &item, const int64_t at[3], fl
     return true;
 }
 
-std::optional<creatures::ItemRecord> WorldItems::pickUp(int32_t zx, int32_t zy, int32_t index, glm::dvec3 from) {
+bool manaCubeFor(const creatures::ItemRecord &item, int32_t counter) {
+    if (creatures::itemType(item) != 25)
+        return true;
+    int32_t number;
+    std::memcpy(&number, item.data() + 0x04, 4);
+    return number == (counter > 100 ? 100 + counter % 100 : counter);
+}
+
+std::optional<creatures::ItemRecord> WorldItems::pickUp(int32_t zx, int32_t zy, int32_t index, glm::dvec3 from,
+                                                        std::optional<int32_t> manaCounter) {
     const auto it = lists.find({zx, zy});
     if (it == lists.end() || index < 0 || index >= (int32_t)it->second.size())
         return std::nullopt;
     const WorldItem &w = it->second[index];
+    if (manaCounter && !manaCubeFor(w.item, *manaCounter))
+        return std::nullopt;
     const glm::dvec3 d = w.blocks() - from;
     if (glm::dot(d, d) > 16)
         return std::nullopt;

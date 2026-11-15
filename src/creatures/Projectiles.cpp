@@ -2,6 +2,7 @@
 #include "creatures/Names.h"
 #include "creatures/Npcs.h"
 #include "creatures/Strike.h"
+#include "creatures/Visibility.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -58,18 +59,46 @@ bool hasChargeCue(int32_t action) {
            action == 59 || action == 63 || action == 64;
 }
 
+// §2.2 (0x3df60): the weapons W sums, in order. A bow or crossbow (subtype 6, 7) counts alone,
+// the main hand's first; otherwise action 96 takes the off hand then the main hand, and the
+// other actions the main hand then an off-hand bracelet (subtype 12).
+struct WeaponSet {
+    std::array<const Item *, 2> items{};
+    int count = 0;
+    void add(const Item &item) { items[count++] = &item; }
+};
+WeaponSet weaponSet(const Combatant &c) {
+    WeaponSet set;
+    const Item &main = c.mainHand(), &off = c.offHand();
+    const auto ranged = [](const Item &item) { return item.type == 3 && (item.subtype == BOW || item.subtype == CROSSBOW); };
+    if (ranged(main)) {
+        set.add(main);
+    } else if (ranged(off)) {
+        set.add(off);
+    } else if (c.action == 96) {
+        if (off.type == 3)
+            set.add(off);
+        if (main.type == 3)
+            set.add(main);
+    } else {
+        if (main.type == 3)
+            set.add(main);
+        if (off.type == 3 && off.subtype == BRACELET)
+            set.add(off);
+    }
+    return set;
+}
+
 // §2.2: W, the weapon damage, with the per-action factor; M is the same without it.
 float weaponDamage(const Combatant &c, bool actionFactor) {
-    const float g = levelGrowth(c.level);
-    float w = std::pow(2.f, g) * c.multipliers[2];
-    bool armed = false;
-    for (const Item &item : {c.offHand(), c.mainHand()})
-        if (item.type == 3 && itemBonuses().damage) {
-            w += itemBonuses().damage(item);
-            armed = true;
-        }
-    if (!armed) {
-        const float bare = std::pow(2.f, g) * std::pow(2.f, 0.25f * (float)c.powerTier);
+    const float power = levelPower(c.level); // 2^g in double, rounded to single
+    float w = c.multipliers[2] * power;
+    const WeaponSet set = weaponSet(c);
+    if (itemBonuses().damage)
+        for (int k = 0; k < set.count; k++)
+            w += itemBonuses().damage(*set.items[k]);
+    if (set.count == 0) {
+        const float bare = power * (float)std::pow(2.0, 0.25 * (double)c.powerTier);
         if (c.appearanceFlags & 0x08)
             w += bare * 2;
         if (c.appearanceFlags & 0x10)
@@ -118,11 +147,19 @@ void gainBuff(Combatant &c, uint8_t kind, glm::dvec3 at, ShotEffects &out) {
     out.sounds.push_back({at, 47, 1, 1}); // upgrade2.wav
 }
 
-// §4 step 4: the chain ends; the action clock keeps the share of the action that has run.
+// §4 step 4: the chain ends; the action clock is rescaled by Sold / Snew (the ratio first,
+// single precision, then truncated toward zero).
 void endChain(Combatant &c) {
     const float before = attackSpeed(c);
     c.combo = 0;
-    c.actionMs = (int32_t)std::floor((float)c.actionMs * before / attackSpeed(c));
+    const float scaled = (before / attackSpeed(c)) * (float)c.actionMs;
+    c.actionMs = scaled >= -2147483648.f && scaled < 2147483648.f ? (int32_t)scaled : INT32_MIN;
+}
+
+// §5.2 step 6, §6.4: a landed hit raises the shooter's combo and restarts its combo timer.
+void continueChain(Combatant &c) {
+    c.combo += 1;
+    c.comboElapsedMs = 0;
 }
 
 bool solidAt(const BlockType &block, glm::dvec3 p) {
@@ -130,18 +167,7 @@ bool solidAt(const BlockType &block, glm::dvec3 p) {
     return t != 0 && t != 2;
 }
 
-// Line of sight within 200 blocks (0x59ee90), stepping half a block (ours).
-bool sight(glm::dvec3 a, glm::dvec3 b, const BlockType &block) {
-    const glm::dvec3 d = b - a;
-    const double length = glm::length(d);
-    if (length > 200)
-        return false;
-    const int steps = (int)(length * 2);
-    for (int i = 1; i < steps; i++)
-        if (solidAt(block, a + d * ((double)i / steps)))
-            return false;
-    return true;
-}
+visibility::Position raw(const int64_t position[3]) { return {position[0], position[1], position[2]}; }
 
 } // namespace
 
@@ -320,17 +346,17 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
         }
     }
 
-    // §2.6: a healer's melee swing (class 3, specialization 1) leaves a small healing burst
-    // where it reaches: along the aim to the first solid block (10 blocks for action 104).
-    if (c.characterClass == 3 && c.specialization == 1 && action != 0 && !shootsProjectile(action) && crosses(P1)) {
+    // §2.6: the handler of actions 28, 94, 95 gives a healer (class 3, specialization 1) a
+    // healing burst at its reach point when P1 is crossed: the attack origin plus the block ray
+    // (limit 200) along the aim. Actions 28 and 95 place it in the beam tick (Npcs::beamTick).
+    if (action == 94 && c.characterClass == 3 && c.specialization == 1 && crosses(P1)) {
+        const visibility::Position origin = attackOrigin(body);
         const glm::vec3 dir = unit(aim);
-        float reach = 10;
-        if (action != 104 && block) {
-            reach = 0;
-            while (reach < 10 && !solidAt(block, at + glm::dvec3(dir * (reach + 0.5f)))) // (the 10-block cap is ours)
-                reach += 0.5f;
-        }
-        shots.push_back(healingBurst(c, at + glm::dvec3(dir * reach)));
+        const float reach = aiming && block ? visibility::trace(origin, {dir.x, dir.y, dir.z}, 200.f, 0, 1, {block, {}}) : 0.f;
+        Projectile heal = healingBurst(c, {});
+        for (int k = 0; k < 3; k++)
+            heal.position[k] = std::bit_cast<int64_t>(uint64_t(origin[k]) + uint64_t(int64_t(dir[k] * reach * WU)));
+        shots.push_back(heal);
     }
 
     switch (action) {
@@ -361,12 +387,13 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
         p.special = s > 0 || action == 23;
         if (p.special)
             spendBuff(c, 10, out);
+        // σ × ((a × W) × (s² × K + B)); B reads the record's strength.
         const float K = action == 26 ? 1.f : 5.f;
-        float B = s == 0 ? 1.f : 0.1f;
+        float B = p.strength == 0 ? 1.f : 0.1f;
         if (action == 23)
             B = 0;
         const float sigma = 1.25f - 0.5f * u();
-        p.damage = actionShare(action) * weaponDamage(c, true) * (K * s * s + B) * sigma;
+        p.damage = sigma * ((actionShare(action) * weaponDamage(c, true)) * (s * s * K + B));
         shots.push_back(p);
         if (action == 26)
             out.sounds.push_back({at, 15, (float)(((double)draw() * 0.51) / 32767.0 + (double)0.7f), 1});
@@ -395,7 +422,7 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
         // physical shots use the opposite order in their separate branch.
         out.sounds.push_back({at, 22, 1 + 0.5f * u(), 1});
         const float sigma = 1.25f - 0.5f * u();
-        p.damage = actionShare(action) * weaponDamage(c, true) * (5 * s * s + (action == 55 ? 0.1f : 1.f)) * sigma;
+        p.damage = sigma * ((actionShare(action) * weaponDamage(c, true)) * (s * s * 5.f + (action == 55 ? 0.1f : 1.f)));
         shots.push_back(p);
         return;
     }
@@ -439,6 +466,13 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
     p.radius = 4 * ch + 0.5f;
     p.strength = ch;
     p.scale = ch + 0.5f;
+    if (c.type == 101) { // raised by the box's y extent and half its z extent
+        p.position[1] = std::bit_cast<int64_t>(uint64_t(p.position[1]) + uint64_t(int64_t(body.size.y * WU)));
+        p.position[2] = std::bit_cast<int64_t>(uint64_t(p.position[2]) + uint64_t(int64_t(0.5f * body.size.z * WU)));
+    }
+    // Element for spells and the rock alike: class 3 water (specialization 1) or fire.
+    if (c.characterClass == 3)
+        p.element = c.specialization == 1 ? 2 : 1;
     const float sigma = 1.25f - 0.5f * u();
     if (action == 108) {
         p.kind = ROCK;
@@ -453,8 +487,6 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
             p.strength = 0.25f, p.scale = ch + 1;
         else if (action == 37 || action == 43)
             p.strength = 1, p.scale = ch + 1.5f;
-        if (c.characterClass == 3)
-            p.element = c.specialization == 1 ? 2 : 1;
         p.special = action == 37 || action == 43 || action == 45 || action == 46;
     }
     shots.push_back(p);
@@ -509,9 +541,14 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 return out;
             };
             if (p.age > 1100) {
-                const double f = (p.age - 1100) / 100.0;
-                for (int k = 0; k < 3; k++)
-                    p.position[k] += (int64_t)((double)(shooter->body->position[k] - p.position[k]) * f * f);
+                // §4 step 1: the catch, scaled twice by F = trunc(f x 65536) in 16.16 fixed point
+                // (each product divided by 65536 toward zero).
+                const float f = (float)(p.age - 1100) / 100.f;
+                const int64_t F = (int64_t)(f * 65536.f);
+                for (int k = 0; k < 3; k++) {
+                    const int64_t gap = std::bit_cast<int64_t>(uint64_t(shooter->body->position[k]) - uint64_t(p.position[k]));
+                    p.position[k] += (gap * F / 65536) * F / 65536;
+                }
             } else if (p.age > 800) {
                 const int64_t none[3] = {0, 0, 0};
                 p.velocity = separation(none) * 10.f;
@@ -535,15 +572,37 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             continue;
         }
 
-        // §5: the flight in sub-steps.
-        const int n = p.kind == BURST ? 1 : (int)(2 * glm::length(d) + 1);
+        // §5: the flight in sub-steps (kind 3 too: n grows with its gravity-fed velocity).
+        const int n = (int)(glm::length(d) * 2.f + 1.f);
         const glm::vec3 ds = d / (float)n;
-        glm::vec3 knock(0);
-        if (glm::dot(p.velocity, p.velocity) > 0) {
-            knock = unit(p.velocity) * 5.f * p.strength;
-            knock.z = 3 * p.strength;
-        }
-        bool landed = false, destroy = false, wall = false;
+        // k: the velocity, normalised only when not still, times 5c; then k.z := 3c, so a
+        // still projectile pushes (0, 0, 3c).
+        glm::vec3 knock = p.velocity;
+        if (glm::dot(knock, knock) > 0)
+            knock = unit(knock);
+        knock *= 5.f * p.strength;
+        knock.z = 3 * p.strength;
+        const visibility::Scene scene{block, {}};
+        // §5.1 step 2: the overlap in world units, half-sizes converted separately; all three
+        // lower tests, then the strict upper ones.
+        const auto overlaps = [&](const Body &b, float half) {
+            const int64_t r = (int64_t)(half * WU);
+            int64_t h[3];
+            for (int k = 0; k < 3; k++)
+                h[k] = (int64_t)(b.size[k] * 0.5f * WU);
+            for (int k = 0; k < 3; k++)
+                if (!(p.position[k] + r >= b.position[k] - h[k]))
+                    return false;
+            for (int k = 0; k < 3; k++)
+                if (!(p.position[k] - r < b.position[k] + h[k]))
+                    return false;
+            return true;
+        };
+        // §5.1 step 4: a dodging creature joins the shooter's "evaded by" set (+0x11B4).
+        const auto evaded = [&](uint64_t id) {
+            if (from && std::find(from->deferred.begin(), from->deferred.end(), id) == from->deferred.end())
+                from->deferred.push_back(id);
+        };
         const bool secondTick = ageBefore / 1000 != p.age / 1000, tenthTick = ageBefore / 100 != p.age / 100;
 
         enum class HitPath { Contact, Impact };
@@ -622,28 +681,28 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             out.bursts.insert(out.bursts.end(), result.bursts.begin(), result.bursts.end());
             return result.hitAccepted;
         };
-        // §5.1 step 1, 3 and 4: may p reach C at all?
-        const auto reachable = [&](const ShotTarget &C, HitPath path) {
-            if ((path == HitPath::Contact || from) && C.fighter->health <= 0)
-                return false;
-            if (path == HitPath::Impact || !(p.kind == BURST && p.element == 2)) {
-                // Hostility-test callers 0x22162C / 0x2225AA (owner first).
-                if (from && (C.fighter->id == p.shooter || !hostilityTest(*from, *C.fighter)))
-                    return false;
-            }
-            return sight(p.blocks(), C.body->blocks(), block);
+        // §5.1 step 1, §6.4: eligibility. With no shooter (or a water burst's contact) no test
+        // runs; otherwise not the shooter and "can damage" (0x1988a0, owner first).
+        const auto eligible = [&](const ShotTarget &C, HitPath path) {
+            if (!from || (path == HitPath::Contact && p.kind == BURST && p.element == 2))
+                return true;
+            return C.fighter->id != p.shooter && hostilityTest(*from, *C.fighter);
+        };
+        // §5.1 step 3: line of sight 0x19ee90 to the creature's position, option 1, limit 200.
+        const auto sight = [&](const ShotTarget &C) {
+            return visibility::visible(raw(p.position), raw(C.body->position), 1, 200.f, scene);
         };
 
         for (int i = 0; i < n; i++) {
+            bool landed = false, destroy = false, wall = false; // reset every sub-step
             for (const ShotTarget &C : creatures) {
-                if (C.fighter->health <= 0)
+                if (C.fighter->health <= 0 || !eligible(C, HitPath::Contact) || !overlaps(*C.body, p.radius) ||
+                    !sight(C))
                     continue;
-                const glm::dvec3 here = p.blocks(), there = C.body->blocks();
-                bool overlap = true;
-                for (int k = 0; k < 3; k++)
-                    overlap &= std::abs(here[k] - there[k]) <= p.radius + C.body->size[k] / 2;
-                if (!overlap || !reachable(C, HitPath::Contact) || C.fighter->dodgeMs != 0)
+                if (C.fighter->dodgeMs != 0) {
+                    evaded(C.fighter->id);
                     continue;
+                }
                 bool gate;
                 switch (p.kind) {
                 case BURST: gate = secondTick; break;
@@ -658,8 +717,8 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     break;
                 }
             }
-            if (p.kind == BURST)
-                break;
+            if (p.kind == BURST) // §5.2: a burst never moves; its sub-steps only scan creatures
+                continue;
             // §5.2: movement and blocks.
             if (p.kind == BOOMERANG_SHOT && ageBefore / 200 != p.age / 200)
                 out.sounds.push_back({p.blocks(), 15, 1 + 0.25f * u(), 1});
@@ -668,29 +727,26 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     p.position[k] += (int64_t)(sign * ds[k] * WU);
             };
             move(1);
-            glm::dvec3 hit{0};
             if (solidAt(block, p.blocks())) {
-                hit = p.blocks();
+                const glm::dvec3 hit = p.blocks();
                 move(-1);
                 wall = true;
+                if (p.kind == ARROW) // particles §5.7: only an arrow inside a solid block
+                    out.struck.push_back({p.blocks(), glm::ivec3(glm::floor(hit))});
             } else {
+                // Step 4: the block ray 0x1a35d0 along the velocity, limit |velocity| x tau.
                 const glm::vec3 dir = unit(p.velocity);
                 const float limit = glm::length(p.velocity) * tau;
-                for (float s = 0.5f; s < limit; s += 0.5f)
-                    if (solidAt(block, p.blocks() + glm::dvec3(dir * s))) {
-                        hit = p.blocks() + glm::dvec3(dir * s);
-                        move(-1);
-                        wall = true;
-                        break;
-                    }
+                if (limit > visibility::trace(raw(p.position), {dir.x, dir.y, dir.z}, limit, 0, 0, scene)) {
+                    move(-1);
+                    wall = true;
+                }
             }
-            if (wall && p.kind == ARROW) // particles §5.7
-                out.struck.push_back({p.blocks(), glm::ivec3(glm::floor(hit))});
             if (wall && !destroy && mine)
                 endChain(*mine);
             if (p.kind == BOOMERANG_SHOT) {
                 if (landed && mine)
-                    mine->combo += 1;
+                    continueChain(*mine);
                 if (wall)
                     p.velocity = glm::vec3(0);
                 continue;
@@ -707,20 +763,23 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 }
                 const bool skipCandidates = from && !context.networkMode && from->controller == 0 &&
                                             from != context.controlled;
+                // The burst: a 5-block half-size cube; health and dodging count only with a shooter.
                 for (const ShotTarget &C : creatures) {
                     if (skipCandidates)
                         break;
-                    const glm::dvec3 here = p.blocks(), there = C.body->blocks();
-                    bool overlap = true;
-                    for (int k = 0; k < 3; k++)
-                        overlap &= std::abs(here[k] - there[k]) <= 2.5 + C.body->size[k] / 2;
-                    if (overlap && reachable(C, HitPath::Impact) && (!from || C.fighter->dodgeMs == 0) &&
-                        hitCreature(C, HitPath::Impact))
+                    if ((from && C.fighter->health <= 0) || !eligible(C, HitPath::Impact) || !overlaps(*C.body, 5.f) ||
+                        !sight(C))
+                        continue;
+                    if (from && C.fighter->dodgeMs != 0) {
+                        evaded(C.fighter->id);
+                        continue;
+                    }
+                    if (hitCreature(C, HitPath::Impact))
                         landed = true;
                 }
             }
             if (landed && mine)
-                mine->combo += 1;
+                continueChain(*mine);
             if (p.kind == SPELL && p.element == 2) { // a water spell leaves a puddle
                 p.kind = BURST;
                 p.age = p.special ? 0 : 3000;

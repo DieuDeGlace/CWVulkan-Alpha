@@ -491,6 +491,9 @@ bool hostile(const Combatant &a, const Combatant &b);
 // NPCs and the local player alike (beam-leftovers §7: every live creature reaches them).
 void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Body &body, const Combatant &c,
                    int32_t clockBefore, int32_t milliseconds);
+// Cast-point contract §4 (routine 0x046BB0): a creature's attack origin, from its body's yaw
+// and appearance flags (projectiles §2.6, the beam's sight point).
+std::array<int64_t, 3> attackOrigin(const Body &body);
 
 // §5 with the attack range of §13.2: whether an attack from `from`, facing `yaw` degrees, by a
 // creature of collision box `box` reaches `target` (in front, within reach; inferred for the

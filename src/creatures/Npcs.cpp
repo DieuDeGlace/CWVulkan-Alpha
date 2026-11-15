@@ -1059,6 +1059,8 @@ float approach(float value, float target, int32_t step, float rate) {
 }
 }
 
+std::array<int64_t, 3> attackOrigin(const Body &body) { return offsetPoint(body, body.yaw, body.appearanceFlags); }
+
 void setFollowPoint(Body &body) { std::copy(body.position, body.position + 3, body.follow); }
 
 // §13.2
@@ -1880,6 +1882,8 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
     if (clouds)
         frame.shots.push_back(rayCloud(attacker, blocksOf(alongAim(sight))));
 
+    // Open points 1 §3.1 step 4: a tick clears the hit set and the evaded set (+0x11B4).
+    attacker.deferred.clear();
     std::set<uint64_t> touched;
     bool admitted = false;
     if (length > 0.f) {

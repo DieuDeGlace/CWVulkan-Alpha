@@ -167,7 +167,7 @@ int main() {
                 beginActionUpdate(local, elapsed);
                 endActionUpdate(local, elapsed);
                 items.step(elapsed, true, floor, [] { return 0; }, aggregate.sounds);
-                statics.step(elapsed, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &) { return false; }, {{{0, 0}, zone.get()}});
+                statics.step(elapsed, [](uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &, int32_t &) { return false; }, {{{0, 0}, zone.get()}});
                 npcs.stepInto((float)elapsed, map, {{local, body, 0, 0, false, false, true}}, clock.timeOfDayMs, 0, floor, aggregate);
                 const auto added = aggregate.addedSince(cursor);
                 notifications += (int)added.emittedHits.size();

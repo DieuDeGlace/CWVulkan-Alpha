@@ -2048,11 +2048,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (const auto &[key, zone] : view.held().zones())
                             held[key] = zone.get();
                         statics.step(dt,
-                                     [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action) {
+                                     [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
                                          if (id == player->combat().id) {
                                              at = player->body().blocks();
                                              intent = player->body().intent;
                                              action = player->combat().action;
+                                             stun = player->combat().hitStun;
                                              return true;
                                          }
                                          for (const creatures::Npc &n : npcs.npcs()) // seated residents
@@ -2060,11 +2061,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                                  at = n.body.blocks();
                                                  intent = n.body.intent;
                                                  action = n.fighter.action;
+                                                 stun = n.fighter.hitStun;
                                                  return true;
                                              }
                                          return false;
                                      },
-                                     held);
+                                     held, !client.connected()); // open points 1 §1.6: releases not remote
                         // Traps (alpha-open-points-1.md §1): offline this game runs them; the hits land
                         // on the player at once and on creatures in the next creature step.
                         if (!client.connected()) {
@@ -2103,7 +2105,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 }
                             };
                             statics.traps(dt, here, held,
-                                          [&](glm::dvec3 at) { return world.levelAt((int32_t)std::floor(at.x), (int32_t)std::floor(at.y)); },
+                                          [&](glm::dvec3 at) { return world.levelAtFx((int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0)); },
                                           trapStrike, trapSounds);
                             for (const creatures::SoundEvent &e : trapSounds)
                                 playAt(e.sound, e.position, e.volume, e.pitch);
@@ -2903,7 +2905,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (w.hideMs != 0)
                         continue;
                     const glm::dvec3 d = w.blocks() - me;
-                    if (glm::dot(d, d) > 160.0 * 160.0)
+                    if (glm::dot(d, d) > 160.0 * 160.0 || !manaCubeFor(w.item, manaCubes))
                         continue;
                     const uint16_t model = creatures::itemModel(creatures::Item::parse(w.item.data()));
                     if (model == creatures::NO_MODEL)
@@ -3669,7 +3671,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     } else if (client.connected()) {
                         // Online the server takes it from the zone and gives it back in section 9.
                         client.sendItemRequest(itemRequest({}, *itemTarget, 5));
-                    } else if (const auto got = worldItems.pickUp((*itemTarget)[0], (*itemTarget)[1], (*itemTarget)[2], me)) {
+                    } else if (const auto got = worldItems.pickUp((*itemTarget)[0], (*itemTarget)[1], (*itemTarget)[2], me,
+                                                                  manaCubes)) {
                         // World items §3.3 kind 5: into the bags, announced in the chat, with the
                         // pick-up sound.
                         receive(*got);
