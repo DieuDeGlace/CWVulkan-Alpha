@@ -1704,3 +1704,4 @@ pass, the player diagnostic and five live runs pass, and the six captures match 
 preceding batch.Provenance batch 3b (2026-11-14). No behaviour change (comment only); all 60 CTests pass.
 Provenance batch 3a (2026-11-14). No behaviour change; all 60 CTests pass.
 Provenance batch 4 (2026-11-14). WorldgenTests: every cloud placed at home (seed 123) matches the fixed-point height composition. All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures match the preceding batch (clouds unchanged to the eye).
+Provenance batch 5 (2026-11-14). WorldgenTests: column writer cases (zero-filled extension, no-op, water substitution, kept cells, downward gap fill) and formation guards (mesa over read water, mound skipping water, mesa over rock). NetTests: x10 and x100 day-clock rates, rollover under acceleration, record action byte. All 60 CTests pass, the player diagnostic and five live runs pass, and the six captures match the preceding batch.

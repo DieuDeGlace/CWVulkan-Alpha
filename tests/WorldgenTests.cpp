@@ -259,6 +259,57 @@ int main() {
         same(uv.y, -0.09695065766572952, "mesa v");
         same((float)(uv.y * uv.y + uv.x * uv.x), 0.6599938869476318, "mesa u2 + v2");
     }
+
+    // Open points 9 §4: the setter and writer rules.
+    {
+        Zone zone;
+        Column &c = zone.column(0, 0);
+        c.bottom = 0;
+        c.blocks.assign(1, Block{10, 10, 10, ROCK});
+        zone.place(0, 0, 3, Block{20, 20, 20, ROCK});
+        same((double)c.blocks.size(), 4, "upward extension to z 3");
+        for (int z = 1; z <= 2; z++) {
+            const Block e = c.blocks[z];
+            same(e.r + e.g + e.b + e.typeByte, 0, "extension cell " + std::to_string(z) + " zero-filled");
+        }
+        zone.place(0, 0, 10, Block{1, 2, 3, AIR});
+        same((double)c.blocks.size(), 4, "byte 3 zero above the stored range: no-op");
+        zone.place(0, 0, 0, Block{1, 2, 3, SURFACE_COLOURED});
+        same(c.blocks[0].typeByte, 0x82, "z <= 0 without mask-0x5f bits becomes water");
+        zone.place(0, 0, 0, Block{1, 2, 3, DRY_AIR});
+        same(c.blocks[0].typeByte, 0x82, "type-0 block over a kept cell is discarded");
+        same(c.blocks[0].r, 255, "discarded block leaves the colour");
+        zone.place(0, 0, 0, Block{4, 5, 6, ROCK});
+        same(c.blocks[0].typeByte, KEEP | ROCK, "block over a kept cell keeps bit 0x80");
+        zone.place(0, 0, -3, Block{7, 7, 7, ROCK}, [](int32_t) { return Block{8, 8, 8, ROCK}; });
+        same(c.bottom, -3, "downward extension");
+        same(c.blocks[0].r, 7, "written cell below the old bottom");
+        same(c.blocks[1].typeByte, ROCK, "gap fill type 6");
+        same(c.blocks[2].r, 8, "gap fill colour");
+    }
+
+    // Open points 9 §1-§3: one read-water cell in the guard shape stops a mesa but not a mound.
+    {
+        const int32_t x = 8397000, y = 8397100, r = 20;
+        const auto build = [&](bool mesa, int32_t storedTop) {
+            Zone zone;
+            zone.zx = x / Zone::SIZE, zone.zy = y / Zone::SIZE;
+            for (auto &col : zone.columns) {
+                col.warmth = 0.5f;
+                col.moisture = 0.5f;
+                col.bottom = -5;
+                col.blocks.assign(storedTop + 5, Block{100, 100, 100, ROCK});
+            }
+            terrain.formation(zone, x, y, 0, r, r, 25, mesa);
+            size_t total = 0;
+            for (const auto &col : zone.columns)
+                total += col.blocks.size();
+            return total - zone.columns.size() * size_t(storedTop + 5);
+        };
+        same((double)build(true, 0), 0, "mesa over read water (z 0 above the stored range) writes nothing");
+        same(build(false, 0) > 0, 1, "mound skips the type-2 water and builds");
+        same(build(true, 1) > 0, 1, "mesa over stored rock at z 0 builds");
+    }
     same(roadShade(8397000, 8397100), 144.53866577148438, "road shade with cobble");
     same(roadShade(8397002, 8397101), 160.3988800048828, "road shade without cobble");
     same(roadShade(1000, 2000), 126.07621002197266, "road shade at (1000, 2000)");

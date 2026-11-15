@@ -570,6 +570,16 @@ void Server::sendLoop(Connection &c) {
     });
 }
 
+void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated) {
+    // The time of day runs 10 (or 100) times as fast as real time (vegetation-wind.md §2).
+    uint64_t ms = timeOfDayMs + (uint64_t)elapsedMs * (accelerated ? 100u : 10u);
+    while (ms >= 86400000) {
+        ms -= 86400000;
+        day++;
+    }
+    timeOfDayMs = (uint32_t)ms;
+}
+
 void Server::simulationLoop() {
     auto last = Clock::now(), lastSave = last;
     double leftoverMs = 0;
@@ -583,14 +593,15 @@ void Server::simulationLoop() {
         last = now;
         {
             std::lock_guard guard(lock);
-            // The time of day runs 10 times as fast as real time (vegetation-wind.md §2).
-            uint64_t ms = clockMs + (uint64_t)(dt * 10);
-            uint32_t day = clockDay;
-            while (ms >= 86400000) {
-                ms -= 86400000;
-                day++;
-            }
-            clockMs = (uint32_t)ms;
+            // The scan precedes the creature update; connection creatures are role zero.
+            bool accelerated = false;
+            for (const auto &[id, c] : connections)
+                accelerated |= c->alive && c->creature.action() == 84 && c->creature.health() > 0;
+            for (const auto &n : npcs.all())
+                accelerated |= n.fighter.controller == 0 && n.fighter.action == 84 && n.fighter.health > 0;
+            uint32_t day = clockDay, ms = clockMs;
+            advanceServerClock(day, ms, dt, accelerated);
+            clockMs = ms;
             clockDay = day;
             stepWorld((float)dt);
             // Received shoots are relayed. Buff inputs were applied by stepWorld;

@@ -74,8 +74,8 @@ void Zone::place(int32_t x, int32_t y, int32_t z, Block b, const std::function<B
         c.bottom = z;
         return;
     }
-    if (z >= c.top())
-        c.blocks.resize(z - c.bottom + 1, AIR_BLOCK);
+    if (z >= c.top()) // open points 9 §4: the upward extension zero-fills its new cells
+        c.blocks.resize(z - c.bottom + 1, Block{});
     Block &slot = c.blocks[z - c.bottom];
     if (slot.typeByte & KEEP) { // terrain §1.3: a "keep" block only takes non-air, and stays kept
         if (b.type() != AIR) {

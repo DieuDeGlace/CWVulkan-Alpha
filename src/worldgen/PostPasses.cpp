@@ -95,9 +95,9 @@ void Terrain::formation(Zone &zone, int32_t x, int32_t y, int32_t z, int32_t rx,
         const glm::vec2 uv = formationUV(test, X, Y, Z, x, y, rx, ry);
         return f(uv.y * uv.y + uv.x * uv.x) <= 1.f;
     };
-    // Phase 1: never build over kept blocks (bit 0x80). Water read from the sea or a lake has that
-    // bit: a mound ignores it, one such cell stops a mesa (open points 9). The block is read first
-    // since it is cheap and the test has no side effects.
+    // Phase 1: never build over kept blocks (bit 0x80). A mound skips every type-2 cell (read
+    // water included); one kept cell of any type stops a mesa (open points 9 §1, §2). The block
+    // is read first since it is cheap and the test has no side effects.
     for (int32_t X = x - 2 * rx; X <= x + 2 * rx; X++)
         for (int32_t Y = y - 2 * ry; Y <= y + 2 * ry; Y++) {
             if (!zone.contains(X, Y))

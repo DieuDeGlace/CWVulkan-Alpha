@@ -1,8 +1,10 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha client buff and action boundaries
 
 This source-only contract covers the client action-selection boundary at RVA `0x0456A0`, its type-9 anticipation shortcut, and the common-action type-11 consume and byte-latch behavior. It separates the selected-action gate from the actions the selector can actually return. It does not specify every action body, every caller's input eligibility, or the complete combat result.
 
-All evidence paths are relative to `disassembled alpha cube world`. No held contract, replacement implementation, SDK, extractor, test, probe, capture, log, or implementation history was read for this assignment.
+All evidence paths are relative to `disassembled alpha cube world`. No other contract, replacement implementation, SDK, extractor, test, probe, capture, log, implementation history or reconstruction supplied facts; the 2026-11-14 re-certification used only the original images, a fresh bounded disassembly of their bytes, their import tables and the cited original decompiled routines.
 
 ## Supported originals and fields
 
@@ -79,7 +81,7 @@ For this readiness subtraction, the recovery durations have the following comple
 
 The total-duration helper adds its separately obtained integer phase durations. Its full table for arbitrary old actions is a dependency beyond this contract; a single floating-point total rounded once is not established as equivalent to its phase-wise integer results.
 
-The helper then selects a candidate and applies the action-lock and mana admission tests. A nonzero `+0x128`, including a negative nonzero value, rejects the candidate except when `+0x140 = 4`, `+0x141 = 1`, and candidate action is `5`, `17`, or `20`. The current selector can return `5` from this exception set; it does not return `17` or `20`. The helper itself does not add a health, stun, world-side, local-creature, or control-discriminator test. Caller eligibility is a separate boundary.
+The helper then selects a candidate and applies the action-lock and mana admission tests. A nonzero `+0x128`, including a negative nonzero value, rejects the candidate except when `+0x140 = 4`, `+0x141 = 1`, and candidate action is `5`, `17`, or `20`. The current selector can return `5` from this exception set; it does not return `17` or `20`. The helper itself does not add a health, stun, world-side, local-creature, or control-discriminator test. Caller eligibility is a separate boundary. The native order is: compute the readiness threshold, call the selector once for the candidate, evaluate the lock exception for that candidate, then reject on clock below threshold, then on the lock, then on mana; the first failing test ends the helper and no cost lookup occurs after a clock or lock rejection.
 
 The mana requirement helper is called for the candidate with its auxiliary argument equal to signed `-1`. For the twelve selectable results above, actions `3` and `4` require binary32 `0.1`; actions `31`, `33`, `37`, `43`, `45`, and `46` require binary32 `0.3` unless a resident type `9` exists, in which case their requirement is zero. Actions `5`, `23`, `65`, and `66` require zero through this helper. Equality between current mana and requirement passes. An ordered comparison that finds requirement greater than current mana rejects; the original comparison does not reject an unordered floating-point comparison by that test alone.
 
@@ -109,7 +111,7 @@ Although `95` is present in the native shortcut gate, the complete selector audi
 
 The action-selection helper does not debit mana, remove or replace type `9`, reduce its remaining duration, change its embedded source, construct a buff event, or write `+0x13C0`. Its accepted state changes are the action, action clock, and conditional lock clearing described above. Later action processing must not be folded into this helper merely because it follows in another update phase.
 
-Timing arithmetic is binary32 multiplication and division followed by native signed conversion toward zero for ordinary finite, representable values. Zero timing denominators, nonfinite values, conversion overflow, and integer overflow are not assigned a replacement policy by this contract. The full tempo formula depends on other creature/item statistics and resident type `12`; it is not a constant attack speed supplied here.
+Timing arithmetic is binary32 multiplication and division followed by native signed conversion toward zero for ordinary finite, representable values. Zero timing denominators, nonfinite values, conversion overflow, and integer overflow are not assigned a replacement policy by this contract. The full tempo formula depends on other creature/item statistics, on counter `+0x70` for some class/subclass combinations, on byte `+0x60`, and on resident type `12`; it is not a constant attack speed supplied here.
 
 Anchors: explicit five-value gate and type lookup at virtual addresses `0x004458AA..0x004458EB`; selected anticipation cases and final clock store in `004456a0.c` and original assembly through `0x00445D49`. Original binary32 numerators are at virtual addresses `0x006FD8FC` (`1600`), `0x006FCE74` (`600`), `0x006FD8F8` (`1200`), and `0x006FD8F4` (`1000`).
 
@@ -123,7 +125,7 @@ Within the zero-clock initializer, the nonpositive-cost path for action `5`, `17
 
 If no type `11` is found, no type-11 replacement event or latch-one write occurs through this path. When type `11` exists, a fresh 24-byte payload is constructed with type `11`, magnitude zero, remaining duration zero, and embedded source identifier zero. The resident setter replaces the first existing type-11 payload in place. Its previous magnitude, lifetime, and embedded source do not survive that replacement. This is not immediate node deletion, and later duplicate type-11 nodes, if any, are not removed by this setter.
 
-A 40-byte event is then appended to the outgoing update's buff-event list at `+0x58`, with count at `+0x5C`. Its outer source and outer target are both the acting creature's identifier. Its embedded 24-byte payload is the newly constructed zeroed-meaningful-fields type-11 payload. In particular, its embedded source is zero even though both outer identifiers are the creature's nonzero identifier in the ordinary case. The constructor does not guarantee zero values for every alignment byte.
+A 40-byte event is then appended to the outgoing update's buff-event list at `+0x58`, with count at `+0x5C`. Its outer source and outer target are both the acting creature's identifier. Its embedded 24-byte payload is a copy of the freshly built type-11 payload, whose magnitude, remaining duration and embedded source are all zero. In particular, its embedded source is zero even though both outer identifiers are the creature's nonzero identifier in the ordinary case. The constructor does not guarantee zero values for every alignment byte.
 
 After that event append completes, the creature's byte at `+0x13C0` is set to one. The event does not contain a separate copy of that byte. The native sequence subsequently rejoins common resource handling, including the separately tested pending amount at `+0x144`; it does not wait for the resident node's later expiry before setting the latch. Allocation failure and abnormal termination are outside the normal-completion ordering stated here.
 
@@ -158,3 +160,23 @@ Server direct reset evidence includes construction at virtual address `0x004066A
 Server anchors: `decompiled/server/functions/00410690.c`, `00410290.c`, and the stated spans of `decompiled/server/assembly.txt` and `binary/Server.exe`. Its anticipation constants at virtual addresses `0x00558788`, `0x005588FC`, `0x00558900`, and `0x005588F8` are respectively `600`, `1200`, `1600`, and `1000`.
 
 Unclosed dependencies include all caller-specific input/AI gates, a normal selectable route to action `95` through any other boundary, every old-action total-duration case, the complete tempo and base-probability formulas, exceptional arithmetic inputs, the exact hit-admission intervals and victim filtering of every common action, and the remainder of downstream combat and event transport. The type-9 helper's absence of consumption/event/source mutation and the type-11 path's replacement, self/self event, zero embedded source, byte write, direct read effect, and explicit reset boundaries are the held result.
+
+## Re-certification (2026-11-14)
+
+Scope: every factual statement above was re-checked by a source-side author against `binary/Cube.exe` and `binary/Server.exe` (sizes, SHA-256 values and preferred bases re-verified), a fresh bounded disassembly of both images' bytes, their import tables and the cited original decompiled routines. No reconstruction was consulted. No implementation, test, capture, log or other contract was read.
+
+Confirmed: the field widths used here; the 24-byte payload layout with seven padding bytes; the client selector's complete twelve-value result set, its priority order and signed parity handling (assembly at `0x004452A0..0x004453AB`); the readiness threshold rule and the complete recovery-duration grouping and numerators (500, 300, 200, 100, 400, 10, 800 and the fixed 100/600/0/400/200 cases), with binary32 multiply/divide and truncating conversion; the phase-sum structure of the total-duration helper; the lock exception set and its preservation of `+0x128`; the cost values 0.1, 0.3 and zero and the type-9 zero-cost list; the unordered-comparison behavior of the mana test; the five-value anticipation gate, forward type-9 lookup and the anticipation numerators 1600/600/1200/1200/1000 at the cited addresses; the low-byte result; the common-branch dispatch for actions 5, 17, 20, 31 and 33, its ownership gate and lock write of 600; the 31/33 diversion before the zero-clock reset; the reset of `+0x13C0` and `+0x13B4`; the transfer, type-11 lookup, first-match replacement, 40-byte self/self event to `+0x58` with count at `+0x5C`, and latch write in that order; the latch reader, its skip of the chance helper, the doubling by binary32 2 and the flag passed to RVA `0x196D30`; later random draws in the same hit calculation; the chance helper's type-11 threshold of one, 0.15 coefficient, single draw, 32767 divisor and strict comparison; every direct `+0x13C0` reference in both images, including the stack-relative false match; and the server counterparts at every cited address.
+
+Corrected:
+- Admission order: added the native order of threshold, candidate, exception, clock, lock and mana tests (previously implied but not stated).
+- Tempo dependencies: old wording listed only other statistics and type 12; the tempo routine also reads counter `+0x70` for some class/subclass pairs and byte `+0x60`.
+- Event payload sentence: replaced awkward wording with a plain statement that the copied payload has zero magnitude, duration and embedded source.
+No earlier conclusion was reversed.
+
+Unresolved:
+- A normal selectable route to action `95` through any other boundary.
+- Every caller's input/AI eligibility before RVA `0x0456A0`.
+- The complete tempo, base-probability and old-action total-duration formulas.
+- The semantics of combat helper RVA `0x196D30`, hit admission windows and victim filtering.
+- Indirect or bulk writes to `+0x13C0` and the complete set of lifecycle-reset callers.
+- Exceptional arithmetic (zero timing denominators, nonfinite values, conversion overflow).

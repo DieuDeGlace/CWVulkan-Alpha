@@ -52,6 +52,11 @@
 
 namespace net {
 
+// Server buff-update admission contract: the day clock advances by elapsed x 100 when the
+// world-update scan finds a non-null role-zero creature in action 0x54 with health > 0, else
+// by elapsed x 10. Day rollover keeps the engine server's own rule.
+void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated);
+
 struct ServerOptions {
     uint32_t seed = 0;
     uint16_t port = PORT;

@@ -467,6 +467,21 @@ static void checkCombatTransport() {
 int main() {
     checkIdentityAdoption();
     checkCombatTransport();
+    // Server buff-update admission: the day clock factor is 10, or 100 when the scan found
+    // a living role-zero creature in action 0x54.
+    {
+        uint32_t day = 3, ms = 1000;
+        advanceServerClock(day, ms, 20, false);
+        check(day == 3 && ms == 1200, "server day clock runs at 10x");
+        advanceServerClock(day, ms, 20, true);
+        check(day == 3 && ms == 3200, "server day clock runs at 100x while accelerated");
+        ms = 86400000u - 500u;
+        advanceServerClock(day, ms, 5, true);
+        check(day == 4 && ms == 0, "accelerated clock rolls the day over");
+        CreatureRecord record;
+        record.bytes[0x58] = 84;
+        check(record.action() == 84, "record action byte is creature +0x68");
+    }
     // §6.2: position and health of entity 1. (The plain bytes printed in the spec are shifted
     // by one byte in the position; these are what its wire bytes inflate to.)
     const auto plain62 = hex("01 00 00 00 00 00 00 00 01 00 00 08 00 00 00 00 00 80 42 26 80 00 00 00 "

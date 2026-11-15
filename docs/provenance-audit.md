@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14 (after batches 1-4; 214 tracked contracts, local ignored variants excluded): 88 A, 61 B, 65 C (34889 lines).
+Snapshot 2026-11-14 (after batches 1-5; 214 tracked contracts, local ignored variants excluded): 94 A, 61 B, 59 C (34241 lines).
 
 ## Remediation
 
@@ -27,8 +27,12 @@ Snapshot 2026-11-14 (after batches 1-4; 214 tracked contracts, local ignored var
    the held status only after a complete readback.
 2. Documents that contain implementation notes or history (for example
    `alpha-net-transport.md`, `alpha-net-server.md`, `alpha-audio.md`, `sky-and-clouds.md`)
-   are redacted to their behavioural content on the clean side before any author sees them,
-   or are re-derived from a neutral topic brief.
+   are handled by the re-certifying author, who removes all implementer advice, verification
+   procedures and replacement speculation and keeps only native behaviour. Such guidance holds
+   no engine internals or history (checked on the clean side before each hand-over); documents
+   that describe engine extensions rather than the original (`shadows.md`,
+   `sky-and-clouds.md`, `vegetation-wind.md`) are reclassified as engine documentation, not
+   native contracts.
 3. The implementer then reads each re-certified document whole, records its hash in
    CLEANROOM.md, and reconciles corrected behaviour in the engine with tests.
 4. The gate closes when every row is class A. Class A certifies the process record, not
@@ -48,6 +52,9 @@ Batch 3a: `alpha-creature-light-attachment-producers.md`, `alpha-client-buff-eve
 Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 `alpha-periodic-hit-producer-state.md`, `alpha-backing-reference-producers.md` and
 `alpha-creature-yaw-light-gates.md`.
+Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-consumer.md`,
+`alpha-client-buff-action-boundaries.md`, `alpha-hit-application-mutations.md`,
+`alpha-hit-threat-death-lifecycle.md` and `alpha-open-points-9.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -72,7 +79,7 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 | `alpha-class-83-descriptor-production.md` | A | 157 | 0 |
 | `alpha-client-action-binding-producer.md` | B | 113 | 1 |
 | `alpha-client-action-input-phase.md` | B | 149 | 2 |
-| `alpha-client-buff-action-boundaries.md` | C | 161 | 2 |
+| `alpha-client-buff-action-boundaries.md` | A | 183 | 3 |
 | `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
 | `alpha-client-frame-world-step-order.md` | B | 78 | 2 |
@@ -132,11 +139,11 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 | `alpha-generic-hit-vector-adjustment.md` | A | 76 | 0 |
 | `alpha-hazards-blast-ticks.md` | A | 397 | 2 |
 | `alpha-head-pitch-and-pick.md` | A | 215 | 0 |
-| `alpha-hit-application-mutations.md` | C | 134 | 2 |
+| `alpha-hit-application-mutations.md` | A | 151 | 2 |
 | `alpha-hit-item-presentation-vector.md` | A | 104 | 1 |
-| `alpha-hit-response-vector-consumer.md` | C | 132 | 1 |
+| `alpha-hit-response-vector-consumer.md` | A | 153 | 2 |
 | `alpha-hit-scalar-reduction-order.md` | A | 70 | 0 |
-| `alpha-hit-threat-death-lifecycle.md` | C | 136 | 2 |
+| `alpha-hit-threat-death-lifecycle.md` | A | 157 | 1 |
 | `alpha-hostility-test.md` | A | 188 | 0 |
 | `alpha-house-furniture.md` | C | 159 | 1 |
 | `alpha-interaction.md` | C | 587 | 3 |
@@ -171,7 +178,7 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 | `alpha-open-points-6.md` | C | 688 | 0 |
 | `alpha-open-points-7.md` | C | 355 | 0 |
 | `alpha-open-points-8.md` | C | 357 | 0 |
-| `alpha-open-points-9.md` | C | 171 | 0 |
+| `alpha-open-points-9.md` | A | 114 | 0 |
 | `alpha-particles.md` | C | 564 | 3 |
 | `alpha-path-expansion-order.md` | A | 124 | 1 |
 | `alpha-path-following-update.md` | A | 108 | 2 |
@@ -184,7 +191,7 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 | `alpha-periodic-hit-producer-state.md` | A | 127 | 2 |
 | `alpha-pets-bombs.md` | C | 781 | 2 |
 | `alpha-physics-camera.md` | C | 592 | 0 |
-| `alpha-player-control.md` | C | 249 | 0 |
+| `alpha-player-control.md` | C | 402 | 0 |
 | `alpha-pose-owner-inputs.md` | A | 212 | 1 |
 | `alpha-pose-selectors-01-18.md` | A | 360 | 0 |
 | `alpha-pose-selectors-19-24.md` | A | 354 | 0 |
@@ -205,7 +212,7 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
 | `alpha-saves.md` | C | 352 | 3 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
-| `alpha-server-buff-update-admission.md` | C | 144 | 3 |
+| `alpha-server-buff-update-admission.md` | A | 144 | 3 |
 | `alpha-server-hit-record-routing.md` | B | 77 | 1 |
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
 | `alpha-server-simulation.md` | C | 581 | 1 |
@@ -247,7 +254,7 @@ Batch 4: `alpha-terrain-light-source-lifecycle.md`, `alpha-worldgen-clouds.md`,
 | `alpha-worldgen-clouds.md` | A | 91 | 0 |
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
 | `alpha-worldgen-overview.md` | C | 210 | 4 |
-| `alpha-worldgen-random.md` | C | 229 | 0 |
+| `alpha-worldgen-random.md` | C | 306 | 0 |
 | `alpha-worldgen-regions.md` | C | 362 | 0 |
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
 | `alpha-worldgen-terrain.md` | C | 437 | 0 |

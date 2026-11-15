@@ -2355,3 +2355,31 @@ engine stays one-shot per death); the online client's kind-144 flash; the flash 
 same frame's candidates (the original appends after the gather); cloud gates sampled at the
 camera column with floor (native: the controlled creature, truncation); the cloud render-state
 setup. Engine extension kept: optional cloud drift.
+## Provenance re-certification, batch 5 (2026-11-14)
+
+Six inherited contracts were re-certified by fresh source-only authors against the original
+images (34 corrections, one reversal: the hit applier's fourth argument is an object used only
+by death loot as the drop container, not a binary32; no reconstruction consulted) and read
+whole by a fresh implementer:
+- `alpha-server-buff-update-admission.md` (A5807A9E...2BE6)
+- `alpha-hit-response-vector-consumer.md` (F89F3714...D009)
+- `alpha-client-buff-action-boundaries.md` (8C910875...A098)
+- `alpha-hit-application-mutations.md` (C91D1B73...DDA1)
+- `alpha-hit-threat-death-lifecycle.md` (26479873...E484)
+- `alpha-open-points-9.md` (2E1D4AF7...60C5)
+
+Engine changes:
+- Server day clock (`net::advanceServerClock`): before the world step the server scans live
+  role-zero creatures (connections and controller-0 NPCs) for action 0x54 with health > 0; when
+  one is found the time of day advances x100, else x10. The engine's day rollover is kept.
+- Column extension (`Zone::place`): new cells of an upward extension are zero-filled (type 0,
+  colour 0, 0, 0) instead of white air; only stored colour bytes of air change.
+Already matching: the hit applier's prelude, gates, category bodies, healing traversal and
+fatal join; the death-loot draw order, tables and parity generator choice; the formation guards
+and call-site draws; the AI accumulator, interval counter, type-9/10/11 producers and
+consumers; the knock-back subdivision count's binary32 rounding; the secondary-action
+admission (selector pure, so the clock-first order is observably equal).
+Not modelled: the position-list distance test of the formation pass (its list is unidentified);
+the type-6 gap fill of the native writer (the engine fills implicit solid; formations never
+write below the column bottom); the positive-timer state helper and cooldown refresh; the
+native socket reader's error/close index behaviour (the engine decodes whole buffers).

@@ -54,6 +54,7 @@ struct CreatureRecord {
     int64_t position(int axis) const;
     void setPosition(int axis, int64_t value);
     uint8_t controller() const { return bytes[0x50]; } // 0 = player
+    uint8_t action() const { return bytes[0x58]; }     // creature +0x68
     glm::vec3 orientation() const { return floats(0x18); } // field 1; z is the facing
     glm::vec3 velocity() const { return floats(0x24); }    // field 2, blocks per second
     glm::vec3 intent() const { return floats(0x30); }      // field 3
