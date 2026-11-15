@@ -2559,3 +2559,27 @@ open points 1, first crossing plus 200 ms in aim-triplet); the engine keeps 200 
 Not modelled: the 89/90 channel sound for remote creatures, the +0x11C0 exclusion, field 18,
 statics in the projectile ray, the action-104 beam entry and water-mage visual, seat re-pin to
 actions 83/84, physics 3x3 index cells.
+## Provenance re-certification, terrain and open points 5; tick-period ruling (2026-11-15)
+
+Two inherited contracts were re-certified by fresh source-only authors (22 corrections;
+reversals of two former open-question readings about stored water keep marks and dry air;
+verification vectors removed; no reconstruction consulted), and a new source-side ruling settled
+the conflicts reported in the previous batch; all three were read whole by the implementer:
+- `alpha-worldgen-terrain.md` (85542660...6975)
+- `alpha-open-points-5.md` (79648F2B...BE98)
+- `alpha-tick-period-rulings.md` (EED29498...5B62)
+
+Rulings: the trap gate for kinds 6 and 7 is trunc(C + dt)/200 against trunc(C)/200 with C the
+world clock after the step's advance (`alpha-hazards-blast-ticks.md` §3 is right; the 100 ms
+divisor in `alpha-open-points-1.md` is wrong). Actions 28, 94 and 95 pulse once at the wind-up
+crossing, and 28 and 95 repeat each time trunc((t - D)/200) changes (`alpha-combat-aim-triplet.md`
+§3.1 is right; open points 1's 100 ms period, missing crossing tick and separate action-104
+entry are wrong; action 104 dispatches to a different case, so the triplet's claim that 0x68
+shares the beam case is unsupported). The engine already followed the 200 ms rules; where
+`alpha-open-points-1.md` disagrees, the ruling document governs.
+Engine: the terrain contract already matched (the 0x3ECCCCCC divisor is now written by its bits;
+the elevation window uses the truncating form, identical for valid coordinates); the item
+settling pass converts with the native fixed-to-block rule (exact negative multiples of 65536 one
+block lower; generated ground items have whole-block z and do not move). World generation, block
+colours and draw order are unchanged. Not modelled: the terrain pass's P and grass counters and
+running min/max of zs (uses untraced); the mana cube's unwritten angle.

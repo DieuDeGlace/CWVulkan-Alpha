@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-10; 214 tracked contracts, local ignored variants excluded): 110 A, 61 B, 38 C (27587 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-11; 215 tracked contracts, local ignored variants excluded): 113 A, 61 B, 36 C (26585 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -66,7 +66,8 @@ Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-house-furniture.md`;
 then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alpha-open-points-7.md` and `alpha-open-points-8.md`; `alpha-worldgen-regions.md` and
 `alpha-items-generator.md`; `alpha-projectiles.md`, `alpha-open-points-1.md`, `alpha-world-items.md` and
-`alpha-open-points-2.md`.
+`alpha-open-points-2.md`; `alpha-worldgen-terrain.md` and `alpha-open-points-5.md` (plus the new ruling
+`alpha-tick-period-rulings.md`).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -186,7 +187,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-open-points-2.md` | A | 465 | 1 |
 | `alpha-open-points-3.md` | C | 505 | 2 |
 | `alpha-open-points-4.md` | C | 577 | 1 |
-| `alpha-open-points-5.md` | C | 485 | 0 |
+| `alpha-open-points-5.md` | A | 485 | 0 |
 | `alpha-open-points-6.md` | C | 688 | 0 |
 | `alpha-open-points-7.md` | A | 256 | 1 |
 | `alpha-open-points-8.md` | A | 291 | 0 |
@@ -247,6 +248,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
+| `alpha-tick-period-rulings.md` | A | 145 | 0 |
 | `alpha-trails-poses-schedules.md` | C | 690 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
 | `alpha-travel.md` | C | 562 | 1 |
@@ -269,7 +271,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-worldgen-random.md` | A | 306 | 0 |
 | `alpha-worldgen-regions.md` | A | 440 | 0 |
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
-| `alpha-worldgen-terrain.md` | C | 517 | 0 |
+| `alpha-worldgen-terrain.md` | A | 517 | 0 |
 | `alpha-worldgen-trees.md` | C | 568 | 1 |
 | `alpha-worldgen-vegetation.md` | A | 357 | 0 |
 | `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |

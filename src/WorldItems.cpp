@@ -118,17 +118,19 @@ void WorldItems::generated(const worldgen::Zone &zone) {
         w.origin = g.category == 25 || mushroom ? 0 : 2;
         list.push_back(w);
     }
-    // §4.3 settling pass: a record whose tag has bit 0 clear is lowered by whole blocks while
-    // the block holding (x, y, z - 0.5 blocks) is not solid; tag-1 loot stays put. (Zone-local
-    // reads: below the column is implicit solid, so the walk ends.)
+    // §4.3 settling pass (open points 5 §4.1 pass A): a record whose tag has bit 0 clear is
+    // lowered by whole blocks while the block holding (x, y, z - 0.5 blocks) is not solid; tag-1
+    // loot stays put. Cells use the game's fixed-to-block rule (an exact negative multiple of
+    // 65536 reads one block lower). Zone-local reads: a missing column reads solid, and below
+    // the column is implicit solid, so the walk ends.
     for (WorldItem &w : list) {
         if (w.origin & 1)
             continue;
-        const int32_t bx = (int32_t)(w.position[0] >> 16), by = (int32_t)(w.position[1] >> 16);
+        const int32_t bx = worldgen::blockOfFixed(w.position[0]), by = worldgen::blockOfFixed(w.position[1]);
         if (!zone.contains(bx, by))
             continue;
         const auto solidBelow = [&](int64_t z) {
-            const uint8_t t = zone.read(bx, by, (int32_t)((z - 32768) >> 16)).type() & 0x1f;
+            const uint8_t t = zone.read(bx, by, worldgen::blockOfFixed(z - 32768)).type();
             return t != 0 && t != 2;
         };
         while (!solidBelow(w.position[2]))

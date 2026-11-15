@@ -41,6 +41,11 @@ constexpr uint8_t KEEP = 0x80;
 // An empty or water cell lets light through (rendering §9.1, §9.2).
 inline bool clear(uint8_t type) { return type == AIR || type == WATER; }
 
+// A fixed-point coordinate (1/65536 block) as a block, as the game reads one (0x2f860): below zero
+// it takes one block off and then truncates, so floor division except that an exact negative
+// multiple of 65536 reads one block lower (open points 10 §11, open points 5 §4.1).
+inline int32_t blockOfFixed(int64_t v) { return (int32_t)((v < 0 ? v - 65536 : v) / 65536); }
+
 // Terrain §1.2: the climate of a column and its stored blocks, from `bottom` upwards.
 struct Column {
     float moisture = 0, warmth = 0, fire = 0;

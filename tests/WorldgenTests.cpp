@@ -5,6 +5,7 @@
 #include <memory>
 #include "BlockEdits.h"
 #include "Missions.h"
+#include "WorldItems.h"
 #include "worldgen/Builders.h"
 #include "worldgen/Clouds.h"
 #include "worldgen/Items.h"
@@ -922,6 +923,92 @@ int main() {
         same(smooth(0.5f), 0.5, "smooth of a half");
         const float x = 0.3f;
         same(smooth(x), (double)((float)((float)(3.f * x) * x) - (float)((float)((float)(2.f * x) * x) * x)), "smooth order");
+    }
+
+    // Open points 5 §4.1 pass A: the settling pass reads the cell of z - 0.5 with the game's
+    // fixed-to-block rule, so an exact negative multiple of 65536 reads one block lower.
+    {
+        Zone zone;
+        zone.zx = zone.zy = 0;
+        for (Column &c : zone.columns) {
+            c.bottom = -10;
+            c.blocks.assign(20, Block{90, 90, 90, ROCK});
+        }
+        zone.column(5, 5).blocks[6] = Block{255, 255, 255, WATER}; // z = -4 is water, -3 and -5 rock
+        ItemDrop drop;
+        drop.x = drop.y = 5 * 65536 + 32768;
+        drop.z = -2 * 65536 - 32768; // z = -2.5: the cell of z - 0.5 is -3 by floor, -4 as the game reads it
+        drop.scale = 0.1f;          // untagged (bit 0 of the origin clear)
+        drop.item.type = 11;
+        zone.drops.push_back(drop);
+        ItemDrop resting = drop;    // z = -2.0: cell of -2.5 is -3 either way, solid: stays
+        resting.x = resting.y = 6 * 65536 + 32768;
+        resting.z = -2 * 65536;
+        zone.drops.push_back(resting);
+        WorldItems items;
+        items.generated(zone);
+        const std::vector<WorldItem> *list = items.zone(0, 0);
+        same(list && list->size() == 2, 1, "settling test items listed");
+        if (list && list->size() == 2) {
+            same((double)(*list)[0].position[2], -3 * 65536 - 32768, "half-block item sinks through the water cell read one lower");
+            same((double)(*list)[1].position[2], -2 * 65536, "whole-block item resting on rock stays");
+        }
+    }
+
+    // Terrain §1.5, §1.3: only a block whose byte 3 is entirely zero is "air" for the skip above
+    // the top; the z <= 0 water (0x82) carries the keep bit, which refuses type-0 writes.
+    {
+        Zone zone;
+        zone.zx = zone.zy = 0;
+        Column &c = zone.column(0, 0);
+        c.bottom = -2;
+        c.blocks.assign(2, Block{1, 1, 1, ROCK});
+        zone.place(0, 0, 5, Block{0, 0, 0, AIR});
+        same(c.top(), 0, "plain air above the top is not stored");
+        zone.place(0, 0, 3, Block{0, 0, 0, DRY_AIR});
+        same(c.top(), 4, "dry air (byte 3 non-zero) above the top is stored");
+        zone.place(0, 0, -1, Block{0, 0, 0, AIR});
+        same(zone.read(0, 0, -1).typeByte, 0x82, "air written at z <= 0 becomes keep water");
+        zone.place(0, 0, -1, Block{0, 0, 0, DRY_AIR});
+        same(zone.read(0, 0, -1).typeByte, 0x82, "keep water refuses a type-0 write");
+        zone.place(0, 0, -1, Block{7, 7, 7, ROCK});
+        same(zone.read(0, 0, -1).typeByte, ROCK | KEEP, "keep water takes a solid write and stays kept");
+    }
+
+    // Open points 5 §2.1: marker 11 makes type 141 in mode 10 and 142 otherwise; a marker voxel
+    // past the zone border still makes its creature; an existing solid block with bit 0x40
+    // suppresses the voxel and its marker.
+    {
+        auto run = [&](int mode, int32_t x, int32_t z, bool structureBlock) {
+            auto zone = std::make_shared<Zone>();
+            zone->zx = zone->zy = 0;
+            for (Column &c : zone->columns) {
+                c.bottom = 0;
+                c.blocks.assign(10, Block{90, 90, 90, GRASS});
+            }
+            if (structureBlock)
+                zone->column(x, 50).blocks[(size_t)z] = Block{9, 9, 9, (uint8_t)(ROCK | DRY_AIR)};
+            Prefab model;
+            model.sx = 2, model.sy = model.sz = 1;
+            model.rgb = {0, 255, 255, 0, 255, 255};
+            PlacerWorld pw;
+            pw.warmth = [](int32_t, int32_t) { return 0.5f; };
+            pw.level = [](int32_t X, int32_t) { return X; };
+            pw.gapFill = [](int32_t, int32_t, int32_t) { return IMPLICIT_SOLID; };
+            Placement at;
+            at.x = x, at.y = 50, at.z = z;
+            at.mode = mode;
+            Random s(123);
+            placePrefab(*zone, s, pw, model, at);
+            return zone;
+        };
+        const auto trainer = run(10, 255, 5, false);
+        same(trainer->spawns.size(), 2, "marker 11 across the zone border makes both creatures");
+        same(trainer->spawns.size() == 2 && trainer->spawns[0].type == 141 && trainer->spawns[1].type == 141, 1,
+             "marker 11 in mode 10 is type 141");
+        same(trainer->spawns.size() == 2 && trainer->spawns[1].level == 256, 1, "outside voxel level from its own block");
+        same(run(1, 50, 5, false)->spawns.at(0).type, 142, "marker 11 in another mode is type 142");
+        same(run(1, 50, 5, true)->spawns.size(), 1, "a solid structure block suppresses its voxel's marker");
     }
 
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

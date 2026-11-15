@@ -10,10 +10,6 @@ namespace worldgen {
 inline float f(double v) { return (float)v; }
 // A float block coordinate in 1/65536 blocks (0x42c580).
 inline int64_t fx(float v) { return (int64_t)f(v * 65536.f); }
-// A fixed-point coordinate (1/65536 block) as a block, as the game reads one (0x42f860): below zero
-// it takes one block off and then truncates, so a whole negative height reads one lower
-// (open points 10 §11).
-inline int32_t blockOfFixed(int64_t v) { return (int32_t)((v < 0 ? v - 65536 : v) / 65536); }
 
 // A box colour; channels may run past 255 before the box filler clamps them.
 struct Colour {

@@ -2,7 +2,9 @@
 #include "EngineModules.h"
 #include "worldgen/Trees.h"
 #include "worldgen/WaterFeatures.h"
+#include "worldgen/SpatialScalars.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <unordered_map>
 
@@ -107,7 +109,8 @@ float Terrain::mountains(int32_t x, int32_t y) const {
             M = (M + s) * (1.f - k * k);
         } else if (f < 1) {
             const float r = (float)std::sqrt((double)f);
-            const float g = (r - 0.6f) / 0.3999999761581421f; // (1 - 0.6f, open points 11 §2)
+            // Terrain §3.4 step 5: the divisor is the binary32 0x3ECCCCCC, one unit below 0.4f.
+            const float g = (r - 0.6f) / std::bit_cast<float>(0x3ECCCCCCu);
             M = squared(1.f - g * g) * s + M;
         }
     }
@@ -155,7 +158,8 @@ float Terrain::height(int32_t x, int32_t y) const {
     const float m3 = g * s3, m4 = g * s4;
     float m5 = g * s5;
 
-    // §4.2: the elevation of the region cells, blended over the displaced sample point.
+    // §4.2: the elevation of the region cells, blended over the displaced sample point. The
+    // window divides toward zero and is centred on the undisplaced (x, y).
     const glm::vec2 d = w.displacement(x, y);
     const int64_t Px = ((int64_t)x << 16) + (int64_t)(d.x * 65536.f);
     const int64_t Py = ((int64_t)y << 16) + (int64_t)(d.y * 65536.f);
@@ -166,8 +170,9 @@ float Terrain::height(int32_t x, int32_t y) const {
     Candidate candidates[9];
     int count = 0;
     float nearest = 0;
-    for (int32_t i = floorDiv(x - REGION, REGION); i <= floorDiv(x + REGION, REGION); i++)
-        for (int32_t j = floorDiv(y - REGION, REGION); j <= floorDiv(y + REGION, REGION); j++) {
+    const scalars::Window window = scalars::window(x, y);
+    for (int32_t i = window.firstX; i <= window.lastX; i++)
+        for (int32_t j = window.firstY; j <= window.lastY; j++) {
             const RegionCell *c = w.cell(i, j);
             if (!c)
                 continue; // missing cells are skipped here
@@ -520,8 +525,8 @@ void Terrain::surfacePass(Zone &zone, const std::vector<float> &heights, Random 
             column.belowSurface = zs - 8;
 
             // §5.5: ravines.
+            // The two early exits below ("v < 0" and "top <= floor") skip the lake fill too.
             const float Lr = (noise(0.01 * x + 435.0, 0.01 * y + 847.0) + 1.f) * 20.f + h;
-            bool lakeFill = true;
             if (S > Lr) {
                 const auto &o = w.offsets();
                 const float v = 1.f - std::fabs(noise(0.005 * x + o[0x178], 0.005 * y + o[0x17c]) +
@@ -595,10 +600,9 @@ void Terrain::surfacePass(Zone &zone, const std::vector<float> &heights, Random 
                         break;
                     }
                 }
-                lakeFill = true;
             }
-            // §5.6: lake fill.
-            if (lakeFill && Lz && Lz->type == 4 && w.locationDistance(*Lz, x, y) < 0.25f)
+            // §5.6: lake fill (its water carries the keep bit 0x80).
+            if (Lz && Lz->type == 4 && w.locationDistance(*Lz, x, y) < 0.25f)
                 for (int32_t z = (int32_t)(Lz->height - 25.f); z >= column.bottom; z--) {
                     const uint8_t t = zone.read(x, y, z).type();
                     zone.place(x, y, z, clear(t) ? Block{255, 255, 255, 0x82} : toBlock(rock(x, y, z, &zone), LAKE_BED),

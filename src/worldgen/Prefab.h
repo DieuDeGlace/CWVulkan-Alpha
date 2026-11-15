@@ -43,7 +43,8 @@ struct Placement {
 struct PlacerWorld {
     // The warmth blend of a column outside the zone (regions spec §4).
     std::function<float(int32_t x, int32_t y)> warmth;
-    // The level of a creature placed at (x, y) (0x59a9b0; its rule is not specified yet).
+    // The level of a creature placed at whole block (x, y) (open points 5 §1: the record of the
+    // block's own map cell, cell index truncating toward zero; 1 outside its rim).
     std::function<int32_t(int32_t x, int32_t y)> level;
     // The rock-coloured block that fills a gap under a column (terrain §1.5).
     std::function<Block(int32_t x, int32_t y, int32_t z)> gapFill;
