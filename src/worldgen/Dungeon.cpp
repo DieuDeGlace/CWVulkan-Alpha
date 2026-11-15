@@ -1013,8 +1013,9 @@ class Builder : StructureWriter {
             };
             if (random.draw() & 1) {
                 const glm::i64vec3 p = spot(random.draw() & 3, HALF, 2);
+                // Open points 10 §9.2: the fixed-point read's negative-value rule on every axis.
                 const int32_t wx = blockOfFixed(p.x + s.da * ONE), wy = blockOfFixed(p.y + s.db * ONE);
-                                if (blockSolid(wx, wy, blockOfFixed((int64_t)(Z + 2) * ONE)))
+                if (blockSolid(wx, wy, blockOfFixed((int64_t)(Z + 2) * ONE)))
                     zone.sprites.push_back(torch(v, p.x, p.y, p.z, s.torchAngle));
                 if (s.db > 0) // (open points 8: on the +y wall a torch's chance rules out furniture)
                     continue;

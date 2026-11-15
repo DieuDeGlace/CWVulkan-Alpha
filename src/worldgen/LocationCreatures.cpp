@@ -135,7 +135,7 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
 
     // §3: the candidate deepest inside the location, in the zone of its centre.
     int marked = -1;
-    if ((int32_t)(L.x / ONE / 256) == zone.zx && (int32_t)(L.y / ONE / 256) == zone.zy) {
+    if (centredIn(L, zone.zx, zone.zy)) {
         float best = 0;
         for (size_t i = 0; i < candidates.size(); i++) {
             const float v = (float)(1.f - (float)w.locationDistanceFx(L, candidates[i][0], candidates[i][1]));
@@ -243,7 +243,10 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
             }
         zone.spawns.push_back(leader);
         // The followers stand on the leader. They copy its id before it has one (as read,
-        // open question LC-2), so they follow nobody: Combat, then RandomWalk.
+        // open question LC-2), so they follow nobody: Combat, then RandomWalk. Spawn objects
+        // §6.3: only an entry with a second list has followers (and their count draw).
+        if (group.followers.empty())
+            continue;
         const int n = random.draw() % 3 + 1;
         for (int f = 0; f < n; f++) {
             Spawn follower = locationSpawn(L, X, Y, Z);

@@ -221,9 +221,8 @@ void Terrain::structurePasses(Zone &zone, Random &random, const ZoneEntry &E, co
         zone.objectList.push_back({(int64_t)cx * ONE, (int64_t)cy * ONE, (int64_t)T * ONE});
         const int32_t n = random.draw() % 3 + 6;
         for (int32_t k = 0; k < n; k++) {
-            const float a = f((double)(2 * k) * PI / (double)n);
-            const float s = f(std::sin((double)a)), c = f(std::cos((double)a));
-            const int32_t px = cx + (int32_t)f(c * 25.f), py = cy + (int32_t)f(s * 25.f);
+            const glm::ivec2 offset = pillarOffset(k, n);
+            const int32_t px = cx + offset.x, py = cy + offset.y;
             const int32_t zp = (zone.contains(px, py) ? zone.column(px, py).top() : T) + 4;
             const int32_t a1 = (random.draw() & 3) + 3;
             const int32_t a2 = (random.draw() & 3) + 3;
@@ -257,7 +256,9 @@ void Terrain::structurePasses(Zone &zone, Random &random, const ZoneEntry &E, co
     }
 }
 
-// Structures spec §4 test helper: a pillar's offset from the circle's centre.
+// Structures spec §4: pillar k's offset from the site's centre, 25 blocks along the angle
+// 2k·π / n, a full circle (alpha-rulings-formation-angle-box.md §1; it supersedes the caves
+// spec's "i·π / n"): the loop multiplier steps by 2, times π, over n, rounded to binary32.
 glm::ivec2 pillarOffset(int32_t k, int32_t n) {
     const float a = f((double)(2 * k) * PI / (double)n);
     return {(int32_t)f(f(std::cos((double)a)) * 25.f), (int32_t)f(f(std::sin((double)a)) * 25.f)};

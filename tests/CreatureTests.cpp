@@ -74,6 +74,42 @@ int main() {
         same(reachesTarget(guard, {0, 0, 0}, 0, box, {0, 3.6, 0}, box), 0, "out of reach ahead");
     }
 
+    // Spawn objects §2: the constructor's 13 empty items carry level 1, which a kept-gear
+    // (flag 0x40) spawn retains through the finishing pass: 5 appearance draws, no equipment
+    // draws, 28 rarity draws, no re-roll (every level < 2), one discarded draw.
+    {
+        worldgen::Spawn spawn;
+        bool levelOne = true;
+        for (const worldgen::ItemRecord &item : spawn.equipment)
+            levelOne &= item.level == 1 && item.type == 0;
+        same(levelOne, 1, "fresh spawn items are empty and level 1");
+        spawn.type = 69;
+        spawn.level = 5;
+        spawn.appearanceFlags = 0x40;
+        worldgen::Random random(123);
+        finishSpawn(spawn, random, true);
+        same((double)random.count(), 34, "kept-gear spawn finishing draws");
+        levelOne = true;
+        for (const worldgen::ItemRecord &item : spawn.equipment)
+            levelOne &= item.level == 1;
+        same(levelOne, 1, "kept-gear spawn keeps level-1 items");
+    }
+
+    // Spawn objects §4.2 step 3, §3.3: a general-branch spawn's chest (slot 2) carries the spawn
+    // level (so the finishing pass re-rolls it), and the generator never clears slots 8 and 9.
+    {
+        worldgen::Spawn spawn;
+        spawn.type = 2; // (an ordinary person: the general branch)
+        spawn.level = 10;
+        spawn.equipment[8].type = 9, spawn.equipment[8].level = 7;
+        worldgen::Random random(77);
+        finishSpawn(spawn, random, false);
+        same(spawn.equipment[2].type, 4, "general branch gives a chest");
+        same(spawn.equipment[2].level, 10, "chest at the spawn level");
+        same(spawn.equipment[8].type, 9, "slot 8 is never cleared");
+        same(spawn.equipment[8].level == 7 || spawn.equipment[8].level == 10, 1, "slot 8 level kept or newly placed");
+    }
+
     // Strike-call-sites S6/S7: the periodic window, its area-heal flag and the deferred-key pass.
     {
         Combatant healer;
@@ -2729,6 +2765,13 @@ int main() {
         for (const auto &[n, want] : std::initializer_list<std::pair<int16_t, int16_t>>{{1, 1}, {2, 1}, {3, 1}, {5, 3}, {10, 8}, {20, 24}, {50, 63}, {100, 117}}) {
             worldgen::Random r(123);
             same(rerollLevel(r, n), want, "re-roll of level " + std::to_string(n));
+        }
+        // Loot rolls §2: once hi - lo + 1 exceeds 32767 the result is lo + d (first draws 440
+        // and 175 from seeds 123 and 42).
+        {
+            worldgen::Random a(123), b(42);
+            const int16_t la = rerollLevel(a, 1000), lb = rerollLevel(b, 1000);
+            same(la - lb, 440 - 175, "wide re-roll is lo + d");
         }
         LootVictim goblin;
         goblin.controller = 1, goblin.type = 4, goblin.level = 5;

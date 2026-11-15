@@ -1,473 +1,389 @@
+Status: FINAL / STABLE / HELD
+
 # Alpha open points, batch 10: dungeon styles 1 to 5
 
-Clean-room behavioural specification. It audits everything in the dungeon builder 0x5cc510 that
-depends on the variant v, for v = 1 to 5.
+Clean-room behavioural specification. It covers the parts of the dungeon builder that depend on the
+style value v (v = 1 to 5), plus the routines those parts call where a v-dependent result is decided.
 
-Written from the per-instruction listing of `Cube.exe`: the whole builder (the decompiler timed out
-on it, so its output does not exist), and the routines it calls that depend on v or that the
-symptoms point to. Where the listing has a hole (0x5e6464..0x5e699f), the bytes of the binary were
-disassembled directly. Addresses are citations only. No code was copied.
+Evidence: the original client image `Cube.exe` only (image base 0x400000). Every address below is an
+RVA in `Cube.exe`. No recordings, captures or implementation material were used. Statements that
+could not be confirmed in the image are listed under "Unresolved" and are not part of the contract.
 
-The checks used game outputs only: the recordings
-`references/alpha-recordings/seed-41-dungeon-style1` to `-style5` and `seed-41-dungeon`. Nothing
-under `AlphaVulkan/src` was read.
+Names used throughout:
 
-Confidence labels: **certain** = read instruction by instruction; **confirmed** = certain and also
-measured against a recording; **likely** = the best explanation, not proved; **to check** = needs
-your build.
+* Xo, Yo: the dungeon origin passed to the builder (RVA 0x1CC510).
+* The builder works on a cell grid of 22 × 22 × 22 cells (constructed at RVA 0x1CDFC9..0x1CDFD5);
+  a cell is 10 blocks. Its centre cell column is (10, 10), so Xc = Xo + 100 and Yc = Yo + 100.
+* base and ce: the base height and the anchor cell's third index chosen by the fit step
+  (RVA 0x1CED52..0x1CED7A); "base + 10ce" is the anchor's absolute block height.
+* c2: the colour record the builder passes to most box fills (stack slot written by the palette step,
+  RVA 0x1CE5C4..0x1CE5D8, and overwritten per style below); c3: the second record set alongside it.
+* g: the glow rate value passed with c2.
+* "box": the box filler at RVA 0x1DF600. "carve": the carve routine at RVA 0x19ABA0.
 
 ---
 
-## The short version
+## 1. The rough carve (carve routine, RVA 0x19ABA0)
 
-| # | Symptom | Cause | Wrong in | Confidence |
+Arguments: corner (X, Y, Z), a size (sx, sy, sz), a pass-through value, and a "rough" flag (last).
+
+Order: cells are visited with the x index i outermost (0 .. sx − 1), then the y index j
+(0 .. sy − 1), then the z index k innermost, running **downwards** from sz − 1 to 0. For each cell
+(X′, Y′, Z′) = (X + i, Y + j, Z + k) the routine first writes the carved block, then, only when the
+rough flag is set, tries the four faces below in this order. Each face is tried only when the cell
+lies on that face of the box. A face writes its neighbour block when the noise value, as a float,
+is strictly greater than 0.5.
+
+| Order | Face condition | Neighbour written | Noise arguments (first, second) | RVA |
 |---|---|---|---|---|
-| 1 | v = 1, 2, 4 drift from early on | The rough carve's noise on the y faces has x and y exchanged. Torch wall tests on the −y and +y sides then read the wrong block and the draw count changes | structures §1.10.2 item 2 | **confirmed** |
-| 2 | v = 4: nearly all rock colours wrong, types 6/13 swap | The pyramid stairs have **11** boxes per run, not 10: 233 more draws per stair column, 8,854 before the interior pass | structures §1.10.4 step 3 | **certain** |
-| 3 | v = 5: type 0/6 swaps, spawn group differs | The two long corridors, the central shaft, the pillar and the spiral all use a height 12 lower than the box. 220 fewer draws before the room spawns | structures §1.10.7 | **confirmed** |
-| 4 | Type 59 level | The level of the point: 3 inside the location's radius, 1 outside. Rule of open-points-5 §1 at the block corner | open-points-5 §1.2 omits this caller | **confirmed**, 140 of 140 |
-| 5 | v = 3: G one unit off, both signs | The box filler and moss are right as specified. The first noise's arguments must be rounded to float. Leaving them unrounded gives this symptom | wording of structures §1.10.2 item 1 | formula **confirmed**; port's cause **likely** |
-| 6 | v = 5: B one unit off | Not dungeon blocks. Terrain rock in a fire zone, where a mix of two equal values truncates low in single precision | not a dungeon matter | **likely** |
+| 1 | i = 0 | (X′ − 1, Y′, Z′) | 0.1·Y′ + 13·X′, 0.2·Z′ | 0x19AC35 |
+| 2 | j = 0 | (X′, Y′ − 1, Z′) | 0.1·X′ + 13·Y′, 0.2·Z′ | 0x19ACC0 |
+| 3 | i = sx − 1 | (X′ + 1, Y′, Z′) | 0.1·Y′ + 13·X′, 0.2·Z′ | 0x19AD50 |
+| 4 | j = sy − 1 | (X′, Y′ + 1, Z′) | 0.1·X′ + 13·Y′, 0.2·Z′ | 0x19ADE3 |
 
-Everything else that depends on v was checked and stands (§7). Rules 1 to 3 are all in the building
-pass; none of the setup, room, link, corridor, entrance, orientation, raised floor or fit steps is
-wrong for any v.
+So on every face the coordinate running along the wall is scaled by 0.1 and the coordinate across
+the wall is multiplied by the integer 13. The x faces and the y faces therefore use exchanged
+coordinates.
 
-The set v = 1, 2, 4 is the set with `rough` carves, so your pointer was right for v = 1 and 2. v = 4
-has rule 1 as well, but rule 2 hits it first and much harder.
+Precision: the 0.1 term is the coordinate converted to double times the double 0.1 (RVA 0x31A048);
+the 13 term is a 32-bit integer product converted to double; the two are added in double. The second
+argument is the z coordinate converted to double times the double 0.2 (RVA 0x31DB58). The noise
+routine is at RVA 0xC0EF0; its result is stored as a float and compared with the float 0.5
+(RVA 0x345DA0).
 
-**A warning for anyone reading the recordings:** columns in `.avzd` run **x fastest**, so the column
-index is 256·y + x. Reading it as 256·x + y hides rule 1: both noise forms then look like chance.
+Written block, for the carved cell and for every opened neighbour: three zero colour bytes and a
+fourth byte 0xC0 (block writer RVA 0x4E7A0). The routine makes no random draws.
+
+The builder sets the rough flag for v = 1, 2 and 4 only, on the per-cell carve of (10, 10, 10) at
+the cell corner (RVA 0x1D0ADC..0x1D0B6A).
+
+Why this matters for the stream: the torch wall test (§9) reads a block one step outside the cell
+wall, which is exactly a block the rough carve can open. Its result decides whether the torch routine
+(which makes draws) runs; on the +y side it also decides whether the furniture branch runs (§9.3).
 
 ---
 
-## 1. The rough carve (corrects structures §1.10.2 item 2)
+## 2. The v = 4 pyramid stairs
 
-The face order, the condition "the cell touches that face", the threshold and the written block
-stand. The noise of the y faces does not. With (X′, Y′, Z′) the carved cell:
+These boxes are part of the per-column pass, after the 12 × 12 grass/terrain step (which is skipped
+when the core top does not exceed the lowest column base sampled under the column; the stairs run
+in either case, jump at RVA 0x1CFD81). H is the column's core top height (RVA 0x1CFCD3..0x1CFD05).
+With (a, b) the column's cell index and (X, Y) = (Xo + 10a, Yo + 10b):
 
-| Order | Face | Neighbour written | Hole if strictly greater than 0.5 | Read at |
+Each run has **11 boxes, t = 0 .. 10**: the counter starts at −1 and repeats while it is below 10,
+the same form in all twelve loops (first one RVA 0x1D0018..0x1D0086).
+
+| Where | Run 1 | Run 2 | Run 3 | RVA |
 |---|---|---|---|---|
-| 1 | i = 0 | (X′ − 1, Y′, Z′) | N(0.1·Y′ + 13·X′, 0.2·Z′) | 0x59ac35 |
-| 2 | j = 0 | (X′, Y′ − 1, Z′) | **N(0.1·X′ + 13·Y′, 0.2·Z′)** | 0x59acc0 |
-| 3 | i = sx − 1 | (X′ + 1, Y′, Z′) | N(0.1·Y′ + 13·X′, 0.2·Z′) | 0x59ad50 |
-| 4 | j = sy − 1 | (X′, Y′ + 1, Z′) | **N(0.1·X′ + 13·Y′, 0.2·Z′)** | 0x59ade3 |
+| a = 10, b ≤ 8 | box(X − 2, Y − 1 + t, H, (14, 1, t + 2)) | box(X − 2, Y − 1 + t, H, (2, 1, t + 4)) | box(X + 10, Y − 1 + t, H, (2, 1, t + 4)) | 0x1D0012 |
+| a = 10, b ≥ 12 | as above with y = Y + 10 − t | same | same | 0x1D0183 |
+| b = 10, a ≤ 8 | box(X − 1 + t, Y − 2, H, (1, 14, t + 2)) | box(X − 1 + t, Y − 2, H, (1, 2, t + 4)) | box(X − 1 + t, Y + 10, H, (1, 2, t + 4)) | 0x1D033E |
+| b = 10, a ≥ 12 | as above with x = X + 10 − t | same | same | 0x1D04CC |
 
-So the coordinate along the wall gets 0.1 and the coordinate across the wall gets the integer 13.
-The argument is built in double: (double)coordinate · 0.1, plus (double)(32-bit integer coordinate ·
-13). The second argument is (double)Z′ · 0.2 (constant 0x71db58). The result is compared as a float
-(`N > 0.5`, 0x745da0). The written block is (0, 0, 0, 0xC0). Faces are tried in that order after
-each carved cell, inside the same k loop. No draws.
+The row condition is: the column's index equals the centre index on one axis, and on the other axis
+differs from the centre by more than 1; the sign picks the row. All boxes use colour c2, rate g and
+flags 0.
 
-**Why this moves the stream.** The torch wall test of §1.10.6 step 7.7 reads the block one beyond the
-torch: for −y that is (X + 3 + r, Y − 1, Z + 2), exactly a block the rough carve can open. A wrong
-hole flips the test. On −x, +x and −y a flip changes the T draws of the torch. On +y it changes much
-more, since the furniture only runs on an even torch draw and the torch's own draws depend on the
-test. Every later window, trap, guard and spawn then reads the wrong numbers, and the zone's trees
-after it. That fits "first spawns agree in type, positions differ": the types come from short lists,
-and the guards are placed by draws.
+Draws. The box filler makes 3 draws when it starts (for table slots 0, 8 and 16 of its 23-slot
+table, RVA 0x1DF630..0x1DF653) and then one draw per block (RVA 0x1DF79D). Per stair column:
+run 1 is 33 + 14·77 = 1,111; runs 2 and 3 are 33 + 2·99 = 231 each; total **1,573**.
 
-The same holes also show in the block data of v = 1, 2, 4.
-
-**Measured.** Wall blocks one step outside a carved cell whose neighbour cell is closed, counted by
-prediction and by whether the block is a recorded hole:
-
-| Style | Faces | Formula | Predicted hole, is a hole | Predicted hole, no hole |
-|---|---|---|---|---|
-| 1 | y | this document | 1,540 | 51 |
-| 1 | y | structures §1.10.2 | 407 | 2,055 |
-| 2 | y | this document | 2,324 | 140 |
-| 2 | y | structures §1.10.2 | 279 | 1,173 |
-| 4 | y | this document | 2,321 | 253 |
-| 4 | y | structures §1.10.2 | 319 | 1,376 |
-| 4 | x | §1 (unchanged) | 2,128 | 164 |
-
-Predicted-hole hit rates are 90 to 97% for the new form and 17 to 19%, the base rate, for the old
-one. The misses were not traced; a corridor passing behind the wall is the likely cause.
-
-Test vectors from style 4: carved block (8356810, 8360756, 64), wall block (8356810, 8360755, 64) is
-a recorded hole. N(0.1X + 13Y, 0.2Z) = 0.5329713821411133, so it opens. The old form gives
-−0.3842719793319702, so it would not. Likewise (8356811, 8360756, 64): 0.5129570364952087 against
-0.4192010164260864.
+Eligible columns: on a 22-wide grid, 9 + 10 = 19 per centre line, 38 in all. A column is processed
+only when the terrain column lookup at its corner succeeds (skip at RVA 0x1CFB90).
 
 ---
 
-## 2. The v = 4 stairs (corrects structures §1.10.4 step 3)
+## 3. The v = 4 and v = 5 central shaft
 
-Each of the three runs has **11 boxes, t = 0..10**, not 10. The counter starts at −1 and runs while
-below 10 (0x5d0018..0x5d0086; the same form at all twelve loops).
+Common values:
 
-| Where | Run 1 | Run 2 | Run 3 | Code |
-|---|---|---|---|---|
-| a = 10, b < 10, \|b − 10\| > 1 | box(X − 2, Y − 1 + t, H, (14, 1, t + 2)) | box(X − 2, Y − 1 + t, H, (2, 1, t + 4)) | box(X + 10, Y − 1 + t, H, (2, 1, t + 4)) | 0x5d0012 |
-| a = 10, b > 11 | y = Y + 10 − t, otherwise the same | the same | the same | 0x5d0183 |
-| b = 10, a < 10, \|a − 10\| > 1 | box(X − 1 + t, Y − 2, H, (1, 14, t + 2)) | box(X − 1 + t, Y − 2, H, (1, 2, t + 4)) | box(X − 1 + t, Y + 10, H, (1, 2, t + 4)) | 0x5d033e |
-| b = 10, a > 11 | x = X + 10 − t, otherwise the same | the same | the same | 0x5d04cc |
+* **Ze = base + 10ce + 8** for both styles (v = 4: RVA 0x1D3DE8..0x1D3DFB; v = 5:
+  RVA 0x1D4317..0x1D432A; the code forms ce + 4(ce + 1) and doubles it).
+* v = 4: **Zt = base + 10ce + 44** (RVA 0x1D3E01..0x1D3E10).
+* v = 5: **Zt = base + 10ce + 38** (RVA 0x1D4330..0x1D433F), then the working height is lowered by
+  12 right after the first box (RVA 0x1D43D7): **Zc = Zt − 12 = base + 10ce + 26**. Every later step
+  of v = 5 uses Zc. v = 4 lowers nothing.
 
-All colour c2, rate g, flags 0. They run after step 2 and also when H − Bmin ≤ 0.
+v = 5 steps, in order (all carves not rough):
 
-Draws per stair column: run 1 is 33 + 14·77 = 1,111; runs 2 and 3 are 33 + 2·99 = 231 each; total
-**1,573**. The old reading gave 1,340. There are 38 stair columns (19 on each centre line), so the
-stream is **8,854** draws longer by the end of the column loop.
-
-The extra box is hard to see in the blocks: its row is covered by the next column's boxes and by
-the core. Only its draws and its table values matter, so a cell-by-cell comparison will not show this
-one directly. Only the colours do. **Certain** from the loop bounds; not replayed.
-
----
-
-## 3. The v = 5 shaft (corrects structures §1.10.7)
-
-The box stands at Zt. After it the code lowers the working height by 12 (0x5d43d7), and everything
-after that uses the lowered value. With **Zt = base + 10ce + 38** and **Zc = Zt − 12 = base + 10ce +
-26**, and **Ze = base + 10ce + 8** (§11.2; not the value in §1.10.7):
-
-| Step | Call | Code |
+| Step | Call | RVA |
 |---|---|---|
-| 1 | box(Xc − 2, Yc − 2, Zt, (14, 14, 14), c2, g, 0) | 0x5d43c3 |
-| 2 | carve(Xc + 2, Yc − 32, **Zc**, (6, 74, 6), not rough) | 0x5d4413 |
-| 3 | carve(Xc − 32, Yc + 2, **Zc**, (74, 6, 6), not rough) | 0x5d4460 |
-| 4 | carve(Xc, Yc, Ze, (10, 10, **Zc − Ze + 6**), not rough) | 0x5d44b3 |
-| 5 | pillar box(Xc + 4, Yc + 4, Ze − 30, (2, 2, n), c2, g, 0), **n = Zc − Ze + 30** | 0x5d4536 |
-| 6 | spiral for u = 1 … n − 1 at z = Ze − 30 + u | 0x5d4548 |
+| 1 | box(Xc − 2, Yc − 2, Zt, (14, 14, 14), c2, g, 0) | 0x1D43C3 |
+| 2 | carve(Xc + 2, Yc − 32, Zc, (6, 74, 6)) | 0x1D4413 |
+| 3 | carve(Xc − 32, Yc + 2, Zc, (74, 6, 6)) | 0x1D4460 |
+| 4 | carve(Xc, Yc, Ze, (10, 10, Zc − Ze + 6)), i.e. 24 high | 0x1D44B3 |
+| 5 | pillar box(Xc + 4, Yc + 4, Ze − 30, (2, 2, n)), n = Zc − Ze + 30 = 48 | 0x1D4536 |
+| 6 | spiral, below | 0x1D4548..0x1D4812 |
 
-So step 4 is always 24 high and n is always 48. The spiral's jump table
-0x5d6018 was read entry by entry: **the same corners and sizes as v = 4**, so the *inferred* marks on
-the v = 5 corridor offsets and spiral can go. v = 4 does not lower anything: its Zt = base + 10ce +
-44, n = 66, and the rest of §1.10.7 for v = 4 stands except Ze.
+v = 4 uses the same pillar and spiral form with Zt in place of Zc: central carve (Xc, Yc, Ze) of
+height Zt − Ze = 36 (RVA 0x1D3F78), pillar at RVA 0x1D3FFB with n = Zt − Ze + 30 = 66.
 
-Draws: pillar 3 + 4·48 = 195. Spiral: 24 odd steps at 8 and 23 even steps at 28 = 836. Total **1,031**,
-against 1,251 under the old reading, so **220 fewer** before the room spawns. Steps 1 to 3 draw
-only in step 1 (2,747).
+Spiral, both styles: only when n > 1. For u = 1, 2, … while u < n (so u = 1 .. n − 1), one box at
+height z = Ze − 30 + u (first z = Ze − 29, one step per block), chosen by u & 7 through an 8-entry
+jump table (v = 4: RVA 0x1D5FF8, v = 5: RVA 0x1D6018). Both tables give identical corners and sizes;
+colour c2, rate g, flags 0:
 
-**Measured**, seed 41 zone (32708, 32684), base + 10ce = 206: the corridor at block column (136, 105)
-is open at z = 232..237, which is Zc..Zc + 5, not 244..249. The pillar at (136, 136) stops at z = 231
-(Zc − 1; it starts at Ze − 30 = 184), and the shaft is open up to z = 237. Your 4,090 and 3,671 swapped blocks fit two corridor
-systems of about 5,100 blocks each, one in the old place and one in the right place, less what the
-centre shares.
-
----
-
-## 4. The level of type 59 (corrects open-points-5 §1.2)
-
-Type 59 here is the third ravine case of caves §7, and caves §7 is right: level = routine 0x59a9b0.
-The call is 0x5e68f9, in a stretch the listing lost. Its arguments are the block corner **(x << 16,
-y << 16)**, not the spawn's position with its +0.5. Then +0x34 = result, +0x28 = 1, +0x2c = 59
-(0x5e68fe..0x5e6908).
-
-Add this row to the caller table of open-points-5 §1.2, which lists four callers and misses it:
-
-| Client site | Who | Position passed | Result goes to |
-|---|---|---|---|
-| 0x5e68f9 | ravine creature, type 59 (caves §7) | block corner of the column | spawn +0x34 |
-
-The rule of open-points-5 §1.1 needs no change. Type 132 is the second ravine case with +0x34 = 1
-fixed (0x5e66f4) and +0x28 = 6, which is why it stays 1. The flags 0x32 come from the finishing pass.
-
-**Measured:** all 140 type 59 spawns of the six recordings match. In style 3 the record is the
-location at (8363136, 8377216), type 14, r = 150, level 3. Six spawns inside are level 3, at distances
-44 to 148; the rest are level 1, the nearest of them at 187.6. Styles 1 and 5 have spawns inside, but
-their record's level is 1. Styles 2 and 4 have none inside (nearest 331 and 369), which is why even
-the level 6 dungeon shows only level 1.
-
-If yours gives 1 in that case, the likely cause is that the port writes 1 for this creature, or
-that it asks before the region's record is filled. The record must be prepared by then.
-
----
-
-## 5. Colours inside the dungeon: the formula stands (confirms structures §1.10.2 items 1)
-
-**The palette needs no change.** c1 to c5 for every v were read draw by draw at 0x5ce520..0x5cee9b
-and match §1.7 and §1.10.1, including the 8-bit wrap of the byte sums and the channel order. So does
-the colour step of the box filler (0x5df6e8..0x5df771): integers C + t, converted to float, then
-G = m·(120 − G) + G in single precision, each operation rounded to float, then clamp, then truncate.
-R and B take no moss.
-
-**Measured**, style 3, zone (32668, 32723), palette c2 = (200, 180, 212):
-
-* Blocks with q ≤ 0, so m = 0: all 11,258 give G = 180 + t.
-* For each of 14,386 columns, the blocks of the column were turned into an interval of the moisture
-  mo. **No column was inconsistent.**
-* The intervals are so narrow that they fix **mo = 0.97370 ± 0.00001 for the whole zone**. Style 5
-  gives about 0.033.
-* Predicting G from these rules with that mo: 2 mismatches in 46,312 sampled blocks.
-
-So moisture and the formula are right when computed this way, and any error in a port is in the
-arithmetic of q. Trying what a port might do differently, on the same 46,312 blocks:
-
-| Variant | Mismatches | G too high / too low |
+| u & 7 | Corner | Size |
 |---|---|---|
-| As below | 2 | 0 / 2 |
-| First noise's arguments not rounded to float | 2,772 (6.0%) | 1,421 / 1,351 |
-| Second noise's arguments rounded to float | 6,684 (14.4%) | 3,467 / 3,217 |
-| No intermediate rounding anywhere | 2,772 | 1,421 / 1,351 |
+| 0 | (Xc, Yc) | (5, 5, 1) |
+| 1 | (Xc + 5, Yc) | (1, 5, 1) |
+| 2 | (Xc + 6, Yc) | (5, 5, 1) |
+| 3 | (Xc + 6, Yc + 5) | (5, 1, 1) |
+| 4 | (Xc + 6, Yc + 6) | (5, 5, 1) |
+| 5 | (Xc + 5, Yc + 6) | (1, 5, 1) |
+| 6 | (Xc, Yc + 6) | (5, 5, 1) |
+| 7 | (Xc, Yc + 5) | (5, 1, 1) |
 
-Both signs in equal numbers is your symptom. Over the zone's 370,000 c2 blocks the second row comes
-to about 22,000, the same order as your 15,487. **Likely: the port does not round N's arguments in
-the first noise.** The error scales with mo·|120 − g|, which explains why it stayed hidden: the
-recorded v = 0 dungeon has c2 = (123, 124, 115), so g is close to 120 (mo about 0.60), and v = 5 has
-mo about 0.033. The test vectors of §1.12 land on values where the rounding changes nothing.
+Loop RVAs: v = 4 start 0x1D400D, index 0x1D4020, end 0x1D42C1; v = 5 start 0x1D4548, index 0x1D4560,
+end 0x1D4801.
 
-The exact moss, to replace the shorthand of §1.10.2 item 1:
+Draws (box filler rule of §2; carves make none):
 
-```
-a = f32( f32( (float)Y · 0.2f ) + 534f )
-b = f32( f32( (float)Z · 0.2f ) + 13f )
-n1 = N( (double)a, (double)b )                 float result
-n1 = f32( n1 · 0.1f )
-n2 = N( (double)X · 0.05 + 4343.0, (double)Z · 0.1 + 84734.0 )    double arguments
-q = f32( f32( f32( n1 + n2 ) · 0.7f ) + 0.2f )
-m = f32( q · mo ), then 0 if negative, 1 if above 1
-```
-
-(Constants 0x6fcdbc, 0x71df60, 0x71df50, 0x71db48, 0x71de50, 0x71a048, 0x71def8, 0x6fcb7c, 0x6fd570.)
-
-Test vectors that do separate the rounding (mo = 0.9737, computed with the rules above; the formula
-produced 2 mismatches in 46,312 blocks):
-
-| (X, Y, Z) | a | b | n1 before ·0.1 | n1 if not rounded | q |
-|---|---|---|---|---|---|
-| (8363141, 8377207, 163) | 1675975.375 | 45.60000228881836 | −0.01016006525605917 | −0.004184170626103878 | 0.4355536699295044 (m = 0.4240986108779907) |
-| (8363173, 8377123, 170) | 1675958.625 | 47 | 0.38975927233695984 | 0.3397551476955414 | −0.05454765260219574 (m = 0) |
-
-**Type 13** blocks go through the same colour step, so the same fix covers them.
+* v = 5: step 1 = 3 + 14³ = 2,747; pillar 3 + 4·48 = 195; spiral 24 odd u at 8 and 23 even u at 28
+  = 836. Pillar plus spiral 1,031.
+* v = 4: pillar 3 + 4·66 = 267; spiral 33 odd u at 8 and 32 even u at 28 = 1,160. Pillar plus
+  spiral 1,427.
 
 ---
 
-## 6. The v = 5 colours: terrain, not dungeon
+## 4. The level of the ravine creature of type 59
 
-(58, 19, 9) is not a dungeon colour: c2 is (255, 210, 130) and c3 is (200, 180, 80). In the recording
-those blocks have type 6 or 0x2c, no structure bit, and lie at the rim at z = 172 or so, in rock with G
-from 10 to 27 and B of 10. That looks like the fire tint of terrain §6.6: B ← B(1 − F) + 10F gives
-B = 10 at F = 1. The fire share of this zone was not measured.
+In the zone generator, the type 59 creature's level comes from the routine at RVA 0x19A9B0, called
+at RVA 0x1E68F9. Its two 64-bit arguments are the block corner of the column shifted to fixed point:
+**(x << 16, y << 16)**, without the +0.5 block offset that the same code adds to the creature's own
+x and y position (offset value from the double −32768 at RVA 0x302AD8). Then +0x34 = the result,
++0x28 = 1 and +0x2C = 59 (RVA 0x1E68FE..0x1E6908).
 
-Rock B cannot go below 10 by that formula. Yet the zone holds a few blocks with B = 9 and even 8, about
-1 to 2% of those in this colour range, so they do not come from Rk but from one of the surface pass's
-mixes (terrain §5.4, §5.5): trunc(c·(1 − k) + Rk·k) with c and Rk both 10. In single precision this
-sum can land just under 10 and truncate to 9. A second such mix gives 8. The surface pass truncates
-with float conversions in the range 0x5e4e00..0x5e6464 (9 sites, no double ones).
+The neighbouring ravine case writes +0x34 = 1 and +0x28 = 6 as constants (RVA 0x1E66F4, 0x1E66FB);
+its type is 132 unless a draw % 10 (RVA 0x1E670C) is 0, 1 or 3, which select other paths.
 
-**Likely:** the port does these mixes in double, or rounds differently. Each product and each sum must
-be rounded to float, then truncated. No dungeon change. Which mix was not traced.
+Direct callers of RVA 0x19A9B0 in the image: 0x1B1C74, 0x1E68F9, 0x1F392E, 0x1F429B, 0x20DC7F
+(five). The level rule itself is in the companion spec open-points-5 §1 (pointer only).
 
 ---
 
-## 7. Audit list: what depends on v and stands
+## 5. Box colour and moss
 
-Each row was read in the listing; "as spec" means the current text plus batches 7 and 8.
+### 5.1 Colour step of the box filler (RVA 0x1DF6E8..0x1DF8C9)
 
-| Part | Addresses | v-dependent content | Result |
-|---|---|---|---|
-| Style setup | 0x5cc5da..0x5cc933, table 0x5d5f90 | K1, K2; the one draw of v = 1, 2 | as spec, §1.2 and §1.10 |
-| Room parameters | 0x5cca08..0x5ccab8 | none | as spec |
-| Selection, v = 2 | 0x5ccd29..0x5cd09a | room flags, 10 links, written in order | as spec |
-| Selection, v = 4, 5 | 0x5cdb6e..0x5cdfc1 | room 14 present, quiet and fixed; 10 links | as spec |
-| Selection, v = 1, 3 | 0x5cd0a4..0x5cdb58 | as batch 7 §1.2 | as spec |
-| Room record | stack 0xffffcccc | four flag bytes, then six ints | as spec |
-| Fixed reset | 0x5ce02a..0x5ce08c | (0,0,0), (0,0,1) | as spec |
-| Rooms, mark, corridors | 0x5ce000..0x5ce3ed | none | as spec |
-| Entrance | 0x5ce3f3..0x5ce4de | room by first link | as batch 7 §4 |
-| Palette | 0x5ce4e1..0x5ce83e, table 0x5d5fa4 | v = 1, 2 and 4 re-roll; v = 5 fixed | as spec |
-| Glow rate g | 0x6fcd9c, 0x71dce4, 0x71dce8 | 0.005, 0.0015, 0.0025 | as spec |
-| Arch model | 0x5ce844..0x5cea59 | slot 2545 for v = 4, 5, else 2544 | as spec |
-| Raised floors | 0x5ce887..0x5cea05 | no draws for v = 2; none at all for v = 4, 5 | as spec |
-| Fit | 0x5cea5f..0x5cee13 | + 50 for v = 4, 5 | as spec |
-| Last palette | 0x5cee19..0x5ceeb3, table 0x5d5fb8 | one extra draw for v = 0, 3 **only** | as spec |
-| Roof, parapets, stepped roof | 0x5cf06a..0x5cfae2 | v = 2, v = 0, 1, 3, v = 3 | as spec; the +y parapet is no longer *inferred* (0x5cf6a4..0x5cf7fa) |
-| Shell, foundation | 0x5cfae2, 0x5d0656 | none | as spec |
-| Pyramid core, grass | 0x5cfc2a..0x5cffaf | v = 4 | as spec |
-| Mound | 0x5d0705..0x5d08bf | v = 5 | as spec |
-| Carve flag | 0x5d0adc..0x5d0b6a | rough for v = 1, 2, 4 | as spec |
-| Windows | 0x5d0b9a..0x5d126a | v = 0, 1, 3 | as spec |
-| Stairs | 0x5d1270..0x5d1763 | any v | as spec |
-| Step 5, floor, carpet | 0x5d176f..0x5d1ada | v = 4 skip; carpet v = 0, 3 | as spec |
-| Trap | 0x5d1af3..0x5d1c15 | flag only | as spec |
-| Ceiling | 0x5d1c64..0x5d2328 | liana v = 2, 4; cobwebs v = 1, 2 | as spec and batch 8 §1; constants 0.04, 0.08, 20, 0.05, 10, 360 checked |
-| Torch | 0x5f8960, table 0x5f8ab8 | t = 1, 2, 3, 4, 5 | as spec |
-| Furniture | 0x5f6e20 | t = 3, 4, 5 | as spec |
-| Loot kinds | 0x5d30ea..0x5d31f8 | kinds 10, 13, 12, 35, 36, 37 | as spec. t = 3, 4, 5 shelves and the t = 5 table have no loot |
-| Arches, chandelier | 0x5d3611..0x5d3ab8 | v = 3 chandelier | as spec; +y rotation 1 is confirmed by batch 8 |
-| Boss | 0x5d3ac3..0x5d3d40 | K1 | as spec |
-| v = 4 shaft | 0x5d3db1..0x5d4aa9 | | as spec |
-| Erosion | 0x5d4817..0x5d4aa3 | v = 1, 2 | as spec; the second bit test is "bit 0x80 clear" (0x44be30) |
-| Room spawns | 0x5d4aa9..0x5d5ef2 | K1, K2 only | as spec, with §8 below |
-| View transforms | 0x5fa3c0, 0x5fa440 | rot, mir | as spec |
-| Solid | 0x5eea40 | | k ∈ {0, 1, 2}, as spec |
+For each block, a table value t is taken from the box's 23-slot table. R = c.R + t, G = c.G + t and
+B = c.B + t as integers, each converted to float. Only G takes moss: with the moss value m,
+G becomes m·(120 − G) + G, evaluated in single precision with each subtraction, product and sum
+rounded to float (120 at RVA 0x2FCE58). Each channel is then clamped below at 0 and above at 255
+(RVA 0x2FCE64) and truncated to an integer. R and B take no moss.
 
-`zone + 0x79` is written at 0x5e6ba7 before the builder runs, and it is the same byte the builder
-gets as v for E.kind = 3, so furniture's t = v in fresh worlds. The doubt in batch 8 §8 is closed for
-that call.
+### 5.2 Moss value (RVA 0x1EFDB0, arguments x, y, z)
+
+1. Moisture mo: field +4 of the terrain column record for (x, y) when the lookup (RVA 0x347A0)
+   succeeds, otherwise the value of RVA 0x1C4800 for (x, y).
+2. First noise. Its first argument is y converted to float, times the float 0.2 (RVA 0x2FCDBC),
+   rounded to float, plus the float 534 (RVA 0x31DF60), rounded to float, then widened to double.
+   Its second argument is z converted to float, times the float 0.2, rounded, plus the float 13
+   (RVA 0x31DF50), rounded, widened to double. The result is stored as a float, then multiplied by
+   the float 0.1 (RVA 0x2FCB7C) in single precision: n1.
+3. Second noise, in double: first argument x converted to double times 0.05 (RVA 0x31DB48) plus
+   4343 (RVA 0x31DE50); second argument z converted to double times 0.1 (RVA 0x31A048) plus 84734
+   (RVA 0x31DEF8). The result is stored as a float: n2.
+4. q = ((n1 + n2) · 0.7) + 0.2, each operation in single precision (0.7 at RVA 0x2FD570, 0.2 at
+   RVA 0x2FCDBC).
+5. m = q · mo in single precision; if above 1.0 (RVA 0x345DC0) it is 1, if below 0 it is 0.
+
+### 5.3 Palette per style (dispatch RVA 0x1CE674, table RVA 0x1D5FA4, index v − 1)
+
+Before the dispatch every style draws the common palette (RVA 0x1CE520..0x1CE665), including one
+extra draw for v = 3 only (RVA 0x1CE573..0x1CE585), with byte additions that wrap at 8 bits; g is
+set to 0.005 (RVA 0x2FCD9C).
+
+* v = 1, 2 (RVA 0x1CE67B): c2 and c3 re-rolled with six more draws; g = 0.0015 (RVA 0x31DCE4).
+* v = 3: dispatch goes straight on; g stays 0.005.
+* v = 4 (RVA 0x1CE756): c2 and c3 re-rolled with six more draws; g = 0.0025 (RVA 0x31DCE8).
+* v = 5 (RVA 0x1CE806): fixed, no draws: c2 = (255, 210, 130), c3 = (200, 180, 80); g stays 0.005.
 
 ---
 
-## 8. Small additions to §1.10.9 (no draws)
+## 6. (Section withdrawn)
 
-The spec is silent on these; they do not change the stream.
-
-* **+0x54:** ring and centre creatures: f32(θ / π · 180 + 90), in double, with θ the float angle
-  (0x5d5884..0x5d58a9, 0x5d5cdf..0x5d5d04).
-* **+0xf60:** ring and centre creatures: multiplied by 0.75 (0x6fcdc4); escorts: multiplied by 0.5
-  (0x745da0). Done before the items.
-* **+0x109c:** every room creature gets a 0x0c-byte behaviour object holding the 20.0 object, and the
-  patrol objects (0x5d4e73.., 0x5d5937..).
-* **+0x48, +0x4c:** the leader gets the value of 0x5c0120(zone coordinates, list size), used by the
-  escort's follow object (0x5d53c8, 0x5d555c).
+The former section about v = 5 terrain colours rested on recordings; see "Unresolved". One fact
+was confirmed in the image: the range RVA 0x1E4E00..0x1E6464 contains 9 single-precision truncating
+conversions and no double-precision or x87 truncation calls.
 
 ---
 
-## 9. Corrections to earlier specs
+## 7. Style-dependent sites in the builder (RVA 0x1CC510)
 
-| Spec | Statement | Correction |
+Each row gives the v condition read in the image. Agreement with the wording of the companion
+structures spec was not re-checked in this pass (see "Unresolved").
+
+| Part | RVA | v-dependent content confirmed |
 |---|---|---|
-| structures §1.10.2 item 2 | "the other three faces use the same constants and are taken to use the same formula, *inferred*" | Faces 2 and 4 exchange x and y (§1) |
-| structures §1.10.2 item 1 | moss shorthand | Use the full form of §5; the shorthand hides which steps are float |
-| structures §1.10.4 step 3 | k = 0..9, runs of 10 boxes | t = 0..10, runs of 11 boxes (§2) |
-| structures §1.10.7 | v = 5 corridors and shaft at Zt, n = Zt − Ze + 30, positions *inferred* | Use Zc = Zt − 12 (§3); positions read, not inferred |
-| structures §1.10.3 | +y parapet *inferred* | Read; the text stands |
-| structures §1.11 | | Add: 1,573 per v = 4 stair column; pillar and spiral 1,427 for v = 4, 1,031 for v = 5 |
-| structures §1.10.7 | Ze = base + 10(ce + 1) | Ze = base + 10ce + 8, both v (§11.2) |
-| structures §1.10.6 step 7.7 | Torch wall test at the torch's height | Below z = 0 it reads one block lower (§11.1) |
-| open-points-5 §1.2 | Four callers of 0x59a9b0 | Five, add 0x5e68f9 (§4) |
-| open-points-8 §8 | Furniture style doubt | Closed for flag = 0 (§7) |
+| Style setup | 0x1CC5DA..0x1CC933, table 0x1D5F90 (index v − 1) | v = 1, 2 share a path with one draw % 3 (RVA 0x1CC800) |
+| Room selection | 0x1CCD08..0x1CCD23 | v = 4, 5 → RVA 0x1CDB6E; v = 2 → RVA 0x1CCD29; other v → RVA 0x1CD0A4 |
+| Palette | 0x1CE4E1..0x1CE83E | §5.3 |
+| Arch model | 0x1CE844..0x1CEA59 | slot 2545 (offset 0x27C4) for v = 4, 5; slot 2544 (offset 0x27C0) otherwise |
+| Raised floors | 0x1CE887..0x1CEA05 | only v = 0, 1, 2, 3; v = 2 skips the draw % 6 (RVA 0x1CE906) |
+| Fit | 0x1CEA5F..0x1CEE13 | base + 50 for v = 4, 5 (RVA 0x1CEDB0..0x1CEDC9); base − 100 when liquid was found |
+| Last palette | 0x1CEE19..0x1CEEB5, table 0x1D5FB8 | one extra draw for v = 0 and 3 only |
+| Roof | 0x1CF06A | a v = 2 branch |
+| Pyramid core, stairs | 0x1CFBF8..0x1D0651 | v = 4 (§2) |
+| Mound | 0x1D06F2 | v = 5 |
+| Carve flag | 0x1D0ADC..0x1D0B6A | rough for v = 1, 2, 4 (§1) |
+| Windows | 0x1D0B9A | v = 0, 1, 3 |
+| Stairs pass | 0x1D1270 | every v = 0 .. 5 |
+| Step 5 | 0x1D176F | for v = 4, a cell whose kind byte is 4 skips the rest of the cell pass (to RVA 0x1D3D45) |
+| Floor | 0x1D17A4 | every v = 0 .. 5 |
+| Carpet | 0x1D1856 | v = 0, 3 |
+| Ceiling | 0x1D1C64..0x1D2328 | liana v = 2, 4; cobwebs v = 1, 2; constants 360, 0.04, 0.08, 20, 0.05, 10 (RVA 0x2FCE6C, 0x2FCDB0, 0x302AFC, 0x2FCD74, 0x2FCDB4, 0x345E74) |
+| Torch | 0x1D2478, 0x1D27DD, 0x1D2B42, 0x1D2EB1 | v is passed to the torch routine RVA 0x1F8960 |
+| Loot kinds | 0x1D30EA..0x1D31F8 | kinds 10, 13, 12, 35, 36, 37 tested |
+| Loot sub-choice | table 0x1D5FD0 (d & 3) | k = 1 and k = 2 make one more draw % 3; k = 0 and 3 none |
+| Chandelier | 0x1D3963 | v = 3 |
+| Shaft | 0x1D3DA2, 0x1D42D7 | v = 4, v = 5 (§3) |
+| Erosion | 0x1D4817..0x1D4AA3 | v = 1, 2; block kept when attribute bit 0x40 is set and the test at RVA 0x4BE30 (attribute bit 0x80 clear) passes |
+
+Builder callers (RVA 0x1E84A2..0x1E84F7): when a location record's kind byte (+0x18) is 3, v is
+that record's byte +0x19 and the last flag is 0; when the kind is 5, v = 3 and the last flag is 1.
+Separately, the 8 bytes at zone +0x78 are copied from field +0x18 of a 16-byte location record
+(RVA 0x1E6BA1..0x1E6BA7), so zone +0x79 holds a record's byte +0x19.
 
 ---
 
-## 10. What stayed open
+## 8. Room creature fields (no draws)
 
-* **No whole replay of v = 1 to 5 was run.** Rules 1 and 3 are confirmed in the blocks, and rule 2
-  from the code. Whether they account for **every** drift needs your build: after them, v = 1, 2, 4
-  and 5 should match as v = 3 does. If one does not, the first differing spawn or floor table is the
-  place to start.
-* **v = 1, 2 rule 1 alone** is expected to fix them, because nothing else specific to them was found.
-* **The +y torch case with the wall not solid** (batch 8 §8) will now actually occur, since v = 1, 2,
-  4 open wall blocks. It is read and was never exercised before.
-* **Item generators** 0x5f7a60 and 0x5f6d50 stay outside this batch. The chests and bosses of v = 1 to
-  5 reach them with other levels, which v = 0 did not exercise.
-* **Prefab 2545** (`temple-arc`) goes through the same mode 0 placement as slot 2544. Its blocks were
-  not compared.
-* **The cause in §5 and §6** is inferred from your symptom and a simulation; the port was not read.
+* **+0x54**: ring and centre creatures: the float angle θ widened to double, divided by π
+  (RVA 0x2FCE08), times 180 (RVA 0x2FCE18), plus 90 (RVA 0x31DC78), narrowed to float
+  (RVA 0x1D5884..0x1D58A9, 0x1D5CDF..0x1D5D04).
+* **+0xF60**: ring and centre creatures: multiplied by 0.75 (RVA 0x2FCDC4; at RVA 0x1D59FB and
+  0x1D5D6D); escorts: multiplied by 0.5 (RVA 0x345DA0; at RVA 0x1D5603).
+* **+0x109C**: for the ring creatures, a 0x0C-byte object is created (RVA 0x1D590A), a 20.0 object
+  (RVA 0x1D595A) and a 0x1C-byte object built with 2.0 (RVA 0x1D598B..0x1D59AD) are added to it, and
+  it is stored at +0x109C (RVA 0x1D59E6). +0x109C is also written at RVA 0x1D3C65, 0x1D533A,
+  0x1D55F5 and 0x1D5E59.
+* **+0x48, +0x4C**: the leader receives the 64-bit result of RVA 0x1C0120 (RVA 0x1D53C8..0x1D53DF),
+  called with the two elements at zone +0x60 and a value obtained from the list at zone +0x18
+  (RVA 0x87F50); the escort's follow object copies it (RVA 0x1D555C..0x1D5565).
 
 ---
 
-## 11. Follow-up: walking the floors of style 2, and the spiral
+## 9. The torch wall test and the fixed-point block read
 
-### 11.1 The torch wall test below z = 0 (replaces the "+y reads Z + 1" finding)
+### 9.1 Positions
 
-**All four sides pass Z + 2 to the same read**, in every style. There is no +y special case. The
-position is built with z = base + 2 + 10c on each side (0x5d237c, 0x5d26ed, 0x5d2a46, 0x5d2db1), and
-the z argument of 0x42f860 is that element. **Certain.**
+The four torch sides build their test position with z = base + 10c + 2 (c the cell's z index) on
+every side (RVA 0x1D237C, 0x1D26E1, 0x1D2A46, 0x1D2DB1), as a block value shifted to fixed point
+(RVA 0x12080). Along the wall the coordinate is cell corner + 3 + r, with r = draw & 3 drawn while
+the position is built. Across the wall the coordinate is a double offset by half a block, shifted
+to fixed point (RVA 0x59C00, factor 65536 at RVA 0x2FD588), then moved one block outward
+(RVA 0x3ABC0 subtracts one block, RVA 0x3ABF0 adds one). With (X, Y, Z) the cell corner, the −x
+side reads block (X − 1, Y + 3 + r, Z + 2) and the −y side reads (X + 3 + r, Y − 1, Z + 2), subject to
+§9.2.
 
-The difference is inside the read. 0x42f860 takes fx coordinates and does this to each axis
-(0x42f870..0x42f8c3), then divides by 65536, truncating towards zero:
+### 9.2 The read (RVA 0x2F860)
 
-```
-if value < 0: value -= 65536
-block = value / 65536   (C division)
-```
+The read takes three 64-bit fixed-point coordinates. For each axis whose value is negative it first
+subtracts 65536 (RVA 0x2F870..0x2F8C3), then divides by 65536 with signed 64-bit division that
+truncates toward zero (RVA 0x28D9E0). This floors a fractional negative value correctly but gives
+one block too low for a whole negative block. Hence, for the torch test: the wall block z is Z + 2
+when Z + 2 ≥ 0 and Z + 1 when Z + 2 < 0, on all four sides. The x and y results follow the same rule;
+they are unaffected only while those coordinates are non-negative.
 
-That is correct for a fraction but one too low for a **whole negative block**. So:
+In the builder the four torch tests are the only direct calls of this read (RVA 0x1D2459, 0x1D27BE,
+0x1D2B23, 0x1D2E8E). Other builder reads use the integer-block read at RVA 0x2F7E0, which has no such
+adjustment. The image has 61 direct calls of the fixed-point read in total.
 
-| fx z | Block read |
-|---|---|
-| (Z + 2) << 16, Z + 2 ≥ 0 | Z + 2 |
-| (Z + 2) << 16, Z + 2 < 0 | **Z + 1** |
+### 9.3 Order on each side
 
-Exact rule for all four sides: wall block z = Z + 2 if Z + 2 ≥ 0, otherwise Z + 1. x and y are
-unaffected, since world x and y are positive. Styles 1 and 3 never showed this because they stand
-above z = 0; style 2's zone (32643, 32804) has base −150. Your "+y" cases and the two cells of (c) are
-the same rule. If your port reads Z + 1 on +y only, or always, change it to this.
+Each side first draws d % 3 (−x: RVA 0x1D2328) and requires remainder 0 and a solid neighbour cell
+(RVA 0x1EEA40). It then draws a parity. On odd parity it draws r, performs the wall test, and calls
+the torch routine when the wall block passes. On −x (RVA 0x1D249C..0x1D24B2) both parity outcomes
+continue to the following d & 7 draw. On +y (RVA 0x1D2DAB, 0x1D2ED5) the odd branch ends the side
+and only the even branch reaches the d & 7 draw.
 
-In this builder the four torch tests are the only calls of 0x42f860. Reads through 0x42f7e0 with
-integer blocks (window test, arch test, fit, parapets) are not affected. The town builder (22 calls),
-the zone generator (4) and others also call 0x42f860, so any of them passing a whole negative fx
-coordinate has the same behaviour. A port should share one routine with this fix-up.
+### 9.4 Furniture sizes (RVA 0x1F6E20)
 
-### 11.2 Ze and the spiral (corrects §3, structures §1.10.7)
+The furniture routine writes the size triples (1.5, 1, 1) at RVA 0x1F6F22, (1, 1, 0.5) at
+RVA 0x1F701D, (3, 3, 1) at RVA 0x1F7197 and (2, 1, 1.57) at RVA 0x1F734C. The loot pass reads the
+stored scale components 0 and 1 through the record accessor (RVA 0x1D3213..0x1D325D) without a
+rotation-dependent exchange at those reads.
 
-The spiral has no index offset. The base height is the error:
+---
 
-**Ze = base + 10ce + 8, for v = 4 and v = 5** (0x5d3df0..0x5d3df8, 0x5d431f..0x5d4327: the code forms
-ce + 4(ce + 1), then doubles it). The value base + 10(ce + 1) in §1.10.7 and in my §3 was wrong, and
-§3 is corrected above. With the old value u comes out 2 too small, which is your (u + 2) & 7.
+## 10. Pointers to companion specs
 
-The exact form for both v, with **Zs** = Zt for v = 4 and Zc for v = 5:
+These sections bear on companion specs (not opened in this pass): structures §1.10.2 items 1 and 2
+(§1, §5), structures §1.10.4 step 3 (§2), structures §1.10.7 (§3), structures §1.10.6 step 7.7
+(§9), structures §1.11 (draw totals of §2 and §3), open-points-5 §1.2 (§4).
 
-```
-n = Zs - Ze + 30                         v = 4: 66, v = 5: 48
-box(Xc + 4, Yc + 4, Ze - 30, (2, 2, n), c2, g, 0)
-if n > 1:
-    for u = 1, 2, ... while u < n:       u = 1 .. n - 1
-        z = Ze - 30 + u                  first z = Ze - 29, one step per block
-        switch (u & 7): one box at height z, table of §1.10.7, c2, g, 0
-```
+---
 
-Code: pillar 0x5d3ffb and 0x5d4536; start 0x5d400d and 0x5d4548; index 0x5d4020 and 0x5d4560; end
-0x5d42c1 and 0x5d4801. The central carve (Xc, Yc, Ze) is also taller: 36 high for v = 4, 24 for v = 5.
+## Unresolved
 
-Style 5, base + 10ce = 206: Ze = **214**, not 216. n = **48**, not 46. The pillar runs z = 184..231, the
-spiral z = 185..231 with u = z − 184, and u runs to 47. That gives (Xc, Yc) at z = 192, 200, 208, 216,
-224 and (Xc, Yc + 5) at 191, 199, … 231, the positions you saw. Boxes at 185 and 186 exist, which are
-your missing lower levels: u = 1 is (Xc + 5, Yc), size (1, 5, 1), and u = 2 is (Xc + 6, Yc), size
-(5, 5, 1).
+* Whether the corrections listed in the former §9 actually differ from the current companion spec
+  text; the companion specs were not opened.
+* The value returned by RVA 0x19A9B0 for the type 59 creature in any particular case (the former
+  "3 inside the radius, 1 outside" example was recording-derived), and whether the location record
+  is prepared before the call.
+* Whether the record copied to zone +0x78 is the same record instance whose byte +0x19 becomes v,
+  and therefore whether the furniture routine's style value equals v in fresh worlds.
+* The furniture routine's per-style paths (t = 3, 4, 5 shelves and t = 5 table without loot; two
+  d % 10 draws per shelf), the torch routine table at RVA 0x1F8AB8, and the item generators at
+  RVA 0x1F7A60 and 0x1F6D50.
+* "Done before the items" ordering of the +0xF60 scaling.
+* The exact across-wall block of the +x and +y torch tests (their base coordinate was not
+  re-derived; only the outward one-block step and the z rule were confirmed).
+* The v = 5 terrain colours of the former §6: the fire-tint explanation, the B = 9 / 8 blocks and
+  which surface mix produces them.
+* Agreement of all §7 rows with the companion structures spec, including room parameters, room
+  record layout, fixed reset, entrance, parapets, shell, foundation, mound, windows, boss, room
+  spawns, view transforms (RVA 0x1FA3C0, 0x1FA440) and the solid test.
+* Prefab slot 2545 block content.
+* Whether the rules here account for all differences in a complete v = 1 to 5 build (no replay).
 
-Your pillar looked right because its three table values are unchanged, but the two missing layers
-are 8 missing draws, and they offset all the spiral. In the recorded pillar colours, start 184 leaves
-4 non-zero blocks in slots the table makes zero (spiral boxes overlap the pillar), and start 186
-leaves 12.
+---
 
-Draws for pillar plus spiral: v = 4: 267 + 1,160 = 1,427. v = 5: 195 + 836 = 1,031. **Certain** from the
-code; not replayed through to the room spawns.
+## Re-certification (2026-11-15)
 
-### 11.3 The two style 2 stretches: nothing is wrong in furniture or loot
+Evidence: `Cube.exe` only, disassembled with dumpbin; constants read from the image's data
+sections. All addresses converted from virtual addresses to RVAs (VA − 0x400000).
 
-Furniture 0x5f6e20 was read on every path. No scale or loot rule depends on rotation: the loot loop
-reads scale x and y from the record, unswapped (0x5d3218, 0x5d325a), and the record keeps the scale
-the routine wrote. Shelf (2, 1, 1.57), stool (1, 1, 0.5), table (3, 3, 1) and chest (1.5, 1, 1) are as
-in §1.10.2 for all t. A shelf makes exactly 2 d % 10 draws. In loot, k = 1 and k = 2 make one more
-draw and k = 0 and 3 none (table 0x5d5fd0). §1.10.6 step 7.8 stands.
+**Confirmed:** rough-carve face order, conditions, noise arguments with x/y exchange, precision,
+threshold, written block, no draws; rough flag for v = 1, 2, 4; v = 4 stairs (11 boxes per run, all
+twelve loops, positions and sizes, run after the core even when the grass step is skipped); box
+filler draw rule (3 + one per block) and the per-column total 1,573; 38 eligible columns; v = 5
+shaft heights Zt, Zc = Zt − 12 and Ze = base + 10ce + 8 for both styles; v = 5 step calls; pillar n
+(48 / 66); spiral loop and table, identical for v = 4 and 5; spiral and pillar draw totals; type 59
+level call, its block-corner arguments and the fields written; five callers of RVA 0x19A9B0; box
+colour step and the full moss computation with all constants; v = 5 fixed palette; glow rate
+constants; arch slots; fit + 50; last-palette extra draw; ceiling constants and style conditions;
+loot kinds and sub-choice draws; erosion bit tests; +0x54, +0xF60, +0x109C, +0x48/+0x4C fields;
+torch test z on all four sides; fixed-point read behaviour; four torch reads are the only such calls
+in the builder; furniture size triples; 9 float truncations in RVA 0x1E4E00..0x1E6464.
 
-Both stretches are the rule of §11.1. I recovered the stream from the recording alone: searching all
-states for each floor's three table values, then requiring its glow blocks and the next floor's
-values, then replaying the cell. One state fits each.
+**Corrected (old → new):**
 
-**Cell (9,3,9)**, Z = −60. State before the floor box, low 31 bits, 0x160f81d2. Floor glow at (7,8)
-agrees. 13 draws:
+1. Addresses: unlabelled virtual addresses → RVAs in `Cube.exe`.
+2. Glow rate row: values only → assigned per style (0.005 default and v = 0, 3, 5; 0.0015 for v = 1,
+   2; 0.0025 for v = 4).
+3. Type 132: "the second ravine case" → the default of a draw % 10 choice in that case.
+4. Leader +0x48/+0x4C: "(zone coordinates, list size)" → two zone +0x60 elements and a value from the
+   zone +0x18 list (the latter's meaning not traced).
+5. Fixed-point read: "x and y are unaffected, since world x and y are positive" → same rule on all
+   axes, harmless only while non-negative.
+6. "Town builder (22 calls), zone generator (4)" → 61 direct calls in the image (per-routine split
+   not established).
+7. Rough-carve loop: order of the z index added (descending).
+8. zone + 0x79: "the same byte the builder gets as v; doubt closed" → field identity confirmed, record
+   identity unresolved (a reversal of the former "closed" statement).
 
-| Draw | Value | Meaning |
-|---|---|---|
-| 1 | 9336 | trap, % 40 = 16 |
-| 2 | 6827 | −x, % 3 = 2 |
-| 3 | 32367 | +x, % 3 = 0, neighbour open |
-| 4 | 19383 | −y, % 3 = 0, wall |
-| 5 | 22297 | torch, **odd** (your note said even) |
-| 6 | 1145 | r = 1 |
-| | | wall block (X + 4, Y − 1, **Z + 1**) is solid; Z + 2 is a hole |
-| 7 | 21045 | torch kind, d % 3 = 0 |
-| 8 | 23065 | & 7 = 1, furniture |
-| 9 | 22291 | r = 3 |
-| 10, 11 | 10856, 30992 | % 50 = 6; % 3 = 2, stool, s = 2 |
-| 12 | 31955 | stool offset |
-| 13 | 1350 | +y, % 3 = 0, neighbour open |
+None of these changes alters a world-generation rule or random-draw order stated in the former text;
+items 7 and 8 refine the description of order and provenance.
 
-Reading Z + 2 here fails the test, loses draw 7, and gives your 12.
+**Removed:** all recording references and recording-derived material: the recording list, the
+"confirmed = measured" confidence labels and the confidence column, the `.avzd` column-order warning,
+the measured hole tables and style-4 test vectors (§1), the measured shaft positions (§3), the 140 of
+140 type 59 match and example location (§4), the zone moisture estimate, mismatch tables and moss test
+vectors (§5), the v = 5 terrain colour analysis (§6), the style-2 worked example heights (§11.2), the
+reconstructed stream tables of two style-2 cells (§11.3), comparisons against an earlier reading's
+draw totals, statements about a port's symptoms and causes, the note on the decompiler and listing
+holes, and verification instructions.
 
-**Cell (10,18,7)**, Z = −80. State 0x12ae173b. Floor glow at (4,6) agrees. It is **not a shelf**, and it
-has **a ceiling**: cell c = 8 is closed. Exactly 21 draws, all accounted for:
-
-| Draw | Value | Meaning |
-|---|---|---|
-| 1 | 27089 | trap, % 40 = 9 |
-| 2 | 11226 | ceiling, % 3 = 0 |
-| 3–6 | 6594, 30069, 28107, 12140 | liana: angle, size, y, x |
-| 7–10 | 17355, 12120, 5476, 16657 | cobweb sides, none makes a web |
-| 11, 12 | 23753, 17620 | −x, +x, neighbours open |
-| 13 | 21708 | −y, % 3 = 0, wall |
-| 14, 15 | 8077, 5761 | torch odd, r = 1 |
-| | | wall block (X + 4, Y − 1, Z + 1) is a hole; Z + 2 is solid: **no torch** |
-| 16, 17 | 5742, 26878 | & 7 = 6, furniture; r = 2 |
-| 18–20 | 14393, 31733, 18923 | % 50 = 43; % 3 = 2, stool, s = 2; offset |
-| 21 | 19514 | +y, % 3 = 2 |
-
-Reading Z + 2 here passes the test, adds one torch draw, and shifts everything after it. The shelf and
-its loot in your replay most likely came from that shifted stream. **Confirmed** by exact replay of
-these two cells. The other floors of style 2 were not replayed by me.
+**Unresolved:** as listed in the section above.

@@ -2583,3 +2583,30 @@ settling pass converts with the native fixed-to-block rule (exact negative multi
 block lower; generated ground items have whole-block z and do not move). World generation, block
 colours and draw order are unchanged. Not modelled: the terrain pass's P and grass counters and
 running min/max of zs (uses untraced); the mana cube's unwritten angle.
+## Provenance re-certification, caves, spawn objects, loot rolls, open points 10 (2026-11-15)
+
+Four inherited contracts were re-certified by fresh source-only authors (43 corrections; one
+reversal of a former open-question reading; recording comparisons, notes for a replacement and
+test vectors removed; no reconstruction consulted), and a new source-side ruling settled two
+points the implementer raised; all five were read whole by a fresh implementer:
+- `alpha-worldgen-caves.md` (A9408400...C172)
+- `alpha-spawn-objects.md` (74201FDE...654E)
+- `alpha-loot-rolls.md` (129F3C13...51D8)
+- `alpha-open-points-10.md` (EA64C0E2...B9C1)
+- `alpha-rulings-formation-angle-box.md` (46278FCC...064C)
+
+Ruling: the kind-4 site's formation angle is 2i·pi/n (loop multiplier stepping by 2, times pi,
+over n, rounded to binary32; sine then cosine), superseding the caves contract's "i·pi/n"; the
+appearance box is written as 0x3F75C290, 0x3F75C290, 0x400A3D71 (0.96 one ulp above nearest),
+which the engine already used.
+Engine changes: empty spawn items carry level 1 (levels below 2 never re-roll, so draw counts are
+unchanged); the type-9 guardian's z is the centre column's bottom; the centre-in-zone tests
+truncate (`centredIn`); the E.kind = 5 dungeon call is added (no writer known, fresh worlds
+unchanged); single-creature followers only when the entry's second list is non-empty (no current
+set is empty). The kind-4 formation angle stays a full circle (the implementer's half-circle
+change was reverted after the ruling). Already matching: terrace pools and their skipped draws,
+the camp routine, ravine and boulder passes, the equipment generator's branches and slot order,
+the finishing pass, faction and ring draws, loot slots, recipe parity, re-roll wrap, dungeon
+glow rates and carve order. Not modelled: constructor write order, inventory +0x1094/+0x1098 and
+the +0xF7C item, the 0x1DC6E0 branch choice, home placement with a null model, the leader's
++0x48 argument. The type-9 guardian z has no test (no such location near home).

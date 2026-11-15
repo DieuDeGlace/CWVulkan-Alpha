@@ -37,6 +37,12 @@ struct Location {
     int32_t subLevel = 0;
 };
 
+// Caves spec §3, spawn objects §6.3, §6.4: whether L's centre lies in zone (zx, zy). The
+// fixed-point centre is divided by 65536 and then by 256, both truncating toward zero.
+inline bool centredIn(const Location &L, int32_t zx, int32_t zy) {
+    return L.x / 65536 / 256 == zx && L.y / 65536 / 256 == zy;
+}
+
 // Locations spec §1.1: one zone's entry in its region's table, copied into the zone.
 struct ZoneEntry {
     uint8_t kind = 0;    // 0 none, 1 town quarter, 3 dungeon entrance, 4 type-10 site

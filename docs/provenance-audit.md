@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-11; 215 tracked contracts, local ignored variants excluded): 113 A, 61 B, 36 C (26585 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-12; 216 tracked contracts, local ignored variants excluded): 118 A, 61 B, 32 C (24898 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -67,7 +67,8 @@ Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-
 then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alpha-open-points-7.md` and `alpha-open-points-8.md`; `alpha-worldgen-regions.md` and
 `alpha-items-generator.md`; `alpha-projectiles.md`, `alpha-open-points-1.md`, `alpha-world-items.md` and
 `alpha-open-points-2.md`; `alpha-worldgen-terrain.md` and `alpha-open-points-5.md` (plus the new ruling
-`alpha-tick-period-rulings.md`).
+`alpha-tick-period-rulings.md`); `alpha-worldgen-caves.md`, `alpha-spawn-objects.md`, `alpha-loot-rolls.md`,
+`alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -168,12 +169,12 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-light-propagation-lifecycle.md` | B | 100 | 2 |
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
 | `alpha-location-creatures.md` | C | 568 | 1 |
-| `alpha-loot-rolls.md` | C | 471 | 0 |
+| `alpha-loot-rolls.md` | A | 503 | 0 |
 | `alpha-materials-wildlife-routes.md` | C | 708 | 1 |
 | `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
 | `alpha-missions.md` | C | 803 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
-| `alpha-net-packets.md` | C | 551 | 3 |
+| `alpha-net-packets.md` | C | 642 | 0 |
 | `alpha-net-server.md` | A | 501 | 0 |
 | `alpha-net-transport.md` | A | 450 | 8 |
 | `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
@@ -181,7 +182,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
 | `alpha-opaque-output-transfer-state.md` | A | 105 | 1 |
 | `alpha-open-points-1.md` | A | 522 | 0 |
-| `alpha-open-points-10.md` | C | 474 | 1 |
+| `alpha-open-points-10.md` | A | 390 | 1 |
 | `alpha-open-points-11.md` | A | 212 | 1 |
 | `alpha-open-points-12.md` | S | 357 | 1 |
 | `alpha-open-points-2.md` | A | 465 | 1 |
@@ -223,6 +224,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | C | 783 | 2 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
@@ -230,12 +232,12 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
 | `alpha-server-simulation.md` | C | 581 | 1 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
-| `alpha-skills.md` | C | 557 | 0 |
+| `alpha-skills.md` | C | 624 | 0 |
 | `alpha-spatial-association-producers.md` | A | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |
 | `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
-| `alpha-spawn-objects.md` | C | 451 | 1 |
+| `alpha-spawn-objects.md` | A | 590 | 1 |
 | `alpha-specialized-vendor-stock.md` | A | 106 | 0 |
 | `alpha-strike-call-sites.md` | A | 277 | 0 |
 | `alpha-strike-cell-helpers.md` | A | 280 | 0 |
@@ -264,7 +266,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-world-actor-creation.md` | B | 199 | 0 |
 | `alpha-world-call-phase-boundary.md` | B | 82 | 1 |
 | `alpha-world-creature-health-admission.md` | A | 84 | 0 |
-| `alpha-worldgen-caves.md` | C | 449 | 0 |
+| `alpha-worldgen-caves.md` | A | 491 | 0 |
 | `alpha-worldgen-clouds.md` | A | 91 | 0 |
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
 | `alpha-worldgen-overview.md` | G | 210 | 4 |

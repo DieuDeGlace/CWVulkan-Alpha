@@ -24,11 +24,6 @@ bool nearHome(int32_t x, int32_t y, float d) {
     return dx * dx + dy * dy < d * d;
 }
 
-// §3: whether location L's centre lies in zone (zx, zy).
-bool centreIn(const Location &L, int32_t zx, int32_t zy) {
-    return floorDiv((int32_t)(L.x >> 16), ZONE) == zx && floorDiv((int32_t)(L.y >> 16), ZONE) == zy;
-}
-
 } // namespace
 
 // §1, §2: the noisy top of a formation's column.
@@ -196,10 +191,10 @@ void Terrain::postPasses(Zone &zone, const std::vector<float> &heights, Random &
 
     // §4: the great mound, the giant tree, or the rock pass.
     const int32_t cx = x0 + 128, cy = y0 + 128;
-    if (Lz && Lz->type == 11 && centreIn(*Lz, zx, zy)) {
+    if (Lz && Lz->type == 11 && centredIn(*Lz, zx, zy)) {
         const int32_t rz = 100 + random.draw() % 100;
         formation(zone, cx, cy, top(cx, cy), 100, 100, rz, false);
-    } else if (Lz && Lz->type == 12 && centreIn(*Lz, zx, zy)) {
+    } else if (Lz && Lz->type == 12 && centredIn(*Lz, zx, zy)) {
         random.draw(); // (unused)
         TreeBuilder(*this, zone, random).build(cx, cy, top(cx, cy), 80, 80, 6);
     } else if (E.kind != 1 && E.kind != 3 && E.kind != 4) {
@@ -278,9 +273,12 @@ void Terrain::postPasses(Zone &zone, const std::vector<float> &heights, Random &
                     put(x, y, z, AIR_WRITE);
         }
 
-    // §6.1: a dungeon (E.kind 3; kind 5 never occurs in fresh worlds).
+    // §6.1: a dungeon of style E.variant for E.kind 3, then the style-3 flagged builder for
+    // E.kind 5 (no writer of kind 5 is known, §9 item 3).
     if (E.kind == 3)
         dungeon(zone, random, {x0 + 32, y0 + 32, E.variant, 0, E.level, E.subLevel});
+    if (E.kind == 5)
+        dungeon(zone, random, {x0 + 32, y0 + 32, 3, 1, E.level, E.subLevel});
 
     // §6.2: terrace boulders, then §6.3: ravine boulders.
     for (const BoulderSeed &seed : terraceBoulders) {

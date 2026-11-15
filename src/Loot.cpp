@@ -2,6 +2,7 @@
 #include "worldgen/Items.h"
 #include <cmath>
 #include <cstring>
+#include <iterator>
 
 const uint8_t TAMEABLE[45] = {35, 87, 60, 55, 34, 23, 22, 30, 33,  98, 25,  53, 67, 102, 104,
                               105, 19, 40, 37, 38, 39, 92, 93, 56, 90, 91,  50, 27, 75,  26,
@@ -158,8 +159,10 @@ void dropLoot(const LootVictim &v, WorldItems &items, int32_t day, const creatur
         creatures::setItemLevel(item, rerollLevel(random, creatures::itemLevel(item)));
         place(item, 1);
         if (draw() % 5 == 0) {
-            rarityRoll(random, v.tier); // (spent; pet food takes no rarity)
-            creatures::ItemRecord food = fresh(20, TAMEABLE[(uint32_t)draw() % 45]);
+            // Loot rolls §3.3 step 8: the pet-food routine receives this rarity and the level
+            // and ignores both; its one draw picks an entry mod the tameable list's length.
+            rarityRoll(random, v.tier);
+            creatures::ItemRecord food = fresh(20, TAMEABLE[(uint32_t)draw() % std::size(TAMEABLE)]);
             place(food, 1);
         }
     }

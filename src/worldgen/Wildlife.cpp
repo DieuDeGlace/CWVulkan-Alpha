@@ -159,11 +159,12 @@ void Terrain::wildlifePass(Zone &zone, Random &random) const {
         const float v = 1 - w.locationDistanceFx(L, (int64_t)x << 16, (int64_t)y << 16);
         return v;
     };
-    // (Before the pass, believed a location guardian: a type-9 location centred in this zone
-    // gets one creature of type 107 at its centre.)
-    if (Lz && Lz->type == 9 && zone.contains((int32_t)(Lz->x >> 16), (int32_t)(Lz->y >> 16))) {
+    // Spawn objects §6.4: a type-9 location centred in this zone gets one type-107 creature at
+    // its centre (x, y copied as 64-bit), standing at the centre column's bottom. No draws.
+    if (Lz && Lz->type == 9 && centredIn(*Lz, zx, zy)) {
         Spawn g;
-        g.x = Lz->x, g.y = Lz->y, g.z = (int64_t)(Lz->height * 65536.0);
+        g.x = Lz->x, g.y = Lz->y;
+        g.z = (int64_t)zone.column((int32_t)(Lz->x / 65536), (int32_t)(Lz->y / 65536)).bottom * 65536;
         g.type = 107;
         g.level = Lz->level;
         g.powerTier = (uint8_t)Lz->subLevel;

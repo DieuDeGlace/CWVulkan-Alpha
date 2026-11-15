@@ -144,6 +144,11 @@ struct ScheduleStop {
 // Behaviour spec §2.1, §9.1: a spawn object, which the world step turns into a creature near
 // the player. Positions in 1/65536 blocks.
 struct Spawn {
+    static constexpr ItemRecord EMPTY_SLOT = [] {
+        ItemRecord item;
+        item.level = 1;
+        return item;
+    }();
     float radius = 200;      // activation radius, blocks
     int64_t x = 0, y = 0, z = 0;
     int32_t controller = 1;  // controller kind of the creature (6: an inert object such as a deposit)
@@ -157,7 +162,9 @@ struct Spawn {
     uint16_t appearanceFlags = 0; // +0x7a: 0x1000 takes the map cell's level, 0x200 boss, 0x40 keeps its gear
     uint8_t bossLoot = 0;        // raw +0x10e8 byte, retained through activation
     int64_t objectKey = 0;       // +0x10e0: the airship its creature is placed on (airship steering §4)
-    ItemRecord equipment[13];   // +0x120
+    // +0x120: spawn objects §2, the constructor's 13 empty items, each of level 1.
+    ItemRecord equipment[13] = {EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT,
+                                EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT, EMPTY_SLOT};
     std::vector<ItemRecord> inventory; // +0xf6c
     // Full owned descriptor input when available. Legacy generator records
     // remain a separate one-unit bridge, not a native grouped-storage claim.

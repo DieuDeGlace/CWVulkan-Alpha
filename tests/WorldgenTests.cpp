@@ -3,6 +3,7 @@
 // the implementation follows the spec; matching the running game is checked separately.
 #include <limits>
 #include <memory>
+#include <optional>
 #include "BlockEdits.h"
 #include "Missions.h"
 #include "WorldItems.h"
@@ -445,11 +446,24 @@ int main() {
         same(T.zlow, c.zlow, name + " zlow");
         same(T.zw, c.zw, name + " zw");
     }
+    // Caves spec §5.2 step 5: the pool zlow..zb is non-empty whenever a > 0.2, a single cell
+    // for 0.2 < a < 0.4 (both sides of t = 0.5), none for a <= 0.2.
+    {
+        struct PoolCase {
+            float h;
+            int cells;
+        } pools[] = {{10.25f, 0}, {10.75f, 1}, {11.75f, 3}, {13.4f, 1}, {13.6f, 0}, {12.0f, 3}, {14.0f, 0}};
+        for (const auto &c : pools) {
+            const Terrace T = terraceAt(c.h);
+            same(std::max(0, T.zb - T.zlow + 1), c.cells, "terrace pool cells at h " + std::to_string(c.h));
+        }
+    }
     same(noise(0.02 * 8397000 + 55432.0, 0.02 * 8397100 + 974.0), 0.11888830363750458, "clearance noise");
 
     // Structures spec §3 and §4: boulder noise and the stone circle's pillars.
     same(noise(0.05 * 8397000, 0.05 * 8397100), -0.4843904376029968, "boulder noise");
     same((float)(noise(0.05 * 8397000, 0.05 * 8397100) * 0.8f), -0.38751235604286194, "boulder k");
+    // Caves spec §8 item 5: formation i of n at the angle i·π / n (half a turn).
     const int pillars6[][2] = {{25, 0}, {12, 21}, {-12, 21}, {-25, 0}, {-12, -21}, {12, -21}};
     const int pillars7[][2] = {{25, 0}, {15, 19}, {-5, 24}, {-22, 10}, {-22, -10}, {-5, -24}, {15, -19}};
     const int pillars8[][2] = {{25, 0}, {17, 17}, {0, 25}, {-17, 17}, {-25, 0}, {-17, -17}, {0, -25}, {17, -17}};
@@ -713,6 +727,41 @@ int main() {
             built++;
         }
         same(built > 0, 1, "a dungeon zone found");
+    }
+
+    // Caves spec §3 / spawn objects §6.3, §6.4: the centre-in-zone test truncates twice; the
+    // type-9 guardian stands at its location's centre, on the centre column's bottom.
+    {
+        Location L;
+        L.x = (int64_t)(256 * 5 + 255) * 65536 + 65535, L.y = (int64_t)256 * 7 * 65536;
+        same(centredIn(L, 5, 7), 1, "centre in its zone (last block of the zone)");
+        same(centredIn(L, 6, 7) || centredIn(L, 5, 6), 0, "centre not in a neighbour zone");
+        World gw(123);
+        Terrain gt(gw);
+        std::optional<Location> guarded; // (a copy: generating may prepare more regions)
+        for (int32_t r = 0; r < 9 && !guarded; r++) {
+            const int32_t rx = HOME / 16384 - 1 + r / 3, ry = HOME / 16384 - 1 + r % 3;
+            gt.prepareRegion(rx, ry);
+            if (const Region *region = gw.region(rx, ry))
+                for (const Location &candidate : region->records)
+                    if (candidate.type == 9 && !guarded)
+                        guarded = candidate;
+        }
+        if (guarded) {
+            const int32_t zx = (int32_t)(guarded->x / 65536 / 256), zy = (int32_t)(guarded->y / 65536 / 256);
+            const auto zone = gt.generate(zx, zy);
+            const Column &column = zone->column((int32_t)(guarded->x / 65536), (int32_t)(guarded->y / 65536));
+            int guardians = 0;
+            for (const Spawn &s : zone->spawns)
+                if (s.type == 107 && s.x == guarded->x && s.y == guarded->y) {
+                    guardians++;
+                    same((double)s.z, (double)column.bottom * 65536, "guardian z = centre column bottom");
+                    same(s.level, guarded->level, "guardian level");
+                }
+            same(guardians, 1, "one type-107 guardian at the type-9 centre");
+        } else {
+            std::printf("no type-9 location near home; guardian check skipped\n");
+        }
     }
 
     // Structures spec §5: the four quarter zones of a town, which hold its market, class houses,

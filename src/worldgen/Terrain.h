@@ -51,7 +51,7 @@ Terrace terraceAt(float h);
 struct DungeonCall {
     int32_t x0 = 0, y0 = 0; // the grid's corner, blocks (256 zx + 32, 256 zy + 32)
     int32_t variant = 0;    // style 0..5 (E.variant)
-    int32_t flag = 0;       // 1 for the kind-5 call, which fresh worlds never make
+    int32_t flag = 0;       // 1 for the E.kind = 5 call (caves spec §6.1)
     int32_t level = 1, subLevel = 0;
 };
 
