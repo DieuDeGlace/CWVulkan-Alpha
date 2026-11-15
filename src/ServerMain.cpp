@@ -167,6 +167,8 @@ int main(int argc, char **argv) {
     std::printf("World seed %u, port %u.\n", seed, server.port());
     std::fflush(stdout);
     bool quit = false;
+    // Engine choice: Alpha polls one character a second and quits only on a lowercase q
+    // (transport §5.1), despite printing "Enter Q"; here a line of either case quits.
     for (std::string line; !quit && std::getline(std::cin, line);)
         quit = line == "Q" || line == "q";
     // Without a console to read (run as a background service) the server runs until stopped.

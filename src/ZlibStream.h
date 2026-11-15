@@ -13,3 +13,9 @@ std::optional<std::vector<uint8_t>> zlibInflate(const uint8_t *data, size_t size
 inline std::optional<std::vector<uint8_t>> zlibInflate(const std::vector<uint8_t> &data, size_t limit = 64u << 20) {
     return zlibInflate(data.data(), data.size(), limit);
 }
+// The network receivers' inflate (transport §4): a failed stream is not reported; the output
+// produced before the failure stands as the payload.
+std::vector<uint8_t> zlibInflatePartial(const uint8_t *data, size_t size, size_t limit = 64u << 20);
+inline std::vector<uint8_t> zlibInflatePartial(const std::vector<uint8_t> &data, size_t limit = 64u << 20) {
+    return zlibInflatePartial(data.data(), data.size(), limit);
+}

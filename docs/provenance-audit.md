@@ -16,7 +16,7 @@ Classes:
   2026-11-07 continuation. Several mix behavioural prose with implementation notes, so they
   must not be handed to source authors unredacted.
 
-Snapshot 2026-11-14 (after batches 1-5 and 6b; 214 tracked contracts, local ignored variants excluded): 96 A, 61 B, 57 C (33772 lines).
+Snapshot 2026-11-14 (after batches 1-6 and transport; 214 tracked contracts, local ignored variants excluded): 100 A, 61 B, 53 C (32588 lines).
 
 ## Remediation
 
@@ -56,6 +56,8 @@ Batch 5: `alpha-server-buff-update-admission.md`, `alpha-hit-response-vector-con
 `alpha-client-buff-action-boundaries.md`, `alpha-hit-application-mutations.md`,
 `alpha-hit-threat-death-lifecycle.md` and `alpha-open-points-9.md`.
 Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
+Batch 6a: `alpha-worldgen-random.md`, `alpha-worldgen-vegetation.md` and `alpha-house-furniture.md`;
+then `alpha-net-transport.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -146,7 +148,7 @@ Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 | `alpha-hit-scalar-reduction-order.md` | A | 70 | 0 |
 | `alpha-hit-threat-death-lifecycle.md` | A | 157 | 1 |
 | `alpha-hostility-test.md` | A | 188 | 0 |
-| `alpha-house-furniture.md` | C | 222 | 1 |
+| `alpha-house-furniture.md` | A | 222 | 1 |
 | `alpha-interaction.md` | C | 587 | 3 |
 | `alpha-inventory-equality-consumers.md` | A | 94 | 0 |
 | `alpha-item-names.md` | C | 578 | 0 |
@@ -163,7 +165,7 @@ Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
 | `alpha-net-packets.md` | C | 551 | 3 |
 | `alpha-net-server.md` | C | 288 | 7 |
-| `alpha-net-transport.md` | C | 299 | 11 |
+| `alpha-net-transport.md` | A | 450 | 8 |
 | `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
 | `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
 | `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
@@ -255,12 +257,12 @@ Batch 6b: `alpha-player-control.md` and `alpha-open-points-11.md`.
 | `alpha-worldgen-clouds.md` | A | 91 | 0 |
 | `alpha-worldgen-locations.md` | C | 568 | 1 |
 | `alpha-worldgen-overview.md` | C | 210 | 4 |
-| `alpha-worldgen-random.md` | C | 306 | 0 |
+| `alpha-worldgen-random.md` | A | 306 | 0 |
 | `alpha-worldgen-regions.md` | C | 362 | 0 |
 | `alpha-worldgen-structures.md` | C | 1928 | 1 |
 | `alpha-worldgen-terrain.md` | C | 437 | 0 |
 | `alpha-worldgen-trees.md` | C | 568 | 1 |
-| `alpha-worldgen-vegetation.md` | C | 357 | 0 |
+| `alpha-worldgen-vegetation.md` | A | 357 | 0 |
 | `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |
 | `alpha-world-hit-target-admission.md` | B | 101 | 2 |
 | `alpha-world-item-list-population.md` | A | 163 | 0 |

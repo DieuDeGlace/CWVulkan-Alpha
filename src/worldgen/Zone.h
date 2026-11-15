@@ -56,7 +56,7 @@ struct Plant {
     float scale = 0;
     float rotation = 0; // degrees about +Z
     int32_t kind = 0;   // plant kind table A (vegetation §1.1)
-    uint32_t flags = 0; // 4: sways (vegetation-wind.md §3)
+    uint32_t flags = 2; // the record initializer writes 2 (vegetation §1.3); bit 4: sways (vegetation-wind.md §3)
     bool sink = false;  // a water lily floats 0.1 below z (open points 12 §2)
 };
 

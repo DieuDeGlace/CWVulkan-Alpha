@@ -32,6 +32,12 @@ struct BoulderSeed {
 enum class FormationTest { Mound, MesaGuard, MesaFill };
 int32_t formationTop(int32_t X, int32_t Y, int32_t z, int32_t rz, bool mesa);
 glm::vec2 formationUV(FormationTest test, int32_t X, int32_t Y, int32_t Z, int32_t x, int32_t y, int32_t rx, int32_t ry);
+// Vegetation §5 steps 4, 5 and 13: the crown size s from (draw mod 5), the height t from a
+// draw, and the density p, each in the native float grouping (mo the sample-point moisture,
+// m the moisture at the tree's position, b the oasis bonus, p0 the density noise term).
+int32_t treeCrownSize(int32_t drawMod5, float mo, float b);
+int32_t treeHeight(int32_t draw, float mo, float b);
+float treeDensity(float m, float p0, float b);
 // Caves spec §5.1: the road shade, before the town mix.
 float roadShade(int32_t x, int32_t y);
 // Caves spec §5.2: a column's terrace from its height.

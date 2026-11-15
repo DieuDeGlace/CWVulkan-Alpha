@@ -482,6 +482,34 @@ int main() {
         record.bytes[0x58] = 84;
         check(record.action() == 84, "record action byte is creature +0x68");
     }
+    // Transport §3.3: the stored stamp is the pre-sleep clock, so a lone sender alternates.
+    {
+        check(paceSleepMs(1000, 0) == 0, "first pass does not sleep");
+        check(paceSleepMs(1005, 1000) == 15, "a pass 5 ms after the stamp sleeps 15 ms");
+        check(paceSleepMs(1020, 1005) == 5, "the next pass is measured from the pre-sleep stamp");
+        check(paceSleepMs(1025, 1000) == 0, "20 ms or more: no sleep");
+        check(paceSleepMs(5, 0xfffffff0u) == 0, "the 32-bit clock wraps");
+    }
+    // Transport N-8: the main loop's zone index truncates toward zero at both divisions.
+    {
+        check(serverZoneOf(int64_t(300) * 65536, int64_t(511) * 65536) == std::pair(1, 1), "zone of a positive position");
+        check(serverZoneOf(-1, -65537) == std::pair(0, 0), "negative positions truncate toward zero");
+        check(serverZoneOf(int64_t(-257) * 65536, 0) == std::pair(-1, 0), "zone -1 only below block -256");
+    }
+    // Transport §4: a failed inflate keeps the output produced before the failure.
+    {
+        std::vector<uint8_t> plain(5000);
+        for (size_t i = 0; i < plain.size(); i++)
+            plain[i] = uint8_t(i * 7);
+        std::vector<uint8_t> packed = zlibCompress(plain);
+        check(zlibInflatePartial(packed) == plain, "a whole stream inflates fully");
+        packed.resize(packed.size() / 2);
+        const auto partial = zlibInflatePartial(packed);
+        check(partial.size() < plain.size() && std::equal(partial.begin(), partial.end(), plain.begin()),
+              "a cut stream keeps its leading output");
+        packed[0] = 0;
+        check(zlibInflatePartial(packed).empty(), "a bad header yields no output and no error");
+    }
     // §6.2: position and health of entity 1. (The plain bytes printed in the spec are shifted
     // by one byte in the position; these are what its wire bytes inflate to.)
     const auto plain62 = hex("01 00 00 00 00 00 00 00 01 00 00 08 00 00 00 00 00 80 42 26 80 00 00 00 "

@@ -56,6 +56,8 @@ namespace net {
 // world-update scan finds a non-null role-zero creature in action 0x54 with health > 0, else
 // by elapsed x 10. Day rollover keeps the engine server's own rule.
 void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated);
+// Transport N-8: a player's zone in the server main loop, each division truncating toward zero.
+std::pair<int32_t, int32_t> serverZoneOf(int64_t x, int64_t y);
 
 struct ServerOptions {
     uint32_t seed = 0;

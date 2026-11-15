@@ -2412,3 +2412,37 @@ Not modelled: the target lock (the engine aims by pick), input acting on a separ
 creature, the negative-health unstick skip (health never goes negative), diagonal probes, the
 input-call interface gates. Open: block-index conversion at exact negative multiples (physics
 contract) and the climbing lateral sign convention (probe frame unresolved).
+## Provenance re-certification, batch 6a and network transport (2026-11-14)
+
+Four inherited contracts were re-certified by fresh source-only authors against the original
+images (42 corrections; reversals in vegetation ground cover and five in the transport;
+implementer advice and the "what a compatible implementation must do" sections removed; no
+reconstruction consulted) and read whole by the implementer:
+- `alpha-worldgen-random.md` (2DD98F1E...9264)
+- `alpha-worldgen-vegetation.md` (16905CC1...3F04)
+- `alpha-house-furniture.md` (24048CF4...87EA)
+- `alpha-net-transport.md` (7C9727E1...CC3B)
+
+World-generation changes:
+- Plant flags start at 2; flagged kinds OR in 4 (6); reeds stay exactly 4 (bank reeds remain the
+  owner extension). The renderer tests bit 4 only, so the picture is unchanged.
+- Tree crown size and height use the native binary32 grouping (`treeCrownSize`,
+  `treeHeight`); sizes can differ by one in rare last-bit cases.
+- Tree density re-reads moisture at the tree's current position and caps at 1 before the bonus;
+  for warmth below 0.3 the kind is always 1 or 2. Kept or skipped trees and changed kinds shift
+  every later draw of the zone's stream.
+Network changes (wire-compatible with original peers):
+- Sender pacing (`SenderPacing`): each pass sleeps what is left of 20 ms since the stored stamp,
+  then stores the clock read before the sleep, so passes alternate (about two per 20 ms); one
+  stamp per client image and one shared by every server sender thread.
+- The server sender waits for the receiver thread to end before freeing the connection.
+- Per-player zone index truncates toward zero (`serverZoneOf`).
+- A packet-0 stream that fails to inflate keeps its partial output (`zlibInflatePartial`);
+  engine choices: a stalled stream stops and the output size is bounded.
+Engine choices kept and labelled: client socket errors go offline and shut the socket; unknown
+packet ids end the connection; a 5 s handshake timeout, a thread per join and a reachable
+"server full" reply; console quit on Q or q; the seed packet read in the connect routine; size
+bounds. Already matching: generator streams, seed offsets, noise vectors, temperate ground
+cover, plant and ground-item centring, lily height, house furniture rules. Not modelled: client
+world re-initialisation on a seed or name change; mid-field close semantics; the once-per-second
+zone request resend.

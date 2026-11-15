@@ -10,6 +10,29 @@ std::vector<uint8_t> zlibCompress(const uint8_t *data, size_t size) {
     return out;
 }
 
+std::vector<uint8_t> zlibInflatePartial(const uint8_t *data, size_t size, size_t limit) {
+    z_stream stream{};
+    std::vector<uint8_t> out;
+    if (inflateInit(&stream) != Z_OK)
+        return out;
+    stream.next_in = const_cast<Bytef *>(data);
+    stream.avail_in = (uInt)size;
+    uint8_t chunk[16384];
+    for (;;) {
+        stream.next_out = chunk;
+        stream.avail_out = sizeof chunk;
+        const int result = inflate(&stream, Z_NO_FLUSH);
+        out.insert(out.end(), chunk, chunk + (sizeof chunk - stream.avail_out));
+        // Native ends: stream end, or data, memory and need-dictionary errors, keeping the
+        // output so far. Engine choices: a stalled stream (truncated input), on which the
+        // native loop never ends, and output past `limit` also stop here.
+        if (result != Z_OK || out.size() > limit)
+            break;
+    }
+    inflateEnd(&stream);
+    return out;
+}
+
 std::optional<std::vector<uint8_t>> zlibInflate(const uint8_t *data, size_t size, size_t limit) {
     z_stream stream{};
     if (inflateInit(&stream) != Z_OK)

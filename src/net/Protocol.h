@@ -7,6 +7,7 @@
 #include "creatures/Combat.h"
 #include <cstring>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -18,6 +19,19 @@ constexpr uint16_t PORT = 12345;
 constexpr uint32_t VERSION = 3;
 constexpr int MAX_PLAYERS = 10; // player ids are 1..10
 constexpr int TICK_MS = 20;
+
+// Transport §3.3: a sender pass ends by sleeping what is left of 20 ms since the stored
+// stamp, then storing the clock read before that sleep (so a lone sender alternates between
+// a pass that sleeps and one that does not). One stamp per program image, shared by all of
+// its sender threads.
+inline uint32_t paceSleepMs(uint32_t nowMs, uint32_t stampMs) {
+    const uint32_t elapsed = nowMs - stampMs;
+    return elapsed < (uint32_t)TICK_MS ? (uint32_t)TICK_MS - elapsed : 0;
+}
+struct SenderPacing {
+    std::atomic<uint32_t> stampMs{0};
+    void endPass();
+};
 
 // Packet ids (packets §0, transport §2).
 enum Packet : uint32_t {

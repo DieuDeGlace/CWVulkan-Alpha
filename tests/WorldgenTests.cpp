@@ -55,6 +55,27 @@ int main() {
     same(o[0x280], 10611, "O280");
     same(o[0x178], 25656, "O178");
     same(o[0x17c], 17603, "O17c");
+    // Random spec §2.2 (re-certified): the full seed-123 vector of every remaining group.
+    {
+        const std::pair<uint32_t, std::vector<int32_t>> groups[] = {
+            {0x1e4, {29902, 26443}},
+            {0x1ec, {16505, 11114}},
+            {0x1f4, {11737, 10421}},
+            {0x1fc, {3541, 2251, 22174, 14324, 24238, 18619, 29848, 25829}},
+            {0x21c, {25215, 16284, 8757, 22925, 28488, 12097}},
+            {0x234, {3722, 27392, 7902, 16118, 9541, 29057}},
+            {0x24c, {22149, 13505, 29411, 27626, 27840, 21480, 6435, 29263, 24936, 1203}},
+            {0x274, {26554, 15326, 23548, 10611}},
+            {0x284, {27976, 15369}},
+            {0x178, {25656, 17603, 5259, 6888}},
+            {0x28c, {2281, 21774}},
+            {0x294, {8658, 3288}},
+        };
+        for (const auto &[first, values] : groups)
+            for (size_t i = 0; i < values.size(); i++)
+                same(o[first + 4 * (uint32_t)i], values[i], "O" + std::to_string(first + 4 * i) + " (seed 123)");
+    }
+    same(noise(1e9, -1e9) >= -1 && noise(1e9, -1e9) <= 1, 1, "N in [-1, 1] as float");
 
     // Random spec §3.3: the noise kernel.
     same(noise(0, 0), -0.28179097175598145, "N(0, 0)");
@@ -259,6 +280,21 @@ int main() {
         same(uv.y, -0.09695065766572952, "mesa v");
         same((float)(uv.y * uv.y + uv.x * uv.x), 0.6599938869476318, "mesa u2 + v2");
     }
+
+    // Vegetation §1.3, §5 (re-certified): the plant flags word starts at 2; the tree crown,
+    // height and density in the native float grouping, density from the given moisture.
+    same(Plant{}.flags, 2, "plant flags word starts at 2");
+    for (const float mo : {0.1f, 0.37f, 0.5f, 0.83f, 0.999f})
+        for (const float b : {0.f, 0.21f, 0.64f}) {
+            const std::string at = " (mo " + std::to_string(mo) + ", b " + std::to_string(b) + ")";
+            for (int32_t d = 0; d < 5; d++)
+                same(treeCrownSize(d, mo, b), (int32_t)(((float)d + (2.f * mo + 6.f)) + 4.f * b), "crown size" + at);
+            for (int32_t d : {0, 1234, 32767})
+                same(treeHeight(d, mo, b),
+                     (int32_t)(((float)d * 8.f / 32767.f + (6.f * b + 8.f)) * (0.5f * mo + 1.f)), "tree height" + at);
+        }
+    same(treeDensity(0.5f, 0.3f, 0.f), std::min(0.2f * 0.5f * 0.5f + 0.02f + 0.3f, 1.f), "tree density");
+    same(treeDensity(1.f, 0.9f, 0.25f), 1.25f, "tree density capped before the bonus");
 
     // Open points 9 §4: the setter and writer rules.
     {

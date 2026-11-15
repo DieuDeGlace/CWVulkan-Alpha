@@ -1,10 +1,20 @@
 #include "net/Protocol.h"
 #include "Bytes.h"
 #include "ZlibStream.h"
+#include <chrono>
 #include <cstring>
+#include <thread>
 #include <utility>
 
 namespace net {
+
+void SenderPacing::endPass() {
+    using namespace std::chrono;
+    const uint32_t now = (uint32_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    if (const uint32_t wait = paceSleepMs(now, stampMs.load()))
+        std::this_thread::sleep_for(milliseconds(wait));
+    stampMs = now;
+}
 
 // Packets §2.1. Bits 41 and 42 are in the opposite order to their offsets.
 const std::array<CreatureField, 48> CREATURE_FIELDS = {{

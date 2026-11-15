@@ -33,6 +33,7 @@ struct Server::Connection {
     std::set<std::pair<int32_t, int32_t>> wantedRegions;   // packet 12, answered in section 13
     std::thread receiver, sender;
     std::atomic<bool> alive{true};
+    std::atomic<bool> receiverDone{false}; // the sender waits for it before freeing (transport §5.2)
 
     ~Connection() {
         // A connection that ended on its own is let go by whichever of its threads held it
@@ -337,6 +338,10 @@ void Server::acceptLoop() {
 }
 
 void Server::handshake(Socket socket) {
+    // Engine choices (transport §2.1, §5.3): a read timeout during the handshake (Alpha has
+    // none), and the free-id search after the version, answering a real 18 when all ten ids
+    // are taken (Alpha's full scan precedes the hello and can never fire; it says "accepted",
+    // then closes).
     socket.setReadTimeout(5000); // a client that says nothing is not kept waiting for
     uint32_t hello = 0, version = 0;
     if (!socket.readU32(hello) || hello != HELLO)
@@ -410,7 +415,9 @@ void Server::receiveLoop(Connection &c) {
             ok = c.socket.readU32(length) && length > 0 && length < (4u << 20);
             std::vector<uint8_t> packed(ok ? length : 0);
             ok = ok && c.socket.readExact(packed.data(), length);
-            const auto plain = ok ? zlibInflate(packed, 1u << 20) : std::nullopt;
+            // Transport §4: a failed inflate keeps its partial output, unreported. (The 4 MiB
+            // length and 1 MiB output bounds are engine choices.)
+            const auto plain = ok ? std::optional(zlibInflatePartial(packed, 1u << 20)) : std::nullopt;
             const CreaturePublication publication{
                 lock,
                 [&](uint64_t key) -> CreatureRecord * {
@@ -488,16 +495,24 @@ void Server::receiveLoop(Connection &c) {
             break;
         }
         default:
-            ok = false; // an unknown id would desynchronise the stream: end the connection
+            // Engine choice: Alpha ignores the id and reads on (transport §3); an unknown id
+            // would desynchronise the stream, so the connection ends.
+            ok = false;
         }
         if (!ok)
             break;
     }
     drop(c);
+    // Transport §5.2: the sender frees the connection only after this thread has ended.
+    c.receiverDone = true;
+    c.receiverDone.notify_all();
 }
 
+namespace {
+SenderPacing serverPacing; // transport §3.3: one stamp shared by every server sender thread
+} // namespace
+
 void Server::sendLoop(Connection &c) {
-    auto next = Clock::now();
     while (c.alive && running) {
         ByteWriter w;
         {
@@ -549,10 +564,11 @@ void Server::sendLoop(Connection &c) {
         }
         if (!c.socket.send(w.data()))
             break;
-        next += std::chrono::milliseconds(TICK_MS);
-        std::this_thread::sleep_until(std::max(next, Clock::now()));
+        serverPacing.endPass();
     }
     drop(c);
+    // Transport §5.2: wait for the receiver thread, then free under the world lock.
+    c.receiverDone.wait(false);
     std::lock_guard guard(lock);
     // Quests: the leaving player's book is written now and forgotten (ids are reused).
     if (questBooksUnsaved.erase(c.id) && !c.creature.name().empty()) {
@@ -568,6 +584,10 @@ void Server::sendLoop(Connection &c) {
         if (options.modEvents.playerLeave)
             options.modEvents.playerLeave(id);
     });
+}
+
+std::pair<int32_t, int32_t> serverZoneOf(int64_t x, int64_t y) {
+    return {(int32_t)(x / 65536) / worldgen::ZONE, (int32_t)(y / 65536) / worldgen::ZONE};
 }
 
 void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated) {
@@ -627,10 +647,11 @@ void Server::simulationLoop() {
 
 std::vector<std::pair<int32_t, int32_t>> Server::playerZones() const {
     std::vector<std::pair<int32_t, int32_t>> out;
+    // Transport N-8: the main loop's per-player zone divides by 65536, then by 256, each
+    // truncating toward zero.
     for (const auto &[id, c] : connections)
         if (c->alive)
-            out.push_back({worldgen::floorDiv((int32_t)(c->creature.position(0) >> 16), worldgen::ZONE),
-                           worldgen::floorDiv((int32_t)(c->creature.position(1) >> 16), worldgen::ZONE)});
+            out.push_back(serverZoneOf(c->creature.position(0), c->creature.position(1)));
     return out;
 }
 

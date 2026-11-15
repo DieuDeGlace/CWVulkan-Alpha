@@ -36,8 +36,9 @@ bool Client::connect(const std::string &host, uint16_t port, std::string *error)
     if (reply != ACCEPTED)
         return fail("Connection error."); // (an Alpha server answers a wrong version with 3)
 
-    // Our id and the server's record of us (which we do not use: the client keeps its own
-    // character, open question N-2), then the seed.
+    // Our id and the server's 4456-byte record of us, which Alpha reads into a buffer and
+    // discards (transport §2.4): the client keeps its own character. Then the seed (engine
+    // choice: Alpha's receiver thread reads packet 15; here the connect routine expects it).
     uint32_t packet = 0;
     uint64_t id = 0;
     CreatureRecord record;
@@ -213,8 +214,11 @@ std::vector<::creatures::RelationshipRecord> Client::takeRelationships() {
     return std::exchange(relationshipEvents, {});
 }
 
+namespace {
+SenderPacing clientPacing; // transport §3.3: the client image's one pacing stamp
+} // namespace
+
 void Client::sendLoop() {
-    auto next = std::chrono::steady_clock::now();
     while (online) {
         // The native header precedes the locked queue/state snapshot. Encoding
         // and socket writes remain outside the frame gate.
@@ -292,9 +296,10 @@ void Client::sendLoop() {
             ownSent = current;
             sentOnce = true;
         }
-        next += std::chrono::milliseconds(TICK_MS);
-        std::this_thread::sleep_until(std::max(next, std::chrono::steady_clock::now()));
+        clientPacing.endPass();
     }
+    // Engine choice: Alpha's sender closes the socket but leaves "online" set and prints
+    // nothing (transport §5.2); here a failed connection returns the client to offline play.
     online = false;
     socket.shutdown();
 }
@@ -302,6 +307,8 @@ void Client::sendLoop() {
 void Client::receiveLoop() {
     // Receiver-private presence is consumed after the guarded batch reconciliation.
     std::set<uint64_t> updatedThisBatch;
+    // Transport §4, §5.3: a zero length ends the receiver; a failed inflate keeps its partial
+    // output. (The 16 MiB length bound is an engine choice.)
     auto readCompressed = [&](std::vector<uint8_t> &plain) {
         uint32_t length = 0;
         if (!socket.readU32(length) || length == 0 || length > (16u << 20))
@@ -309,10 +316,7 @@ void Client::receiveLoop() {
         std::vector<uint8_t> packed(length);
         if (!socket.readExact(packed.data(), length))
             return false;
-        auto inflated = zlibInflate(packed);
-        if (!inflated)
-            return false;
-        plain = std::move(*inflated);
+        plain = zlibInflatePartial(packed);
         return true;
     };
     while (online) {
@@ -509,11 +513,15 @@ void Client::receiveLoop() {
             break;
         }
         default:
-            ok = false; // an id we cannot skip (transport §3)
+            // Engine choice: Alpha ignores the id and reads on (misreading any payload,
+            // transport §3); here the stream cannot be trusted any longer.
+            ok = false;
         }
         if (!ok)
             break;
     }
+    // Engine choice: Alpha's receiver only ends (transport §5.2); here it also ends the
+    // connection. An orderly close at a message boundary ends it in both (§5.3).
     online = false;
     socket.shutdown();
 }

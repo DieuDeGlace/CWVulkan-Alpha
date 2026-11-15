@@ -607,6 +607,19 @@ void Terrain::surfacePass(Zone &zone, const std::vector<float> &heights, Random 
         }
 }
 
+// Vegetation §5 step 4: f32(draw mod 5) + (2 mo + 6) + 4b, truncated.
+int32_t treeCrownSize(int32_t drawMod5, float mo, float b) {
+    return (int32_t)((float)drawMod5 + (2.f * mo + 6.f) + 4.f * b);
+}
+
+// Step 5: (f32(draw) 8 / 32767 + (6b + 8)) (0.5 mo + 1), truncated.
+int32_t treeHeight(int32_t draw, float mo, float b) {
+    return (int32_t)(((float)draw * 8.f / 32767.f + (6.f * b + 8.f)) * (0.5f * mo + 1.f));
+}
+
+// Step 13: min(0.2 m m + 0.02 + p0, 1) + b.
+float treeDensity(float m, float p0, float b) { return std::min(0.2f * m * m + 0.02f + p0, 1.f) + b; }
+
 // Vegetation §5: the tree grid, which builds each tree it places (trees spec).
 void Terrain::treeGrid(Zone &zone, Random &random) const {
     const int32_t x0 = zone.originX(), y0 = zone.originY();
@@ -616,8 +629,8 @@ void Terrain::treeGrid(Zone &zone, Random &random) const {
             const int32_t gx = x0 + 18 * i, gy = y0 + 8 + 18 * j;
             const float bonus = Lz && Lz->type == 3 ? bump(w.locationDistance(*Lz, gx + 8, gy)) : 0.f;
             const float mo = climate(gx + 8, gy, &zone).moisture;
-            int32_t s = (int32_t)((float)(random.draw() % 5) + 2.f * mo + 6.f + 4.f * bonus);
-            int32_t t = (int32_t)(((float)random.draw() * 8.f / 32767.f + 6.f * bonus + 8.f) * (0.5f * mo + 1.f));
+            int32_t s = treeCrownSize(random.draw() % 5, mo, bonus);
+            int32_t t = treeHeight(random.draw(), mo, bonus);
             int32_t x = gx + s, y = gy - 8 + s; // (the sample y less 8: 256 zy + 18 j + s)
             const float hx = (float)(x - HOME), hy = (float)(y - HOME);
             if (hx * hx + hy * hy < 400.f)
@@ -651,12 +664,10 @@ void Terrain::treeGrid(Zone &zone, Random &random) const {
             if (wm >= 0.3f && wm < 0.7f) {
                 if (noise(0.001 * x + 8473.0, 0.001 * y + 9438.0) > 0.8f && random.draw() % 5 != 0)
                     kind = 2;
-            } else if (wm < 0.3f) {
-                if (wm > 0.2f) {
-                    if (noise(0.001 * x + 8473.0, 0.001 * y + 9438.0) > 0.6f && random.draw() % 5 != 0)
-                        kind = 2;
-                } else
-                    kind = 1;
+            } else if (wm < 0.3f) { // step 11: always 1 or 2
+                const bool spruce = wm > 0.2f && noise(0.001 * x + 8473.0, 0.001 * y + 9438.0) > 0.6f &&
+                                    random.draw() % 5 != 0;
+                kind = spruce ? 2 : 1;
             }
             if (kind == 2)
                 t += random.draw() % std::max(t / 2, 1);
@@ -667,7 +678,8 @@ void Terrain::treeGrid(Zone &zone, Random &random) const {
             if (y + s > y0 + 256)
                 y = y0 + 256 - s;
 
-            const float p = std::min(sat(1.2f * noiseAt(0x1f4, 0x1f8, 0.008, x, y)) + 0.2f * mo * mo + 0.02f, 1.f) + bonus;
+            // Step 13: moisture is read again at the tree's current position.
+            const float p = treeDensity(climate(x, y, &zone).moisture, sat(1.2f * noiseAt(0x1f4, 0x1f8, 0.008, x, y)), bonus);
             if ((float)random.draw() / 32767.f > p)
                 continue;
             if (!zone.contains(x, y))
@@ -738,7 +750,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                 if (here == LAKE_BED && above == AIR) { // §3.2: reeds
                     if (cl.warmth > 0.2f &&
                         std::fabs(floatArgNoise(0.05f * (float)x + 9843.f, 0.05f * (float)y + 8437.f)) > 0.5f) {
-                        if ((draw() & 7) == 0)
+                        if ((draw() & 7) == 0) // the flags word is set to exactly 4
                             zone.plants.push_back({x, y, zt, 0.09f, spin(), 22, 4});
                     }
                     continue;
@@ -768,12 +780,12 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                     Plant p{x, y, zt, 0.1f, (float)((draw() & 3) * 90)};
                     if (nA <= 0) {
                         p.kind = 7;
-                        p.flags = 4;
+                        p.flags |= 4;
                     } else {
                         p.kind = 5 + (draw() & 1);
                         if (p.kind == 5) {
                             p.scale = 0.075f;
-                            p.flags = 4;
+                            p.flags |= 4;
                         }
                     }
                     p.scale *= (float)draw() / 32767.f + 1.f;
@@ -786,7 +798,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                     Plant p{x, y, zt, 0.075f, (float)((draw() & 3) * 90)};
                     if (nA > 0) {
                         p.kind = 9;
-                        p.flags = 4;
+                        p.flags |= 4;
                     } else {
                         p.kind = 10;
                         p.scale = (float)(draw() * 0.02 / 32767.0 + 0.03);
@@ -812,12 +824,12 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                             else
                                 p.kind = fineDouble <= 0.5f ? 12 : 11;
                             if (p.kind == 2 || p.kind == 3)
-                                p.flags = 4;
+                                p.flags |= 4;
                             else if (p.kind == 11) {
-                                p.flags = 4;
+                                p.flags |= 4;
                                 p.scale = (float)draw() * 0.05f / 32767.f + 0.05f;
                             } else if (p.kind == 12) {
-                                p.flags = 4;
+                                p.flags |= 4;
                                 p.scale = (float)draw() * 0.02f / 32767.f + 0.1f;
                             }
                             if (here == GRASS || p.kind == 2 || p.kind == 3)
@@ -830,7 +842,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                         else
                             p.kind = fineDouble <= 0 ? 1 : 0;
                         if (p.kind == 2 || p.kind == 3 || p.kind == 4 || p.kind == 12)
-                            p.flags = 4;
+                            p.flags |= 4;
                         if (p.kind == 12)
                             p.scale = (float)draw() * 0.02f / 32767.f + 0.1f;
                         if (here == GRASS || p.kind == 2 || p.kind == 3 || p.kind == 4)
