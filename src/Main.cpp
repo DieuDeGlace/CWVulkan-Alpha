@@ -2754,6 +2754,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             motion.headPitch = npc.headPitch; // aim contract §3.7, drawn by head-pitch-and-pick §1
             motion.intent = npc.body.intent;
             motion.running = (npc.body.mode & 0x40) != 0;
+            motion.lens = (npc.body.mode & creatures::LENS) != 0; // the 0x400 pose override
             motion.dodgeMs = (float)npc.body.dodgeMs;
             motion.fighter = &npc.fighter;
             glm::dvec3 at = npc.body.blocks();
@@ -2998,6 +2999,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 motion.yawDegrees = drawnYaw;
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
+                motion.lens = (f.fighter.mode & creatures::LENS) != 0; // the 0x400 pose override
                 if (other.health() <= 0) { // particles §7.2: once, and only if it passes the view test
                     const float cull = other.appearance().box.z * (uint8_t(f.fighter.action) == 106 ? 3.f : 1.f);
                     if (shattered.insert(id).second && view.lightViewAccepts(centre, cull, scene.fogDistance))
@@ -3443,6 +3445,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 hud.mana = c.mana;
                 hud.charge = c.charge;
                 hud.stamina = player->body().stamina;
+                hud.lens = (c.mode & creatures::LENS) != 0; // rulings camera-lens-pan §2.1
                 // Screens §5.3: the pet's bars (its name from the pet item, else its species).
                 if (const creatures::Npc *pet = npcs.petOf(c)) {
                     hud.hasPet = true;

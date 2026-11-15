@@ -693,14 +693,14 @@ int main() {
         for (Npc &n : camp.npcs())
             if (n.fighter.id == prisoner) {
                 same(n.fighter.mode == n.body.mode && (n.fighter.mode & 0x400), 1,
-                     "quest activation publishes the captive's sitting flag to both state views");
+                     "quest activation publishes the captive's 0x400 (lens/pose) bit to both state views");
                 n.fighter.mode |= 0xa020;
             }
         same(camp.free(prisoner, {0, 0, 10}), rescue.id, "freed, it belongs to its quest");
         for (const Npc &n : camp.all())
             if (n.fighter.id == prisoner)
                 same(n.fighter.mode == n.body.mode && (n.fighter.mode & 0xa420) == 0xa020, 1,
-                     "freeing a captive clears only sitting and immediately publishes the full retained word");
+                     "freeing a captive clears only the 0x400 bit and immediately publishes the full retained word");
         same(camp.free(prisoner, {0, 0, 10}), 0, "and is no captive any more");
 
         quests::Quest champion = a;
@@ -1009,6 +1009,68 @@ int main() {
             npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
         same((npcs.all().front().body.mode & AIMING) == 0 && glm::length(npcs.all().front().body.intent) == 0, 1,
              "beyond 8 blocks it stops facing and stays put");
+    }
+
+    // Physics §2, §4.2, §4.4 on the NPC side of the world step: the step's action changes and
+    // yaw reach the creature, the unenlarged separation push, the skill fallback and equipment
+    // checks, and the landing thud only while a local player exists.
+    {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        const auto standing = [](uint64_t id, glm::dvec3 at) {
+            Npc n;
+            n.fighter.id = id, n.fighter.controller = 3, n.fighter.characterClass = 0x88;
+            n.fighter.health = maxHealth(n.fighter);
+            n.behaviour = 8; // stands still
+            n.body.place(at);
+            n.home = n.body.blocks();
+            return n;
+        };
+        Combatant me;
+        me.id = 1, me.health = maxHealth(me);
+        Body body;
+        body.place({60.5, 60.5, 1 + 1.08 + 0.01});
+        {
+            worldgen::Random random{3};
+            Npcs npcs{random};
+            Npc sitter = standing(900, {10.5, 10.5, 1 + 1.08 + 0.01});
+            sitter.fighter.action = 83;
+            sitter.fighter.level = 6, sitter.fighter.powerTier = 2;
+            sitter.fighter.mode = GLIDER | LANTERN;
+            sitter.body.intent = {80, 0, 0};
+            npcs.npcs().push_back(sitter);
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
+            const Npc &n = npcs.all().front();
+            same(n.fighter.action, 0, "intent ends an NPC's sitting (action 83) on the fighter");
+            same(n.body.skillFallback, 6 / 2 + 2 + 1, "an NPC's skill fallback is level / 2 + tier + 1");
+            same((n.fighter.mode & (GLIDER | LANTERN)) != 0, 0, "an NPC without glider or lantern loses both modes");
+        }
+        {
+            worldgen::Random random{3};
+            Npcs npcs{random};
+            npcs.npcs().push_back(standing(900, {10.5, 10.5, 1 + 1.08 + 0.01}));
+            npcs.npcs().push_back(standing(901, {11.0, 10.5, 1 + 1.08 + 0.01}));
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor);
+            // 5 · s′x / sx = 5 blocks/s for 16 ms (the enlarged s′x would give 0.163).
+            same(10.5 - npcs.all().front().body.blocks().x, 5 * 0.016, "NPC separation scales by the unenlarged box",
+                 2e-3);
+        }
+        for (const bool local : {false, true}) {
+            worldgen::Random random{3};
+            Npcs npcs{random};
+            Npc falling = standing(900, {10.5, 10.5, 1 + 1.08 + 0.05});
+            falling.body.velocity = {0, 0, -10};
+            npcs.npcs().push_back(falling);
+            const NpcFrame f = npcs.step(16, map, {{me, body, 0, me.actionMs, true, false, local}}, 43200000, 0, floor);
+            int thuds = 0;
+            for (const SoundEvent &s : f.sounds)
+                if (s.sound == 32 && s.volume == 0.5f && s.pitch >= 1 && s.pitch <= 1.2f)
+                    thuds++;
+            same(thuds, local ? 1 : 0,
+                 local ? "an NPC landing hard thuds while a local player exists" : "no NPC thud without a local player");
+        }
     }
 
     // The shared angle step: within a quarter turn it reaches the target; beyond it folds
@@ -1880,8 +1942,9 @@ int main() {
         for (int i = 0; i < 5; i++)
             step(still, 16, flat, rug);
         same(rugAxes == 4 && (still.contact & ON_OBJECT) != 0, 1, "a z cell hit still tests the statics");
-        const glm::vec3 push = separation({0.96f, 0.96f, 2.16f}, {1.96f, 1.96f, 2.16f}, {1, 0, 0}, {0.5, 0, 0}, false);
-        same(push.x, 5 * 1.96 / 0.96, "pushed away at 5 s'x/sx blocks a second", 1e-4);
+        const int64_t mine[3] = {65536, 0, 0}, theirs[3] = {32768, 0, 0};
+        const glm::vec3 push = separationPush({0.96f, 0.96f, 2.16f}, mine, {0.96f, 0.96f, 2.16f}, true, theirs, false);
+        same(push.x, 5 * 0.96 / 0.96, "pushed away at 5 s'x/sx blocks a second (unenlarged s')", 1e-4);
     }
     // Physics §3.3: a dash (action 76) drives 20 a step along the facing, capped at 60, only
     // between P1 and P1 + X; §3.2: a pet's base speed is 12.

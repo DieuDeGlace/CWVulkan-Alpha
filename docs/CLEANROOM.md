@@ -2747,3 +2747,24 @@ Not modelled: the attachment branches; 3x3 static sectors; the listed-screen foc
 per-screen orbit; NPC-side copies of the new step outputs (to follow); the second per-region block;
 spawn activation gating for unnamed worlds.
 The private player diagnostic expects the lantern bit cleared without a lantern equipped.
+## Camera, lens and pan ruling; NPC physics follow-up; clean-room page (2026-11-15)
+
+A fresh source-only author settled the three conflicts the physics/camera batch reported, in
+`alpha-rulings-camera-lens-pan.md` (3DFB4512...143C), read whole by a fresh implementer:
+camera collision corners are +/-0.25 block from the first eye point (the camera-follow contract is
+right); mode bit 0x400 is the lens (30 degree field of view, zoom crosshair, a pose override and a
+skill-scaled meter), cleared by intent, with no native setter, and is not "sitting" (native sitting
+is action 83); the world map pans by (dx, -dy, 0) x 4/s rotated by yaw while the middle button is
+held, and the half-rate drag rotates the customization-bench preview (both already matched).
+Engine changes: the 0x400 identifiers are renamed to the lens meaning and the dead sitting field
+removed; the lens pose override is drawn for the player, NPCs and remote creatures (quest
+prisoners now show it); the HUD shows the zoom crosshair while the bit is set; the stealth meter
+reads the bit; the engine setters (ability 99, the engine-quest prisoner) are labelled engine
+choices. NPC physics: `separationPush` with the unenlarged scale, the skill fallback, glider and
+lantern equipment flags, the step's action changes copied back (intent ends 83/84, 81 to 83, dodge
+cancel), the spin yaw, and the thud (one draw, sound 32) and roll (sound 26) for NPCs while a local
+player exists - a random-draw-order change. Not modelled: the game byte +0x14 crosshair gate; the
+meter's action-99 skill term and action-79 branch.
+`docs/clean-room-specification.html` is a standalone page summarising the clean-room process,
+interoperability facts, functional requirements, references and conformance tests; where it and
+the repository documents differ, the documents win.

@@ -362,6 +362,7 @@ void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, floa
     motion.running = (state.mode & 0x40) != 0;
     motion.climbing = (state.mode & creatures::CLIMB) && (state.contact & creatures::ON_WALL);
     motion.gliding = (state.mode & creatures::GLIDER) != 0;
+    motion.lens = (state.mode & creatures::LENS) != 0;
     motion.dodgeMs = (float)state.dodgeMs;
     motion.fighter = &fighter;
     glm::dvec3 at = state.blocks();

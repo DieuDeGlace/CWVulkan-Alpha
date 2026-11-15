@@ -204,12 +204,6 @@ glm::vec3 separationPush(glm::vec3 size, const int64_t self[3], glm::vec3 other,
     return push(size, self, box, other.x, them, stunned);
 }
 
-glm::vec3 separation(glm::vec3 size, glm::vec3 other, glm::dvec3 self, glm::dvec3 them, bool stunned) {
-    const int64_t mine[3] = {fixedOf(self.x), fixedOf(self.y), fixedOf(self.z)};
-    const int64_t theirs[3] = {fixedOf(them.x), fixedOf(them.y), fixedOf(them.z)};
-    return push(size, mine, other, other.x, theirs, stunned);
-}
-
 void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects) {
     const float dts = (float)dt * 0.001f;
     auto blocks = [&](int32_t x, int32_t y, int32_t z) {
@@ -226,8 +220,8 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // §2 item 2: the ground slam drives down while P1 < time < duration and time < P1 + X.
     if (b.action == 54 && t > P1 && t < b.durationMs && t < P1 + X)
         b.velocity.z = -60;
-    // §2 item 4: any action folds the glider; any intent ends the lens mode and sitting or
-    // sleeping.
+    // §2 item 4: any action folds the glider; any intent clears the lens bit (0x400) and,
+    // separately, ends sitting or sleeping (actions 83, 84).
     if (b.action != 0)
         b.mode &= ~GLIDER;
     if (intending) {

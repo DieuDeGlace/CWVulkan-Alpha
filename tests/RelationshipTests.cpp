@@ -199,6 +199,9 @@ int main() {
         Npc npc = actor(9);
         npc.fighter.mode = 0xa620;
         npc.body.mode = CLIMB; // stale physics state must not replace the copied word
+        // Physics §2 item 18.2 clears 0x200 on any creature without a lantern; this one holds
+        // one, so the copied word's 0x200 bit is retained.
+        npc.fighter.equipment[10].type = 24;
         world.npcs().push_back(npc);
         Combatant peer;
         peer.id = 1;

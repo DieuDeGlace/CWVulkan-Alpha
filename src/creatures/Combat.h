@@ -142,7 +142,6 @@ struct Combatant {
     float mana = 0;       // field 28, 0..1 (§11.2)
     float blockGauge = 0; // field 29
     float stealth = 0;    // 0..1 (§11.3)
-    bool sitting = false; // mode 0x400
     bool hitLanded = false; // common target-processing marker; set before hit admission
     bool criticalLatched = false; // consumed type-11 common-hit effect, independent of buff lifetime
     int32_t slowMs = 0, hasteMs = 0; // fields 18, 19, signed native counters

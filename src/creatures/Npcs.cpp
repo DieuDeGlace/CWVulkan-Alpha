@@ -305,8 +305,10 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     npc.path.columns = routeColumns;
     npc.path.activate = routeActivate;
     if (s.questRole == 2) { // a quest's prisoner sits tied up until freed
+        // Engine quest choice: native sitting is action 83; the prisoner also carries the
+        // 0x400 (lens) bit for its pose override (rulings camera-lens-pan §2, no native setter).
         c.action = 83;
-        c.mode |= 0x400;
+        c.mode |= LENS;
     }
     npc.body.mode = c.mode;
     appendNpc(std::move(npc));
@@ -409,7 +411,7 @@ uint32_t Npcs::free(uint64_t id, glm::dvec3 home) {
         if (n.fighter.id == id && n.questRole == 2 && n.fighter.controller == 6 && n.fighter.health > 0) {
             n.fighter.controller = 3;
             n.fighter.action = 0, n.fighter.actionMs = 0;
-            n.fighter.mode &= ~0x400u;
+            n.fighter.mode &= ~uint32_t(LENS);
             n.body.mode = n.fighter.mode;
             n.body.intent = {0, 0, 1}; // (stands up)
             n.behaviour = 2;           // walks off toward home along a one-point route
@@ -914,16 +916,6 @@ bool Npcs::hostileInContact(const Combatant &fighter, const Body &body) const {
         if (o.fighter.health > 0 && hostilityTest(fighter, o.fighter) && inContact(body.size, body.blocks(), o.body.size, o.body.blocks()))
             return true;
     return false;
-}
-
-glm::vec3 Npcs::pushOnPlayer(const Body &player) const {
-    glm::vec3 total(0);
-    for (const Npc &o : list)
-        if (o.fighter.health > 0 && (o.fighter.controller == 1 || o.fighter.controller == 6)) {
-            const glm::vec3 grown = o.body.size + (o.fighter.controller == 6 ? glm::vec3(0) : glm::vec3(1, 1, 0));
-            total += separation(player.size, grown, player.blocks(), o.body.blocks(), false);
-        }
-    return total;
 }
 
 void Npcs::removeTargets(const std::set<std::pair<int32_t, int32_t>> &zones) {
@@ -2398,6 +2390,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         ~ActorPassScope() { active = false; }
     } actorPassScope{actorPassActive};
     actorPassActive = true;
+    // Physics §4.2, §2 item 18.5: game +0xb8, whether a local player exists (sound gates).
+    const bool localPlayer = std::any_of(players.begin(), players.end(), [](const PlayerView &p) { return p.local; });
     for (auto entry = actors.begin(); entry != actors.end(); ++entry) {
         const ActorEntry actor = entry->second;
         if (actor.player) {
@@ -2496,12 +2490,14 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         });
         npc.body.mode = c.mode;
         // Physics §4.4: overlapping creatures push each other apart (not bombs, nor creatures
-        // in actions 83 and 84); boxes grow by (1, 1, 0) except inert ones.
+        // in actions 83 and 84). The overlap uses the other box grown by (1, 1, 0) unless it is
+        // kind 6; the push scales by the other's unenlarged x, and by 0.1 while stunned.
         if (c.controller != 6 && c.action != 83 && c.action != 84) {
             npc.body.separate = glm::vec3(0);
+            const bool stunned = c.hitStun > 0;
             const auto push = [&](const Body &o, uint8_t kind) {
-                const glm::vec3 grown = o.size + (kind == 6 ? glm::vec3(0) : glm::vec3(1, 1, 0));
-                npc.body.separate += separation(npc.body.size, grown, npc.body.blocks(), o.blocks(), c.hitStun > 0);
+                npc.body.separate +=
+                    separationPush(npc.body.size, npc.body.position, o.size, kind != 6, o.position, stunned);
             };
             for (const Npc &o : list)
                 if (&o != &npc && o.fighter.health > 0)
@@ -2519,7 +2515,13 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             b.controller = c.controller, b.type = c.type, b.appearanceFlags = npc.looks.flags;
             b.stunMs = c.hitStun;
             b.yaw = npc.yaw;
-            b.haste = c.hasBuff(12) ? 1 + skillFactor(c.level / 2 + c.powerTier + 1) : 1.f;
+            // §3.2 sneak and haste: a non-player's skill is obj +0x190 / 2 + tier + 1.
+            b.skillFallback = c.level / 2 + c.powerTier + 1;
+            b.haste = c.hasBuff(12) ? 1 + skillFactor(b.skillFallback) : 1.f;
+            // §2 item 18.2: every creature keeps the glider (Special slot, type 23 subtype 0) and
+            // the lantern (slot 10, type 24) modes only while they are equipped.
+            b.gliderEquipped = c.equipment[11].type == 23 && c.equipment[11].subtype == 0;
+            b.lanternEquipped = c.equipment[10].type == 24;
             b.slowed = c.slowMs > 0, b.hastened = c.hasteMs > 0;
             b.targetInContact = false;
             if (lunges(c.action, c.actionMs)) {
@@ -2540,17 +2542,33 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.ignoredStatics = npc.path.searching() ? &npc.path.ignored : nullptr; // (path search §4.1 step 3)
         npc.body.pathActive = !npc.path.empty();
         npc.body.obstacles = obstacles, npc.body.key = c.id; // world objects §3
+        const int32_t actionSent = npc.body.action;
         worldStep(npc.body, (int32_t)dtMs, block, objects);
+        // Physics §2 item 4, §3.2: the step's own action changes (intent ends 83/84, 81 becomes
+        // 83, the dodge cancel) reach the creature; the spin (action 72) turns it (§3.3). The
+        // lunge's conversion above already wrote the fighter, so only a change made by the step
+        // is copied back.
+        if (npc.body.action != actionSent)
+            c.action = npc.body.action;
+        npc.yaw = npc.body.yaw;
         if (npc.objectKey != 0 && placeOnObject) // airship steering §3
             placeOnObject(npc.objectKey, npc.body, npc.yaw);
         npc.path.state.counter = std::bit_cast<int32_t>(uint32_t(npc.path.state.counter) + uint32_t(milliseconds));
         c.mode = npc.body.mode;
         advanceCharge(c, dtMs);
         npc.body.mode = c.mode;
+        // Physics §4.2 step 1 and §2 item 18.5: the landing thud (sound 32, one draw for its
+        // pitch) and the dodge roll (sound 26) play only while a local player exists. The thud
+        // comes before the splash, as the move comes before §5.3 in the step.
+        if (std::exchange(npc.body.thudded, false) && localPlayer)
+            frame.sounds.push_back({npc.body.blocks(), 32, 1 + 0.2f * (float)draw() / 32767.f, 0.5f});
+        const bool rolled = std::exchange(npc.body.rolled, false);
         if (std::exchange(npc.body.splashed, false)) { // physics §5.3
             frame.bursts.push_back(splashBurst(npc.body.blocks()));
             frame.sounds.push_back({npc.body.blocks(), 31, 0.9f + (float)draw() / 32767.f, 1});
         }
+        if (rolled && localPlayer)
+            frame.sounds.push_back({npc.body.blocks(), 26, 1, 1});
         // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement.
         faceAfterStep(npc.yaw, npc.headPitch, npc.drawnLook, npc.body, c, before, milliseconds);
         // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher

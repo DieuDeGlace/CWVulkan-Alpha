@@ -356,8 +356,6 @@ class Npcs {
     std::function<void(Npc &, const Seat &)> sit;
     // Physics §3.3: whether a hostile creature is in contact range of `fighter` (its lunge stops).
     bool hostileInContact(const Combatant &fighter, const Body &body) const;
-    // Physics §4.4: the push the creatures of kinds 1 and 6 give a player's body.
-    glm::vec3 pushOnPlayer(const Body &player) const;
     // Pets and bombs §3: a bomb (type 144, controller 6) at the placing player's position
     // (`at`, blocks, the box centre), of the bomb item's level, with the new-creature health of
     // 500. Each step its health is held to 100 P(L) and burns by 0.025 per millisecond; it

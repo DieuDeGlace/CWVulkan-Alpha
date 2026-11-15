@@ -37,6 +37,9 @@ struct HudState {
     int32_t experience = 0, experienceNeeded = 1;
     float mana = 0, charge = 0, stamina = 1;
     std::u16string prompt; // interaction §3: "[R] Talk", "[R] Open", ... under the crosshair
+    // Rulings camera-lens-pan §2.1: the local player's mode bit 0x400 swaps `crosshair` for
+    // `zoomcrosshair`.
+    bool lens = false;
     // §5.3: the player's pet, when there is one: its bars and the riding bar's icons.
     bool hasPet = false;
     std::string petName, petSpecies;
@@ -363,7 +366,7 @@ class Interface {
     Bar petLifebar, petExperiencebar; // §5.3: clones for the pet
     std::optional<plasma::Document> ridingbar;
     Bar creatureBars[4]; // §5.4: enemylifebar, friendlifebar, staticlifebar, neutrallifebar (:small)
-    std::optional<plasma::Document> crosshair;
+    std::optional<plasma::Document> crosshair, zoomCrosshair;
     std::vector<plasma::Document> menuButtons;
     // §5.5: six ability buttons and the quick-item button, with the cooldown overlay's rest
     // deformation, and per ability id the texture ids of its icon in colour and in grey (the

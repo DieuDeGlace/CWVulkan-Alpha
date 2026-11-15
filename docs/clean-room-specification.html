@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AlphaVulkan Clean Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column in four parts (interop facts, functional spec, references, conformance tests)
+   plus a process appendix, with a sticky contents rail on wide screens. Same family as the CubeVulkan page.
+   Colour encodes role: amber = source-side author, teal = implementer/verifier, slate ink = shared. */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --ink: #1b2230; --muted: #5b6577; --rule: #d9dde5;
+  --accent: #2f4a8a; --author: #9a5b00; --author-bg: #fbf1e1; --impl: #0f6b63; --impl-bg: #e3f3f1;
+  --stop: #a3262e; --stop-bg: #fbe8e9; --code-bg: #eef0f4;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --surface: #1a2029; --ink: #e3e7ee; --muted: #9aa4b5; --rule: #2e3644;
+    --accent: #8fa8e6; --author: #e7a94a; --author-bg: #2c2215; --impl: #5cc4b8; --impl-bg: #132a28;
+    --stop: #f0868c; --stop-bg: #2e1719; --code-bg: #222a35; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1a2029; --ink: #e3e7ee; --muted: #9aa4b5; --rule: #2e3644;
+  --accent: #8fa8e6; --author: #e7a94a; --author-bg: #2c2215; --impl: #5cc4b8; --impl-bg: #132a28;
+  --stop: #f0868c; --stop-bg: #2e1719; --code-bg: #222a35; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+.page { max-width: 1140px; margin: 0 auto; display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 900px) { .page { grid-template-columns: minmax(0, 1fr); gap: 24px; } .rail { position: static !important; max-height: none !important; } }
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; max-height: calc(100vh - 48px); overflow-y: auto; }
+.rail .label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+.rail .label:first-child { margin-top: 0; }
+.rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rail a { color: var(--muted); text-decoration: none; display: flex; gap: 8px; padding: 2px 0; }
+.rail a .n { font-family: var(--f-mono); font-size: 12px; color: var(--accent); opacity: .7; padding-top: 2px; min-width: 22px; }
+.rail a:hover, .rail a:focus-visible { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+main { min-width: 0; }
+header.doc { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 8px; }
+.docid { font-family: var(--f-mono); font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 20px; }
+h1 { font-family: var(--f-display); font-weight: 600; font-size: clamp(32px, 5vw, 44px); line-height: 1.1; margin: 12px 0 12px; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { font-size: 18px; color: var(--muted); max-width: 68ch; margin: 0 0 16px; }
+.parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+@media (max-width: 760px) { .parts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.parts a { display: block; text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.parts a:hover { border-color: var(--accent); }
+.parts .p { font-family: var(--f-mono); font-size: 12px; color: var(--accent); }
+.parts .t { font-family: var(--f-display); font-weight: 600; font-size: 16px; line-height: 1.25; display: block; margin-top: 2px; }
+.part { margin-top: 56px; padding-top: 12px; border-top: 2px solid var(--ink); }
+.part .eyebrow { font-family: var(--f-mono); font-size: 13px; color: var(--accent); }
+.part h2.ptitle { font-family: var(--f-display); font-weight: 600; font-size: 30px; margin: 4px 0 6px; text-wrap: balance; }
+.part p.pintro { color: var(--muted); max-width: 70ch; }
+section { padding-top: 34px; scroll-margin-top: 24px; }
+h3 { font-family: var(--f-display); font-weight: 600; font-size: 23px; line-height: 1.2; margin: 0 0 12px; text-wrap: balance; display: flex; gap: 12px; align-items: baseline; }
+h3 .num { font-family: var(--f-mono); font-weight: 500; font-size: 14px; color: var(--accent); }
+p, li { max-width: 70ch; }
+p { margin: 0 0 12px; }
+ul { padding-left: 22px; margin: 0 0 12px; }
+li { margin-bottom: 6px; }
+code, .mono { font-family: var(--f-mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.rule-box { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; margin: 16px 0; max-width: 70ch; }
+.rule-box.stop { border-color: var(--stop); background: var(--stop-bg); padding: 12px 16px; border-radius: 0 4px 4px 0; }
+.must { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; font-weight: 600; }
+.table-wrap { overflow-x: auto; margin: 14px 0 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--f-display); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: 12px; color: var(--muted); background: var(--code-bg); }
+td.mono, td .mono { font-family: var(--f-mono); font-size: 13px; background: none; padding: 9px 12px; }
+td .mono { padding: 0; }
+td.nowrap { white-space: nowrap; }
+.yes { color: var(--impl); font-weight: 600; }
+.no { color: var(--stop); font-weight: 600; }
+.lead { color: var(--author); font-weight: 600; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 14px 0; }
+@media (max-width: 640px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.pair > div { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.pair h5 { margin: 0 0 8px; font-family: var(--f-display); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; }
+.pair .ok h5 { color: var(--impl); }
+.pair .bad h5 { color: var(--stop); }
+.pair ul { margin: 0; padding-left: 18px; font-size: 14px; }
+pre.block { font-family: var(--f-mono); font-size: 12.5px; line-height: 1.55; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; }
+pre.block .k { color: var(--accent); }
+.wall { display: grid; grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr); margin: 18px 0 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); overflow: hidden; }
+.side { padding: 16px 18px; min-width: 0; }
+.side h5 { font-family: var(--f-display); font-size: 17px; margin: 0 0 10px; }
+.side.author { background: var(--author-bg); } .side.author h5 { color: var(--author); }
+.side.impl { background: var(--impl-bg); } .side.impl h5 { color: var(--impl); }
+.side dl { margin: 0; display: grid; gap: 10px; font-size: 14px; }
+.side dt { font-family: var(--f-display); text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; color: var(--muted); }
+.side dd { margin: 0; }
+.gap { display: flex; align-items: center; justify-content: center; background: repeating-linear-gradient(135deg, var(--surface) 0 6px, var(--code-bg) 6px 12px); border-inline: 1px solid var(--rule); padding: 10px 4px; }
+.gap span { writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--f-display); text-transform: uppercase; letter-spacing: .12em; font-size: 12px; color: var(--muted); }
+@media (max-width: 640px) { .wall { grid-template-columns: minmax(0, 1fr); } .gap { padding: 8px; border-inline: 0; border-block: 1px solid var(--rule); } .gap span { writing-mode: horizontal-tb; transform: none; } }
+ol.life { list-style: none; padding: 0; margin: 14px 0; counter-reset: life; }
+ol.life > li { counter-increment: life; display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; max-width: none; margin: 0; padding: 10px 0; border-top: 1px solid var(--rule); }
+ol.life > li::before { content: counter(life); font-family: var(--f-mono); font-size: 13px; font-weight: 500; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid currentColor; }
+ol.life > li.a::before { color: var(--author); } ol.life > li.i::before { color: var(--impl); } ol.life > li.s::before { color: var(--accent); }
+.life .t { font-family: var(--f-display); font-weight: 600; font-size: 16px; }
+.life .t small { font-family: var(--f-body); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; margin-left: 8px; }
+li.a .t small { color: var(--author); } li.i .t small { color: var(--impl); } li.s .t small { color: var(--accent); }
+.life p { margin: 3px 0 0; font-size: 15px; }
+.stats { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 12px 0; font-size: 14px; color: var(--muted); }
+.stats b { font-family: var(--f-display); font-size: 24px; color: var(--ink); font-variant-numeric: tabular-nums; display: block; line-height: 1.1; }
+.status { display: inline-block; font-family: var(--f-display); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; border-radius: 3px; padding: 1px 6px; border: 1px solid currentColor; white-space: nowrap; }
+.status.done { color: var(--impl); } .status.partial { color: var(--author); } .status.open { color: var(--stop); }
+footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+</head>
+<body>
+<div class="page">
+  <nav class="rail" aria-label="Contents">
+    <div class="label">Part A · Interoperability</div>
+    <ul>
+      <li><a href="#copyable"><span class="n">A1</span>What may be copied</a></li>
+      <li><a href="#formats"><span class="n">A2</span>File formats</a></li>
+      <li><a href="#protocol"><span class="n">A3</span>Network protocol</a></li>
+      <li><a href="#constants"><span class="n">A4</span>Constants and magic numbers</a></li>
+    </ul>
+    <div class="label">Part B · Functional spec</div>
+    <ul>
+      <li><a href="#functional"><span class="n">B1</span>Subsystem requirements</a></li>
+      <li><a href="#extensions"><span class="n">B2</span>Extensions and engine choices</a></li>
+    </ul>
+    <div class="label">Part C · References</div>
+    <ul>
+      <li><a href="#evidence"><span class="n">C1</span>Evidence sources</a></li>
+      <li><a href="#library"><span class="n">C2</span>Specification library</a></li>
+      <li><a href="#thirdparty"><span class="n">C3</span>Third-party and provenance</a></li>
+    </ul>
+    <div class="label">Part D · Conformance tests</div>
+    <ul>
+      <li><a href="#testlayers"><span class="n">D1</span>Test layers</a></li>
+      <li><a href="#gate"><span class="n">D2</span>Checkpoint gate</a></li>
+    </ul>
+    <div class="label">Appendix · Process</div>
+    <ul>
+      <li><a href="#roles"><span class="n">E1</span>Roles and the wall</a></li>
+      <li><a href="#lifecycle"><span class="n">E2</span>Feature lifecycle</a></li>
+      <li><a href="#contract"><span class="n">E3</span>Contracts and records</a></li>
+      <li><a href="#exposure"><span class="n">E4</span>Exposure-stop rule</a></li>
+      <li><a href="#publish"><span class="n">E5</span>Publication</a></li>
+      <li><a href="#release"><span class="n">E6</span>Release gates</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <header class="doc">
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 1 · 2026-11-15</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <h1>AlphaVulkan Clean-Room Implementation</h1>
+      <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
+      <div class="parts">
+        <a href="#copyable"><span class="p">Part A</span><span class="t">Interoperability facts</span></a>
+        <a href="#functional"><span class="p">Part B</span><span class="t">Functional specification</span></a>
+        <a href="#evidence"><span class="p">Part C</span><span class="t">Referenced material</span></a>
+        <a href="#testlayers"><span class="p">Part D</span><span class="t">Conformance tests</span></a>
+      </div>
+    </header>
+
+    <!-- PART A -->
+    <div class="part" id="part-a">
+      <div class="eyebrow">Part A</div>
+      <h2 class="ptitle">Interoperability facts</h2>
+      <p class="pintro">Facts the engine needs to read the player's Alpha installation and saves, talk to original Alpha clients and servers, and behave the same. They are functional facts rather than creative expression, so the contracts state them as plain values, each cited by RVA in the Alpha image it comes from.</p>
+    </div>
+
+    <section id="copyable">
+      <h3><span class="num">A1</span>What may be copied</h3>
+      <div class="pair">
+        <div class="ok">
+          <h5>Stated directly in specs and code</h5>
+          <ul>
+            <li>File-format layouts: store schemas, record fields, widths, versions and encodings</li>
+            <li>Key derivations and unscrambling tables needed to open the player's own files</li>
+            <li>Packet ids, handshake codes, byte layouts, the port and section order</li>
+            <li>Constants, thresholds, timings, divisors and magic numbers, with their exact bit patterns</li>
+            <li>Record offsets and identifiers that saves or packets carry</li>
+            <li>The order of decisions and random draws, where generated worlds or combat must match</li>
+            <li>Dictionary keys, store keys and file names the game itself looks up</li>
+          </ul>
+        </div>
+        <div class="bad">
+          <h5>Never copied</h5>
+          <ul>
+            <li>Code, pseudocode or decompiler output, or its structure and expression</li>
+            <li>Names a decompiler or the Infinite-Cubes reconstruction invented</li>
+            <li>Game content: models, sounds, music, pictures, dictionary text, item and creature tables. These are read from the player's installation at run time.</li>
+            <li>The player's saves, captures and recordings</li>
+          </ul>
+        </div>
+      </div>
+      <div class="rule-box"><span class="must">Rule of thumb</span><br>A value that a save file, a packet or a matching result depends on is a fact and may be written down. Anything that is the game's content, or how its programmers chose to write it, stays out. Where a table is game content (for example the 2,857 voxel models or the two dictionaries), the contract says where the game finds it and the engine reads it from the owner's install through the setup tool.</div>
+    </section>
+
+    <section id="formats">
+      <h3><span class="num">A2</span>File formats</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Format</th><th>Key facts</th><th>Spec</th></tr></thead>
+          <tbody>
+            <tr><td><b>Data stores</b><br><code>data1.db</code> … <code>data4.db</code></td>
+              <td>Four SQLite 3 databases, each with one table <span class="mono">blobs(key TEXT PRIMARY KEY, value BLOB)</span>. Keys are asset file names; values are the asset bytes in scrambled form, undone by a 44-entry exchange walk. data1 holds 2,857 <code>.cub</code> voxel models, data2 93 sounds and music (unscrambled content is RIFF/WAVE), data3 104 interface pictures (<code>.png</code>), data4 the dictionaries <code>dict_en.xml</code> and <code>dict_de.xml</code>.</td>
+              <td class="mono">alpha-data-stores</td></tr>
+            <tr><td><b>Voxel models</b> <code>.cub</code></td>
+              <td>A 12-byte header (x, y, z sizes) then one colour triple per voxel, x fastest. Read only; no model is redistributed. With the key-colour flag, pure red, green and blue voxels are markers rather than drawn.</td>
+              <td class="mono">alpha-data-stores<br>alpha-creatures-models</td></tr>
+            <tr><td><b>Plasma <code>.plx</code></b><br>gui, help</td>
+              <td>A tagged-chunk stream: <span class="mono">PlasmaGraphics</span> header (format version 1), then a 14-byte <span class="mono">Seal</span>. From the seal on, every name definition is scrambled: output position (i + r) mod n takes input[i] − k[d mod 8], with r = low32(K) mod n.</td>
+              <td class="mono">alpha-ui-plasma</td></tr>
+            <tr><td><b>Plasma key</b></td>
+              <td>K = 64-bit hash: start <span class="mono">0x0003FFFFFFFFFFE5</span>, then <span class="mono">h = h×31 + byte</span> over <span class="mono">PlasmaXGraphics</span>, giving <span class="mono">0xFB3A260B5EC7CD5C</span>. A file is accepted under the first known key whose seal reads <span class="mono">PlasmaGraphics</span>.</td>
+              <td class="mono">alpha-ui-plasma §2.2</td></tr>
+            <tr><td><b>Saves</b><br><code>Save/characters.db</code>, <code>worlds.db</code>,<br><code>world_&lt;name&gt;.db</code>, <code>map_&lt;name&gt;.db</code></td>
+              <td>SQLite with the same single <span class="mono">blobs</span> table, written by update-if-exists-else-insert; <span class="mono">CREATE TABLE</span> runs on every open and its failure is ignored. Records are zlib one-shot streams (zlib 1.2.3), inflated in 128,000-byte steps, each carrying a format version word of 1. Character list: <span class="mono">num</span>, then keys <span class="mono">0…num−1</span>. The server's world is <code>Save/world_server_&lt;seed&gt;.db</code>. Readers are truncation-tolerant.</td>
+              <td class="mono">alpha-saves</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="protocol">
+      <h3><span class="num">A3</span>Network protocol</h3>
+      <p>TCP over IPv4 on the fixed port <span class="mono">12345</span>; neither image has a datagram path or a port setting. Every message starts with a <span class="mono">u32</span> id, values little-endian. Handshake: the server sends <span class="mono">17</span>, the client answers with protocol version <span class="mono">3</span>, the server replies <span class="mono">16</span> (accepted, then the player id, a creature record and packet 15 with the seed) or <span class="mono">3</span> (wrong version). The "server full" reply <span class="mono">18</span> exists but can never be sent by the original server.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Id</th><th>Packet</th><th>Direction</th><th>Body</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">0</td><td>Creature update</td><td>both</td><td><span class="mono">u32</span> length + zlib(u64 id, creature delta); a length of 0 closes the connection</td></tr>
+            <tr><td class="mono">1</td><td>Creature batch</td><td>server → client</td><td>i32 count, then u64 id, u64 mask and fields, uncompressed (understood, not sent)</td></tr>
+            <tr><td class="mono">2</td><td>End of creature batch</td><td>server → client</td><td>empty; unlisted creatures are deleted</td></tr>
+            <tr><td class="mono">3</td><td>Static objects</td><td>server → client</td><td>u32 count × 120 bytes (understood, not sent in game)</td></tr>
+            <tr><td class="mono">4</td><td>World update</td><td>server → client</td><td><span class="mono">u32</span> length + zlib of 13 sections</td></tr>
+            <tr><td class="mono">5</td><td>Clock</td><td>server → client</td><td>u32 day, u32 time of day in ms</td></tr>
+            <tr><td class="mono">6 · 7 · 8 · 9</td><td>Item · hit · buff event · shoot</td><td>client → server</td><td>fixed records: 300, 72, 40 and 112 bytes</td></tr>
+            <tr><td class="mono">10</td><td>Chat</td><td>both</td><td>i32 n + UTF-16 units (from the server, prefixed with the sender's u64 id)</td></tr>
+            <tr><td class="mono">11 · 12</td><td>Zone request · map region request</td><td>client → server</td><td>i32 x, i32 y</td></tr>
+            <tr><td class="mono">15</td><td>World seed</td><td>server → client</td><td>u32 seed (handshake only)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Creature deltas carry a 64-bit field mask over 48 fields; a field is sent when its typed value differs from the record last listed to that receiver. Senders pace each pass against one shared 20 ms timestamp. Full layouts are in <span class="mono">alpha-net-packets</span>, <span class="mono">alpha-net-transport</span> and <span class="mono">alpha-net-server</span>.</p>
+    </section>
+
+    <section id="constants">
+      <h3><span class="num">A4</span>Constants and magic numbers</h3>
+      <p>A sample of the kind of values the contracts carry. Each is quoted with its RVA in its contract.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Value</th><th>Meaning</th><th>Spec</th></tr></thead>
+          <tbody>
+            <tr><td class="mono nowrap">0xFB3A260B5EC7CD5C</td><td>Plasma document key for <span class="mono">PlasmaXGraphics</span></td><td class="mono">alpha-ui-plasma</td></tr>
+            <tr><td class="mono nowrap">12345 · 3</td><td>Fixed TCP port · protocol version</td><td class="mono">alpha-net-transport</td></tr>
+            <tr><td class="mono nowrap">65536</td><td>Fixed-point positions: one block is 2<sup>16</sup> units; block index truncates, one lower when negative</td><td class="mono">alpha-physics-camera</td></tr>
+            <tr><td class="mono nowrap">20 ms</td><td>Largest world-step piece; also the sender pacing period</td><td class="mono">alpha-physics-camera</td></tr>
+            <tr><td class="mono nowrap">86,400,000 · ×10 / ×100</td><td>Day length in ms (rolls over only above it) · clock rate, ×100 while a living player-side creature is in action 84</td><td class="mono">alpha-server-buff-update-admission</td></tr>
+            <tr><td class="mono nowrap">srand(123)</td><td>The world constructor's seeding before at least 77 draws</td><td class="mono">alpha-net-server</td></tr>
+            <tr><td class="mono nowrap">(8,396,928, 8,396,928, 0)</td><td>Join spawn point in blocks (×65536, truncated)</td><td class="mono">alpha-net-server</td></tr>
+            <tr><td class="mono nowrap">40,000</td><td>Squared listing distance for burst, sound and NPC sections</td><td class="mono">alpha-net-server</td></tr>
+            <tr><td class="mono nowrap">200 ms</td><td>Trap hit gate and beam repeat period</td><td class="mono">alpha-tick-period-rulings</td></tr>
+            <tr><td class="mono nowrap">0x3F75C290</td><td>Appearance box width 0.96, one ulp above the nearest float</td><td class="mono">alpha-rulings-formation-angle-box</td></tr>
+            <tr><td class="mono nowrap">0.015 per ms</td><td>Remote-creature drawn-pose smoothing rate</td><td class="mono">alpha-remote-creature-interpolation</td></tr>
+            <tr><td class="mono nowrap">×exp(−0.01·dt)</td><td>Head-pitch decay each step, for every creature</td><td class="mono">alpha-rulings-walk-flag-pitch</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PART B -->
+    <div class="part" id="part-b">
+      <div class="eyebrow">Part B</div>
+      <h2 class="ptitle">Functional specification</h2>
+      <p class="pintro">What the engine must do, area by area. Each requirement is defined in detail by the contracts listed beside it, which are the authority. The status reflects the project's own checkpoint records; partial parity is never described as a completed Alpha replacement.</p>
+    </div>
+
+    <section id="functional">
+      <h3><span class="num">B1</span>Subsystem requirements</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>The engine must</th><th>Governing specs</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><b>World generation</b></td><td>Produce the same regions, terrain, caves, structures, dungeons, vegetation, items and creatures as Alpha from the same seed and zone, in the same random-draw order.</td><td class="mono">alpha-worldgen-*, alpha-spawn-objects, alpha-open-points-*</td><td><span class="status partial">Open draws listed</span></td></tr>
+            <tr><td><b>Creatures and combat</b></td><td>Run behaviour, path search, actions, hits, buffs, death, loot and poses with Alpha's rules and timings.</td><td class="mono">alpha-creatures-*, alpha-path-search, alpha-attack-routine, alpha-pose-selectors-*</td><td><span class="status done">Ported</span></td></tr>
+            <tr><td><b>Player control and travel</b></td><td>Map keyboard and mouse to movement, climbing, gliding, sailing, riding, camera and actions as the game does.</td><td class="mono">alpha-player-control, alpha-travel, alpha-physics-camera</td><td><span class="status partial">Controller acceptance pending</span></td></tr>
+            <tr><td><b>Items, crafting and vendors</b></td><td>Generate, name, drop, pick up, craft, adapt, buy and sell items with Alpha's tables and notices.</td><td class="mono">alpha-items-generator, alpha-item-names, alpha-crafting, alpha-loot-rolls</td><td><span class="status done">Ported</span></td></tr>
+            <tr><td><b>Interface</b></td><td>Draw the character, skills, inventory, map and dialogue screens from the player's Plasma files with the same layout and behaviour.</td><td class="mono">alpha-ui-plasma, alpha-ui-screens, alpha-skills</td><td><span class="status done">Ported</span></td></tr>
+            <tr><td><b>Rendering</b></td><td>Reproduce terrain colour, lighting, point lights, particles, sky and fog in Alpha style.</td><td class="mono">alpha-rendering, alpha-terrain-*, alpha-particles</td><td><span class="status partial">Native captures pending</span></td></tr>
+            <tr><td><b>Saves</b></td><td>Read and write the Alpha save databases so that Alpha and AlphaVulkan can open each other's saves.</td><td class="mono">alpha-saves</td><td><span class="status partial">Original-save interchange untested</span></td></tr>
+            <tr><td><b>Multiplayer</b></td><td>Host and join sessions with Alpha's protocol, roles and server simulation.</td><td class="mono">alpha-net-*, alpha-server-simulation</td><td><span class="status partial">Original-client test pending</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Open behaviour questions stay in each contract's unresolved section and in <span class="mono">docs/roadmap.md</span>. An unproved point stays open and is never filled in by guessing.</p>
+    </section>
+
+    <section id="extensions">
+      <h3><span class="num">B2</span>Extensions and engine choices</h3>
+      <p>Features the owner asked for that Alpha does not have are labelled as project choices, never as parity claims. The first four are required and on by default.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Extension</th><th>Provenance</th></tr></thead>
+          <tbody>
+            <tr><td>Adaptation price fixes</td><td>Owner requirement; the native price stays documented as the reference</td></tr>
+            <tr><td>Quests (non-opt-in)</td><td>Owner requirement; the server keeps each player's quest book, with a hidden hello for AlphaVulkan clients</td></tr>
+            <tr><td>Shared, swimmable water and bank reeds</td><td>Reuses the CubeVulkan engine's own water surface shader (GPL); all Alpha water, shallows included, is swimmable</td></tr>
+            <tr><td>Gamepad and controller support</td><td>Owner requirement covering gameplay and menus, mapped through the engine's own input layer</td></tr>
+            <tr><td>Shadows, sky and temporal anti-aliasing</td><td>Ports of the owner's own mods; documented as engine material, not Alpha contracts</td></tr>
+            <tr><td>Network safeguards</td><td>A handshake timeout, packet size bounds and a reachable "server full" reply, each labelled in code as an engine choice</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PART C -->
+    <div class="part" id="part-c">
+      <div class="eyebrow">Part C</div>
+      <h2 class="ptitle">Referenced material</h2>
+      <p class="pintro">Where every fact comes from, and who may read it.</p>
+    </div>
+
+    <section id="evidence">
+      <h3><span class="num">C1</span>Evidence sources</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Source</th><th>What it is</th><th>Author</th><th>Implementer</th></tr></thead>
+          <tbody>
+            <tr><td>Alpha client</td><td><code>Cube.exe</code>, SHA-256 <span class="mono">84a7a132…30bf</span>, base <span class="mono">0x00400000</span>; facts cited by RVA</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Alpha server</td><td><code>Server.exe</code>, SHA-256 <span class="mono">1ffbcbce…4fb1</span>, same base</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Decompiled export</td><td>Per-function decompilation, assembly listings, call and import tables of both images; direct disassembly where the listing has gaps</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Shipped runtime</td><td>The installation's <code>msvcr110.dll</code>, for random and maths behaviour</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Infinite-Cubes</td><td>Third-party reconstruction, authorised 2026-11-07 for isolated research</td><td class="lead">Leads only</td><td class="no">No</td></tr>
+            <tr><td>Held contracts</td><td><span class="mono">docs/specs/*.md</span> marked FINAL / STABLE / HELD</td><td class="lead">Named ones only</td><td class="yes">Yes</td></tr>
+            <tr><td>Owner installation</td><td>Data stores and interface files, read through the setup tool, never copied into the project</td><td class="lead">Read-only, when cited</td><td class="yes">Yes</td></tr>
+            <tr><td>Captures and recordings</td><td>Isolated runs of the owner's game, kept private</td><td class="no">No</td><td class="yes">Yes</td></tr>
+            <tr><td>AlphaVulkan source</td><td>The engine, server, setup tool, SDK, tests and tools</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A reconstruction finding becomes an Alpha fact only after it is confirmed in the original images.</p>
+    </section>
+
+    <section id="library">
+      <h3><span class="num">C2</span>Specification library</h3>
+      <div class="stats">
+        <div><b>218</b>contracts</div>
+        <div><b>193</b>with held status</div>
+        <div><b>63</b>inherited contracts re-certified</div>
+        <div><b>4</b>source-side rulings</div>
+        <div><b>5</b>reclassified as engine documents</div>
+      </div>
+      <p>Each contract answers one area or question, cites the image and RVA for every fact, and ends with an unresolved section. Re-certified contracts end with a dated record of what was confirmed, corrected, removed and left open. When two held contracts disagree, a fresh author writes a short ruling from the original evidence; the ruling names which statement is right. <span class="mono">docs/provenance-audit.md</span> classifies every contract, and <span class="mono">docs/CLEANROOM.md</span> records which contracts governed each checkpoint.</p>
+    </section>
+
+    <section id="thirdparty">
+      <h3><span class="num">C3</span>Third-party and provenance</h3>
+      <ul>
+        <li><b>zlib</b> and <b>SQLite</b> formats are public standards. Alpha links zlib 1.2.3 and SQLite 3; AlphaVulkan uses its own copies under their own licences.</li>
+        <li><b>Build dependencies</b> are pinned: Vulkan-Headers 1.4.304, volk 1.4.304, glm 1.0.1, GLFW 3.4, miniaudio 0.11.21 and stb at a fixed commit. No Vulkan SDK is needed.</li>
+        <li><b>CubeVulkan:</b> the sister project's GPL water surface shader is reused for the owner's shared-water extension.</li>
+        <li><b>Continuation audit:</b> sources copied on 2026-11-07 from the earlier project are not certified by their presence. Every inherited contract is re-checked by a fresh author against the original images before release, and contracts that described engine extensions or compared against engine output were reclassified rather than re-certified.</li>
+      </ul>
+    </section>
+
+    <!-- PART D -->
+    <div class="part" id="part-d">
+      <div class="eyebrow">Part D</div>
+      <h2 class="ptitle">Conformance tests</h2>
+      <p class="pintro">How the project confirms that AlphaVulkan behaves like the original. Tests compare behaviour, never code.</p>
+    </div>
+
+    <section id="testlayers">
+      <h3><span class="num">D1</span>Test layers</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>What it compares</th><th>Examples (CTest suites)</th></tr></thead>
+          <tbody>
+            <tr><td><b>Rule checks</b></td><td>One contract's values, order and bit patterns, on synthetic inputs</td><td class="mono">BuffTests, HitRecordTests, HitApplicationTests, ActionPhaseTests, RelationshipTests, ItemIdentityTests, VendorTests</td></tr>
+            <tr><td><b>Generation checks</b></td><td>Seeded zones, regions, trees, structures and spawns against the contracts' arithmetic and draw counts</td><td class="mono">WorldgenTests, NoiseMathTests, SpatialScalarTests, GenerationProfileTests</td></tr>
+            <tr><td><b>Creature and world checks</b></td><td>Physics, poses, path search, combat, loot, death and server steps</td><td class="mono">CreatureTests, RouteFollowingTests, SearchStateTests, FatalLootTests, SimulationFrameTests</td></tr>
+            <tr><td><b>Format and protocol checks</b></td><td>Store, save and packet round trips, typed deltas, the handshake and a real loopback server</td><td class="mono">StoreTests, SaveTests, NetTests, RemoteFighterTests, CreaturePublicationTests</td></tr>
+            <tr><td><b>Look checks</b></td><td>Daylight, palette, lighting, projection and water arithmetic</td><td class="mono">LookTests, LightingTests, TerrainLightTests, ProjectionTests, WaterTests</td></tr>
+            <tr><td><b>Native comparison</b></td><td>Generated zones against zones captured from the owner's game</td><td class="mono">ZoneCompareTests</td></tr>
+            <tr><td><b>Live runs</b></td><td>The full engine with the owner's installation: the player and controller diagnostic, then reward, health, connected-client and save/reload flows and a town render, with screenshots reviewed</td><td>Six runs per checkpoint</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="rule-box"><span class="must">Regression rule</span><br>Every behaviour change from a corrected contract gets a focused check that pins the corrected value, and the implementer reports which checks fail on the previous behaviour. Changes that need a window are covered by the live runs instead.</div>
+    </section>
+
+    <section id="gate">
+      <h3><span class="num">D2</span>Checkpoint gate</h3>
+      <p>A checkpoint is published only when all of these pass on the exact sources being frozen:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>Scope</th></tr></thead>
+          <tbody>
+            <tr><td>Build</td><td>The engine, server, setup tool, SDK examples and every test target, with no compile or link errors</td></tr>
+            <tr><td>Full suite</td><td>All 60 CTest suites pass</td></tr>
+            <tr><td>Live runs</td><td>The player and controller diagnostic and the five actual-client flows, each in an isolated copy that leaves the owner's saves untouched</td></tr>
+            <tr><td>Package</td><td>The release archive is built and every file's SHA-256 verified, with no owner content or private diagnostics</td></tr>
+            <tr><td>Audit</td><td>Exact changed paths, exclusions, held-contract hashes, credentials, whitespace and a clean public mirror</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Performance work must pass the same gate and never change verified behaviour, precision or random-draw order.</p>
+    </section>
+
+    <!-- APPENDIX -->
+    <div class="part" id="part-e">
+      <div class="eyebrow">Appendix</div>
+      <h2 class="ptitle">Process and governance</h2>
+      <p class="pintro">How the facts above are produced without moving code across the wall.</p>
+    </div>
+
+    <section id="roles">
+      <h3><span class="num">E1</span>Roles and the wall</h3>
+      <div class="wall" role="group" aria-label="Role separation">
+        <div class="side author">
+          <h5>Source-side author</h5>
+          <dl>
+            <div><dt>Reads</dt><dd><span class="mono">docs/CLEANROOM_AUTHOR.md</span>, then only the assigned original evidence and named held contracts</dd></div>
+            <div><dt>Never reads</dt><dd>Engine source, tests, SDK, logs, captures, packages, roadmap, project memory</dd></div>
+            <div><dt>Delivers</dt><dd>One code-free contract, reported FINAL / STABLE / HELD after a full readback</dd></div>
+          </dl>
+        </div>
+        <div class="gap" aria-hidden="true"><span>held prose only</span></div>
+        <div class="side impl">
+          <h5>Implementer and verifier</h5>
+          <dl>
+            <div><dt>Reads</dt><dd>Held contracts in full and AlphaVulkan's own source</dd></div>
+            <div><dt>Never reads</dt><dd>Original or decompiled code, the reconstruction, unheld drafts</dd></div>
+            <div><dt>Delivers</dt><dd>Readable code, focused regressions, a validated checkpoint</dd></div>
+          </dl>
+        </div>
+      </div>
+      <p>The owner sets requirements, grants permissions and runs the final acceptance tests. Verification feedback never goes back to an author. A contract gap or a conflict between two contracts is answered by a fresh author who receives a neutral question.</p>
+    </section>
+
+    <section id="lifecycle">
+      <h3><span class="num">E2</span>Feature lifecycle</h3>
+      <ol class="life">
+        <li class="s"><div><div class="t">Trigger<small>shared</small></div><p>An open roadmap item, an unresolved contract question, an audit finding or a conflict between contracts.</p></div></li>
+        <li class="i"><div><div class="t">Brief<small>implementer</small></div><p>A bounded question for a fresh author, naming the evidence and contracts it may read. It never includes engine code, test results or implementation history.</p></div></li>
+        <li class="a"><div><div class="t">Contract<small>author</small></div><p>The author reads only the assigned evidence, writes code-free prose citing RVAs, reads it back against the evidence and marks it held.</p></div></li>
+        <li class="i"><div><div class="t">Intake<small>implementer</small></div><p>The implementer checks the hash, reads the whole contract and records it in <span class="mono">docs/CLEANROOM.md</span>.</p></div></li>
+        <li class="i"><div><div class="t">Implement and test<small>implementer</small></div><p>Change the engine where it differs, in its own structure, with a focused regression for each behaviour change.</p></div></li>
+        <li class="i"><div><div class="t">Validate<small>implementer</small></div><p>Run the full gate (D2) and review the live-run screenshots.</p></div></li>
+        <li class="s"><div><div class="t">Freeze and publish<small>shared</small></div><p>An exact-path commit, audited, pushed and confirmed on the remote.</p></div></li>
+      </ol>
+    </section>
+
+    <section id="contract">
+      <h3><span class="num">E3</span>Contracts and records</h3>
+      <p>A contract states inputs, outputs, decision and random-draw order, constants with RVAs, offsets and widths, and keeps every unproved point in its unresolved section. It never contains transcribed code, pseudocode, decompiler names, advice to an implementer or test procedures. Each checkpoint records the contracts it used:</p>
+<pre class="block"><span class="k">## Provenance re-certification</span>, path search, locations, item names, trees (2026-11-15)
+
+Four inherited contracts were re-certified by fresh source-only authors
+(53 corrections; no reconstruction consulted) and read whole by a fresh
+implementer:
+- alpha-path-search.md        (6AA57674...2DC9)
+- alpha-worldgen-locations.md (B1D8A5A8...72BB)
+Engine changes: …   Not modelled: …</pre>
+    </section>
+
+    <section id="exposure">
+      <h3><span class="num">E4</span>Exposure-stop rule</h3>
+      <div class="rule-box stop"><span class="must">Rule</span><br>A role exposed to prohibited material stops and reports it without repeating the contents. Ignoring it does not restore separation. Further work on that topic needs a new author context, and the exposure is recorded in <span class="mono">docs/CLEANROOM.md</span>.</div>
+    </section>
+
+    <section id="publish">
+      <h3><span class="num">E5</span>Publication</h3>
+      <ul>
+        <li>Every tested checkpoint is committed and pushed to the public repository; history is never rewritten or force-pushed.</li>
+        <li>The audit refuses to run unless the changed paths match the checkpoint's exact list; files another author is still editing are held back.</li>
+        <li>Held-contract hashes, credentials and whitespace are checked, and a public mirror of the tree is scanned for prohibited content.</li>
+        <li>A push counts as done only after the remote head is confirmed.</li>
+        <li>Never published: owner assets, the game's data, saves, captures, recordings, private diagnostics or the local handoff.</li>
+      </ul>
+    </section>
+
+    <section id="release">
+      <h3><span class="num">E6</span>Release gates</h3>
+      <ul>
+        <li><b>Specification provenance:</b> every remaining inherited contract re-certified, and every held contract's hash recorded (<span class="mono">docs/provenance-audit.md</span>).</li>
+        <li><b>Native acceptance:</b> captures from the original game compared for gameplay, visuals and generated worlds; save interchange with the original client.</li>
+        <li><b>Human acceptance:</b> controller play on real hardware, and multiplayer against original Alpha clients and servers.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Derived from the project's own documents: docs/CLEANROOM.md, docs/CLEANROOM_AUTHOR.md, docs/provenance-audit.md and the contracts in docs/specs. Where this page and those files differ, the files win. These rules preserve source separation; they are not a statement of legal clearance.
+    </footer>
+  </main>
+</div>
+
+</body>
+</html>

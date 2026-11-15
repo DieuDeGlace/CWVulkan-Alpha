@@ -532,8 +532,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         if (c->offHand().type != 3)
             f.offModel = NO_MODEL;
     }
-    // Step 5: sitting.
-    if (m.sitting) {
+    // Step 5: the mode-0x400 (lens) pose override (rulings camera-lens-pan §2.1, 0x1394c).
+    if (m.lens) {
         f.B = {-70, 0, 0};
         f.H.x = 70;
         f.dL = f.dR = {0, 3, 1};
@@ -1870,7 +1870,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     // (flags bit 0x0001 with +0x5C bit 0x04) or the pose selector is 2, 3 or 0x25.
     if (!m.climbing && pose != 2 && pose != 3 && pose != 0x25)
         arm = Rx(arm, m.headPitch * 2.f);
-    if (m.sitting)
+    if (m.lens) // rulings camera-lens-pan §2.1 (0x20b0a)
         arm = Rx(arm, 60);
     arm = T(Ry(T(arm, {0, 0, -4}), s.roll.y), {0, 0, 4});
     arm = Rx(Ry(Rz(arm, s.torso.z), s.torso.y), s.torso.x);

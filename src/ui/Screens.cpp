@@ -127,6 +127,8 @@ bool Interface::load(const std::filesystem::path &install, std::string *error) {
     }
     if (const int32_t n = gui.find("crosshair"); n >= 0)
         crosshair = clone(gui, n);
+    if (const int32_t n = gui.find("zoomcrosshair"); n >= 0)
+        zoomCrosshair = clone(gui, n);
     if (const int32_t n = gui.find("menubutton"); n >= 0)
         for (int i = 0; i < 6; i++) {
             menuButtons.push_back(clone(gui, n));
@@ -407,7 +409,13 @@ void Interface::drawHud(Painter &painter, glm::vec2 W, const HudState &s) {
     show(hpbar, {W.x / 2 - 163, W.y - 90}, {life});
     if (s.stamina < 1)
         show(staminabar, {W.x / 2, W.y - 115}, {s.stamina});
-    if (crosshair && !menuRow) {
+    // Rulings camera-lens-pan §2.1 (0x927ff, 0x928ce): outside cursor mode, the lens bit shows
+    // `zoomcrosshair` instead of `crosshair`. (Native also hides `crosshair` while game byte
+    // +0x14 is set; that byte is not modelled.)
+    if (s.lens && zoomCrosshair && !menuRow) {
+        anchor(*zoomCrosshair, W * 0.5f);
+        painter.draw(*zoomCrosshair, 0, Transform(1));
+    } else if (!s.lens && crosshair && !menuRow) {
         setText(*crosshair, "name", s.health <= 0 ? u"[R] Revive" : s.prompt);
         anchor(*crosshair, W * 0.5f);
         painter.draw(*crosshair, 0, Transform(1));

@@ -256,7 +256,9 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
             out.sounds.push_back(0x5c);
         break;
     case 99:
-        body.mode |= 0x400;
+        // Engine choice: ability 99 sets the lens bit. No native setter of 0x400 is known
+        // (rulings camera-lens-pan §2.2); native only reads the bit and clears it on intent.
+        body.mode |= LENS;
         c.cooldowns[99] = (float)cooldownLength(c, 99);
         break;
     default:

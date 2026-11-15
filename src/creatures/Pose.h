@@ -19,7 +19,7 @@ struct Motion {
     bool running = false;   // mode 0x40 with intent and speed
     bool climbing = false;  // mode 0x01 and touching a wall
     bool gliding = false;   // mode 0x10
-    bool sitting = false;   // mode 0x400
+    bool lens = false;      // mode 0x400 (rulings camera-lens-pan §2): the pose override; not sitting
     bool lantern = false;   // mode 0x200
     float yawDegrees = 0;   // displayed body rotation about z
     // Head pitch (creature +0x58, degrees) for the head, arm and held-weapon chains

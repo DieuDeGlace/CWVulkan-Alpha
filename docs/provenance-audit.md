@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-16; 218 tracked contracts, local ignored variants excluded): 132 A, 61 B, 20 C (18005 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-15 (after batches 1-16 and the camera ruling; 219 tracked contracts, local ignored variants excluded): 133 A, 61 B, 20 C (18096 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -190,7 +190,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-open-points-12.md` | S | 357 | 1 |
 | `alpha-open-points-2.md` | A | 465 | 1 |
 | `alpha-open-points-3.md` | A | 696 | 0 |
-| `alpha-open-points-4.md` | C | 577 | 1 |
+| `alpha-open-points-4.md` | C | 668 | 1 |
 | `alpha-open-points-5.md` | A | 485 | 0 |
 | `alpha-open-points-6.md` | C | 688 | 0 |
 | `alpha-open-points-7.md` | A | 256 | 1 |
@@ -227,6 +227,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | C | 783 | 2 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
 | `alpha-rulings-walk-flag-pitch.md` | A | 163 | 0 |

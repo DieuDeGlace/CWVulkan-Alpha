@@ -890,7 +890,9 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     // Existing later consumption/stealth behavior is outside the common phase
     // contract and remains separate from its independently audited action effects.
     c.mana = std::min(1.f, c.mana + 0.00025f * dtMs * c.stealth);
-    if (c.sitting)
+    // Rulings camera-lens-pan §2.1 (0x219c17): the meter grows while the lens bit is set and
+    // falls otherwise.
+    if (c.mode & LENS)
         c.stealth = std::min(1.f, c.stealth + dtMs * 0.00001f); // the action-99 term waits for skills
     else
         c.stealth = std::max(0.f, c.stealth - 0.0005f * dtMs);

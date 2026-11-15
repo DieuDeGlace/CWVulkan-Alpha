@@ -38,7 +38,10 @@ enum Mode : uint32_t {
     AIMING = 0x04, // facing its look vector (a fighter in range)
     RUN = 0x40,    // normal speed ×2 (Left Shift not held); while gliding, the lift (Space)
     LANTERN = 0x200, // physics §2 item 18.2: cleared unless the lantern is equipped
-    LENS = 0x400,    // physics §2 item 4, §7.4: cleared by any intent (the 30° field of view)
+    // Rulings camera-lens-pan §2: the lens (30° field of view, zoom crosshair, pose override,
+    // the skill-scaled meter); cleared by any intent (physics §2 item 4). Not sitting, which is
+    // action 83. No native setter is known.
+    LENS = 0x400,
 };
 
 // Travel §0: a skill's factor v(n) = 1 − 1/(0.1·n + 1).
@@ -146,9 +149,6 @@ bool inContact(glm::vec3 size, glm::dvec3 self, glm::vec3 other, glm::dvec3 them
 // (1, 1, 0) when `enlarge` (every kind but 6); the push scales by the unenlarged other.x.
 glm::vec3 separationPush(glm::vec3 size, const int64_t self[3], glm::vec3 other, bool enlarge, const int64_t them[3],
                          bool stunned);
-// Older form taking the other box already enlarged; the overlap test is the same, but the push
-// scales by the enlarged x (callers should move to separationPush).
-glm::vec3 separation(glm::vec3 size, glm::vec3 other, glm::dvec3 self, glm::dvec3 them, bool stunned);
 
 // Physics §3.5 / travel §2.1: gliding in the physics sense (mode 0x10, falling, in the air,
 // not stunned or dodging).
