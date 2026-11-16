@@ -794,7 +794,7 @@ int main() {
         dt.prepareRegion(rx, ry);
         const Region *region = dw.region(rx, ry);
         bool seen[6] = {};
-        int built = 0;
+        int built = 0, followers = 0;
         for (int32_t n = 0; region && n < 64 * 64 && built < 2; n++) {
             const ZoneEntry &E = region->zones[n];
             if (E.kind != 3 || E.variant > 5 || seen[E.variant])
@@ -813,9 +813,25 @@ int main() {
             same(exit, 1, name + " exit marker");
             same(!zone->spawns.empty(), 1, name + " creatures");
             same(!zone->statics.empty(), 1, name + " furniture");
+            // §1.10.9 (re-certification 7): ring creatures (+0xf60 x 0.75) and escorts (x 0.5)
+            // carry +0x08 = 150 like their leaders; ring creatures face (theta / pi) 180 + 90.
+            for (const Spawn &s : zone->spawns) {
+                const bool ringMember = s.multipliers[2] == 0.75f, escort = s.multipliers[2] == 0.5f;
+                if (!ringMember && !escort)
+                    continue;
+                followers++;
+                same(s.radius, 150.0, name + (ringMember ? " ring creature radius" : " escort radius"));
+                if (ringMember) {
+                    bool facing = false;
+                    for (const double want : {90.0, 210.0, 270.0, 330.0})
+                        facing = facing || std::abs(s.yaw - want) < 1e-3;
+                    same(facing, 1, name + " ring creature facing");
+                }
+            }
             built++;
         }
         same(built > 0, 1, "a dungeon zone found");
+        same(followers > 0, 1, "dungeon ring creatures or escorts found");
     }
 
     // Caves spec §3 / spawn objects §6.3, §6.4: the centre-in-zone test truncates twice; the

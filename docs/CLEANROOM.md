@@ -2827,3 +2827,16 @@ record bytes stay zero.
 Conflicts reported for a ruling: the knock-back velocity rescale in hit resolution (creature
 behaviour against the attack routine), the taming success branch (against created-actor combat
 and pets/bombs), and where pending-charge finalisation runs (against common action processing).
+## World generation structures (2026-11-16)
+
+A fresh source-only author re-certified `alpha-worldgen-structures.md` (D5C7DD6B...0DBB); a fresh implementer
+read it whole. Most corrections were already matched (stair cells on the lower level, line
+direction from room A to room B, the v = 5 shaft heights, face-specific carve noise, kind-18 ruin
+models, vendor material parity, storey eligibility, settle-test reads). Engine changes: dungeon
+ring creatures and escorts take +0x08 = 150; the unreachable kind-8 plinth builds five centred
+steps (896 draws); the ruin centre-zone test divides toward zero. Generated worlds are unchanged
+(all zone comparisons pass).
+Not modelled: the escort route copy (patrol waypoints unresolved), the boss helper object, the
+house grid +0x18/+0x1c fields (no reader), and items tagged unconfirmed.
+Conflict reported for a ruling: the along-x third corridor line test (structures "x and y
+exchanged" against the explicit extents in open points 7).

@@ -195,7 +195,8 @@ class TownBuilder : StructureWriter {
                 if (B.size() > 3)
                     pick().kind = NOTHING;
         } else {
-            const bool centreHere = (L.x / ONE) >> 8 == zone.zx && (L.y / ONE) >> 8 == zone.zy;
+            // Both divisions truncate towards zero.
+            const bool centreHere = L.x / ONE / 256 == zone.zx && L.y / ONE / 256 == zone.zy;
             if (centreHere && original > 1)
                 pop().kind = CENTRE_RUIN;
             for (int32_t n = 0; n < 2; n++)
@@ -269,9 +270,10 @@ class TownBuilder : StructureWriter {
 
     // §5.5.1: a stepped stone plinth with a goddess statue (no writer of this kind is known).
     void plinth(const Plot &p) {
+        // Five centred steps, 4 x 4 at T down to 20 x 20 at T - 4.
         const int32_t T = top(cx(p), cy(p)) + 1;
-        for (int32_t n = 4; n <= 23; n++)
-            box(cx(p) - 2 - 2 * (n - 4), cy(p) - 2 - 2 * (n - 4), T - (n - 4), n, n, 1, {220, 220, 220}, 0, 0);
+        for (int32_t n = 4; n <= 20; n += 4)
+            box(cx(p) - n / 2, cy(p) - n / 2, T - (n - 4) / 4, n, n, 1, {220, 220, 220}, 0, 0);
         StaticObject statue;
         statue.kind = 0;
         statue.x = (int64_t)cx(p) * ONE, statue.y = (int64_t)cy(p) * ONE, statue.z = (int64_t)T * ONE;

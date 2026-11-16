@@ -1237,6 +1237,7 @@ class Builder : StructureWriter {
             Spawn s = creatureAt(fx(f((float)(x0 + 10 * Q.x + 5) + dx)), fx(f((float)(y0 + 10 * Q.y + 5) + dy)),
                                  (int64_t)(base + 10 * Q.z + 1) * ONE);
             s.yaw = f((double)theta / PI * 180.0 + 90.0); // (open points 10 §8)
+            s.radius = 150;
             s.multipliers[2] *= 0.75f;
             kindRule(s, K1);
             const int32_t potions = random.draw() & 1;
@@ -1272,6 +1273,8 @@ class Builder : StructureWriter {
                         escort.type = G.escorts[(uint32_t)random.draw() % G.escorts.size()];
                         escort.powerTier = leader.powerTier;
                         escort.multipliers[2] *= 0.5f;
+                        escort.radius = 150;
+                        // (The leader's route pair is copied too; routes are not modelled, §8.4.)
                         zone.spawns.push_back(escort);
                     }
                 }
