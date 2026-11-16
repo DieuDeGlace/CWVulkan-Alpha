@@ -893,6 +893,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         dictionary.parse(std::string(bytes->begin(), bytes->end()));
     ui::Interface interface;
     activeInterface = &interface;
+    interface.speechDraw = [&] { return worldRandom.draw(); }; // talk §0: the one shared stream
     // The engine screens that stand in for the native front-end rotation state.
     const auto frontEndRotation = [&] {
         using F = ui::Interface::Front;
@@ -1397,6 +1398,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     uint64_t creatureTarget = 0;
     std::optional<std::tuple<int32_t, int32_t, size_t>> objectTarget;
     bool rWasDown = false;
+    // Talk §3.3, §3.6: the talk partner the vendor window copies its stock from (0: none). It
+    // is cleared at 5 blocks while the windows stay open on their last copy.
+    uint64_t talkPartner = 0;
     if (player)
         player->hitSource = [&](uint64_t id) -> const creatures::Combatant * {
             if (id == player->combat().id)
@@ -1860,10 +1864,15 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     sheet.weaponRating = creatures::weaponRating(c);
                     sheet.armorRating = creatures::armorRating(c);
                     sheet.canAct = c.hitStun < 1;
+                    // Talk §3.4: the sale's coin sound plays at volume 0.75.
                     for (const int32_t sound : interface.inventorySounds)
                         if (const char *key = creatures::soundKey(sound))
-                            audio.play(key);
+                            audio.play(key, sound == 0x3a ? 0.75f : 1.f);
                     interface.inventorySounds.clear();
+                    // Talk §1.7: the voice blips at the player's position (not the speaker's).
+                    for (const float pitch : interface.voiceBlips)
+                        playAt(0x32, player->body().blocks(), 1, pitch);
+                    interface.voiceBlips.clear();
                     // Skills §1.3: when a window starts holding the input the interface plays 0x53
                     // (menu-open2.wav), when none holds it any more 0x54 (menu-close2.wav).
                     {
@@ -3439,6 +3448,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             renderer.setMinimap({});
         }
         {
+            // Talk §1.5 steps 2 and 4: the bubbles' time and auto-advance precede this frame's
+            // partner check and talk press; their glide follows below.
+            interface.advanceBubbles(seconds * 1000.f);
             double mx, my;
             glfwGetCursorPos(window, &mx, &my);
             if (options.cursorX >= 0)
@@ -3877,6 +3889,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // §5.1 Talk, on a frame showing "[R] Talk" (no quick-item wheel test). Talk §1.3,
                 // §2.4: the bubble opens or advances; the talk request (packet 6 kind 2) rests
                 // the player at an inn at night (§2.7).
+                // Talk §1.5 step 3, §3.6: before the talk press, a partner at a squared distance
+                // of 25 or more (5 blocks) is cleared; the windows stay open.
+                if (talkPartner != 0) {
+                    std::optional<std::array<int64_t, 3>> at;
+                    if (!client.connected())
+                        for (const creatures::Npc &n : npcs.all())
+                            if (n.fighter.id == talkPartner)
+                                at = std::array<int64_t, 3>{n.body.position[0], n.body.position[1], n.body.position[2]};
+                    if (const auto other = receivedActors.find(talkPartner); other != receivedActors.end())
+                        at = std::array<int64_t, 3>{other->second.position(0), other->second.position(1),
+                                                    other->second.position(2)};
+                    // Engine lifetime policy: a partner that no longer exists is cleared too.
+                    if (!at || ui::vendor::partnerOutOfReach(*at, player->body().position))
+                        talkPartner = 0;
+                }
                 if (rPressed && talkShown) {
                     uint8_t characterClass = 0;
                     int32_t talkKind = 0;
@@ -3890,17 +3917,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 target = n.talkTarget;
                                 home = {n.zone.first, n.zone.second, (int32_t)n.spawn};
                             }
-                    // Talk §2.4 steps 0-2: the target zone's location, dropped when its level is
-                    // more than 2 from the player's; §2.5: the zone is marked on the map.
-                    const auto cellOf = [](int32_t z) { return (z < 0 ? z + 7 : z) / 8; }; // (C division, +7 fix-up)
-                    const worldgen::Location *place = nullptr;
-                    if (const int32_t cx = target.x / 8, cy = target.y / 8; cx >= 0 && cy >= 0 && cx < 8192 && cy < 8192)
-                        if (const worldgen::Location *L = cellLocation(view.terrainWorld(), cx, cy);
-                            L && std::abs(L->level - c.level) > 2)
-                            target = {-1, -1};
-                    place = cellLocation(view.terrainWorld(), cellOf(target.x), cellOf(target.y));
-                    if (characterClass != 132 && target != glm::ivec2(-1, -1))
-                        view.markDiscovered(target.x, target.y);
                     if (const auto other = receivedActors.find(creatureTarget); other != receivedActors.end())
                         characterClass = other->second.fighter().characterClass;
                     // §5.1 step 2: the talk record, queued on every Talk press before the bubble.
@@ -3969,13 +3985,36 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 }
                                 break;
                             }
+                        // Talk §1.3 step 3: the text is built only for a new bubble. Steps 0-2 of
+                        // §2.4 (the target zone's location, dropped when its level is more than
+                        // 2 from the player's; truncating division) and the map mark of §2.5
+                        // belong to that build, for every NPC but the innkeeper.
+                        const auto nativeSpeech = [&] {
+                            const worldgen::Location *place = nullptr;
+                            if (characterClass != 132) {
+                                const auto lookup = [&](glm::ivec2 z) -> const worldgen::Location * {
+                                    const int32_t cx = z.x / 8, cy = z.y / 8;
+                                    return cx >= 0 && cy >= 0 && cx < 8192 && cy < 8192
+                                               ? cellLocation(view.terrainWorld(), cx, cy) : nullptr;
+                                };
+                                glm::ivec2 zone = target;
+                                if (const worldgen::Location *L = lookup(zone); L && std::abs(L->level - c.level) > 2)
+                                    zone = {-1, -1};
+                                place = lookup(zone);
+                                if (zone.x >= 0 && zone.y >= 0 && zone.x <= 65535 && zone.y <= 65535)
+                                    view.markDiscovered(zone.x, zone.y);
+                            }
+                            return npcSpeech(dictionary, who, characterClass, talkKind, place, worldRandom);
+                        };
                         if (!questTalk)
-                            interface.talk(who, [&] { return npcSpeech(dictionary, who, characterClass, talkKind, place); });
+                            interface.talk(who, nativeSpeech);
                     }
                 }
                 // §5.2: the R block (the quick-item wheel it waits for is not modelled), skipped
                 // on the press that revived. a) The creature effects.
                 const bool rBlock = rPressed && !revivedNow && c.health > 0;
+                if (rBlock)
+                    talkPartner = 0; // talk §3.3: replaced below when the target is a creature
                 if (rBlock && !creatureTarget && !client.connected()) {
                     // With no creature target, the nearest free pet is claimed (no packet).
                     std::vector<ui::PetCandidate> pets;
@@ -3991,10 +4030,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     uint8_t controller = 0, characterClass = 0;
                     if (!client.connected())
                         for (const creatures::Npc &n : npcs.all())
-                            if (n.fighter.id == who)
+                            if (n.fighter.id == who) {
                                 controller = n.fighter.controller, characterClass = n.fighter.characterClass;
-                    if (const auto other = receivedActors.find(who); other != receivedActors.end())
+                                talkPartner = who;
+                            }
+                    if (const auto other = receivedActors.find(who); other != receivedActors.end()) {
                         controller = other->second.controller(), characterClass = other->second.fighter().characterClass;
+                        talkPartner = who;
+                    }
                     // Engine quests (required extension): R on a tied-up prisoner frees it once no
                     // guard is near (online the server decides: a talk request naming the quest
                     // and the creature's index).
@@ -4035,7 +4078,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         if (characterClass >= 128 && characterClass <= 130) {
                             interface.vendorOpen = interface.inventoryOpen = true;
                             interface.vendorGrid.currentGroup = 0;
-                            interface.vendorExport = [&, who](creatures::InventoryValue &buffer) {
+                            // Talk §3.3 tab 0: the partner's bags are copied again only while a
+                            // partner is set; once cleared the shadow keeps its last copy.
+                            interface.vendorExport = [&](creatures::InventoryValue &buffer) {
+                                const uint64_t who = talkPartner;
+                                if (who == 0)
+                                    return;
                                 for (const creatures::Npc &n : npcs.all())
                                     if (n.fighter.id == who) {
                                         buffer.copyFrom(n.inventory);
@@ -4299,7 +4347,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 sayAtStart = false;
                 interface.talk(player->combat().id, nothingSpecial);
             }
-            interface.stepBubbles(seconds * 1000.f);
+            interface.followBubbles(seconds * 1000.f); // talk §1.5 step 6, after the talk press
             // Screens §8.1.6: every interface item turns 30 degrees a second about z.
             interface.itemTurn.z += seconds * 1000.f * 0.03f;
             glm::vec2 uiMouse{float(mx), float(my)};

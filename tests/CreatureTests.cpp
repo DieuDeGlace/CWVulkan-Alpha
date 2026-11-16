@@ -3407,6 +3407,12 @@ int main() {
         leftovers[0] = 14, leftovers[0x0c] = 1;
         creatures::setItemLevel(leftovers, 5);
         same(identificationFee(leftovers) >= 1, 1, "the identifier's fee is at least 1 copper");
+        // Talk contract §4 (re-certified): max(1, price / 2) for type 14 only, else 0.
+        same(identificationFee(leftovers), std::max(1, creatures::price(leftovers) / 2), "type-14 fee is max(1, price/2)");
+        ItemRecord sword = leftovers;
+        sword[0] = 3;
+        same(identificationFee(sword), 0, "no fee for an item that is not type 14");
+        same(identificationFee(ItemRecord{}), 0, "no fee without an item");
         worldgen::Random r(123);
         const ItemRecord made = identify(leftovers, r);
         same(r.count() == 17 || r.count() == 25, 1, "17 or 25 draws");

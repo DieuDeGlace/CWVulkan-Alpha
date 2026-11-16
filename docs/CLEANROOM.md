@@ -2786,3 +2786,25 @@ cursor label; item text takes a name line; the middle button sells or unequips.
 Not modelled: talk/vendor, open-points-6 and location-creature corrections (re-certified, to
 follow in the next implementer batch).
 The clean-room page gains a heading style for its sub-sections.
+## Talk and vendors, open points 6, location creatures (2026-11-15)
+
+Fresh source-only authors re-certified `alpha-talk-vendors.md` (F9CE6289...4CEF), `alpha-open-points-6.md` (590CD98B...2022)
+and `alpha-location-creatures.md` (F12F3502...3434); a fresh implementer read all three whole.
+Engine changes: the talk partner is cleared before the talk press at 5 blocks (squared distance
+25) and the window keeps its last copy (a vanished partner is also cleared - engine policy);
+speech bubbles advance before the partner check and follow after it; each voice blip takes one
+shared-stream draw (pitch 1 + 0.5r/32767, sound 0x32 at the speaker) - a random-draw-order
+change; NPC talk reseeds the shared world stream with the id (the innkeeper neither reseeds nor
+draws, explored talk reseeds without a draw); the map mark runs only while a new bubble's text is
+built, never for the innkeeper, with the 0..65535 guard and truncating division; the follow share
+iterates in double; empty page segments are skipped; carriage return is no longer a tokenizer
+delimiter (speech text normalises CR LF to LF - engine policy while the parser question is open);
+the sale coin sound plays at 0.75. Location waypoints read their block cells through the
+negative-coordinate block rule (one block lower for negative z); camp fire and prop records take
+state 1. All twenty open-points-6 corrections were already matched (kind-11 critical draw,
+action-30 and beam draws, class 0x88 draw, velocity rescale never runs, actions 51/75 stun).
+Not modelled: the event-record talk restart (no producer); the map-cell existence test and zone
+summary copy; raw static-record bytes; the +0x11c0 beam exclusion and action 94 (no native
+producer); online clients running the melee block for every creature.
+Conflicts reported for a ruling: the beam area flag for action 95 (open points 6 against the
+strike call sites and attack routine) and the strike origin z sign for actions 69 and 75.

@@ -93,6 +93,12 @@ bool skillTooltipPunctuation(std::u16string_view word);
 std::map<std::string, std::string> skillTooltipVariables(int32_t n, int32_t cls, int32_t specialization,
                                                          const creatures::SkillLevels &committedSkills);
 
+// Talk §1.6 step 1: a bubble's follow share for an integer step dt (iterated in double, then
+// binary32). §1.7: the pitch of a voice blip when the typed count crosses a multiple of three
+// (one draw), none otherwise.
+float speechFollowShare(int32_t dt);
+std::optional<float> voiceBlip(int32_t typedBefore, int32_t consumed, const std::function<int()> &draw);
+
 class Interface {
   public:
     // Loads the fonts and the .plx files from the install folder.
@@ -268,8 +274,15 @@ class Interface {
     std::function<std::optional<std::pair<glm::dvec3, float>>(uint64_t)> creatureAt;
     // §1.3: opens a bubble for `creature`, or advances (finishes typing, next page) its own.
     void talk(uint64_t creature, const std::function<std::vector<SpeechPage>()> &text);
-    // §1.4: time, the 3 s auto-advance, closing and the glide after the creature.
-    void stepBubbles(float dtMs);
+    // §1.5 steps 2 and 4: time, then the 3 s auto-advance and closing, before the frame's talk
+    // press; §1.5 step 6 / §1.6 step 1: the glide after each creature, after the talk press.
+    void advanceBubbles(float dtMs);
+    void followBubbles(float dtMs);
+    // §1.7: the single shared gameplay stream the voice blips draw their pitch from, and the
+    // pitches of the blips the last draw produced (sound 0x32 at the player, volume 1), taken
+    // by the game.
+    std::function<int()> speechDraw;
+    std::vector<float> voiceBlips;
     // Crafting (alpha-crafting.md §4, §5): the recipe window (C or a station) and its preview.
     // `stationNear` says whether the player is near a station; the game makes what
     // `finishedCraft` holds and empties it.

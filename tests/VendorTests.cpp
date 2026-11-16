@@ -232,8 +232,43 @@ static void pricesAndPublicInput() {
           "second transaction input route buys back the live node and refreshes the displayed group");
 }
 
+// Re-certified talk contract (2026-11-15): partner range, follow share, voice blips, tokenizer.
+static void talkContract() {
+    const int64_t player[3] = {100 * 65536, 200 * 65536, 7 * 65536};
+    check(!partnerOutOfReach({103 * 65536, 204 * 65536 - 1, 7 * 65536}, player), "a partner just inside 5 blocks stays");
+    check(partnerOutOfReach({103 * 65536, 204 * 65536, 7 * 65536}, player), "a partner at exactly 5 blocks is cleared");
+    check(partnerOutOfReach({100 * 65536, 200 * 65536, 12 * 65536}, player), "the vertical distance counts");
+
+    double s = 0;
+    for (int i = 0; i < 17; i++)
+        s = s + (1.0 - s) * 0.02;
+    check(ui::speechFollowShare(17) == float(s), "follow share iterates in double then narrows");
+    check(ui::speechFollowShare(0) == 0.f, "a zero step does not move the anchor");
+
+    int draws = 0;
+    const auto draw = [&] { draws++; return 32767; };
+    check(!ui::voiceBlip(4, 5, draw) && draws == 0, "no blip and no draw inside one group of three");
+    const auto pitch = ui::voiceBlip(5, 6, draw);
+    check(pitch && *pitch == 1.5f && draws == 1, "one blip takes one shared draw for pitch 1 + 0.5 r / 32767");
+    check(ui::voiceBlip(0, 30, draw) && draws == 2, "at most one blip per draw however far typing jumped");
+
+    const auto words = [](const std::vector<SpeechPage> &pages) {
+        std::string out;
+        for (const SpeechPage &p : pages) {
+            for (const SpeechSegment &w : p)
+                out += w.text + " ";
+            out += "| ";
+        }
+        return out;
+    };
+    // CR is not a tokenizer delimiter: "#x\r" is a condition that the tag #x does not satisfy.
+    check(words(SpeechText("{#x\r yes|no}").render({"#x"}, {})) == "no | ", "a CR stays inside the condition token");
+    check(words(SpeechText("a %\r b").render({}, {})) == "a % b | ", "% followed by CR is a word, not a page break");
+    check(words(SpeechText("a\n%\nb").render({}, {})) == "a | b | ", "% alone is a page break");
+}
+
 int main() {
-    rowsAndCopies(); purchases(); salesAndCapacity(); pricesAndPublicInput();
+    rowsAndCopies(); purchases(); salesAndCapacity(); pricesAndPublicInput(); talkContract();
     if (!failures) std::puts("PASS: grouped vendor rows, ordered transactions, raw capacity, prices and public input");
     return failures ? 1 : 0;
 }

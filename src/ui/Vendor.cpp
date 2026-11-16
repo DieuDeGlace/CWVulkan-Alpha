@@ -175,4 +175,15 @@ void sellSlot(ItemRecord &item, Buyback &buyback, uint32_t &payment, const Servi
     publish(item, buyback, s);
     item[0] = item[1] = 0;
 }
+
+bool partnerOutOfReach(const std::array<int64_t, 3> &partner, const int64_t (&player)[3]) {
+    // The contract fixes the 25 limit and its inclusive comparison; the block conversion's
+    // precision is not specified, so the wrapped fixed difference is converted once to double.
+    double squared = 0;
+    for (size_t axis = 0; axis < 3; axis++) {
+        const double d = double(std::bit_cast<int64_t>(uint64_t(partner[axis]) - uint64_t(player[axis]))) / 65536.0;
+        squared += d * d;
+    }
+    return squared >= 25.0;
+}
 } // namespace ui::vendor

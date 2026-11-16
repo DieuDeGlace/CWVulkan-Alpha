@@ -1,5 +1,6 @@
 #pragma once
 #include "creatures/InventoryValue.h"
+#include <array>
 #include <functional>
 #include <list>
 #include <utility>
@@ -51,5 +52,9 @@ bool purchase(const creatures::InventoryValue &buffer, bool active, Index hover,
 void sellEntry(int32_t &count, ItemRecord &item, Buyback &buyback,
                uint32_t &payment, const Services &services);
 void sellSlot(ItemRecord &item, Buyback &buyback, uint32_t &payment, const Services &services);
+
+// Talk contract §3.6: whether the talk partner at fixed-point position `partner` is cleared,
+// its squared distance from `player` in blocks being 25 or more (5 blocks or further).
+bool partnerOutOfReach(const std::array<int64_t, 3> &partner, const int64_t (&player)[3]);
 
 } // namespace ui::vendor

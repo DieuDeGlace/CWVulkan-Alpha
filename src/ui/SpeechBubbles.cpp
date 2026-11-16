@@ -1,9 +1,10 @@
 // Speech bubbles (docs/specs/alpha-talk-vendors.md §1): four shared bubbles over creatures'
-// heads, typing their text at 40 ms a character with a voice blip every three, paged by R
+// heads, typing their text at 40 ms a character with voice blips as it types, paged by R
 // or three seconds after a page is typed.
 #include "ui/Screens.h"
 #include "ui/Widgets.h"
 #include <cmath>
+#include <optional>
 
 namespace ui {
 namespace {
@@ -48,23 +49,49 @@ void Interface::talk(uint64_t creature, const std::function<std::vector<SpeechPa
     *free = Bubble{creature, at ? at->first : glm::dvec3(0), std::move(pages)};
 }
 
-void Interface::stepBubbles(float dtMs) {
+void Interface::advanceBubbles(float dtMs) {
+    // §1.5 step 2: every bubble's time first, then step 4's strict 3000 hold and close.
+    for (Bubble &b : bubbles)
+        if (b.creature != 0)
+            b.elapsed += dtMs;
     for (Bubble &b : bubbles) {
         if (b.creature == 0)
             continue;
-        b.elapsed += dtMs;
         if (b.elapsed > pageLength(b.pages, b.page) + 3000)
             b.page++, b.elapsed = 0, b.typedBefore = 0;
-        // (A bubble whose creature has gone is freed: the original keeps a stale pointer, B-1.)
-        const auto at = creatureAt ? creatureAt(b.creature) : std::nullopt;
-        if (b.page >= b.pages.size() || !at) {
+        // Engine lifetime policy: a bubble whose creature has gone is freed (the original keeps
+        // a stale pointer, B-1).
+        if (b.page >= b.pages.size() || !(creatureAt && creatureAt(b.creature)))
             b = Bubble{};
-            continue;
-        }
-        // §1.5 step 1: glide after the creature, time constant about 50 ms.
-        const double s = 1.0 - std::pow(0.98, (double)dtMs);
-        b.anchor += (at->first - b.anchor) * s;
     }
+}
+
+void Interface::followBubbles(float dtMs) {
+    // §1.6 step 1: each bubble glides after its creature by the follow share of this step.
+    const double share = (double)speechFollowShare((int32_t)dtMs);
+    for (Bubble &b : bubbles) {
+        if (b.creature == 0)
+            continue;
+        if (const auto at = creatureAt ? creatureAt(b.creature) : std::nullopt)
+            b.anchor += (at->first - b.anchor) * share;
+    }
+}
+
+float speechFollowShare(int32_t dt) {
+    // From 0 in double, s := s + (1 - s) x 0.02 applied dt times, then rounded to binary32.
+    double s = 0;
+    for (int32_t i = 0; i < dt; i++)
+        s = s + (1.0 - s) * 0.02;
+    return (float)s;
+}
+
+std::optional<float> voiceBlip(int32_t typedBefore, int32_t consumed, const std::function<int()> &draw) {
+    // §1.7: at most one blip per draw, when the typed count crosses a multiple of three; each
+    // blip takes one draw of the shared stream for its pitch.
+    if (typedBefore / 3 == consumed / 3)
+        return std::nullopt;
+    const float r = draw ? (float)draw() : 0.f;
+    return 1.f + (0.5f * r) / 32767.f;
 }
 
 void Interface::drawBubbles(Painter &painter, glm::vec2 W) {
@@ -91,6 +118,8 @@ void Interface::drawBubbles(Painter &painter, glm::vec2 W) {
         float x = 0, y = 0;
         bool glue = true;
         for (const SpeechSegment &segment : b.pages[b.page]) {
+            if (segment.text.empty())
+                continue; // §1.7 step 1: skipped, the page goes on
             if (typed < consumed)
                 break;
             const std::u16string word = utf16(segment.text);
@@ -108,9 +137,9 @@ void Interface::drawBubbles(Painter &painter, glm::vec2 W) {
             x += w;
             consumed += (int32_t)visible + 1;
         }
-        // A voice blip every three typed characters (human-voice02.wav, at the player).
-        if (b.typedBefore / 3 != consumed / 3)
-            inventorySounds.push_back(0x32);
+        // The voice blip (human-voice02.wav, sound 0x32 at the player's position, volume 1).
+        if (const auto pitch = voiceBlip(b.typedBefore, consumed, speechDraw))
+            voiceBlips.push_back(*pitch);
         b.typedBefore = consumed;
     }
 }

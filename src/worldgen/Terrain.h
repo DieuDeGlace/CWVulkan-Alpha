@@ -14,6 +14,7 @@
 #include "worldgen/Zone.h"
 #include <glm/glm.hpp>
 #include <memory>
+#include <optional>
 
 namespace worldgen {
 
@@ -125,6 +126,9 @@ class Terrain {
     // `whole` false: only the appearance and equipment (a location's ring creatures, made up
     // as they are placed and again in the finishing pass).
     std::function<void(Spawn &, Random &, bool whole)> finishSpawn;
+    // Location creatures spec §4.4 step 3.6: a group leader's patrol point raised from the
+    // fixed-point neighbour P (route blocks), or none when P's column is outside the zone.
+    static std::optional<std::array<int32_t, 3>> locationWaypoint(const Zone &zone, const std::array<int64_t, 3> &P);
 
   private:
     void surfacePass(Zone &zone, const std::vector<float> &heights, Random &random,

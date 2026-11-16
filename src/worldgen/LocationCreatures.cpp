@@ -5,6 +5,7 @@
 #include "worldgen/Builders.h"
 #include "worldgen/Terrain.h"
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace worldgen {
@@ -127,6 +128,25 @@ std::array<int32_t, 3> blocksOf(int64_t x, int64_t y, int64_t z) {
 
 } // namespace
 
+// §4.4 step 3.6: a patrol point raised from neighbour P's column. The column is found by
+// dividing P's x and y toward zero, while each block test reads the cell of (P.x, P.y, z·65536)
+// through the block lookup's rule (one block off a negative coordinate, then toward zero), so
+// the two agree only for non-negative coordinates. A block's kind is the low five bits of its
+// byte +3. No draws.
+std::optional<std::array<int32_t, 3>> Terrain::locationWaypoint(const Zone &zone, const std::array<int64_t, 3> &P) {
+    const int32_t px = (int32_t)(P[0] / ONE), py = (int32_t)(P[1] / ONE);
+    if (!zone.contains(px, py))
+        return std::nullopt; // no column: the iteration adds nothing
+    const int32_t bx = blockOfFixed(P[0]), by = blockOfFixed(P[1]);
+    int32_t z = zone.column(px, py).belowSurface;
+    // Engine boundary: a block cell outside this zone (reachable only for a negative coordinate
+    // on the zone's low edge) has no stored blocks here, so the raise stops there.
+    if (zone.contains(bx, by))
+        while (!clear(zone.read(bx, by, blockOfFixed((int64_t)z * ONE)).type()))
+            z++;
+    return blocksOf(P[0], P[1], (int64_t)z * ONE); // the point (P.x, P.y, z·65536), in route blocks
+}
+
 void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
                                 const std::vector<std::array<int64_t, 3>> &candidates) const {
     if (L.type == 0)
@@ -167,8 +187,11 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
             // §4.3.1: the camp fire, settled on the first of nine spots, and four props round it.
             std::array<int64_t, 3> centre = candidates[i];
             if (set.camp) {
+                // §4.5: both records carry byte +0x30 = 1; their other modelled fields keep the
+                // engine defaults that equal the written values (+0x34/+0x38 0, +0x178 -1).
                 StaticObject fire;
                 fire.kind = 65;
+                fire.state = 1;
                 fire.scale[0] = fire.scale[1] = 2.4f, fire.scale[2] = 0.5f;
                 fire.rotation = random.draw() % 4;
                 bool placed = false;
@@ -189,6 +212,7 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
                         const int k = random.draw() % 4;
                         StaticObject prop;
                         prop.kind = KINDS[k];
+                        prop.state = 1;
                         for (int axis = 0; axis < 3; axis++)
                             prop.scale[axis] = SCALES[k][axis];
                         prop.x = centre[0] + ONE * a - 229376, prop.y = centre[1] + ONE * b - 229376, prop.z = centre[2];
@@ -233,13 +257,8 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
         if (!near.empty())
             for (int n = 0; n < 3; n++) {
                 const auto &P = near[(uint32_t)random.draw() % (uint32_t)near.size()];
-                const int32_t px = (int32_t)(P[0] / ONE), py = (int32_t)(P[1] / ONE);
-                if (!zone.contains(px, py))
-                    continue;
-                int32_t z = zone.column(px, py).belowSurface;
-                while (!clear(zone.read(px, py, z).type()))
-                    z++;
-                leader.route.push_back({px, py, z});
+                if (const auto point = locationWaypoint(zone, P))
+                    leader.route.push_back(*point);
             }
         zone.spawns.push_back(leader);
         // The followers stand on the leader. They copy its id before it has one (as read,

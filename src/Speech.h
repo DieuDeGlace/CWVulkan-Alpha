@@ -3,6 +3,7 @@
 // into a tree of words, alternatives and coloured spans, rendered into pages with tags and
 // variables, and the choice of entry for an NPC (the innkeeper, pet food, random talk).
 #include "Dictionary.h"
+#include "worldgen/Random.h"
 #include "worldgen/Regions.h"
 #include "creatures/Inventory.h"
 #include <glm/glm.hpp>
@@ -42,10 +43,11 @@ class SpeechText {
 void speechNameVariables(const Dictionary &d, const std::string &key, const std::string &prefix,
                          std::set<std::string> &tags, std::map<std::string, std::string> &variables);
 
-// §2.4: what an NPC says. `draw` is rand() after srand(the id's low 32 bits). `place` is the
-// location of its talk target (§2.4 steps 0-2), for talk kind 4; without one such NPCs fall
-// back to random talk.
+// §2.4: what an NPC says. Every NPC but the innkeeper reseeds the single shared gameplay stream
+// with the id's low 32 bits (srand) and makes its draws from it, so later users of `stream`
+// continue from that state. `place` is the location of its talk target (§2.4 steps 0-2), for
+// talk kind 4; without one such NPCs fall back to random talk.
 std::vector<SpeechPage> npcSpeech(const Dictionary &d, uint64_t id, uint8_t characterClass, int32_t talkKind,
-                                  const worldgen::Location *place = nullptr);
+                                  const worldgen::Location *place, worldgen::Random &stream);
 // §1.3: the player's "There is nothing special."
 std::vector<SpeechPage> nothingSpecial();

@@ -1149,6 +1149,39 @@ int main() {
         same(run(1, 50, 5, true)->spawns.size(), 1, "a solid structure block suppresses its voxel's marker");
     }
 
+    // Location creatures §4.4 step 3.6 (re-certified): the patrol point's column divides toward
+    // zero, its block tests use the block lookup's rule and the low five type bits of byte +3.
+    {
+        const auto fill = [](Column &c, int32_t bottom, std::vector<uint8_t> typeBytes, int32_t belowSurface) {
+            c.bottom = bottom, c.belowSurface = belowSurface;
+            c.blocks.clear();
+            for (const uint8_t t : typeBytes)
+                c.blocks.push_back(Block{1, 1, 1, t});
+        };
+        auto positive = std::make_unique<Zone>();
+        // z5 rock (with a flag), z6 solid (flag 0x40), z7 type 2 under flags 0xe0: stops at 7.
+        fill(positive->column(10, 20), 0, {6, 6, 6, 6, 6, 0x26, 0x41, 0xe2, 6}, 5);
+        const auto p = Terrain::locationWaypoint(*positive, {10 * 65536 + 32768, 20 * 65536 + 32768, 0});
+        same(p && (*p)[0] == 10 && (*p)[1] == 20 && (*p)[2] == 7, 1, "waypoint raised to a low-five-bits water cell");
+        fill(positive->column(10, 20), 0, {6, 6, 6, 6, 6, 0x20, 6}, 5);
+        const auto air = Terrain::locationWaypoint(*positive, {10 * 65536 + 32768, 20 * 65536 + 32768, 0});
+        same(air && (*air)[2] == 5, 1, "a flagged type-0 cell is air for the waypoint test");
+        same(Terrain::locationWaypoint(*positive, {-65536 - 32768, 20 * 65536, 0}).has_value(), 0,
+             "no column in the zone adds no waypoint");
+
+        // Negative zone: P.x = -9.5 blocks has column -9 (toward zero) but block cell -10; z = -3
+        // is read at block -4 (one block off the exact negative multiple).
+        auto negative = std::make_unique<Zone>();
+        negative->zx = negative->zy = -1;
+        fill(negative->column(-9, -19), -10, std::vector<uint8_t>(30, 6), -3);
+        std::vector<uint8_t> cells(15, 0);
+        cells[(size_t)(-4 + 10)] = 6, cells[(size_t)(-3 + 10)] = 6; // blocks -4 and -3 solid
+        fill(negative->column(-10, -20), -10, cells, 0);
+        const auto n = Terrain::locationWaypoint(*negative, {-10 * 65536 + 32768, -20 * 65536 + 32768, 0});
+        same(n && (*n)[0] == -9 && (*n)[1] == -19 && (*n)[2] == -1, 1,
+             "negative waypoint reads the block lookup's cell one block lower");
+    }
+
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

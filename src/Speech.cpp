@@ -29,8 +29,9 @@ SpeechText::SpeechText(const std::string &markup) {
         const char ch = i < markup.size() ? markup[i] : '\0';
         static const char *const PUNCT = ".:-,;!?/()";
         const bool punct = ch != '\0' && std::strchr(PUNCT, ch);
-        const bool delimiter = ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\0' || ch == '{' ||
-                               ch == '}' || ch == '[' || ch == ']' || ch == '|' || punct;
+        // Carriage return is not a delimiter (it is whitespace only for the word splitter).
+        const bool delimiter = ch == ' ' || ch == '\t' || ch == '\n' || ch == '\0' || ch == '{' || ch == '}' ||
+                               ch == '[' || ch == ']' || ch == '|' || punct;
         if (!delimiter) {
             token += ch;
             continue;
@@ -155,22 +156,32 @@ std::vector<SpeechPage> entry(const Dictionary &d, const std::string &key, const
     const DictionaryEntry *e = d.find("speech", key);
     if (!e)
         return {};
-    return SpeechText(e->text).render(tags, variables);
+    // Engine input policy for the contract's open B-3 (whether the dictionary reader keeps
+    // carriage returns): line ends are normalized as an XML processor does (CR LF and a lone CR
+    // become LF), so a `%` alone on its line stays a page break.
+    std::string text;
+    text.reserve(e->text.size());
+    for (size_t i = 0; i < e->text.size(); i++)
+        if (e->text[i] != '\r')
+            text += e->text[i];
+        else if (i + 1 >= e->text.size() || e->text[i + 1] != '\n')
+            text += '\n';
+    return SpeechText(text).render(tags, variables);
 }
 
 } // namespace
 
 std::vector<SpeechPage> npcSpeech(const Dictionary &d, uint64_t id, uint8_t characterClass, int32_t talkKind,
-                                  const worldgen::Location *place) {
-    if (characterClass == 132)
+                                  const worldgen::Location *place, worldgen::Random &random) {
+    if (characterClass == 132) // no srand, no draw
         return entry(d, "innkeeper", {}, {});
+    random.seed((uint32_t)id); // step 1, before the explored test of step 3
     if (talkKind == 4 && place && place->type != 0) { // §2.4 step 3: no draw
         std::set<std::string> tags;
         std::map<std::string, std::string> variables;
         ui::locationVariables(*place, d, "scenery", tags, variables);
         return entry(d, "explored", tags, variables);
     }
-    worldgen::Random random((uint32_t)id);
     std::set<std::string> tags;
     std::map<std::string, std::string> variables;
     const auto creature = [&](int32_t type, const std::string &prefix) {

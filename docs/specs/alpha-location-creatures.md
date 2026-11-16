@@ -1,89 +1,95 @@
-# Alpha location creatures: camps, rings and groups (0x5dc6e0)
+Status: FINAL / STABLE / HELD
+
+# Alpha location creatures: camps, rings and groups (Cube.exe RVA 0x1dc6e0)
 
 Behavioural specification of the routine that populates a **location zone** with creatures
-during zone generation in the Cube World **Alpha** client (`Cube.exe`): client **0x5dc6e0**,
-called once per zone at **0x5eace7**, between the location candidate grid and the wildlife
-pass. It is written so that a reimplementation reproduces the zone's spawn list, the static
-objects it adds and the zone's `rand()` stream bit for bit.
+during zone generation in the Cube World **Alpha** client image `Cube.exe`: VA 0x5dc6e0
+(RVA 0x1dc6e0), called once per zone from the zone generator at VA 0x5eace7 (RVA 0x1eace7),
+after the location candidate grid and before the pass that starts at VA 0x5eaf75. It
+describes the zone's spawn list, the static objects the routine adds and the order of its
+`rand()` draws.
 
-Sources: the Alpha decompile (`disassembled alpha cube world/decompiled/client`), the
-per-instruction listing of 0x5dc6e0 and an independent disassembly of the binary for the
-parts the listing drops (the decompiler treats `operator delete` as not returning and loses
-the jumps after it, e.g. 0x5ddd6f … 0x5ddd94), constants read from `Cube.exe`, and a
-constant-by-constant comparison with the server copy (**server 0x5104e0**, called at
-server 0x51eac7; every immediate value and call pattern matches). No code was copied.
+Evidence: the original `Cube.exe` and `Server.exe` image bytes (constants, jump tables,
+import tables and the instruction bytes skipped by the instruction listing after calls to
+`operator delete`, e.g. VA 0x5ddd6f … 0x5ddd94), the per-instruction listing of both images
+and the decompile used as a reading aid. The server copy is `Server.exe` VA 0x5104e0, called
+at server VA 0x51eac7; its ordered sequence of stack-stored immediate constants is identical
+to the client's and it makes the same number (21) of calls through its C-runtime `rand`
+import (§5.3).
 
-This document replaces the outline of `alpha-spawn-objects.md` §6.3 (see §9 for the
-corrections to it). Related: `alpha-spawn-objects.md` §3 (finishing pass), §4 (draw counts of
-the appearance and equipment generators), §6.2 (candidate grid);
-`alpha-worldgen-structures.md` §2.2–§2.3 (the camp routine 0x5ad320 and the settle test
-0x5f4da0); `alpha-worldgen-locations.md` §1.2, §6.3 (location records and types);
-`alpha-worldgen-regions.md` §7 (f(L, x, y), 0x5f8e10); `alpha-materials-wildlife-routes.md`
-§3–§4 (wildlife pass, behaviour objects); `alpha-creatures-behaviour.md` §9.3, §13;
-`alpha-creatures-models.md` Appendix B (type numbers, flags, model names).
+Related companion specifications (pointers only): `alpha-spawn-objects.md` §3 (finishing
+pass), §4 (appearance and equipment generators), §6.2 (candidate grid);
+`alpha-worldgen-structures.md` §2.2–§2.3 (camp routine VA 0x5ad320 and settle test
+VA 0x5f4da0); `alpha-worldgen-locations.md` §1.2, §6.3 (location records and types);
+`alpha-worldgen-regions.md` §7 (location field f, VA 0x5f8e10);
+`alpha-materials-wildlife-routes.md` §3–§4; `alpha-creatures-behaviour.md` §9.3, §13;
+`alpha-creatures-models.md` Appendix B (creature type numbers).
 
 ---
 
 ## 0. Conventions
 
-* Addresses are `Cube.exe` virtual addresses (base 0x400000) unless marked **server**.
-* **draw** = one call of the C runtime `rand()` (import slot 0x6fc468), result 0 … 32767.
-  "d mod n" is the plain remainder. Where the binary uses a signed remainder, a bit mask or an
-  unsigned division, the result is the same for non-negative draws; the instruction is
-  cited where it matters.
-* **fx** = 64-bit fixed point, 65536 per block. A position is (x, y, z) in fx.
-* **Lz** = the zone's location record (`alpha-worldgen-locations.md` §1.2): +0x00 centre x,
-  +0x08 centre y (fx), +0x18 type, +0x20 serial, +0x24 level, +0x28 sub-level.
-* "Spawn +0x…" are offsets in the 0x10f0-byte spawn object (`alpha-spawn-objects.md` §2).
-  Every spawn here is made by `operator new` + the constructor 0x5adb20 (no draws), so every
-  field not listed below keeps the constructor's value.
-* Type numbers are creature types; names are the model names of
-  `alpha-creatures-models.md` Appendix B (e.g. 11 "orc m", 46 "ogre", 19 "collie").
-* *As read* marks behaviour that looks unintended but is what the code does; *believed*
-  marks readings resting on partial evidence.
+* Addresses are `Cube.exe` virtual addresses (image base 0x400000, so RVA = VA − 0x400000)
+  unless marked **server** (`Server.exe`, image base 0x400000).
+* **draw** = one call of the C runtime `rand()` through the `MSVCR110.dll` import slot at
+  VA 0x6fc468 (client; server slot VA 0x5582f4); result 0 … 32767. "d mod n" is the plain
+  remainder. Where the binary uses a signed remainder, a sign-corrected bit mask or an
+  unsigned division, the result is the same for non-negative draws.
+* **fx** = 64-bit signed fixed point, 65536 per block. A position is (x, y, z) in fx.
+* **Lz** = the zone's location record: +0x00 centre x (fx, 64-bit), +0x08 centre y (fx,
+  64-bit), +0x18 type (32-bit), +0x20 serial (32-bit, used unsigned), +0x24 a 32-bit value
+  copied to spawn +0x34, +0x28 a value whose low byte is copied to spawn +0x58. The companion
+  specs call the last two the location's level and sub-level.
+* "Spawn +0x…" are offsets in the 0x10f0-byte spawn object (RTTI type `cube::Spawn`). Every
+  spawn here is made by `operator new(0x10f0)` and the constructor VA 0x5adb20, which makes no
+  draws; every field not listed below keeps the constructor's value. Relevant constructor
+  values: +0x28 = 1, +0x2c = 4, +0x30 (16-bit) = 0, +0x34 = 1, +0x48 and +0x4c = 0,
+  +0x54 = 0.0, +0x109c = 0, +0x10e8 (byte) = 0.
+* Field names (controller kind +0x28, creature type +0x2c, class +0x30, level +0x34,
+  id +0x48/+0x4c, yaw +0x54, tier +0x58, appearance +0x74, flags +0x7a, behaviour +0x109c)
+  follow `alpha-spawn-objects.md`; the offsets and values written are confirmed here.
+* Behaviour objects are named by their RTTI type names: `cube::SequentialBehavior`
+  (constructor VA 0x4dc2d0, 0xc bytes), `cube::CombatBehavior` (VA 0x42c550, 0x14 bytes),
+  `cube::WalkPathBehavior` (VA 0x58cfa0, 0x1c bytes), `cube::RandomInteractionBehavior`
+  (VA 0x4db100, 8 bytes), `cube::RandomWalkBehavior` (VA 0x4dbf10, 8 bytes) and
+  `cube::CompanionBehavior` (VA 0x43ab80, 0x10 bytes). A Sequential object holds an ordered
+  list of child behaviours; children are appended in the order stated.
+* *As read* marks behaviour that looks unintended but is what the code does.
 
 ---
 
 ## 1. Call and inputs
 
-### 1.1 The call (0x5eaa24 … 0x5eacec)
+### 1.1 The call (VA 0x5eaa24 … 0x5eacec)
 
-The zone generator 0x5e4850 runs the candidate grid (`alpha-spawn-objects.md` §6.2) and then
-calls 0x5dc6e0 **only when Lz's type is not 0, 1, 5, 10 or 14** (the same test that guards
-the grid, 0x5eaa2d … 0x5eaa53). For those five types neither the grid nor this routine runs
-and nothing is drawn. Otherwise 0x5dc6e0 is called even when the grid produced no
-candidate.
+The zone generator VA 0x5e4850 reads Lz's type and skips both the candidate grid and this
+routine **when the type is 0, 10, 14, 1 or 5** (tests at VA 0x5eaa2d … 0x5eaa53, which jump
+to VA 0x5ead31). For those five types nothing of this document happens and nothing is drawn.
+For every other type the grid runs and 0x5dc6e0 is then called unconditionally, also when
+the grid produced no candidate.
 
-Arguments (`__thiscall`, the callee pops 16 bytes, `ret 0x10` at 0x5df5a1):
+Arguments (`__thiscall`, callee pops 16 bytes, `ret 0x10` at VA 0x5df5a1):
 
-| Argument | Value at 0x5eace7 | Use |
+| Argument | Value at VA 0x5eace7 | Use |
 |---|---|---|
-| this (ECX) | the world object of the zone generator | passed on to column lookup 0x4347a0, the settle test 0x5f4da0 and the equipment generator 0x5c7730 |
-| 1 | the zone | +0x0c static-object vector, +0x18 spawn list, +0x60/+0x64 zone coordinates (zx, zy) |
-| 2 | Lz | type, serial, level, sub-level, centre |
-| 3 | the candidate list | vector of 24-byte fx points (x, y, z), in grid order (`alpha-spawn-objects.md` §6.2) |
-| 4 | the constant 5 | **unused** (never read) |
-
-Location types that reach the routine in a freshly generated world:
-2, 3, 4, 6, 7, 11, 12 and 15 (`alpha-worldgen-locations.md` §6.3). Types 9 and 13 are
-handled by the code but are never created by the region preparation.
+| this (ECX) | the zone generator's own `this` | passed as ECX to the column lookup VA 0x4347a0, the block lookup VA 0x42f860, the settle test VA 0x5f4da0 and the equipment generator VA 0x5c7730 |
+| 1 | the zone | +0x0c static-object vector, +0x18 spawn-pointer vector, +0x60/+0x64 zone coordinates (zx, zy); also passed as an argument to 0x4347a0, 0x42f860 and 0x5f4da0 |
+| 2 | Lz | type, serial, +0x24, +0x28, centre |
+| 3 | the candidate list | vector of 24-byte fx points (x, y, z), in grid order |
+| 4 | the constant 5 | never read |
 
 ### 1.2 Early return
 
-If Lz's type (+0x18) is 0, return at once (0x5dc725): no draws, nothing written. At the
-only call site this cannot happen (type 0 is filtered by §1.1).
+If Lz's type (+0x18) is 0, the routine returns at once (VA 0x5dc725): no draws, nothing
+written. At the only call site type 0 is already filtered out (§1.1).
 
 ### 1.3 What the routine writes
 
-* **Spawns** appended to the zone's spawn list (zone + 0x18, a vector of spawn pointers,
-  append 0x66add0).
+* **Spawns** appended to the zone's spawn-pointer vector (zone + 0x18) with the vector
+  append VA 0x66add0.
 * **Static objects** (camp fire and camp props) appended to the zone's static-object vector
-  (zone + 0x0c, 0x188-byte records), by a plain vector append written inline (not through
-  0x5a0e00).
-* Nothing else in the zone. In particular it adds **no** point to the zone's object list
-  (`alpha-worldgen-caves.md` §3.1), so the wildlife pass's 20-block clearance around camps
-  (`alpha-materials-wildlife-routes.md` §3.1 step 7) does **not** see these camps (*as
-  read*).
+  (zone + 0x0c, 0x188-byte records) by an inline vector append (growth through VA 0x594b40).
+* Nothing else in the zone is written.
 
 ---
 
@@ -91,38 +97,42 @@ only call site this cannot happen (type 0 is filtered by §1.1).
 
 ### 2.1 The set list and the choice (no draw)
 
-A small list of **set numbers** is built from Lz's type T:
+A list of **set numbers** is built from Lz's type T (VA 0x5dc79d … 0x5dc8f3):
 
-* T = 4 (lake): the list is **[9]**.
-* Any other T: the list starts **[0, 1, 2, 3, 4, 5, 1, 7, 8]** (note the second **1** in
-  position 6, *as read*: set 6 is not in this position); then **6** is appended unless T is
-  13 or 2; then **10** is appended if T is 3.
+* T = 4: the list is **[9]**.
+* Any other T: the list starts **[0, 1, 2, 3, 4, 5, 1, 7, 8]** (position 6, counting from
+  0, holds a second **1**, *as read*); then **6** is appended unless T is 13 or 2; then
+  **10** is appended if T is 3.
 
 | Lz type | List | Size |
 |---|---|---|
 | 4 | 9 | 1 |
 | 2, 13 | 0 1 2 3 4 5 1 7 8 | 9 |
 | 3 | 0 1 2 3 4 5 1 7 8 6 10 | 11 |
-| 6, 7, 9, 11, 12, 15 (any other) | 0 1 2 3 4 5 1 7 8 6 | 10 |
+| any other type that reaches the routine | 0 1 2 3 4 5 1 7 8 6 | 10 |
 
-The set is **list[serial mod size]** with serial = Lz +0x20 as an unsigned 32-bit value
-(unsigned division, 0x5dc90e). No draw.
+The set is **list[serial mod size]**, with serial = Lz +0x20 divided unsigned (VA 0x5dc90e).
+No draw.
 
 ### 2.2 What a set holds
+
+The set number selects a case through the jump table at VA 0x5df5b0 (sets 1 … 10, in order:
+VA 0x5dc92f, 0x5dcb51, 0x5dcd32, 0x5dcecb, 0x5dd058, 0x5dd1cd, 0x5dd303, 0x5dd43b, 0x5dd5b7,
+0x5dd6b5); set 0 and any other number take the default case at VA 0x5dd831.
 
 Every set fills three things:
 
 * **R**, the **ring list**: creature types for ring creatures (§4.3).
-* **G**, the **group list**: an ordered list of groups; each group is a pair of type lists,
-  **A** (leader types) and **B** (follower types) (§4.4).
-* **camp flag**: whether ring sites also get a camp fire and props (§4.3.1).
+* **G**, the **group list**: an ordered vector of 24-byte groups; each group is a pair of
+  type vectors, **A** (leader types, at +0x00) and **B** (follower types, at +0x0c) (§4.4).
+* **camp flag** (a byte): whether ring sites also get a camp fire and props (§4.3.1).
 
-Built in this exact order (each line is one draw where marked; "d mod n → …" lists the value
-for remainder 0, 1, 2, …; "—" means nothing is appended for that remainder):
+Built in this exact order. "draw 1 / draw 2" are draws in the order shown; "d mod n → …"
+lists the type appended for remainder 0, 1, 2, …; "—" means nothing is appended:
 
 | Set | Camp | R | Group 1 (A; B) | Group 2 (A; B) | Group 3 (A; B) |
 |---|---|---|---|---|---|
-| 0 (the default case: set number 0 and any number above 10) | yes | 11, 12 | A: 46; B: 19, 33, 26 | A: 11, 12; B: 11, 12 | — |
+| 0 (default case) | yes | 11, 12 | A: 46; B: 19, 33, 26 | A: 11, 12; B: 11, 12 | — |
 | 1 | yes | 15, 16 | A: **draw 1**, d mod 4 → 17, 41, 97, — ; B: **draw 2**, d mod 4 → (40, 37, 38, 39), 59, 41, 96 | A: 15, 16; B: 15, 16 | — |
 | 2 | yes | 2, 3 | A: **draw 1**, d mod 3 → 94, 79, 82; B: **draw 2**, d mod 4 → 30, 26, 19, 33 | A: 2, 3; B: 2, 3 | — |
 | 3 | yes | 9, 10 | A: **draw 1**, d mod 2 → 47, 88; B: **draw 2**, d mod 3 → 87, 91, 33 | A: 9, 10; B: 9, 10 | — |
@@ -134,22 +144,18 @@ for remainder 0, 1, 2, …; "—" means nothing is appended for that remainder):
 | 9 | no | 86, 106 | A: 86; B: 86 | A: 106; B: 106 | — |
 | 10 | no | 35, 90, 91 | A: 35; B: 35 | A: 90; B: 90 | A: 91; B: 91 |
 
-Details that matter for parity:
+Details:
 
-* Lists keep the order shown; the type chosen later is list[d mod size].
+* Lists keep the order shown; a type chosen later is list[d mod size].
 * In set 1, draw 1 with d mod 4 = 3 appends **nothing**, so group 1's A list is **empty**
-  (§4.4 step 2). Set 2's second draw is a remainder by 4 into a six-way table (0x5df5e8);
-  its entries 4 → 31 and 5 → 32 are unreachable.
-* Set 7's group 3 inherits the 60 of group 2 because only B is cleared between groups 2 and
-  3 (0x5dd3da … 0x5dd3e0), *as read*: A = [60, 52].
-* Sets 1–3 draw twice (A first, then B), set 4 once, all others not at all.
-
-Set names (from the model names): 0 orcs with an ogre and dogs; 1 undead with skeleton,
-frightener or vampire leaders and slimes, bats or zombies; 2 humans with werewolf, jester or
-minotaur leaders and pets; 3 dwarves with rockling or biter leaders; 4 lizardmen with
-insects or parrots; 5 goblins with a biter and moles, crows, flies; 6 plant creatures and
-onionlings; 7 insectoids with mosquitoes and flies; 8 beetles; 9 squid and crabs;
-10 bunnies, squirrels and raccoons.
+  (§4.4 step 2).
+* Set 2's second draw is reduced to d mod 4 and dispatched through a six-entry jump table
+  (VA 0x5df5e8); its entries 4 (type 31) and 5 (type 32) are unreachable.
+* Set 1's second draw uses the four-entry jump table at VA 0x5df5d8.
+* Between groups, the A and B vectors are emptied after each group is copied into G, except
+  between groups 2 and 3 of set 7, where only B is emptied (VA 0x5dd3da … 0x5dd3e0), so set
+  7's group 3 has A = [60, 52] (*as read*).
+* Sets 1–3 draw twice (A first, then B), set 4 once, all others never.
 
 ### 2.3 Set-up draws
 
@@ -157,208 +163,216 @@ onionlings; 7 insectoids with mosquitoes and flies; 8 beetles; 9 squid and crabs
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Draws | 0 | 2 | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-These are the first draws of the routine (after the 39 of the grid).
+These are the first draws of the routine.
 
 ---
 
 ## 3. The marked candidate (no draws)
 
-1. Lz's zone: bx = Lz.x / 65536 and by = Lz.y / 65536 (64-bit division towards zero,
-   0x68d9e0), then zx_L = bx / 256 and zy_L = by / 256 (32-bit, towards zero).
-2. If (zx_L, zy_L) differs from the zone's (zone +0x60, zone +0x64), **no candidate is
+1. Lz's zone: bx = Lz.x / 65536 and by = Lz.y / 65536 (64-bit signed division toward zero,
+   VA 0x68d9e0, low 32 bits kept), then zx_L = bx / 256 and zy_L = by / 256 (32-bit signed,
+   toward zero) (VA 0x5dd9d7 … 0x5dda39).
+2. If zx_L differs from zone +0x60 or zy_L differs from zone +0x64, **no candidate is
    marked** (marked = −1).
-3. Otherwise, for each candidate in list order: f = f(Lz, cand.x, cand.y) (0x5f8e10 with the
-   candidate's own fx x and y, **including** the half-block offset of 32768 the grid added;
-   the grid itself evaluated f at the un-offset point), v = f32(1 − f32(f)),
-   w = v·v (float) if v > 0, else 0. Keep the index of the **first** candidate with the
-   largest w, starting from a running maximum of 0.0 and replacing only on a **strictly**
-   larger w. If every w is 0, nothing is marked.
+3. Otherwise, for each candidate in list order: f = the location field VA 0x5f8e10 called
+   on Lz with the addresses of the candidate's own fx x and y. These coordinates include the
+   +32768 (half-block) offset the grid added when it stored the candidate (the grid subtracts
+   the double −32768.0 at VA 0x702ad8, truncated, VA 0x5eabf3 … 0x5eac24), whereas the grid
+   itself evaluated the field at the un-offset block corner. Then v = f32(1.0 − f32(f)) (the
+   1.0 is the float at VA 0x745dc0), w = f32(v·v) if v > 0, else 0. The routine keeps the
+   index of the **first** candidate with the largest w, starting from a running maximum of
+   0.0 and replacing only on a **strictly** larger w. If every w is 0, nothing is marked.
 
-So at most one candidate per location is marked: the one deepest inside the location, in the
-zone that contains the location's centre.
+So at most one candidate per location is marked, and only in the zone whose coordinates
+equal those of the location's centre.
 
 ---
 
 ## 4. Per candidate
 
-For each candidate *i* in list order (the count is re-read each time; it does not change),
-with C = (X, Y, Z) its fx position:
+For each candidate *i* in list order (the candidate count is recomputed from the vector at
+each step, VA 0x5df485; this routine does not change it), with C = (X, Y, Z) its fx position:
 
 ### 4.1 Neighbours (no draws)
 
 Walk the whole candidate list in order (C itself included) and collect into a local list N
-every candidate P with 25 < d² < 16384, where dx = (P.x − X), dy = (P.y − Y) are converted
-from 64-bit integers to float (x87 load, rounded to float), multiplied by 2⁻¹⁶ in float, and
-d² = f32(dy² + dx²) (each square in float). So N holds the other candidates 5 to 128 blocks
-away horizontally (z is ignored); C itself never qualifies. Only the group branch uses N.
+(of 24-byte points) every candidate P with 25 < d² < 16384, where:
+
+* dx = P.x − X and dy = P.y − Y as 64-bit integers, each loaded by the x87 unit and rounded
+  to float, then multiplied in float by 2⁻¹⁶ (the float at VA 0x6fcd94);
+* d² = f32(f32(dy·dy) + f32(dx·dx));
+* the bounds are the floats 25.0 (VA 0x6fce3c) and 16384.0 (VA 0x71df74), both strict.
+
+z is ignored. C itself (d² = 0) never qualifies. Only the group branch uses N.
 
 ### 4.2 Branch choice
 
 1. If *i* is the marked candidate: **ring branch** (§4.3), no branch draw.
-2. Otherwise **draw a**: if a is odd, **nothing** happens for this candidate (1 draw).
-3. Otherwise **draw b**: if b is odd, **ring branch**; if b is even, **group branch** (§4.4).
-   (2 branch draws.)
+2. Otherwise **draw a** (VA 0x5ddd4b): if a is odd, N is released and **nothing else**
+   happens for this candidate (1 draw).
+3. Otherwise **draw b** (VA 0x5ddd95): if b is odd, **ring branch**; if b is even,
+   **group branch** (§4.4). (2 branch draws.)
 
-In both branches, if the needed list is empty the code falls through: an empty R sends the
-ring branch to the group branch, an empty G ends the candidate. No set has an empty R or G,
-so both are dead in practice.
+If the list a branch needs is empty, the code falls through: an empty R sends the ring
+branch to the group branch, and an empty G ends the candidate. No set has an empty R or G,
+so neither fall-through is reachable.
 
 ### 4.3 Ring branch
 
-#### 4.3.1 Camp fire and props (only for sets 0–5, the camp flag)
+#### 4.3.1 Camp fire and props (only when the camp flag is set: sets 0–5)
 
 The **centre** starts as C.
 
 1. **Fire**: a static-object record (§4.5) of kind **65**, scale (2.4, 2.4, 0.5) (float bits
-   0x4019999a, 0x4019999a, 0x3f000000). **Draw**: rotation index = d mod 4.
-2. For a = 0, 1, 2 (outer) and b = 0, 1, 2 (inner): put the fire at
-   (X + 65536·a, Y + 65536·b, Z) and run the settle test 0x5f4da0 with the floor check on
-   (`alpha-worldgen-structures.md` §2.3; no draws; it writes the settled z back). The first
-   position that passes is **appended** to zone + 0x0c, and the **centre becomes the
-   fire's settled position** (x, y and settled z). If none of the nine passes, nothing is
-   added and the centre stays C.
-3. **Props**: for a ∈ {0, 7} (outer) and b ∈ {0, 7} (inner), a record at
-   (centre.x + 65536·a − 229376, centre.y + 65536·b − 229376, centre.z) (229376 = 3.5 blocks,
-   the double at 0x71dbc8 truncated, 0x68d946), so ±3.5 blocks around the **centre**:
-   **draw**: k = d mod 4 selects
+   0x4019999a, 0x4019999a, 0x3f000000). **Draw** (VA 0x5ddee4): rotation index (+0x20) =
+   d mod 4.
+2. For a = 0, 1, 2 (outer loop, x offset) and b = 0, 1, 2 (inner loop, y offset): set the
+   fire's position to (X + 65536·a, Y + 65536·b, Z) (z reset to Z on every try) and run the
+   settle test VA 0x5f4da0 on it with the zone and the floor-check argument 1. The settle
+   test makes no draws and adjusts the record's z in place. The first position that passes
+   is **appended** to zone + 0x0c, the **centre becomes the fire record's x, y and settled
+   z**, and the search stops. If none of the nine passes, nothing is added and the centre
+   stays C.
+3. **Props**: K = 229376 (the double 229376.0 at VA 0x71dbc8, converted toward zero by
+   VA 0x68d946), i.e. 3.5 blocks. For p ∈ {0, 7} (outer loop, x) and q ∈ {0, 7} (inner loop,
+   y), a fresh record at (centre.x + 65536·p − K, centre.y + 65536·q − K, centre.z), i.e. at
+   ±3.5 blocks around the centre:
+   **draw** (VA 0x5de3fd): k = d mod 4 selects
 
-   | k | Kind | Model | Scale |
-   |---|---|---|---|
-   | 0 | 66 | `tent` | (4, 4, 3) |
-   | 1 | 16 | `stool` | (1, 1, 0.5) |
-   | 2 | 12 | `table` | (3, 3, 1) |
-   | 3 | 69 | `wood-mat` | (2, 2, 0.1) |
+   | k | Kind | Scale |
+   |---|---|---|
+   | 0 | 66 | (4, 4, 3) |
+   | 1 | 16 | (1, 1, 0.5) |
+   | 2 | 12 | (3, 3, 1) |
+   | 3 | 69 | (2, 2, 0.1) (float bits of 0.1: 0x3dcccccd) |
 
-   then **draw**: rotation index = d mod 4. Settle test (floor check on); if it passes, the
-   record is appended to zone + 0x0c at its settled height, else dropped. The draws happen
-   either way.
+   then **draw** (VA 0x5de4cb): rotation index = d mod 4. Then the settle test (zone, floor
+   check 1); if it passes, the record is appended to zone + 0x0c at its settled height,
+   else it is dropped. Both draws happen either way.
 
 Always **9 draws** (1 + 4 × 2), whether or not the fire found a place.
-
-Differences from the camp routine 0x5ad320 (`alpha-worldgen-structures.md` §2.2), which
-builds the same fire and prop ring: here there is **no roughness test**, a failed fire does
-**not** stop the props, and the props are placed around the **settled fire** (0x5ad320 uses
-the original point).
 
 Without the camp flag (sets 6–10) there is no fire, no props, no draws, and the centre is C.
 
 #### 4.3.2 The ring
 
-1. **Draw**: φ = f32(d · 2π / 32767) (double multiply by 6.283185307179586, double divide by
-   32767.0, rounded to float).
-2. **Draw**: k = d mod 3 + 1 ring creatures.
+1. **Draw** (VA 0x5de907): φ = f32(d × 6.283185307179586 ÷ 32767.0), computed in double
+   (constants: doubles at VA 0x702a78 and VA 0x702a80), rounded to float.
+2. **Draw** (VA 0x5de92d): k = (d mod 3) + 1 ring creatures.
 3. For c = 0 … k − 1, in order:
-   1. θ = f32(2c · π / k + φ) (all double: (2c as double) × 3.141592653589793 ÷ (k as
-      double) + φ, rounded to float).
-   2. New spawn (0x5de9a4).
-   3. Controller kind (+0x28) := 1; flags (+0x7a) |= **0x1000**.
-   4. Yaw (+0x54) := f32(f32(θ · 180) / π + 90) (the product in float, then double divide by
-      π and add 90.0, rounded to float).
-   5. Position (+0x10 … +0x27): y := centre.y + trunc64(f32(f32(f32(sin θ) · 3) · 65536)),
-      x := centre.x + trunc64(f32(f32(f32(cos θ) · 3) · 65536)), z := centre.z (no
-      settling). sin and cos are the CRT's double routines (0x68d9c2, 0x68d7a4) on θ
-      widened to double; the truncation is 0x68d946 (towards zero). So the ring has radius 3
-      blocks around the centre.
-   6. **Draw**: type (+0x2c) := R[d mod |R|].
-   7. Level (+0x34) := Lz +0x24; power tier (+0x58, a byte) := the low byte of Lz +0x28.
-   8. Behaviour (+0x109c): a sequence (0x4dc2d0) of **Combat** (0x42c550, radius 20),
-      **WalkPath** (0x58cfa0, radius 2.0) whose route is one point, the spawn's own
-      position, **RandomInteraction** (0x4db100) and **RandomWalk** (0x4dbf10), in that
-      order.
-   9. **Boss**: if *i* is the marked candidate and c = 0: flags |= **0x200** and
-      +0x10e8 := 1. (Written between the WalkPath and RandomInteraction objects, before any
-      generation.)
-   10. **Appearance**: the generator 0x43f7c0 with the type at +0x2c, the appearance at
-       +0x74 and no choice record (`alpha-spawn-objects.md` §4.1).
-   11. **Equipment**: 0x5c7730 on the spawn in **mode 0** (`alpha-spawn-objects.md` §4.2;
-       class +0x30 is 0, so the general branch applies to types without flags 0x08/0x10).
+   1. θ = f32((2c as double) × π ÷ (k as double) + φ), all in double (π is the double
+      3.141592653589793 at VA 0x6fce08), rounded to float.
+   2. New spawn (constructor call at VA 0x5de9a4).
+   3. +0x28 := 1; +0x7a |= **0x1000**.
+   4. +0x54 := f32(f32(θ × 180.0) ÷ π + 90.0): the product in float (180.0 is the float at
+      VA 0x6fce5c), then widened, divided by π and increased by the double 90.0
+      (VA 0x71dc78) in double, rounded to float.
+   5. Position (+0x10 … +0x27): y := centre.y + T(sin θ), x := centre.x + T(cos θ),
+      z := centre.z (no settling), where T(s) = the 64-bit truncation toward zero
+      (VA 0x68d946) of f32(f32(f32(s) × 3.0) × 65536.0) (floats at VA 0x6fcd70 and
+      VA 0x6fce7c). sin and cos are the C-runtime double routines imported at VA 0x68d9c2
+      (sin) and VA 0x68d7a4 (cos), applied to θ widened to double; sin is evaluated first.
+      The ring therefore has radius 3 blocks around the centre.
+   6. **Draw** (VA 0x5deaa4): +0x2c := R[d mod |R|] (unsigned).
+   7. +0x34 := Lz +0x24; +0x58 (byte) := the low byte of Lz +0x28.
+   8. +0x109c := a new Sequential behaviour whose children are, in order: **Combat**
+      (constructed with the float 20.0), **WalkPath** (constructed with the float 2.0) whose
+      route holds one point, the spawn's own position (+0x10 … +0x27), **RandomInteraction**
+      and **RandomWalk**.
+   9. **Boss**: if *i* is the marked candidate and c = 0: +0x7a |= **0x200** and +0x10e8
+      (byte) := 1. This is written after the WalkPath child is added and before the
+      RandomInteraction child, before either generator runs.
+   10. **Appearance**: VA 0x43f7c0 called (VA 0x5deced) with the addresses of +0x2c and
+       +0x74 and a null third argument.
+   11. **Equipment**: VA 0x5c7730 called (VA 0x5decfe) as a method of the routine's `this`,
+       with the spawn and the argument 0.
    12. Append to zone + 0x18.
 
-Ring draws: 2 + Σ (1 + appearance + equipment) over the k creatures (§5).
+Ring draws: 2 + Σ over the k creatures of (1 + appearance draws + equipment draws) (§5.1).
 
 ### 4.4 Group branch
 
-1. **Draw**: g = d mod |G| (unsigned); the group (A, B) = G[g].
-2. If A is empty (only set 1, group 1, when the set-up's first draw gave 3): nothing more
-   for this candidate (1 draw in this branch).
-3. **Leader** (0x5dedc4):
-   1. Controller kind := 1; flags |= 0x1000.
-   2. **Draw**: yaw := float(d mod 360) (a whole number of degrees).
-   3. Position := C (the candidate itself; no settling, no camp in this branch).
-   4. **Draw**: type := A[d mod |A|].
-   5. Level := Lz +0x24; tier := low byte of Lz +0x28.
-   6. Behaviour: a sequence of **Combat** (radius 20), **WalkPath** (radius 2.0) and
-      **RandomWalk**, in that order. The WalkPath route gets, first, the leader's own
-      position; then, **only if N is not empty**, three times:
-      * **draw**: P = N[d mod |N|] (unsigned; picks may repeat);
-      * look up P's column (0x4347a0 with P.x / 65536 and P.y / 65536, towards zero); if it
-        does not exist, add nothing;
-      * otherwise z := the column's +0x14 (as a block height), and while the block at
-        (P.x, P.y, z) (0x42f860, floor division) has a type other than 0 (air) or 2
-        (water), z += 1 block; add the point (P.x, P.y, z·65536).
-      The z found is the same rule the grid used for P (`alpha-spawn-objects.md` §6.2
-      step 4), so the point equals P whenever nothing changed the blocks in between.
-   7. No appearance or equipment generation here. Append to zone + 0x18.
-4. **Followers** (0x5df1d4), only if B is not empty (always, in every set):
-   1. **Draw**: n = d mod 3 + 1.
-   2. For each of the n followers, in order: new spawn; position := the leader's position
-      (+0x10 … +0x27 copied); controller kind := 1; flags |= 0x1000; **draw**: type :=
-      B[d mod |B|]; level and tier as the leader; yaw stays 0. Behaviour: a sequence of
-      **Combat** (radius 20), **Companion** (0x43ab80; its followed id, +0x08/+0x0c, is a
-      copy of the leader's id +0x48/+0x4c **at this moment**, which is still 0, because ids
-      are only given by the finishing pass — *as read*, see open question LC-2) and
-      **RandomWalk**. No generation. Append to zone + 0x18.
+1. **Draw** (VA 0x5ded65): g = d mod |G| (unsigned); the group (A, B) = G[g].
+2. If A is empty (only set 1, group 1, when the set-up's first draw gave 3): N is released
+   and nothing more happens for this candidate (1 draw in this branch).
+3. **Leader** (constructor call at VA 0x5dedc4):
+   1. +0x28 := 1; +0x7a |= 0x1000.
+   2. **Draw** (VA 0x5dedf1): +0x54 := float(d mod 360) (a whole number).
+   3. Position := C (the candidate itself; no settling and no camp in this branch).
+   4. **Draw** (VA 0x5dee55): +0x2c := A[d mod |A|] (unsigned).
+   5. +0x34 := Lz +0x24; +0x58 := low byte of Lz +0x28.
+   6. +0x109c := a Sequential behaviour with children, in order: **Combat** (20.0),
+      **WalkPath** (2.0) and **RandomWalk**. The WalkPath route first receives the leader's
+      own position; then, **only if N is not empty**, three iterations, each:
+      * **draw** (VA 0x5defe3): P = N[d mod |N|] (unsigned; picks may repeat);
+      * look up P's column (VA 0x4347a0 with P.x / 65536 and P.y / 65536, 64-bit signed
+        division toward zero, low 32 bits, and the zone); if there is none, add nothing
+        (the iteration still counts);
+      * otherwise start with z := the column's 32-bit field +0x14 (a block height) and,
+        while the block at (P.x, P.y, z·65536) (VA 0x42f860) has a kind — the low five bits
+        of its byte +3 — other than 0 or 2, increase z by one block; then add the point
+        (P.x, P.y, z·65536).
+      VA 0x42f860 converts each fx coordinate to a block index by subtracting one block when
+      the coordinate is negative and then dividing by 65536 toward zero. For non-negative
+      coordinates this column and block rule is the same one the grid used to give P its z,
+      so the added point equals P when the blocks have not changed in between.
+   7. No appearance or equipment generation. Append to zone + 0x18.
+4. **Followers**, only if B is not empty (true for every group of every set):
+   1. **Draw** (VA 0x5df192): n = (d mod 3) + 1.
+   2. For each of the n followers, in order: new spawn (constructor call at VA 0x5df1d4);
+      position := a copy of the leader's +0x10 … +0x27; +0x28 := 1; +0x7a |= 0x1000;
+      **draw** (VA 0x5df230): +0x2c := B[d mod |B|] (unsigned); +0x34 and +0x58 as for the
+      leader; +0x54 stays 0.0. +0x109c := a Sequential behaviour with children **Combat**
+      (20.0), **Companion** and **RandomWalk**, in that order. The Companion object's
+      +0x08/+0x0c receive a copy of the leader's +0x48/+0x4c **at this moment**, which still
+      hold the constructor's 0 (*as read*; see U5). No generation. Append to zone + 0x18.
+
+The leader is appended before its followers are made.
 
 Group draws: 1 + (0 if A is empty, else 2 + (3 if N is not empty) + 1 + n).
 
 ### 4.5 Static-object records written here
 
-Both the fire and the props are built on the stack field by field (not by the constructor
-0x58eaa0) with: +0x00 kind; +0x08, +0x10, +0x18 x, y, z (fx); +0x20 rotation index;
-+0x24, +0x28, +0x2c scale; +0x30 (byte) 1; +0x34, +0x38 0; +0x40 (8 bytes) 0; +0x48 … +0x50
-an empty list; +0x54 0; +0x58 (u16) 0; +0x5c, +0x60 0; +0x64 (u16) 0; +0x66 (byte) 0;
-+0x68 (u16) 1; +0x6c … +0x16b zero; +0x16c, +0x170, +0x174 0; +0x178, +0x17c, +0x180 −1;
-+0x184 0. Bytes +0x04 … +0x07 and +0x3c … +0x3f are not written. The append copies the
-record into the vector.
+The fire and each prop are assembled on the stack field by field (no constructor call)
+with: +0x00 kind; +0x08, +0x10, +0x18 x, y, z (fx, 64-bit each); +0x20 rotation index;
++0x24, +0x28, +0x2c scale (floats); +0x30 (byte) 1; +0x34, +0x38 0; +0x40 (8 bytes) 0;
++0x48, +0x4c, +0x50 0 (an empty list); +0x54 0; +0x58 (16-bit) 0; +0x5c, +0x60 0;
++0x64 (16-bit) 0; +0x66 (byte) 0; +0x68 (16-bit) 1; +0x6c … +0x16b zero (`memset` of 0x100
+bytes); +0x16c, +0x170, +0x174 0; +0x178, +0x17c, +0x180 −1; +0x184 0. Bytes +0x04 … +0x07
+and +0x3c … +0x3f are not written. The append copies the record field by field into the
+vector's new 0x188-byte slot (the list at +0x48 and the block at +0x58 through their copy
+routines VA 0x4593e0 and VA 0x40ee70); it does not copy +0x04 … +0x07 or +0x3c … +0x3f
+either.
 
 ### 4.6 Spawn fields written, by kind
 
 | Field | Ring creature | Group leader | Follower |
 |---|---|---|---|
-| +0x10 … +0x27 position | centre + (trunc(3 cos θ·65536), trunc(3 sin θ·65536), 0) | C | leader's position (= C) |
-| +0x28 controller | 1 | 1 | 1 |
+| +0x10 … +0x27 position | centre + (T(cos θ), T(sin θ), 0) | C | copy of the leader's (= C) |
+| +0x28 | 1 | 1 | 1 |
 | +0x2c type | R[d mod \|R\|] | A[d mod \|A\|] | B[d mod \|B\|] |
-| +0x34 level | Lz +0x24 | Lz +0x24 | Lz +0x24 |
-| +0x54 yaw | θ·180/π + 90 | d mod 360 | 0 (constructor) |
-| +0x58 tier | Lz +0x28 (low byte) | same | same |
-| +0x7a flags | 0x1000, + 0x200 for the boss, + the type's flags (generator) | 0x1000 | 0x1000 |
-| +0x10e8 | 1 for the boss | 0 | 0 |
-| +0x109c behaviour | Combat 20, WalkPath 2 (own point), RandomInteraction, RandomWalk | Combat 20, WalkPath 2 (own point + up to 3 neighbour points), RandomWalk | Combat 20, Companion (id 0), RandomWalk |
-| appearance, equipment | generated inline **and** again in the finishing pass | finishing pass only | finishing pass only |
-| +0x30 class, +0x48 id, schedule, name | constructor values (class and id are set later by the generators and the finishing pass) | same | same |
+| +0x34 | Lz +0x24 | Lz +0x24 | Lz +0x24 |
+| +0x54 | θ·180/π + 90 | d mod 360 | 0.0 (constructor) |
+| +0x58 | low byte of Lz +0x28 | same | same |
+| +0x7a flags set here | 0x1000, plus 0x200 for the boss | 0x1000 | 0x1000 |
+| +0x10e8 | 1 for the boss | 0 (constructor) | 0 (constructor) |
+| +0x109c children | Combat 20, WalkPath 2 (own point), RandomInteraction, RandomWalk | Combat 20, WalkPath 2 (own point + up to 3 neighbour points), RandomWalk | Combat 20, Companion (copied id 0), RandomWalk |
+| generators called here | appearance VA 0x43f7c0, equipment VA 0x5c7730 | none | none |
 
-None of the spawns gets a schedule (+0x10a0 list), a special action, a name or an id here.
+The routine writes no other spawn field directly; +0x30, +0x48/+0x4c and the remaining
+fields keep the constructor values except for what the two generators write in ring
+creatures.
 
 ---
 
 ## 5. Draw counts
 
-### 5.1 Inline generation of ring creatures
+### 5.1 Ring creatures
 
-Ring creature cost = 1 (type) + appearance + equipment (mode 0, first run).
-
-Appearance (0x43f7c0 without a choice record): **5** for every ring type (none of 2–5, 7–12,
-15, 16, 35, 52, 69, 70, 86, 90, 91, 102, 104–106 has per-type draws;
-`alpha-spawn-objects.md` §4.1).
-
-Equipment (0x5c7730, mode 0; `alpha-spawn-objects.md` §4.2, `alpha-creatures-behaviour.md`
-§9.3): 6 seed draws always; + 2 for the boss; + the weapon and armour part by type:
-
-| Ring types | Flags | Weapon part | Armour part | Equipment (non-boss) | Creature total (non-boss) | Boss |
-|---|---|---|---|---|---|---|
-| 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 15, 16 | none | class + specialization + class draws: warrior 4 (two-hander or one-hander + shield) or 5 (two one-handers), ranger 3, mage 3, rogue 3 | 6 + one more per jewel draw with d mod 10 = 0 (0–3) | 15 … 20 | **21 … 26** | +2 |
-| 52 | 0x20 | as above, 3 … 5 | none (flag 0x20) | 9 … 11 | **15 … 17** | +2 |
-| 35, 69, 70, 86, 90, 91, 102, 104, 105, 106 | 0x08 or 0x10 | none | none | 6 | **12** | +2 (14) |
+Ring creature cost = 1 (type) + the draws of the appearance generator VA 0x43f7c0 (called
+without a choice record) + the draws of the equipment generator VA 0x5c7730 (argument 0) for
+that spawn. Both generators are specified in `alpha-spawn-objects.md` §4 and
+`alpha-creatures-behaviour.md` §9.3; their per-type counts are not re-established here (U1).
 
 ### 5.2 One candidate
 
@@ -369,9 +383,8 @@ Equipment (0x5c7730, mode 0; `alpha-spawn-objects.md` §4.2, `alpha-creatures-be
 | not marked, a even, b even (group) | 2 + group |
 | marked (ring, first creature boss) | camp + ring |
 
-with camp = 9 for sets 0–5, 0 for sets 6–10;
-ring = 2 + Σ over k ∈ {1, 2, 3} creatures of §5.1 (the marked candidate's first creature
-+2); group = 1 (A empty) or 1 + 2 + (3 if N ≠ ∅) + 1 + n with n ∈ {1, 2, 3}.
+with camp = 9 for sets 0–5 and 0 for sets 6–10; ring = 2 + Σ over the k ∈ {1, 2, 3}
+creatures of §5.1; group = 1 (A empty) or 1 + 2 + (3 if N ≠ ∅) + 1 + n with n ∈ {1, 2, 3}.
 
 Examples of group costs: N non-empty, 3 followers: 1 + 2 + 3 + 1 + 3 = **10**; N empty,
 1 follower: 1 + 2 + 0 + 1 + 1 = **5**.
@@ -381,25 +394,15 @@ Examples of group costs: N non-empty, 3 followers: 1 + 2 + 3 + 1 + 3 = **10**; N
 Total = set-up (§2.3) + Σ over candidates (§5.2). With an empty candidate list only the
 set-up is drawn (0, 1 or 2 draws).
 
-All draws of the routine come from 21 call sites: set-up 0x5dc97d, 0x5dc9d6 (set 1),
-0x5dcb9b, 0x5dcbeb (set 2), 0x5dcd80, 0x5dcdc4 (set 3), 0x5dcf51 (set 4); branch 0x5ddd4b,
-0x5ddd95; fire rotation 0x5ddee4; props 0x5de3fd, 0x5de4cb; ring 0x5de907, 0x5de92d,
-0x5deaa4; group 0x5ded65, leader 0x5dedf1, 0x5dee55, waypoints 0x5defe3, followers
-0x5df192, 0x5df230 — plus whatever 0x43f7c0 (0x5deced) and 0x5c7730 (0x5decfe) draw. None
-of the other callees (0x5f8e10, 0x5f4da0, 0x4347a0, 0x42f860, the behaviour constructors,
-the list helpers) draws.
-
-### 5.4 Later cost of these spawns in the finishing pass
-
-Every spawn made here also goes through the finishing pass (`alpha-spawn-objects.md` §3) in
-list order. Leaders and followers are generated there for the first time. Ring creatures
-are generated **a second time** (`alpha-spawn-objects.md` §3.3): the second equipment run
-re-clears weapon and armour types but not the item levels left by the first run, so a
-non-boss ring creature that received armour in either run keeps those slots at the spawn
-level and pays one re-roll draw per such slot in step 6 of the pass when its level is ≥ 3
-(`alpha-spawn-objects.md` §3.2, §3.3; which slots the generator clears is stated
-differently in `alpha-spawn-objects.md` §4.2 and `alpha-creatures-behaviour.md` §9.3 —
-see open question LC-7).
+The routine's own draws come from exactly 21 call sites (a byte scan of VA 0x5dc6e0 …
+0x5df5ad finds no others): set-up VA 0x5dc97d, 0x5dc9d6 (set 1), 0x5dcb9b, 0x5dcbeb
+(set 2), 0x5dcd80, 0x5dcdc4 (set 3), 0x5dcf51 (set 4); branch 0x5ddd4b, 0x5ddd95; fire
+rotation 0x5ddee4; props 0x5de3fd, 0x5de4cb; ring 0x5de907, 0x5de92d, 0x5deaa4; group
+0x5ded65; leader 0x5dedf1, 0x5dee55; waypoints 0x5defe3; followers 0x5df192, 0x5df230. In
+addition the appearance and equipment generators draw inside each ring creature (called
+from VA 0x5deced and 0x5decfe). The other callees (the location field VA 0x5f8e10, the
+settle test VA 0x5f4da0, the column lookup VA 0x4347a0, the block lookup VA 0x42f860, the
+spawn and behaviour constructors and the container helpers) contain no `rand` call.
 
 ---
 
@@ -407,161 +410,109 @@ see open question LC-7).
 
 Within 0x5dc6e0, zone + 0x18 receives, candidate by candidate in list order:
 
-* ring branch: ring creatures c = 0 … k − 1 (each after its own inline generation);
+* ring branch: ring creatures c = 0 … k − 1, each after its own inline generation;
 * group branch: the leader, then its followers in order.
 
-Static objects go to zone + 0x0c in the order fire, then the props that passed, (0, 0),
-(0, 7), (7, 0), (7, 7) (a = x offset outer, b = y offset inner).
+Static objects go to zone + 0x0c in the order: fire, then the props that passed, in the
+order (p, q) = (0, 0), (0, 7), (7, 0), (7, 7) (p = x offset, outer; q = y offset, inner).
 
-Around the routine, in the zone generator:
+Around the routine, in the zone generator VA 0x5e4850:
 
-1. statue (0 / 2 / 3 draws, `alpha-spawn-objects.md` §6.1);
-2. candidate grid (39 draws, §6.2 there), for the types of §1.1;
-3. **0x5dc6e0** (this document);
-4. the type-9 guardian (0x5ead31 … 0x5eae65; Lz type 9 only, never in fresh worlds;
-   no draws; appends one spawn after this routine's spawns);
-5. the 64 × 64 table scan (no draws);
-6. the **wildlife pass** (0x5eaf75 …), whose leaders, plants and companions are appended
-   **after** every spawn of this routine, and whose first draw directly follows this
-   routine's last draw (or the guardian, which draws nothing).
-
-So the wildlife pass starts at stream position (grid end) + set-up + Σ candidates, and the
-spawn indices it uses in the finishing pass (ids = zone base + index) are shifted by the
-number of spawns made here.
+1. the candidate grid (VA 0x5eaa59 … 0x5eacd5), for the types of §1.1;
+2. **0x5dc6e0** (this document), then release of the candidate list;
+3. the type-9 guardian (VA 0x5ead31 … 0x5eae65): only when Lz's type is 9 **and** Lz's
+   centre zone, computed as in §3 step 1, equals zone +0x60/+0x64 (VA 0x5ead41 … 0x5eadb7);
+   no draws; appends one spawn (VA 0x5eae65) after this routine's spawns;
+4. a 64 × 64 scan (VA 0x5eaea0 … 0x5eaf37) and a call to VA 0x5c23b0 (VA 0x5eaf6d), neither
+   containing a `rand` call;
+5. the pass beginning at VA 0x5eaf75, whose first draw (VA 0x5eaf9c) is therefore the next
+   draw of the stream after this routine's last draw.
 
 ---
 
-## 7. Worked example (illustrative draw values)
+## 7. Unresolved
 
-The draw *values* below are invented to show the mechanics; the counts and formulas are the
-specified ones.
-
-Lz: type 2 (hill), serial 641, level 13, sub-level 1 (record 27 of the seed-123 home region,
-`alpha-worldgen-locations.md` §12.1). List size 9; 641 mod 9 = 2 → **set 2** (humans).
-Assume its centre lies in this zone and the grid produced three candidates C0, C1, C2, with
-C1 the deepest (marked); all three are within 128 blocks of each other.
-
-Set-up (2 draws): d = 12345 → 12345 mod 3 = 0 → A₁ = [94]; d = 20002 → mod 4 = 2 →
-B₁ = [19]. So R = [2, 3]; G = [(A [94]; B [19]), (A [2, 3]; B [2, 3])]; camp flag on.
-
-C0 (not marked): draw a = 7, odd → nothing. **1 draw.**
-
-C1 (marked, ring branch, no branch draws):
-
-* Fire rotation 1 draw; the fire settles at (a, b) = (0, 0) one block lower than C1 → the
-  centre is C1 − (0, 0, 65536). Props: 8 draws; say k = 0 (tent) at (−3.5, −3.5), and three
-  more; each settles or is dropped. **9 draws.**
-* φ: d = 8192 → φ = 1.570844292640686. k: d = 4 → 4 mod 3 + 1 = **2** creatures.
-* c = 0: θ = 1.570844292640686; yaw = 180.00274658203125; offsets x −9, y +196608 (fx).
-  Type draw d = 101 → R[1] = 3. Boss: flags 0x1000 | 0x200, +0x10e8 = 1. Appearance 5.
-  Equipment: class, specialization, warrior choice 2 + one weapon subtype (4), armour 6 with
-  no jewel hit, boss 2, seeds 6 → 18. **1 + 5 + 18 = 24 draws.**
-* c = 1: θ = f32(π + φ) = 4.712437152862549; yaw = 360.0027770996094; offsets x +9,
-  y −196608. Type draw → R[0] = 2. Appearance 5; equipment as a ranger with one jewel hit:
-  3 + 7 + 6 = 16. **1 + 5 + 16 = 22 draws.**
-* C1 total: 9 + 2 + 24 + 22 = **57 draws**; spawns appended: [3 (boss), 2].
-
-C2 (not marked): a = 10 (even), b = 6 (even) → group branch. g: d mod 2 = 0 → group 1.
-Leader: yaw draw, type draw → 94 (werewolf), N = {C0, C1} → 3 waypoint draws (route: own
-point + three of C0/C1). Followers: d = 5 → 5 mod 3 + 1 = 3, three type draws → 19, 19, 19
-(collies). **2 + 1 + 2 + 3 + 1 + 3 = 12 draws**; spawns appended: [94, 19, 19, 19].
-
-Routine total: 2 + 1 + 57 + 12 = **72 draws**; zone + 0x18 gains, in order, 3 (boss), 2,
-94, 19, 19, 19; zone + 0x0c gains the fire and up to four props. Later, in the finishing
-pass, the two ring creatures are generated a second time and the four group spawns for the
-first time.
-
-Ring geometry check (exact): with d = 8192 and k = 2 the two creatures stand at
-(centre.x − 9, centre.y + 196608) and (centre.x + 9, centre.y − 196608) fx, facing
-180.0027° and 360.0028°.
+* **U1** Appearance and equipment draw counts per ring type (the earlier figures: 5
+  appearance draws for every ring type; 6 seed draws plus 2 for a boss; weapon and armour
+  parts by type flags 0x08/0x10/0x20, giving ring-creature totals of 21 … 26, 15 … 17 and
+  12) depend on VA 0x43f7c0 and VA 0x5c7730 and the creature-type flag table; they were not
+  re-established in this re-certification.
+* **U2** The later handling of these spawns in the finishing pass (second generation of ring
+  creatures, first generation of leaders and followers, re-roll costs of equipment slots,
+  id assignment as zone base + list index) belongs to `alpha-spawn-objects.md` §3 and was
+  not re-checked; the slot-clearing difference noted between `alpha-spawn-objects.md` §4.2
+  and `alpha-creatures-behaviour.md` §9.3 remains open.
+* **U3** Model names and labels: the creature model names for the type numbers (e.g. 11, 46,
+  19), the descriptive set labels (orcs, undead, humans, dwarves, lizardmen, goblins, plant
+  creatures, insectoids, beetles, squid and crabs, bunnies) and the static-object model
+  names for kinds 65, 66, 16, 12 and 69 (fire, tent, stool, table, wood mat) come from
+  companion tables and were not confirmed here.
+* **U4** Which location types occur in a freshly generated world (earlier text: 2, 3, 4, 6,
+  7, 11, 12, 15; types 9 and 13 never created) and whether stored data can produce types 9
+  or 13 belong to `alpha-worldgen-locations.md` and were not re-checked.
+* **U5** Runtime effect of the followers' Companion target id being 0 when copied: whether
+  any creature can match it or whether followers only fight and wander.
+* **U6** Whether the inline static-record values of §4.5 equal those produced by the
+  static-object constructor VA 0x58eaa0 used elsewhere, and what the uncopied bytes
+  +0x04 … +0x07 and +0x3c … +0x3f of the vector slot contain.
+* **U7** Server parity was established from the identical ordered stack immediates and the
+  21 `rand` import calls of server VA 0x5104e0; a full instruction-level comparison of the
+  branch structure was not made.
+* **U8** Differences from the camp routine VA 0x5ad320 (earlier text: that routine has a
+  roughness test, stops the props when the fire fails and places props around the original
+  point) were not re-checked.
+* **U9** Zone-generator context: the draw count of the candidate grid (earlier text: 39),
+  the statue step before it (0 / 2 / 3 draws), the identity of the pass at VA 0x5eaf75 as the
+  wildlife pass, and the consequence that that pass's 20-block camp clearance does not see
+  these camps (this routine adds nothing to the zone's object list) were not re-checked.
+* **U10** The meanings of the float constructor arguments 20.0 (Combat) and 2.0 (WalkPath)
+  as radii, and of the block kinds 0 and 2 as air and water, are companion interpretations.
 
 ---
 
-## 8. Test vectors: set choice in the seed-123 home region
+## Re-certification (2026-11-15)
 
-From the records of `alpha-worldgen-locations.md` §12.1 (named world). Only zones whose
-type passes §1.1 are listed; creatures get the record's level and sub-level.
+Evidence used: `Cube.exe` and `Server.exe` image bytes (section headers, import tables,
+constants, jump tables, skipped instruction bytes), the per-instruction listings of client
+VA 0x5dc6e0 … 0x5df5a9 and of the relevant part of VA 0x5e4850, the server listing of
+VA 0x5104e0, and the decompile as a reading aid (callees VA 0x5adb20, 0x5f4da0, 0x42f860,
+0x68d946 and the behaviour constructors). The Infinite-Cubes reconstruction was not
+consulted.
 
-| Record | Type | Serial | List size | serial mod size | Set | Level | Sub-level |
-|---|---|---|---|---|---|---|---|
-| 5 | 12 | 764 | 10 | 4 | 4 lizardmen | 26 | 2 |
-| 6 | 4 | 901 | 1 | 0 | 9 squid, crabs | 87 | 3 |
-| 11 | 11 | 1041 | 10 | 1 | 1 undead | 301 | 4 |
-| 14 | 3 | 806 | 11 | 3 | 3 dwarves | 34 | 3 |
-| 22 | 3 | 711 | 11 | 7 | 7 insectoids | 21 | 3 |
-| 27 | 2 | 641 | 9 | 2 | 2 humans | 13 | 1 |
-| 31 | 6 | 845 | 10 | 5 | 5 goblins | 45 | 4 |
-| 32 | 12 | 945 | 10 | 5 | 5 goblins | 141 | 2 |
-| 35 | 2 | 495 | 9 | 0 | 0 orcs | 7 | 0 |
-| 37 | 2 | 670 | 9 | 4 | 4 lizardmen | 16 | 1 |
-| 53 | 6 | 320 | 10 | 0 | 0 orcs | 2 | 0 |
+**Confirmed:** call site, guard types and argument layout; unused fourth argument; type-0
+return; set-list rule and unsigned selection; the jump-table mapping of sets 1–10 and the
+default case; every type number, its A/B/R target and the camp flag of every set; the draw
+order and reductions of the set-up (including the unreachable set-2 entries and set 7's
+inherited A); zone match and marked-candidate rule with its constants; the grid's +32768
+candidate offset; neighbour test constants and arithmetic; branch draws and fall-throughs;
+fire and prop kinds, scales, offsets (229376), loop orders, centre update and 9 draws; ring
+φ, k, θ, yaw and position arithmetic with all constants; boss flags and their write point;
+behaviour children and their order (RTTI names); generator calls; leader and follower
+fields, waypoint rule and draws; static-record field values; the 21 draw sites; server call
+site, immediates and draw-site count; type-9 guardian and the next draw site.
 
-Game check: dump zone + 0x18 right after 0x5dc6e0 returns (break at 0x5eacec) for a zone of
-record 27 and compare types, positions, yaw, flags and +0x10e8 with §4.6; hook `rand` and
-count the calls from the 21 sites of §5.3.
+**Corrected:**
+1. Type-9 guardian condition: old "Lz type 9 only"; new: type 9 and Lz's centre zone equal to
+   the zone's coordinates.
+2. Block lookup VA 0x42f860: old "floor division"; new: negative coordinates are reduced by
+   one block before division toward zero.
+3. Waypoint point equals the grid's P: old unconditional; new: for non-negative coordinates.
+4. Waypoint block test: old "type other than 0 (air) or 2 (water)"; new: low five bits of
+   the block's byte +3 other than 0 or 2 (labels moved to U10).
+5. Argument table: the zone is also an explicit argument of the column, block and settle
+   lookups; ECX is described as the zone generator's own `this` (old "world object").
+6. Static-record append: added that the copy also skips +0x04 … +0x07 and +0x3c … +0x3f.
 
----
+None of the corrections changes world-generation results or the random-draw order stated
+earlier; correction 1 narrows when the guardian spawn exists (no draws involved).
 
-## 9. Corrections to `alpha-spawn-objects.md` §6.3 and §7
+**Removed:** §7 worked example (invented draw values); §8 seed-123 set-choice table (record
+data from a companion spec) and its runtime check procedure; §9 corrections addressed to
+another specification (its native facts remain in §1–§6); §10 notes addressed to a
+replacement; open questions LC-1 (stream-logging procedure) and the observation procedures
+of LC-2, LC-3 and LC-6; the "replaces §6.3" note; set names and model names from the body
+(now U3); the appearance/equipment count table and finishing-pass cost section (now U1, U2);
+the camp-routine comparison (now U8); the statue and grid draw counts and wildlife-pass
+consequences (now U9).
 
-* The routine is reached only for Lz types other than 0, 1, 5, 10, 14 (not "even with an
-  empty list" for every type); its own type-0 return is redundant.
-* Set-up draws: sets 1, 2 and 3 draw twice, set 4 once, the rest never (§2.3).
-* Per candidate there are **two branch draws** (none for the marked candidate), and an odd
-  first draw skips the candidate.
-* 0x5dedc4 is the **group leader** (yaw d mod 360, type from A, WalkPath through up to three
-  neighbour candidates), not a "single creature"; 0x5df1d4 makes its **followers**
-  (count d mod 3 + 1, type from B, Companion behaviour). Neither is generated inline.
-* The camp (fire + props, 9 draws) belongs to the ring branch and only to sets 0–5; it
-  never fails as a whole; the ring stands around the settled fire.
-* In the table of §7 there, order 8 should read: 0x5de9a4 (ring creatures, generated
-  inline), 0x5dedc4 (group leaders), 0x5df1d4 (followers).
-
----
-
-## 10. Notes for AlphaVulkan
-
-* Keep the set tables of §2.2 as data (one record per set: camp flag, R, groups with A and
-  B, and the set-up draws as "choose one of" entries), so a mod can add sets or change
-  types without touching the routine; keep the set-list rule of §2.1 including the
-  duplicated 1, behind the vanilla-parity default.
-* The routine needs three hooks to stay faithful: the settle test, the appearance generator
-  and the equipment generator, all already required elsewhere; run the two generators inline
-  for ring creatures exactly as §4.3.2 steps 10–11, and leave them to the finishing pass for
-  leaders and followers.
-* Model the Companion id copy as written (leader id 0 at the time); a fixed mode that links
-  followers to the leader's final id can be offered later behind a flag, since it does not
-  change the stream.
-* The camp statics are ordinary static objects (kinds 65, 66, 16, 12, 69); the "sit on
-  stools and mats" behaviour of RandomInteraction (`alpha-trails-poses-schedules.md` §3.6)
-  will find them.
-
----
-
-## 11. Open questions
-
-* **LC-1** *Game check of the stream*: hook `rand` on the generating thread in a type-2 or
-  type-6 location zone and log return addresses between 0x5eace7 and 0x5eacec; the sequence
-  must match §5 (set-up sites, then per candidate 0x5ddd4b [0x5ddd95], camp, ring or group
-  sites, with 0x43f7c0 and 0x5c7730 sites inside each ring creature).
-* **LC-2** Followers' Companion id: copied from the leader's +0x48/+0x4c before the
-  finishing pass gives ids, so it is 0 (*as read*). Whether a creature with id 0 can ever be
-  found at run time (making followers trail something) or whether Companion is simply never
-  handled (followers then only fight and wander) is not settled; check with a running
-  location zone (do followers stay near their leader?).
-* **LC-3** The duplicated set 1 in list position 6 (where 6 would be expected) and set 7's
-  inherited A = [60, 52] look unintended but are what the binary does (client and server
-  agree); confirm by observing an Lz with serial mod size = 6 (should show undead).
-* **LC-4** Unwritten bytes of the static records (§4.5) and whether the inline field values
-  equal those of the constructor 0x58eaa0 used by other passes; a static dump comparison
-  should skip +0x04 … +0x07 and +0x3c … +0x3f.
-* **LC-5** Types 9 and 13 never occur in fresh worlds; whether stored location data can
-  produce them (and so the [0 … 8, 6] list for type 9 and the 9-entry list for type 13) is
-  open (`alpha-worldgen-locations.md` open question 3).
-* **LC-6** Server parity was checked by constants and call patterns (server 0x5104e0); a
-  byte-level comparison of the branch structure would close it.
-* **LC-7** Exact re-roll cost of a ring creature in the finishing pass depends on which
-  equipment slots 0x5c7730 clears and re-levels (slot 8 is "cleared" in
-  `alpha-creatures-behaviour.md` §9.3 but "never touched" in `alpha-spawn-objects.md` §3.3);
-  settle from 0x5c7730 before counting finishing-pass draws of ring creatures. Draws inside
-  0x5dc6e0 itself are not affected.
+**Unresolved:** U1 … U10 above.
