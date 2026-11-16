@@ -251,7 +251,7 @@ void Terrain::structurePasses(Zone &zone, Random &random, const ZoneEntry &E, co
             stone.z -= ONE;
         for (int guard = 0; guard < 4096 && !clear(here().type()); guard++)
             stone.z += ONE;
-        stone.rotation = random.draw() & 3;
+        stone.rotation = random.draw() % 4; // one draw, after the settling
         zone.statics.push_back(stone);
     }
 }

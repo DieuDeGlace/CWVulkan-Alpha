@@ -384,7 +384,10 @@ class Interface {
     void drawCharacter(Painter &painter);
     // With `world`, the item is the world item under the target (its compare box sits above).
     void drawTooltip(Painter &painter, glm::vec2 window, glm::vec2 at, const creatures::ItemRecord &item, bool world = false);
-    void drawItemText(Painter &painter, glm::vec2 at, const creatures::ItemRecord &item, float wrap, bool classLine);
+    // `nameLine` false leaves the name line out but still skips its height (item services
+    // §2.3: the Adaption preview starts with the Power line one line lower).
+    void drawItemText(Painter &painter, glm::vec2 at, const creatures::ItemRecord &item, float wrap, bool classLine,
+                      bool nameLine = true);
     void drawItem(Painter &painter, glm::vec2 window, const creatures::ItemRecord &item, glm::vec2 at, float scale,
                   float depth = 0);
     void scrollRange();
@@ -422,6 +425,7 @@ class Interface {
     bool benchHolding = false, benchTargetValid = false;
     creatures::SpiritCube benchHeld;
     glm::ivec3 benchTarget{0}, benchHit{0};
+    creatures::ItemRecord benchCursor{}; // §3.4, §3.5: the cursor item, rebuilt every draw
     // Item services, in ServicesScreen.cpp.
     void loadServices();
     void drawServices(Painter &painter, glm::vec2 window, glm::vec2 mouse);

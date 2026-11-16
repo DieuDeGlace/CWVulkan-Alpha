@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "Install.h"
 #include "ui/Plasma.h"
+#include "ui/Interaction.h"
 #include "ui/LandNames.h"
 #include "ui/Screens.h"
 #include "Loot.h"
@@ -171,7 +172,78 @@ static void checkSkillTooltip() {
           "skill budget divides the cube counter truncating toward zero");
 }
 
+// alpha-interaction.md §2, §3, §5.2: squared reach, the shared fall-back, the dead clearing,
+// the item fall-back and the prompt order.
+static void checkInteractionTargets() {
+    const std::function<bool()> aimed = [] { return true; }, missed = [] { return false; };
+    {
+        // §8 example 4: a stool at 3 blocks (9) beats an NPC at 3.5 (12.25) as fall-back.
+        TargetPasses p;
+        p.creature(7, 12.25, 40, false);
+        p.staticObject({1, 2, 3}, 9, 30, missed);
+        const Targets t = p.finish();
+        check(t.creature == 0 && t.object == Triple{1, 2, 3}, "nearer static replaces the creature fall-back");
+    }
+    {
+        // Reach is squared: a creature 4.5 blocks away (20.25) is no fall-back; 3.9 (15.21) is.
+        TargetPasses far, near;
+        far.creature(7, 20.25, 1, false);
+        near.creature(7, 15.21, 1, false);
+        check(far.finish().creature == 0 && near.finish().creature == 7, "creature fall-back below squared 16");
+        TargetPasses table;
+        bool asked = false;
+        table.staticObject({0, 0, 1}, 20.25, 1, [&] { return asked = true; });
+        check(!table.finish().object && !asked, "a static beyond squared 16 is never a target (example 3)");
+    }
+    {
+        // A static no nearer than the creature fall-back leaves it in place.
+        TargetPasses p;
+        p.creature(9, 9, 60, false);
+        p.staticObject({0, 0, 4}, 10, 50, missed);
+        const Targets t = p.finish();
+        check(t.creature == 9 && !t.object, "a farther static keeps the creature fall-back");
+    }
+    {
+        // §8 example 2: the door's camera distance 30.25 beats the NPC's 36.
+        TargetPasses p;
+        p.creature(5, 12.25, 36, true);
+        p.staticObject({3, 3, 0}, 9, 30.25, aimed);
+        const Targets t = p.finish();
+        check(t.creature == 0 && t.object == Triple{3, 3, 0}, "nearest box to the camera wins");
+    }
+    {
+        // Dead: cleared after the static pass, but the fall-backs restore them.
+        TargetPasses p;
+        p.creature(5, 4, 36, true);
+        p.dead();
+        const Targets t = p.finish();
+        check(t.creature == 5, "the fall-backs run whatever the player's health");
+        // An item fall-back clears the creature and static fall-backs; uncarriable counts 16 more.
+        TargetPasses q;
+        q.creature(5, 12.25, 40, false);
+        q.staticObject({0, 0, 1}, 9, 30, missed);
+        q.item({0, 0, 2}, 2.25, 10, true, missed);
+        const Targets u = q.finish();
+        check(u.creature == 0 && !u.object && u.item == Triple{0, 0, 2}, "item fall-back clears the other fall-backs");
+        TargetPasses r;
+        r.item({0, 0, 1}, 1, 1, false, missed);
+        r.item({0, 0, 2}, 9, 9, true, missed);
+        check(r.finish().item == Triple{0, 0, 2}, "an item it cannot carry counts 16 further");
+    }
+    check(creaturePrompt(3, true, 2, false, false, 0) == u"[R] Talk" && creaturePrompt(3, false, 2, false, false, 0).empty(),
+          "Talk needs look mode");
+    check(creaturePrompt(5, true, 25, true, true, 0) == u"[R] Ride" && creaturePrompt(5, true, 25, true, true, 106).empty() &&
+              creaturePrompt(5, true, 25, false, true, 0).empty() && creaturePrompt(5, true, 25, true, false, 0).empty(),
+          "Ride: own rideable pet, riding skill, not riding");
+    const uint64_t none = ~uint64_t(0);
+    const PetCandidate pets[] = {{1, 5, 9, 3}, {2, 5, 16, none}, {3, 5, 30, none}, {4, 3, 1, none}};
+    check(freePetClaim(pets) == 0, "the nearest pet is owned: nothing claimed");
+    const PetCandidate free[] = {{2, 5, 16, none}, {5, 5, 16, none}, {3, 5, 24.9, none}};
+    check(freePetClaim(free) == 2, "nearest free pet within squared 25, first on ties");
+}
+
 int main(int argc, char **argv) {
+    checkInteractionTargets();
     checkPlatinumAdaption();
     checkMenuRequests();
     checkSkillTooltip();

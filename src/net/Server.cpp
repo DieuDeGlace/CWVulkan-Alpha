@@ -1039,7 +1039,22 @@ void Server::stepWorld(float dtMs) {
                      stun = fighter.hitStun;
                      return true;
                  },
-                 held);
+                 held, true,
+                 // §6.4: resident occupants are placed back each step (players' records are
+                 // their clients', so they keep the reported action test).
+                 [this](uint64_t who, glm::dvec3 top, float yaw, int32_t action) -> std::optional<glm::dvec3> {
+                     if (connections.count(who))
+                         return std::nullopt;
+                     for (creatures::Npc &n : npcs.npcs())
+                         if (n.fighter.id == who && n.fighter.health > 0) {
+                             n.body.place(top + glm::dvec3(0, 0, n.body.size.z / 2));
+                             n.body.velocity = glm::vec3(0);
+                             n.yaw = yaw;
+                             n.fighter.action = action;
+                             return n.body.blocks();
+                         }
+                     return std::nullopt;
+                 });
     // Traps (alpha-open-points-1.md §1): their cycle and hits; NPCs take theirs in this step,
     // players through section 2.
     std::vector<creatures::HitRecord> trapHits;

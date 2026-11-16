@@ -3207,6 +3207,65 @@ int main() {
         body.intent = {1, 0, 0};
         statics.step(16, where, held);
         same((*statics.zone(0, 0))[2].occupant, 0, "walking off frees the stool");
+
+        // Interaction §6.4: where the world can move the occupant, each step places it back
+        // with action 83 first, so only walking (+0x40) releases it.
+        body.intent = {0, 0, 0};
+        use(2);
+        me.action = 0; // (something else changed the action)
+        body.place({75, 55, 100});
+        const StaticStates::Place place = [&](uint64_t, glm::dvec3 top, float facing, int32_t action) {
+            body.place(top + glm::dvec3(0, 0, body.size.z / 2));
+            yaw = facing, me.action = action;
+            return std::optional<glm::dvec3>(body.blocks());
+        };
+        statics.step(16, where, held, true, place);
+        same((*statics.zone(0, 0))[2].occupant, 1, "placed back, still seated");
+        same(me.action, 83, "the step sets action 83");
+        same(body.blocks().z, 101.4, "back on the stool", 1e-4);
+        body.intent = {1, 0, 0};
+        statics.step(16, where, held, true, place);
+        same((*statics.zone(0, 0))[2].occupant, 0, "the walking intent is the release");
+    }
+
+    // Interaction §6.1: a chest drops one world item per unit with three draws each, in the
+    // order y offset, x offset, angle; a lever sets its linked partner.
+    {
+        worldgen::Zone zone;
+        zone.zx = 0, zone.zy = 0;
+        worldgen::StaticObject chest;
+        chest.kind = 10, chest.x = 50ll << 16, chest.y = 50ll << 16, chest.z = 10ll << 16, chest.state = 2;
+        chest.contents.resize(2);
+        for (auto &item : chest.contents)
+            item.type = 11, item.level = 1;
+        worldgen::StaticObject lever, gate;
+        lever.kind = 9, lever.state = 1, lever.descriptorIndex = 2;
+        gate.kind = 5, gate.state = 1;
+        zone.statics = {chest, lever, gate};
+        WorldItems items;
+        items.generated(zone);
+        StaticStates statics;
+        statics.generated(zone);
+        const BlockType ground = [](int32_t, int32_t, int32_t z) { return (uint8_t)(z < 10 ? 1 : 0); };
+        Combatant me;
+        Body body;
+        float yaw = 0;
+        std::vector<SoundEvent> sounds;
+        const int values[] = {0, 32767, 16383, 32767, 0, 0};
+        int drawn = 0;
+        statics.use(zone, 0, me, body, yaw, items, 0, ground, [&] { return values[drawn++ % 6]; }, sounds);
+        same(drawn, 6, "three draws per unit");
+        const auto &list = *items.zone(0, 0);
+        same(list.size(), 2, "one item per unit");
+        same(list[0].blocks().y, 52, "first draw is the y offset (2 - 4 x 0)", 1e-3);
+        same(list[0].blocks().x, 48, "second draw is the x offset (2 - 4 x 1)", 1e-3);
+        same(list[0].angle, 180, "third draw is the angle", 0.02);
+        same(list[1].blocks().y, 48, "next unit: y", 1e-3);
+        same(list[1].blocks().x, 52, "next unit: x", 1e-3);
+        same(list[1].angle, 0, "next unit: angle");
+        statics.use(zone, 1, me, body, yaw, items, 0, ground, [] { return 0; }, sounds);
+        same((*statics.zone(0, 0))[1].state, 0, "the lever opens");
+        same((*statics.zone(0, 0))[2].state, 0, "its partner follows the lever's state");
     }
 
     // Loot rolls §1, §2 and §5: the rolls' vectors and the goblin's two worked streams.

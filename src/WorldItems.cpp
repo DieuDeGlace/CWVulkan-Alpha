@@ -213,6 +213,23 @@ bool WorldItems::drop(const creatures::ItemRecord &item, const int64_t at[3], fl
     w.scale = std::bit_cast<float>(0x3d924925u) * factor; // one binary32 product
     w.landingMs = draw() % 300 + 500;
     w.day = day; // engine day stands in for the uninterpreted receiver snapshot
+    return settle(w, item, block, [&] { return (float)draw() * 360.f / 32767.f; });
+}
+
+bool WorldItems::dropAt(const creatures::ItemRecord &item, glm::dvec3 at, float angle, int32_t day,
+                        const creatures::BlockType &block) {
+    WorldItem w;
+    w.position[0] = (int64_t)(at.x * 65536.0), w.position[1] = (int64_t)(at.y * 65536.0);
+    w.position[2] = (int64_t)(at.z * 65536.0);
+    w.scale = std::bit_cast<float>(0x3d924925u);
+    w.landingMs = 0; // (engine choice: the chest contract names no landing timer or draw)
+    w.day = day;
+    return settle(w, item, block, [&] { return angle; });
+}
+
+bool WorldItems::settle(WorldItem w, const creatures::ItemRecord &item, const creatures::BlockType &block,
+                        const std::function<float()> &angle) {
+    const int64_t at[3] = {w.position[0], w.position[1], w.position[2]};
     // Each raw coordinate truncates toward zero to a 32-bit integer, which
     // truncates toward zero again to its zone; the lookup admits 0..65535.
     const int32_t by = int32_t(uint32_t(std::bit_cast<uint64_t>(w.position[1] / 65536)));
@@ -223,7 +240,7 @@ bool WorldItems::drop(const creatures::ItemRecord &item, const int64_t at[3], fl
     if (it == lists.end())
         return false; // no item copy and no replacement-angle draw
     creatures::copyItemFields(item, w.item); // fresh destination gaps stay engine zero
-    w.angle = (float)draw() * 360.f / 32767.f;
+    w.angle = angle();
     // The vertical start takes one extra step down for any negative raw height,
     // including exact multiples, so it is not a floor division.
     int32_t z = int32_t(uint32_t(std::bit_cast<uint64_t>(at[2] / 65536)));

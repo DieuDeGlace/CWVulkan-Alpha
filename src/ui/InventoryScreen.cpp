@@ -297,7 +297,8 @@ void Interface::drawTooltip(Painter &painter, glm::vec2 W, glm::vec2 X, const It
 }
 
 // §8.1.7: an item's text block (0x4a28c0): name, power, class line, stats.
-void Interface::drawItemText(Painter &painter, glm::vec2 at, const ItemRecord &record, float wrap, bool classLine) {
+void Interface::drawItemText(Painter &painter, glm::vec2 at, const ItemRecord &record, float wrap, bool classLine,
+                             bool nameLine) {
     const creatures::Item item = creatures::Item::parse(record.data());
     const bool quantity = creatures::quantityType(record);
     std::u16string name = item.type == 20 ? u"Pet food: " : u"";
@@ -305,7 +306,8 @@ void Interface::drawItemText(Painter &painter, glm::vec2 at, const ItemRecord &r
     const int32_t power = creatures::powerOf(item.level);
     if (!quantity && item.type != 19)
         name += u" +" + number(power);
-    outlined(painter, name, at, 10, 3, glm::vec4(creatures::nameColour(record), 1), plasma::WRAP, wrap);
+    if (nameLine)
+        outlined(painter, name, at, 10, 3, glm::vec4(creatures::nameColour(record), 1), plasma::WRAP, wrap);
     at.y += 30;
     std::u16string second;
     if (quantity)
@@ -424,6 +426,9 @@ bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
                     adaptBag = inventoryTab, adaptSlot = i, adaptBox = -1;
                 } else if (identifyOpen) { // §1.3: the item to identify
                     identifyBag = inventoryTab, identifySlot = i;
+                } else if (vendorOpen) { // talk §3.4: sell one (before the bench, item services §3.2)
+                    if (inventoryTab < (int)inventory->bags.size() && i < inventory->bags[inventoryTab].size())
+                        sell(inventory->bags[inventoryTab][i]);
                 } else if (benchOpen) { // item services §3.2: the weapon to customize
                     const bool weapon = inventoryTab < (int)inventory->bags.size() && i < inventory->bags[inventoryTab].size() &&
                                         creatures::itemType(inventory->bags[inventoryTab][i].item) == 3;
@@ -431,9 +436,6 @@ bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
                         benchBag = inventoryTab, benchSlot = i, benchBox = -1, benchReset();
                     else
                         sound(creatures::SOUND_NOT_HERE);
-                } else if (vendorOpen) { // talk §3.4: sell one
-                    if (inventoryTab < (int)inventory->bags.size() && i < inventory->bags[inventoryTab].size())
-                        sell(inventory->bags[inventoryTab][i]);
                 } else {
                     const creatures::UseOutcome u = inventory->useSlot(inventoryTab, i, button == 2, sheet.level,
                                                                        sheet.characterClass, sheet.canAct);
@@ -451,20 +453,20 @@ bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
         if (inside(mouse, boxCorner(W, i), {50, 50})) {
             if (button == 0) {
                 sound(inventory->pressBox(i, sheet.level, sheet.characterClass));
-            } else if (button == 1 && adaptOpen) { // item services §2.2: equipped gear, in place
+            } else if (adaptOpen) { // item services §1.3, §2.2: right or middle, equipped gear in place
                 if (creatures::itemType(inventory->equipment[creatures::equipmentBoxes[i].slot]))
                     adaptBox = creatures::equipmentBoxes[i].slot, adaptBag = -1;
-            } else if (button == 1 && benchOpen) { // the equipped weapon, edited in place
-                if (creatures::itemType(inventory->equipment[creatures::equipmentBoxes[i].slot]) == 3)
-                    benchBox = creatures::equipmentBoxes[i].slot, benchBag = -1, benchReset();
-                else
-                    sound(creatures::SOUND_NOT_HERE);
-            } else if (button == 1 && vendorOpen) { // sold straight from the box
+            } else if (vendorOpen) { // sold straight from the box
                 creatures::ItemRecord &slot = inventory->equipment[creatures::equipmentBoxes[i].slot];
                 if (creatures::itemType(slot)) {
                     vendor::sellSlot(slot, buyBack, inventory->money, vendorServices());
                 }
-            } else if (button == 1) {
+            } else if (benchOpen) { // the equipped weapon, edited in place
+                if (creatures::itemType(inventory->equipment[creatures::equipmentBoxes[i].slot]) == 3)
+                    benchBox = creatures::equipmentBoxes[i].slot, benchBag = -1, benchReset();
+                else
+                    sound(creatures::SOUND_NOT_HERE);
+            } else {
                 sound(inventory->unequip(i));
             }
             equipmentChanged = true;

@@ -15,6 +15,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <span>
 #include <vector>
@@ -82,14 +83,19 @@ class StaticStates {
     void use(const worldgen::Zone &zone, int32_t index, creatures::Combatant &c, creatures::Body &body, float &yaw,
              WorldItems &items, int32_t day, const creatures::BlockType &block, const std::function<int()> &draw,
              std::vector<creatures::SoundEvent> &sounds);
-    // §6.3 timers and §6.4 occupants (open points 1 §1.6, every static kind): a seat is freed
-    // when its occupant has gone, is stunned (+0x12C > 0), moves, is more than 4 blocks away or
-    // stops sitting or sleeping; the occupant's action is not changed. `where(id)` gives a
-    // creature's position, walking intent (+0x40), action and hit-stun, or false when it no
-    // longer exists. Timers advance on every world; `release` is false on a remote world.
+    // §6.3 timers and §6.4 occupants: a seat is freed when its occupant has gone or is stunned
+    // (+0x12C > 0); otherwise a seat or bed occupant is placed back on it with action 83 or 84,
+    // then freed when more than 4 blocks (squared 16) away, walking (+0x40 non-zero) or neither
+    // sitting nor sleeping. `where(id)` gives a creature's position, walking intent, action and
+    // hit-stun, or false when it no longer exists. `place(id, top, yaw, action)` stands the
+    // creature on `top` (the static's position + its scale z) with its half height added,
+    // velocity 0, and returns its new position, or nothing where this world cannot move that
+    // occupant (engine adapter: a remote client, a server's player records; those keep the
+    // reported action test). Timers advance on every world; `release` is false remotely.
     using Occupant = std::function<bool(uint64_t, glm::dvec3 &, glm::vec3 &, int32_t &action, int32_t &stun)>;
+    using Place = std::function<std::optional<glm::dvec3>(uint64_t, glm::dvec3 top, float yaw, int32_t action)>;
     void step(int32_t dtMs, const Occupant &where, const std::map<Key, const worldgen::Zone *> &held,
-              bool release = true);
+              bool release = true, const Place &place = {});
 
     // Traps (hazards-blast-ticks contract §3, site 1), where the world is run (offline, the
     // server), after `step`: an active trap goes inactive after 2 s; an inactive one activates

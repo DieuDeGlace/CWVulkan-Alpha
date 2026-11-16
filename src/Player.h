@@ -40,6 +40,9 @@ class Player {
     uint64_t hoveredCreature() const { return hovered; }
     // The world's time of day in milliseconds, for the pick's daylight factor (none: full day).
     std::function<int32_t()> timeOfDay;
+    // The block light query (0x0718B0) over the held zones, for the pick reaches of the aim
+    // and of the interaction creature pass.
+    uint8_t lightAt(int32_t x, int32_t y, int32_t z) const;
     void finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
                      const creatures::visibility::RecordLookup &records); // camera, once per rendered frame
     // Adds the player's creature to the draw list.

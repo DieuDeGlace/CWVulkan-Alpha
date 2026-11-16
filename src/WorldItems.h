@@ -72,12 +72,19 @@ class WorldItems {
               const creatures::BlockType &block, const std::function<int()> &draw);
     bool drop(const creatures::ItemRecord &item, const int64_t at[3], float factor, int32_t day,
               const creatures::BlockType &block, const std::function<int()> &draw);
+    // Interaction §6.1: a chest's unit at a position and angle the caller drew; no draws here.
+    bool dropAt(const creatures::ItemRecord &item, glm::dvec3 at, float angle, int32_t day,
+                const creatures::BlockType &block);
     // §3.3 kind 5: takes item `index` of a zone for a creature at `from` (within 4 blocks),
     // after the mana-cube filter against `manaCounter` when the caller knows it.
     std::optional<creatures::ItemRecord> pickUp(int32_t zx, int32_t zy, int32_t index, glm::dvec3 from,
                                                 std::optional<int32_t> manaCounter = std::nullopt);
 
   private:
+    // §3.2: the zone lookup, the record copy, the angle (asked only for a resident zone), the
+    // fall to the first solid block and the append.
+    bool settle(WorldItem w, const creatures::ItemRecord &item, const creatures::BlockType &block,
+                const std::function<float()> &angle);
     std::map<Key, std::vector<WorldItem>> lists;
     std::set<Key> changed;
 };

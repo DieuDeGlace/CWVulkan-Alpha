@@ -416,7 +416,7 @@ void Interface::drawHud(Painter &painter, glm::vec2 W, const HudState &s) {
         anchor(*zoomCrosshair, W * 0.5f);
         painter.draw(*zoomCrosshair, 0, Transform(1));
     } else if (!s.lens && crosshair && !menuRow) {
-        setText(*crosshair, "name", s.health <= 0 ? u"[R] Revive" : s.prompt);
+        setText(*crosshair, "name", s.prompt); // interaction §3: "[R] Revive" first, then any later prompt
         anchor(*crosshair, W * 0.5f);
         painter.draw(*crosshair, 0, Transform(1));
     }

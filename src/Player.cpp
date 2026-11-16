@@ -23,6 +23,25 @@ Player::Player(WorldView &v, const creatures::Appearance &a, worldgen::Random &r
     yaw = (float)(std::atan2(-f.x, f.y) * 180.0 / 3.141592653589793);
 }
 
+uint8_t Player::lightAt(int32_t x, int32_t y, int32_t z) const {
+    const worldgen::Zone *zone = view.held().zoneAt(x, y);
+    if (!zone || x < 0 || y < 0)
+        return 0;
+    const worldgen::Column &column = zone->column(x, y);
+    if (z < column.bottom)
+        return 0;
+    if (z >= column.top())
+        return 255;
+    const worldgen::Block b = column.blocks[size_t(z - column.bottom)];
+    if (b.type() == worldgen::AIR && z <= 0 && !(b.typeByte & worldgen::DRY_AIR))
+        return 255;
+    if (b.type() == worldgen::GLOWING)
+        return 255;
+    if (b.type() != worldgen::AIR && b.type() != worldgen::WATER)
+        return 0;
+    return std::max<uint8_t>(zone->light(x, y, z), 5);
+}
+
 void Player::revive() {
     state.stamina = 1;
     state.dodgeMs = 0;
@@ -196,24 +215,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         const camera_view::Fixed3 me{state.position[0], state.position[1], state.position[2]};
         // Head-pitch-and-pick §2.1: the pick's reach from the light at each creature and the
         // daylight of the world clock.
-        const controller_aim::LightQuery light = [&](int32_t x, int32_t y, int32_t z) -> uint8_t {
-            const worldgen::Zone *zone = view.held().zoneAt(x, y);
-            if (!zone || x < 0 || y < 0)
-                return 0;
-            const worldgen::Column &column = zone->column(x, y);
-            if (z < column.bottom)
-                return 0;
-            if (z >= column.top())
-                return 255;
-            const worldgen::Block b = column.blocks[size_t(z - column.bottom)];
-            if (b.type() == worldgen::AIR && z <= 0 && !(b.typeByte & worldgen::DRY_AIR))
-                return 255;
-            if (b.type() == worldgen::GLOWING)
-                return 255;
-            if (b.type() != worldgen::AIR && b.type() != worldgen::WATER)
-                return 0;
-            return std::max<uint8_t>(zone->light(x, y, z), 5);
-        };
+        const controller_aim::LightQuery light = [&](int32_t x, int32_t y, int32_t z) { return lightAt(x, y, z); };
         const float day = timeOfDay ? controller_aim::daylight(timeOfDay()) : 1.f;
         controller_aim::AimPoint aim = controller_aim::aimPoint(cameraState, me, fighter, candidates, scene, day, light);
         hovered = aim.hovered;

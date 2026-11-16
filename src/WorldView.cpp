@@ -465,8 +465,9 @@ std::vector<WorldView::PlantInstance> WorldView::plantsOf(const Zone &zone) {
         PlantInstance instance;
         instance.mesh = mesh;
         instance.placed = glm::translate(glm::mat4(1), at);
+        // Interaction §4.4: one uniform factor, scale x over the model's x size.
         instance.yaw = glm::scale(glm::rotate(glm::mat4(1), glm::radians(90.f * (float)o.rotation), glm::vec3(0, 0, 1)),
-                                  glm::vec3(o.scale[0], o.scale[1], o.scale[2]) / voxels);
+                                  glm::vec3(o.scale[0] / voxels.x));
         instance.scale = 1;
         instance.height = 1;
         instance.phase = 0;

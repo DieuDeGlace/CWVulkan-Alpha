@@ -39,4 +39,62 @@ bool rideable(int32_t type) {
     }
 }
 
+std::u16string creaturePrompt(uint8_t controller, bool lookMode, int32_t type, bool ownedByPlayer, bool ridingSkill,
+                              int32_t playerAction) {
+    if (controller == 3 && lookMode)
+        return u"[R] Talk";
+    if (controller == 5 && rideable(type) && ridingSkill && ownedByPlayer && playerAction != 106)
+        return u"[R] Ride";
+    return u"";
+}
+
+void TargetPasses::creature(uint64_t id, double dp, double dc, bool underCrosshair) {
+    if (dp < 16 && (Fd < 0 || dp < Fd))
+        Fd = dp, fallbackCreature = id; // (the creature fall-back leaves the object one alone)
+    if (underCrosshair && (B < 0 || dc < B))
+        B = dc, found.creature = id;
+}
+
+void TargetPasses::staticObject(Triple at, double dp, double dc, const std::function<bool()> &aimed) {
+    if (dp > 16)
+        return;
+    if (Fd < 0 || dp < Fd)
+        Fd = dp, fallbackObject = at, fallbackCreature = 0;
+    if ((B < 0 || dc < B) && aimed())
+        B = dc, found.object = at, found.creature = 0;
+}
+
+void TargetPasses::item(Triple at, double q, double qc, bool carriable, const std::function<bool()> &aimed) {
+    if (q > 16)
+        return;
+    if (!carriable)
+        q += 16, qc += 16;
+    // An item fall-back clears the creature and static fall-backs found so far.
+    if (Fi < 0 || q < Fi)
+        Fi = q, fallbackItem = at, fallbackObject.reset(), fallbackCreature = 0;
+    if ((B < 0 || qc < B) && aimed())
+        B = qc, found.item = at, found.object.reset(), found.creature = 0;
+}
+
+Targets TargetPasses::finish() const {
+    Targets out = found;
+    if (out.creature == 0 && !out.object) {
+        if (fallbackCreature != 0)
+            out.creature = fallbackCreature;
+        if (fallbackObject)
+            out.object = fallbackObject;
+    }
+    if (!out.item && fallbackItem)
+        out.item = fallbackItem;
+    return out;
+}
+
+uint64_t freePetClaim(std::span<const PetCandidate> candidates) {
+    const PetCandidate *nearest = nullptr;
+    for (const PetCandidate &c : candidates)
+        if (c.controller == 5 && c.distance2 < 25 && (!nearest || c.distance2 < nearest->distance2))
+            nearest = &c;
+    return nearest && nearest->owner == ~uint64_t(0) ? nearest->id : 0;
+}
+
 } // namespace ui

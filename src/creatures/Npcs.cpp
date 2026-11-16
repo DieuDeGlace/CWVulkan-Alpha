@@ -1546,7 +1546,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
                 charge(24, 22);
             else if (armed && m == BOOMERANG)
                 charge(27, 26);
-            else if (m == BOW || c.type == 104)
+            else if ((armed && m == BOW) || c.type == 104) // empty main hand: only type 104
                 charge(25, 55);
         }
         return true;

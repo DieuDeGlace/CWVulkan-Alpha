@@ -315,10 +315,14 @@ void StaticStates::use(const worldgen::Zone &zone, int32_t index, creatures::Com
     }
     // Step 5: chests drop their contents, then doors, windows, levers and chests toggle.
     if (o.kind == 10 && s.state == 2) {
+        // One world item per unit (each content record is one), with exactly three draws in
+        // the order y offset, x offset, angle.
         const glm::dvec3 at = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
         for (const creatures::ItemRecord &item : s.contents) {
-            const float rx = (float)draw() / 32767.f, ry = (float)draw() / 32767.f;
-            items.drop(item, at + glm::dvec3(2 - 4 * rx, 2 - 4 * ry, 0), 1, day, block, draw);
+            const float ry = (float)draw() / 32767.f;
+            const float rx = (float)draw() / 32767.f;
+            const float angle = 360.f * ((float)draw() / 32767.f);
+            items.dropAt(item, at + glm::dvec3(2 - 4 * rx, 2 - 4 * ry, 0), angle, day, block);
         }
         s.contents.clear();
     }
@@ -330,31 +334,53 @@ void StaticStates::use(const worldgen::Zone &zone, int32_t index, creatures::Com
     default:
         return;
     }
-    // (A lever would also set its linked static, +0x178, but no generator sets a link: open
-    // point I-3.)
+    // A lever then sets its partner, the link index +0x178 in the same zone, to closed while
+    // the lever is closed, else open. (Natively the second section-6 record repeats the
+    // lever's own triple and static, not the partner's; the engine publishes changed zones
+    // whole, U-2: no generator is known to set a link.)
+    if (o.kind == 9 && o.descriptorIndex >= 0 && o.descriptorIndex < (int32_t)zone.statics.size() &&
+        o.descriptorIndex < (int32_t)it->second.size())
+        set(zone.statics[(size_t)o.descriptorIndex], it->second[(size_t)o.descriptorIndex], s.state != 0 ? 1 : 0,
+            sounds);
 }
 
 void StaticStates::step(int32_t dt, const Occupant &where, const std::map<Key, const worldgen::Zone *> &held,
-                        bool release) {
+                        bool release, const Place &place) {
     for (auto &[key, list] : zones) {
         const auto z = held.find(key);
         for (size_t i = 0; i < list.size(); i++) {
             StaticState &s = list[i];
-            s.timerMs += dt;
-            if (!release || !s.occupant || z == held.end() || i >= z->second->statics.size())
+            s.timerMs += dt; // §6.3: every static of each processed zone, no flag test
+            if (!s.occupant || z == held.end() || i >= z->second->statics.size())
                 continue;
             const worldgen::StaticObject &o = z->second->statics[i];
             glm::dvec3 at;
             glm::vec3 intent;
             int32_t action = 0, stun = 0;
-            const glm::dvec3 seat = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
-            const bool stays = where(s.occupant, at, intent, action, stun) && stun <= 0 &&
-                               glm::dot(at - seat, at - seat) <= 16 && glm::dot(intent, intent) == 0 &&
-                               (action == 83 || action == 84);
-            if (!stays) {
-                s.occupant = 0;
-                changed.insert(key);
+            const glm::dvec3 base = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
+            const auto free = [&] {
+                if (release) {
+                    s.occupant = 0;
+                    changed.insert(key);
+                }
+            };
+            if (!where(s.occupant, at, intent, action, stun) || stun > 0) {
+                free();
+                continue;
             }
+            // §6.4: the occupant is first placed back on the seat (yaw (rotation + 2) x 90,
+            // action 83) or bed (yaw rotation x 90, action 84), so the action test cannot fail
+            // for these kinds and a non-zero +0x40 intent is the effective release.
+            const bool seat = o.kind == 16 || o.kind == 18, bed = o.kind == 19 || o.kind == 68 || o.kind == 69;
+            if ((seat || bed) && place) {
+                const int32_t sitting = seat ? 83 : 84;
+                if (const auto placed = place(s.occupant, base + glm::dvec3(0, 0, o.scale[2]),
+                                              90.f * (float)(seat ? o.rotation + 2 : o.rotation), sitting))
+                    at = *placed, action = sitting;
+            }
+            if (glm::dot(at - base, at - base) > 16 || glm::dot(intent, intent) != 0 || (action != 83 && action != 84))
+                free();
+            // (The native second placement, without the action change, repeats the first.)
         }
     }
 }

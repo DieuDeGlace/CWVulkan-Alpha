@@ -116,7 +116,7 @@ void Interface::drawServices(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
             drawItemText(painter, O + glm::vec2(15, 180), *s, 300, false);
             ItemRecord adapted = *s; // the preview at the player's level
             creatures::setItemLevel(adapted, (int16_t)sheet.level);
-            drawItemText(painter, O + glm::vec2(225, 180), adapted, 300, false);
+            drawItemText(painter, O + glm::vec2(225, 180), adapted, 300, false, false); // no name line
             if (adaptArrow) {
                 placeWidget(*adaptArrow, 0, O + glm::vec2(165, 230));
                 painter.draw(*adaptArrow, 0, Transform(1));

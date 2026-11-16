@@ -2768,3 +2768,21 @@ meter's action-99 skill term and action-79 branch.
 `docs/clean-room-specification.html` is a standalone page summarising the clean-room process,
 interoperability facts, functional requirements, references and conformance tests; where it and
 the repository documents differ, the documents win.
+## Interaction, open points 4, item services, block edits; melee reach ruling (2026-11-15)
+
+Fresh source-only authors re-certified `alpha-interaction.md` (C36D72FC...096F), `alpha-open-points-4.md` (89D5C8CC...D8F5),
+`alpha-item-services.md` (D8DF28CE...74E7) and `alpha-block-edits.md` (D08F1B86...DE7B); a ruling author settled the one
+conflict between held contracts in `alpha-rulings-melee-reach.md` (CD2114A8...703C): a melee creature beyond
+reach takes the common exit only (the created-actor combat contract is right; the open-points-4
+claim is not), which the engine already matched. A fresh implementer read all five whole.
+Engine changes: interaction targeting uses one pass test with squared reach (4 blocks, not 16),
+a creature prompt and the free-pet claim; the revive prompt comes first, talk needs look mode,
+riding needs the owner and the revive press skips the use block; chest drops take three draws per
+unit (y, x, angle) through `WorldItems::dropAt` - a random-draw-order change; a lever finds its
+partner by descriptor index; static-state steps place blocks through a callback with a uniform
+draw scale; the runestone uses draw() % 4; the ranged 25-to-55 charge needs a main-hand item; the
+customization bench uses the native click priority, a 3D grid ray limited to 1000 steps and the
+cursor label; item text takes a name line; the middle button sells or unequips.
+Not modelled: talk/vendor, open-points-6 and location-creature corrections (re-certified, to
+follow in the next implementer batch).
+The clean-room page gains a heading style for its sub-sections.
