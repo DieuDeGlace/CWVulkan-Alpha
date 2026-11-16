@@ -419,10 +419,10 @@ float damage(const Combatant &c) {
 }
 
 float armour(const Combatant &c) {
-    const float base = basePower(c);
-    float a = base * c.multipliers[3];
+    float a = basePower(c) * c.multipliers[3];
+    // §4.2 (0x43CFF0): flag 0x20 adds the tier-based NPC base B, unmultiplied, for players too.
     if (c.appearanceFlags & 0x20)
-        a += base;
+        a += levelPower(c.level) * (float)std::pow(2.0, 0.25 * c.powerTier);
     return a + bonus(itemBonuses().armour, c, {CHEST_SLOT, BOOTS_SLOT, GLOVES_SLOT, SHOULDERS_SLOT});
 }
 

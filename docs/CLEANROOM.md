@@ -2808,3 +2808,22 @@ summary copy; raw static-record bytes; the +0x11c0 beam exclusion and action 94 
 producer); online clients running the melee block for every creature.
 Conflicts reported for a ruling: the beam area flag for action 95 (open points 6 against the
 strike call sites and attack routine) and the strike origin z sign for actions 69 and 75.
+## Creature behaviour; beam flag and strike origin ruling (2026-11-16)
+
+A fresh source-only author re-certified `alpha-creatures-behaviour.md` (B1E2181A...5DD8); a ruling author
+settled the two conflicts the talk/open-points-6 batch reported in
+`alpha-rulings-beam-flag-strike-origin.md` (DF4859D6...453F): the beam sets the area flag for action 95 (area
+value 0.1) and the strike origin for actions 69 and 75 subtracts half of (bz - bx) in fixed point
+(the strike call-site contract is right on both; open points 6 is not), which the engine already
+matched. A fresh implementer read both whole.
+Engine changes: armour flag 0x20 adds the unmultiplied tier base for players too; spawn records
+default the +0x60/+0x64 pair to -1; the type-144 health drain applies under any controller;
+random walk uses the shared created-actor wander (fixed-point leash, unnormalised x-then-y intent
+draws, timer draw, action 0 with the clock kept) - a random-draw-order change; the taming bite
+counter is the combo counter (the separate bite count is removed); a buff's cooldown read creates
+a missing entry at 0. The other corrections were already matched.
+Not modelled: the unresolved items U-1 to U-12; +0x13E0 and spawn +0x6C/+0x70; uninitialised
+record bytes stay zero.
+Conflicts reported for a ruling: the knock-back velocity rescale in hit resolution (creature
+behaviour against the attack routine), the taming success branch (against created-actor combat
+and pets/bombs), and where pending-charge finalisation runs (against common action processing).

@@ -76,9 +76,8 @@ struct Npc {
     uint32_t quest = 0;
     uint8_t questRole = 0;
     float leaveMs = -1;
-    // Pets (pets and bombs Part B): the owner (record field 35), the bites of a feeding and
-    // the taming progress it carries for 5 s (the kind-7 buff), and who fed it.
-    int32_t bites = 0;
+    // Pets (pets and bombs Part B): the taming progress it carries for 5 s (the kind-7 buff)
+    // and who fed it. The bites are counted in the combo counter (pets §7.3).
     float tameProgress = 0, tameMs = 0;
     uint64_t tamer = 0;
     // Cast-point contract §1.1: the latched cast point (object +0x1320), fixed point. Never
@@ -93,7 +92,7 @@ struct Npc {
     float thinkMs = 0;         // accumulated until a decision (every ≥ 32 ms)
     int32_t specialMs = 20000, chaseMs = 0, cooldownMs = 0;
     float targetRange = 20; // supplied selection range; producer parity remains bounded
-    float walkMs = 0;
+    int32_t walkMs = 0; // RandomWalk's signed counter (behaviour §11.6)
     PathSearch path; // path search §4: kept between updates
     // Wildlife §4: the behaviour sequence (as the spawn's), the route and where on it, the
     // wait at a point, and the creature a member follows.

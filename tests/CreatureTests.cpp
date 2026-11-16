@@ -2282,7 +2282,7 @@ int main() {
             near = collie->fighter.relations.contact == me.id;
         }
         same(near, 1, "the creature reaches the feeder");
-        collie->bites = 5;
+        collie->fighter.combo = 5; // the bite counter is the combo (pets §7.3)
         collie->tameMs = 0;
         collie->tameProgress = 0;
         collie->fighter.action = 110;
@@ -3766,6 +3766,185 @@ int main() {
         me.actionMs = B + 17;
         ca::freezeSpellPoint(point, held, me, 16);
         same(point == fixed(1, 1, 1), 1, "spell point held after the wind-up");
+    }
+
+    // Behaviour re-certification 2026-11-15, correction 1 (§4.5): a kind-11 buff makes p = 1,
+    // but the critical draw is still consumed and a draw of 32767 is not critical.
+    {
+        Combatant a;
+        a.action = 1;
+        a.buffs = {{SURE_CRITICAL, 0, 30000, 0}};
+        for (const int roll : {32767, 32766}) {
+            int draws = 0;
+            const HitInput in = strikeInput(a, {}, glm::vec3(1), {0, 1, 0}, glm::vec3(1), [&] { draws++; return roll; });
+            same(draws, 2, "kind-11: the critical draw is consumed, then the spread draw");
+            same(in.critical, roll == 32767 ? 0 : 1, "kind-11: critical only when the draw is below 32767");
+        }
+    }
+    // Correction 12 (§4.2): flag 0x20 adds the tier-based NPC base B = P x 2^(0.25 t), also for
+    // a player whose own base is 2P.
+    {
+        Combatant player;
+        player.controller = 0;
+        player.level = 1;
+        player.powerTier = 2;
+        player.appearanceFlags = 0x20;
+        same(armour(player), 2.f + (float)std::pow(2.0, 0.5), "player armour: 2P + P x 2^(0.25 t)");
+        same(armour(player), resistance(player), "armour and resistance share the flag-0x20 term");
+        player.appearanceFlags = 0;
+        same(armour(player), 2, "player armour without the flag is 2P x multiplier");
+    }
+    // Correction 33 (§2.1): spawn-object defaults.
+    {
+        const worldgen::Spawn s;
+        same(s.radius == 200 && s.controller == 1 && s.type == 4 && s.level == 1 && s.powerTier == 0, 1,
+             "spawn defaults: radius 200, controller 1, type 4, level 1, tier 0");
+        same(s.field41[0] == -1 && s.field41[1] == -1 && s.field41[2] == 0, 1, "spawn +0x60, +0x64 = -1, +0x68 = 0");
+        same(s.multipliers[0] == 100 && s.multipliers[1] == 1 && s.multipliers[4] == 1, 1, "spawn multipliers 100, 1 ...");
+    }
+    // Corrections 6, 7 (§5 steps 15, 16): the hurt-voice draw is consumed even for a type with
+    // no voice; the stun step makes its own draw, gives the stun length, knock-back z 10 and
+    // sound 23; a kind-1 buff makes its chance 0 but the draw is still taken.
+    {
+        const auto hit = [](Combatant &target, bool critical, int roll, int &draws) {
+            Combatant attacker;
+            attacker.id = 7;
+            attacker.controller = 0; // a player: no x 0.1
+            attacker.action = 58;    // p := 1
+            HitInput in;
+            in.amount = 5;
+            in.critical = critical;
+            in.blockable = false; // no flash and no impact sound
+            in.knockBack = {1, 0, 0};
+            glm::vec3 velocity(0);
+            return resolveHit(target, velocity, &attacker, in, [&] { draws++; return roll; });
+        };
+        Combatant voiceless;
+        voiceless.type = 6; // no hurt voice
+        voiceless.controller = 1;
+        voiceless.hitStun = 0; // not below -3000: no stun step
+        int draws = 0;
+        HitOutcome out = hit(voiceless, true, 0, draws);
+        same(draws, 1, "hurt voice: one draw consumed for a type without a voice");
+        same(out.sounds.empty(), 1, "hurt voice: no sound for type 6");
+
+        Combatant target;
+        target.type = 6;
+        target.controller = 1;
+        target.powerTier = 2;
+        target.hitStun = -4000;
+        draws = 0;
+        out = hit(target, false, 0, draws);
+        same(draws, 1, "stun: one draw of its own");
+        same(!out.records.empty() ? out.records.back().stun : -1, 3000 - (1500 * 2 >> 2), "stun: 3000 - (1500 t >> 2)");
+        same(!out.records.empty() ? out.records.back().knockBack.z : -1, 10, "stun: knock-back z := 10");
+        same(out.sounds.size() == 1 && out.sounds[0].sound == 23 && out.sounds[0].pitch == 1, 1, "stun: sound 23 at pitch 1");
+        draws = 0;
+        out = hit(target, false, 29491, draws); // r just above q = 0.9
+        same(draws == 1 && out.records.back().stun == 0, 1, "stun: r must be below 0.9 p");
+        target.buffs = {{DAMAGE_TAKEN, 1, 1000, 0}};
+        draws = 0;
+        out = hit(target, false, 0, draws);
+        same(draws == 1 && out.records.back().stun == 0, 1, "stun: a kind-1 buff gives q = 0, the draw still taken");
+    }
+    // Correction 4 (§5 step 5): the block gauge falls by x / damage and is floored at -1.
+    {
+        Combatant attacker, target;
+        attacker.id = 3;
+        target.action = 8;
+        target.blockGauge = .1f;
+        HitInput in;
+        in.amount = 1000;
+        in.knockBack = {2, 0, 0};
+        glm::vec3 velocity(0);
+        int draws = 0;
+        const HitOutcome out = resolveHit(target, velocity, &attacker, in, [&] { draws++; return 0; });
+        same(target.blockGauge, -1, "block gauge floored at -1");
+        same(draws == 1 && out.records.size() == 1 && out.records[0].kind == HIT_BLOCKED &&
+             out.records[0].knockBack.x == 1, 1, "block: one pitch draw, a kind-1 record with half the knock-back");
+    }
+    // Ruling alpha-rulings-beam-flag-strike-origin.md §1: the beam passes the area flag set and
+    // area value 0.1 for action 95 only; 28 and 94 pass it clear with 0.
+    {
+        Combatant caster;
+        caster.characterClass = 3;
+        const auto rolls = [] { return 0; };
+        for (const int32_t action : {28, 94, 95}) {
+            caster.action = action;
+            const HitInput beam = beamInput(caster, false, rolls);
+            same(beam.area, action == 95, "beam area flag set only for action 95");
+            same(beam.power, action == 95 ? 0.1f : 0.f, "beam area value 0.1 for action 95, else 0");
+        }
+    }
+    // Ruling §2: for actions 69 and 75 the strike origin z is lowered by 0.5 x (bz - bx); a
+    // striker wider than tall sits higher.
+    {
+        Combatant a;
+        Body body;
+        body.position[2] = 50 * 65536;
+        for (const int32_t action : {0x45, 0x4B}) {
+            a.action = action;
+            body.size = {2, 2, 1};
+            same((double)(strikeGeometry(a, body, 0).centre[2] - body.position[2]), 32768,
+                 "bz < bx raises the origin by 0.5 x (bx - bz)");
+            body.size = {1, 1, 3};
+            same((double)(strikeGeometry(a, body, 0).centre[2] - body.position[2]), -65536,
+                 "bz > bx lowers the origin by 0.5 x (bz - bx)");
+        }
+    }
+    // §11.1 with the update-phases contract: the type-144 drain does not depend on the controller.
+    {
+        worldgen::WorldMap map;
+        map.add(std::make_shared<worldgen::Zone>(0, 0));
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({30.5, 10.5, 2.1});
+        Npcs npcs;
+        npcs.placeBomb({10.5, 10.5, 2}, 1);
+        same(npcs.npcs().size(), 1, "the bomb is placed");
+        if (!npcs.npcs().empty()) {
+            Npc &bomb = npcs.npcs().front();
+            bomb.fighter.controller = 1;
+            npcs.step(100, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+            same(bomb.fighter.health, maxHealth(bomb.fighter) - 2.5f, "type 144 drains 0.025 per ms whatever its controller", 1e-4);
+        }
+    }
+    // §11.6 (0x4DBF20, the held created third child): RandomWalk keeps the action clock and
+    // sets its timer from one draw (3000 + draw mod 5000).
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 266ll << 16, s.y = 10ll << 16, s.z = 1ll << 16;
+        s.type = 19; // a harmless animal: no acquisition
+        s.level = 4;
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({276.5, 10.5, 2.1}); // beyond LookAtPlayer's 8 blocks
+        Npcs npcs;
+        npcs.setNamedWorld(true);
+        bool walked = false;
+        for (int i = 0; i < 8 && !walked; i++) {
+            const int32_t clock = npcs.npcs().empty() ? 0 : npcs.npcs().front().fighter.actionMs;
+            npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+            for (const Npc &n : npcs.npcs())
+                if (n.walkMs != 0) {
+                    walked = true;
+                    same(n.walkMs >= 3000 && n.walkMs <= 7999, 1, "RandomWalk timer 3000 + draw mod 5000");
+                    same(n.fighter.action, 0, "RandomWalk sets action 0");
+                    same(n.fighter.actionMs, clock + 16, "RandomWalk keeps the clock; only the step advances it");
+                    same(n.body.intent.z, 0, "RandomWalk intent has no vertical part");
+                }
+        }
+        same(walked, 1, "the animal wanders");
     }
 
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

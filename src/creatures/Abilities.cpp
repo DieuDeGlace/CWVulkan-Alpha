@@ -158,7 +158,8 @@ void start(Combatant &c, Body &body, int32_t id) {
 
 // §16.6: the buff abilities.
 void buff(Combatant &c, int32_t id, AbilityEffects &out) {
-    if (const auto it = c.cooldowns.find(id); it != c.cooldowns.end() && it->second > 0)
+    // Behaviour §14.6: reading the cooldown creates a zero entry when it is missing.
+    if (c.cooldowns[id] > 0)
         return;
     const float v = abilityValue(c, id);
     Buff b;

@@ -1298,9 +1298,11 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     if (!pacified && !(ownedPet && c.ownerId != 0) && tempting(*target.fighter)) {
         c.relations.contact = target.fighter->id; // before the clock test
         if (actionOver(c)) {
+            // Behaviour §11.2 step 11, created-actor combat §6.2: the bite counter is the
+            // combo counter (record 0x60, obj +0x70).
             if (c.action != 110)
-                npc.bites = 0;
-            if (npc.bites < 5) {
+                c.combo = 0;
+            if (c.combo < 5) {
                 c.action = 110;
                 c.actionMs = 0;
             } else {
@@ -1634,28 +1636,19 @@ bool Npcs::lookAtPlayer(Npc &npc, std::vector<PlayerView> &players) {
     return true;
 }
 
-// §13.4
+// Behaviour §11.6 (0x4DBF20), the same routine as the held created-actor third child
+// (alpha-created-actor-behavior.md): the counter, the fixed-point leash test against home,
+// the unnormalised random intent of two draws (x then y), the far intent toward home, the
+// timer draw, then action 0 with the action clock retained.
 void Npcs::randomWalk(Npc &npc, float dtMs) {
-    npc.body.mode &= ~0x40u;
-    npc.walkMs -= dtMs;
-    if (npc.walkMs > 0)
-        return;
-    const glm::dvec3 self = npc.body.blocks();
-    const glm::vec2 home = glm::vec2(npc.home - self);
-    if (glm::dot(home, home) <= 100) {
-        // A random direction at strength 10. (The spec reads the two draws as the intent
-        // itself; Alpha's recorded wanderers walk at the one speed a length of 10 gives,
-        // 3.9 blocks/s, half of the time and hardly ever faster, so the direction is scaled.)
-        const float a = (float)draw() / 32767.f, b = (float)draw() / 32767.f;
-        const glm::vec2 direction(2 * a - 1, 2 * b - 1);
-        npc.body.intent = glm::dot(direction, direction) > 0 ? glm::vec3(10.f * glm::normalize(direction), 0)
-                                                             : glm::vec3(0);
-    } else {
-        npc.body.intent = glm::vec3(10.f * glm::normalize(home), 0);
-    }
-    npc.walkMs = 3000.f + (float)(draw() % 5000);
-    npc.fighter.action = 0;
-    npc.fighter.actionMs = 1000000;
+    // Engine home (blocks) to the record's fixed-point home; spawn positions round-trip
+    // exactly, and schedule stops and non-descriptor creatures keep their engine home.
+    std::array<int64_t, 3> home;
+    for (int axis = 0; axis < 3; axis++)
+        home[size_t(axis)] = int64_t(npc.home[axis] * 65536.0);
+    npc.fighter.mode = npc.body.mode;
+    created::wander(npc.fighter, npc.body, home, npc.walkMs, int32_t(dtMs), [&] { return draw(); });
+    npc.body.mode = npc.fighter.mode;
 }
 
 void Npcs::propagateThreat(Combatant &source, const ActorEntry &recipient, NpcFrame &frame) {
@@ -2434,8 +2427,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.mode &= ~0x80u;
         c.mode = npc.body.mode;
         // The admitted bomb body can reach zero here and still completes this
-        // pass. Its health gate has already run, before behavior/steering.
-        if (c.type == 144 && c.controller == 6)
+        // pass. Its health gate has already run, before behavior/steering. Behaviour §11.1 and
+        // the update-phases contract: the drain is by species alone, whatever the controller.
+        if (c.type == 144)
             c.health = std::max(0.f, c.health - 0.025f * dtMs);
         if (!npc.path.empty() && c.hitStun <= 0) {
             npc.body.mode &= ~4u;

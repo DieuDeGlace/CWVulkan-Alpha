@@ -153,7 +153,7 @@ struct Spawn {
     int64_t x = 0, y = 0, z = 0;
     int32_t controller = 1;  // controller kind of the creature (6: an inert object such as a deposit)
     int32_t type = 4;        // creature type
-    int32_t level = 1;       // (unset by the spawn defaults; 1 here)
+    int32_t level = 1;       // +0x34, 1 in a new spawn object (behaviour §2.1)
     uint8_t powerTier = 0;
     int32_t windowStart = 0, windowEnd = 0; // time-of-day window in ms; equal: always
     float multipliers[5] = {100, 1, 1, 1, 1}; // stat multipliers
@@ -170,7 +170,9 @@ struct Spawn {
     // remain a separate one-unit bridge, not a native grouped-storage claim.
     std::shared_ptr<const creatures::InventoryValue> inventoryValue;
     int32_t field42 = 0;        // +0x5c, copied to record field 42 (4: visits `field41`, 3: …; open)
-    int32_t field41[3] = {};    // +0x60, copied to record field 41 (a place, blocks)
+    // +0x60, copied to record field 41 (a place, blocks). Behaviour §2.1: a new spawn object
+    // holds -1, -1 at +0x60/+0x64 and 0 at +0x68 (+0x6C = -1 is not represented here).
+    int32_t field41[3] = {-1, -1, 0};
     std::vector<ScheduleStop> schedule; // +0x10a0
     // Wildlife §4.9: the behaviour sequence (0 Combat, LookAtPlayer, RandomWalk; 1 a cell
     // monster's Combat, RandomWalk; 2 a group leader's Combat, LookAtPlayer, WalkPath,

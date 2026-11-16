@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-15 (after batches 1-18; 220 tracked contracts, local ignored variants excluded): 141 A, 61 B, 13 C (13460 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-16 (after batches 1-19 and the beam/origin ruling; 221 tracked contracts, local ignored variants excluded): 143 A, 61 B, 12 C (12934 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -71,7 +71,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 `alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`); `alpha-net-packets.md` and `alpha-skills.md`
 (plus the ruling `alpha-rulings-knockback-snap.md`); `alpha-travel.md`, `alpha-particles.md`,
 `alpha-crafting.md`, `alpha-open-points-3.md` (plus the ruling `alpha-rulings-walk-flag-pitch.md`); `alpha-path-search.md`, `alpha-worldgen-locations.md`,
-`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`.
+`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`; `alpha-creatures-behaviour.md` (plus the ruling `alpha-rulings-beam-flag-strike-origin.md`).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -126,7 +126,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-created-companion-navigation.md` | B | 120 | 2 |
 | `alpha-creature-light-attachment-producers.md` | A | 91 | 1 |
 | `alpha-creature-map-key-order.md` | B | 70 | 1 |
-| `alpha-creatures-behaviour.md` | C | 986 | 0 |
+| `alpha-creatures-behaviour.md` | A | 986 | 0 |
 | `alpha-creatures-models.md` | C | 1543 | 0 |
 | `alpha-creature-update-phases.md` | B | 170 | 2 |
 | `alpha-creature-yaw-light-gates.md` | A | 125 | 1 |
@@ -227,6 +227,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | C | 783 | 2 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-rulings-beam-flag-strike-origin.md` | A | 117 | 1 |
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
@@ -262,7 +263,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-trap-generation.md` | A | 255 | 1 |
 | `alpha-travel.md` | A | 641 | 0 |
 | `alpha-ui-plasma.md` | C | 603 | 4 |
-| `alpha-ui-screens.md` | C | 3071 | 2 |
+| `alpha-ui-screens.md` | C | 3719 | 2 |
 | `alpha-vendor-stock-generation.md` | A | 113 | 1 |
 | `alpha-vendor-widget-transactions.md` | A | 82 | 3 |
 | `alpha-visibility-ray-geometry.md` | B | 72 | 0 |
@@ -279,7 +280,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-worldgen-overview.md` | G | 210 | 4 |
 | `alpha-worldgen-random.md` | A | 306 | 0 |
 | `alpha-worldgen-regions.md` | A | 440 | 0 |
-| `alpha-worldgen-structures.md` | C | 1928 | 1 |
+| `alpha-worldgen-structures.md` | C | 1740 | 0 |
 | `alpha-worldgen-terrain.md` | A | 517 | 0 |
 | `alpha-worldgen-trees.md` | A | 617 | 1 |
 | `alpha-worldgen-vegetation.md` | A | 357 | 0 |

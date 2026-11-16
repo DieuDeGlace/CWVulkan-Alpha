@@ -212,7 +212,9 @@ void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
         frame.playerHits.push_back(signal);
         frame.emittedHits.push_back(signal);
         float progress = (n.tameMs > 0 ? n.tameProgress : 0.f) + 0.2f;
-        n.bites++;
+        // Pets §7.3: bite counter (field 11, the combo) + 1 and field 12 (its elapsed time) := 0.
+        n.fighter.combo = std::bit_cast<int32_t>(uint32_t(n.fighter.combo) + 1u);
+        n.fighter.comboElapsedMs = 0;
         if (progress >= 1) { // tamed: the player's pet from now on
             Item asItem;
             asItem.type = 19, asItem.subtype = (uint8_t)n.fighter.type, asItem.level = n.fighter.level;
