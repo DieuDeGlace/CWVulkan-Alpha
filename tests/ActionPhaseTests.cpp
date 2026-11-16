@@ -209,6 +209,24 @@ int main() {
         check(actor.mana == .9f && actor.spentPower == .1f && actor.hasBuff(9),
               "resident type nine makes the charge debit zero without changing its recorded point-one amount");
     }
+    {
+        // Ruling alpha-rulings-knockback-taming-charge.md C: the pending finalisation runs on all
+        // five routes, including actions 31/33 before, at and after the crossing, and mid-action.
+        for (const int32_t action : {31, 33, 1}) {
+            const int anticipation = phases(Combatant{}, action).windUp;
+            for (const int32_t clock : {anticipation - 5, anticipation, anticipation + 5}) {
+                Combatant actor;
+                actor.action = action;
+                actor.actionMs = clock;
+                actor.mana = .9f;
+                actor.charge = .25f;
+                actor.hitLanded = true;
+                beginActionUpdate(actor, 1);
+                check(actor.charge == 0 && actor.spentPower == .25f && !actor.hitLanded,
+                      "a positive pending charge is consumed on every action route and clock value");
+            }
+        }
+    }
     check(meleeAction(72) && !meleeAction(73) && meleeAction(74),
           "common-action membership excludes action 73 between its neighboring dispatch cases");
     {

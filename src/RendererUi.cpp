@@ -248,7 +248,8 @@ void Renderer::recordInterface(VkCommandBuffer cmd, uint32_t imageIndex) {
             struct {
                 glm::mat4 camera;
                 glm::vec4 lens;
-            } constants{item.camera, item.lens};
+                glm::vec4 shift; // x: the depth offset applied after the projection
+            } constants{item.camera, item.lens, glm::vec4(item.depth, 0, 0, 0)};
             vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof constants, &constants);
             const Mesh &m = meshes[item.mesh - 1];
             const VkDeviceSize offset = 0;

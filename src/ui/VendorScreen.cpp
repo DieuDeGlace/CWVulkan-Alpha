@@ -14,7 +14,7 @@ using creatures::ItemRecord;
 constexpr glm::vec2 PANEL{350, 568}, ROW{300, 40};
 constexpr float PITCH = 45;
 constexpr int ROWS = (int)((568 - 40) / PITCH);
-glm::vec2 origin(glm::vec2 W) { return {W.x / 2 + 200 + 10, W.y / 2 - 285}; }
+glm::vec2 origin(glm::vec2 W) { return {std::trunc(W.x / 2) + 200 + 10, std::trunc(W.y / 2) - 285}; } // integer halves (§8.1.2)
 glm::vec2 rowCorner(int r) { return {10, 40 + PITCH * (float)r}; }
 glm::vec2 tabCorner(int k) { return {4 + 40.f * (float)k, -41.07f}; }
 glm::vec2 upCorner() { return {PANEL.x - 30, 10}; }

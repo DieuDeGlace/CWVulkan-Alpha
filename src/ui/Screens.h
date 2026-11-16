@@ -81,8 +81,9 @@ struct FloatingText {
 };
 
 // §5.6's producers. A hit's text, or none for the kinds and amounts that show nothing; `kind`
-// is the hit record's kind (1 block, 3 miss, 5 absorb, 4 and 6 not shown).
-std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, bool toPlayer, glm::dvec3 at);
+// is the hit record's kind (1 block, 3 miss, 5 absorb, 4 and 6 not shown); `critical` and `area`
+// are its +0x14 and +0x44 flags.
+std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, bool area, bool toPlayer, glm::dvec3 at);
 FloatingText levelUpText(glm::dvec3 player);
 FloatingText experienceText(int32_t gain, glm::dvec3 player);
 

@@ -1,9 +1,11 @@
 #include "creatures/Hits.h"
 #include "creatures/Combat.h"
 #include "net/Protocol.h"
+#include <array>
 #include <bit>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 int main() {
     std::array<uint8_t, 72> bytes;
@@ -74,6 +76,22 @@ int main() {
         const auto result = creatures::resolveHit(target, velocity, &source, input, [] { return 32767; });
         okay &= result.hitAccepted && result.records.size() == 1 && result.records[0].critical == 1 &&
             result.records[0].area == 1 && result.records[0].beam == 1 && result.records[0].position == position;
+    }
+    {
+        // Ruling alpha-rulings-knockback-taming-charge.md A: the step-12 rescale is unreachable,
+        // so the target velocity is never written, whatever its or the knock-back's length.
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        for (const glm::vec3 start : {glm::vec3(0), glm::vec3(.1f, 0, 0), glm::vec3(30, -40, 5), glm::vec3(nan, 1, 0)}) {
+            creatures::Combatant source, target;
+            target.controller = 1;
+            creatures::HitInput input;
+            input.amount = 10;
+            input.knockBack = {50, 0, 20};
+            input.targetRecordPosition = position;
+            glm::vec3 velocity = start;
+            creatures::resolveHit(target, velocity, &source, input, [] { return 32767; });
+            okay &= std::bit_cast<std::array<uint32_t, 3>>(velocity) == std::bit_cast<std::array<uint32_t, 3>>(start);
+        }
     }
     if (!okay)
         std::puts("FAIL full hit payload, flags, signed timers, fixed-point positions or opaque bytes changed");

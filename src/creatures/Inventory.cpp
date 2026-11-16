@@ -203,7 +203,7 @@ void Inventory::add(const ItemRecord &item) {
         q = itemLevel(item);
         setItemLevel(stored, 1);
     }
-    if (t == 12) { // coins: the kind is the material (world items spec, correcting screens §8.1.1)
+    if (t == 12) { // coins: the kind is the material byte +0x0d (world items spec; screens §8.1.1 correction 90)
         const uint8_t kind = itemMaterial(item);
         if (kind == 10 || kind == 11 || kind == 12) {
             const uint32_t unit = kind == 10 ? 1u : kind == 11 ? 10000u : 100u;

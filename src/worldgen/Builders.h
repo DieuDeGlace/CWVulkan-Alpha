@@ -42,4 +42,10 @@ struct StructureWriter {
 // there.
 bool settle(StaticObject &o, const Zone &zone);
 
+// §1.6 with alpha-rulings-corridor-third-line.md: the bounds of the third (m + 1) corridor line
+// for rooms A = (PA, SA) and B = (PB, SB), m on axis `u` (0: the corridor runs along y; 1: along
+// x). Along y both bounds use x extents; along x, B's x extent always and A's y extent only when
+// B is lower (PB.x < PA.x). The odd-draw gate is separate and is drawn first in every case.
+bool corridorThirdLine(int32_t u, int32_t m, glm::ivec3 PA, glm::ivec3 SA, glm::ivec3 PB, glm::ivec3 SB);
+
 } // namespace worldgen

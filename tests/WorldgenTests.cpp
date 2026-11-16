@@ -1197,6 +1197,23 @@ int main() {
         same(n && (*n)[0] == -9 && (*n)[1] == -19 && (*n)[2] == -1, 1,
              "negative waypoint reads the block lookup's cell one block lower");
     }
+    {
+        // alpha-rulings-corridor-third-line.md: A's bounds are x 19, y 54; the lower B's x bound
+        // is 16, the higher B's 21 (y 64). Along x (u = 1) m is a y coordinate.
+        const glm::ivec3 PA{10, 50, 0}, SA{10, 5, 1}, SB{10, 5, 1};
+        const glm::ivec3 lowerB{7, 40, 0}, higherB{12, 60, 0};
+        // Along y, both branches: x extents of A (bound 19) and B.
+        same(corridorThirdLine(0, 15, PA, SA, lowerB, SB), 1, "along y: m < both x bounds");
+        same(corridorThirdLine(0, 16, PA, SA, lowerB, SB), 0, "along y: m equal to B's x bound fails");
+        same(corridorThirdLine(0, 18, PA, SA, higherB, SB), 1, "along y, B higher: below A's x bound");
+        same(corridorThirdLine(0, 19, PA, SA, higherB, SB), 0, "along y, B higher: A's x bound is strict");
+        // Along x, B lower: A's y bound (53) and B's x bound (16).
+        same(corridorThirdLine(1, 15, PA, SA, lowerB, SB), 1, "along x, B lower: m below A.y bound and B.x bound");
+        same(corridorThirdLine(1, 52, PA, SA, lowerB, SB), 0, "along x, B lower: B's x extent still bounds m");
+        // Along x, B higher or equal: A's and B's x bounds (19, 21), not the y extents.
+        same(corridorThirdLine(1, 17, PA, SA, higherB, SB), 1, "along x, B higher: below both x bounds");
+        same(corridorThirdLine(1, 52, PA, SA, higherB, SB), 0, "along x, B higher: the y extents do not apply");
+    }
 
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

@@ -1,5 +1,6 @@
 #pragma once
-// Alpha's dictionaries, dict_en.xml and dict_de.xml in data4.db: a flat list of entries such as
+// Alpha's dictionary format (data4.db; the client reads only the fixed dict_en.xml, whatever
+// the `language` option, ui-screens §0): a flat list of entries such as
 //
 //   <name key="Crow" tags="f"> <singular>Crow</singular> <plural>Crows</plural> </name>
 //   <landscape key="Hills"> <normal>@ Hills</normal> <to>in @ Hills</to> ... </landscape>

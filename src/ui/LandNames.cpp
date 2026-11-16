@@ -22,16 +22,25 @@ std::string field(const Dictionary &d, const char *kind, const std::string &key,
     return s ? *s : std::string();
 }
 
-// The location-key table (W+0x800124), by (type, variant).
+// The location-key table (W+0x800124), by the exact (type, variant) pair. Eleven types are
+// registered for every variant 0..9 (so every town style is "@ City"); the rest are single rows.
 const char *locationKey(int32_t type, int32_t variant) {
-    static const std::map<std::pair<int32_t, int32_t>, const char *> KEYS = {
-        {{1, 0}, "Village"},   {{2, 0}, "Mountain"}, {{3, 0}, "Forest"},     {{4, 0}, "Lake"},
-        {{5, 0}, "Ruins"},     {{5, 1}, "Ruins"},    {{5, 2}, "Ruins"},      {{5, 3}, "Ruins"},
-        {{5, 4}, "Gravesite"}, {{6, 0}, "Canyon"},   {{7, 0}, "Valley"},     {{8, 0}, "Crater"},
-        {{9, 0}, "Cave"},      {{10, 0}, "Portal"},  {{11, 0}, "Rock"},      {{12, 0}, "Tree"},
-        {{13, 0}, "Peak"},     {{14, 0}, "Castle"},  {{14, 1}, "Ruins"},     {{14, 2}, "Catacombs"},
-        {{14, 3}, "Palace"},   {{14, 4}, "Temple"},  {{14, 5}, "Pyramid"},   {{15, 0}, "Island"},
-    };
+    static const std::map<std::pair<int32_t, int32_t>, const char *> KEYS = [] {
+        std::map<std::pair<int32_t, int32_t>, const char *> keys = {
+            {{5, 0}, "Ruins"},   {{5, 1}, "Ruins"},     {{5, 2}, "Ruins"},    {{5, 3}, "Ruins"},
+            {{5, 4}, "Gravesite"}, {{14, 0}, "Castle"}, {{14, 1}, "Ruins"},   {{14, 2}, "Catacombs"},
+            {{14, 3}, "Palace"}, {{14, 4}, "Temple"},   {{14, 5}, "Pyramid"}, {{9, 0}, "Cave"},
+            {{10, 0}, "Portal"},
+        };
+        static const std::pair<int32_t, const char *> EVERY_VARIANT[] = {
+            {1, "Village"}, {2, "Mountain"}, {3, "Forest"}, {4, "Lake"}, {6, "Canyon"}, {11, "Rock"},
+            {12, "Tree"},   {7, "Valley"},   {8, "Crater"}, {13, "Peak"}, {15, "Island"},
+        };
+        for (const auto &[type, key] : EVERY_VARIANT)
+            for (int32_t variant = 0; variant <= 9; variant++)
+                keys[{type, variant}] = key;
+        return keys;
+    }();
     const auto it = KEYS.find({type, variant});
     return it == KEYS.end() ? nullptr : it->second;
 }

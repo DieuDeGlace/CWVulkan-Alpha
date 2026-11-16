@@ -13,7 +13,7 @@ using namespace widgets;
 using creatures::ItemRecord;
 
 constexpr glm::vec2 IDENTIFY{350, 285}, ADAPT{350, 400};
-glm::vec2 origin(glm::vec2 W) { return {W.x / 2 + 200 + 10, W.y / 2 - 285}; }
+glm::vec2 origin(glm::vec2 W) { return {std::trunc(W.x / 2) + 200 + 10, std::trunc(W.y / 2) - 285}; } // integer halves (§8.1.2)
 // §1.4: the left half of the bottom 30 px strip is the action, the right half "Goodbye!".
 bool inAction(glm::vec2 local, glm::vec2 size) {
     return local.x > 0 && local.x < size.x / 2 && local.y > size.y - 30 && local.y < size.y;

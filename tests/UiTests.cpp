@@ -258,18 +258,46 @@ int main(int argc, char **argv) {
               landNameOf(274) == "Aruion" && landNameOf(692) == "Duradara" && landNameOf(25782) == "Vardar" &&
               landNameOf(0) == "Krono" && landNameOf(4294967295u) == "Gela",
           "land names");
+    {
+        // Re-certified §5.9.1: eleven types are keyed for every variant 0..9 (towns of every
+        // style are "N City"); type 5 only 0..4, type 14 only 0..5; exact pairs otherwise.
+        Dictionary names;
+        check(names.parse("<dict><name key=\"Village\"><singular>@ City</singular></name>"
+                          "<name key=\"Ruins\"><singular>Ruins of @</singular></name>"
+                          "<name key=\"Island\"><singular>@ Island</singular></name></dict>"),
+              "test dictionary parses");
+        worldgen::Location L;
+        L.serial = 274;
+        const auto named = [&](int32_t type, int32_t variant) {
+            L.type = type, L.variant = variant;
+            return locationName(L, names);
+        };
+        check(named(1, 0) == "Aruion City" && named(1, 4) == "Aruion City" && named(1, 9) == "Aruion City",
+              "every town variant is N City");
+        check(named(1, 10).empty() && named(15, 9) == "Aruion Island", "variants 0..9 only");
+        check(named(5, 3) == "Ruins of Aruion" && named(14, 1) == "Ruins of Aruion" && named(5, 5).empty(),
+              "single-row types keep their exact pairs");
+    }
 
     // Screens §5.6: the combat text producers and the worked example.
     {
-        const auto hit = hitText(23.6f, 0, false, false, glm::dvec3(0));
+        const auto hit = hitText(23.6f, 0, false, false, false, glm::dvec3(0));
         check(hit && hit->text == u"23" && hit->size == 20 && hit->rise == -100 && hit->colour == glm::vec4(1), "hit 23.6");
-        const auto small = hitText(0.46f, 0, false, false, glm::dvec3(0));
+        const auto small = hitText(0.46f, 0, false, false, false, glm::dvec3(0));
         check(small && small->text == u"0.4", "hit 0.46 shows 0.4");
-        check(hitText(5, 1, false, false, glm::dvec3(0))->text == u"BLOCK", "block");
-        check(!hitText(5, 4, false, false, glm::dvec3(0)), "kind 4 shows nothing");
-        check(!hitText(0.05f, 0, false, false, glm::dvec3(0)), "tiny hits show nothing");
-        const auto taken = hitText(10, 0, true, true, glm::dvec3(0));
+        check(hitText(5, 1, false, false, false, glm::dvec3(0))->text == u"BLOCK", "block");
+        check(!hitText(5, 4, false, false, false, glm::dvec3(0)), "kind 4 shows nothing");
+        check(!hitText(0.05f, 0, false, false, false, glm::dvec3(0)), "tiny hits show nothing");
+        const auto taken = hitText(10, 0, true, false, true, glm::dvec3(0));
         check(taken->size == 60 && taken->rise == 100 && taken->colour == glm::vec4(1, 0.3f, 0.3f, 1), "a critical hit taken");
+        // Re-certified correction 66: −200 only for flagged damage to others; heals sink on the
+        // player and rise −100 elsewhere; the +0x44 flag turns damage to others yellow.
+        const auto critical = hitText(10, 0, true, true, false, glm::dvec3(0));
+        check(critical->rise == -200 && critical->size == 60 && critical->colour == glm::vec4(1, 1, 0.25f, 1),
+              "a flagged hit on another creature");
+        check(hitText(-10, 0, true, false, false, glm::dvec3(0))->rise == -100 &&
+                  hitText(-10, 0, true, false, true, glm::dvec3(0))->rise == 100,
+              "flagged heals never rise by 200");
         check(levelUpText(glm::dvec3(0)).lifeMs == 3000 && experienceText(12, glm::dvec3(0)).text == u"XP +12", "level and XP");
     }
     {
@@ -292,13 +320,17 @@ int main(int argc, char **argv) {
     }
     {
         // Screens §8.1.6: the largest side spans 1.2071·H·σ pixels. A 10-voxel cube at
-        // σ = 0.1 on a 1280 x 720 window: its right face 43.5 px from the centre point (the
-        // image is mirrored, so it lands on the left).
+        // σ = 0.1 on a 1280 x 720 window: its right face 43.5 px from the centre point (86.9 px
+        // across, independent of the depth offset; the negated horizontal scale puts +x on the
+        // left, whether that mirrors the model is U-F6-13).
         const ui::ItemDraw d = ui::itemDraw(1, glm::vec3(10), false, {640, 360}, glm::vec3(0), 0.1f, 0, {1280, 720});
         const glm::vec4 p = d.camera * glm::vec4(5, 0, 5, 1);
         const float x = (p.x * d.lens.x + d.lens.z * p.z) / p.z * 640 + 640;
         check(std::abs(p.z - 1) < 1e-5f, "the centre is one unit ahead");
         check(std::abs(x - (640 - 43.4556f)) < 0.01f, "item model size " + std::to_string(x));
+        const ui::ItemDraw tooltip = ui::itemDraw(1, glm::vec3(10), false, {640, 360}, glm::vec3(0), 0.1f, -0.05f, {1280, 720});
+        check(tooltip.camera == d.camera && tooltip.lens == d.lens && tooltip.depth == -0.05f,
+              "the tooltip's depth offset is applied after projection and keeps the 86.9 px size");
         const ui::ItemDraw e = ui::itemDraw(1, glm::vec3(10), false, {785, 315}, glm::vec3(0), 0.03f, 0, {1280, 720});
         const glm::vec4 q = e.camera * glm::vec4(0, 0, 5, 1);
         const glm::vec2 at((q.x * e.lens.x + e.lens.z * q.z) / q.z * 640 + 640,

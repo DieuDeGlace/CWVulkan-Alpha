@@ -422,7 +422,7 @@ void Interface::drawHud(Painter &painter, glm::vec2 W, const HudState &s) {
     }
 }
 
-std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, bool toPlayer, glm::dvec3 at) {
+std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, bool area, bool toPlayer, glm::dvec3 at) {
     if (kind == 4 || kind == 6 || (kind == 0 && std::abs(damage) < 0.1f))
         return std::nullopt;
     FloatingText t;
@@ -446,8 +446,12 @@ std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, b
         t.colour = {0.4f, 1, 0.5f, 1};
     else if (toPlayer)
         t.colour = {1, 0.3f, 0.3f, 1};
+    else if (area)
+        t.colour = {1, 1, 0.25f, 1}; // the record's +0x44 flag
     t.size = critical ? 60.f : 20.f;
-    t.rise = toPlayer ? 100.f : critical ? -200.f : -100.f;
+    // Re-certified §5.6: texts on the local player sink (+100), heals and damage alike; −200
+    // only for damage to others with the +0x14 flag; −100 otherwise.
+    t.rise = toPlayer ? 100.f : critical && damage >= 0 ? -200.f : -100.f;
     return t;
 }
 
@@ -653,11 +657,14 @@ void Interface::drawQuestTag(Painter &painter, glm::vec2 W, float dtMs) {
 }
 
 // §5.9: fades in over four seconds and out over the next four, at (W/2, 230).
+// Re-certified correction 64: α comes from T before this frame's decrease (0 on the frame a
+// banner starts), then T falls by the frame time, floored at 0.
 void Interface::drawLandName(Painter &painter, glm::vec2 window, float dtMs) {
+    const float T = landNameMs;
     landNameMs = std::max(0.f, landNameMs - dtMs);
-    if (!landName || landNameMs <= 0)
+    if (!landName || T <= 0)
         return;
-    const float u = 2 * (landNameMs / 8000 - 0.5f);
+    const float u = 2 * (T / 8000 - 0.5f);
     plasma::Document &doc = *landName;
     if (doc.nodes[0].display >= 0)
         doc.displays[doc.nodes[0].display].fillColor.value.a = 1 - u * u;

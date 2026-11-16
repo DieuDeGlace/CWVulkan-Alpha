@@ -16,8 +16,10 @@ using creatures::ItemRecord;
 constexpr glm::vec2 LIST{350, 285}, PREVIEW{350, 330}, ROW{300, 40};
 constexpr int ROWS = 5;
 constexpr float PITCH = 45;
-glm::vec2 listOrigin(glm::vec2 W) { return {W.x / 2 - 200 - 350 - 10, W.y / 2 - 285}; }
-glm::vec2 previewOrigin(glm::vec2 W) { return {W.x / 2 - 200 - 350 - 10, W.y / 2 + 10}; }
+// §2, §8.1.2 (corrections 7, 8, 92): integer halves of W and H; tops level with the inventory's
+// (its height 285), the blueprint preview 10 below the crafting window (also 285 high).
+glm::vec2 listOrigin(glm::vec2 W) { return {std::trunc(W.x / 2) - 200 - 350 - 10, std::trunc(W.y / 2) - 285}; }
+glm::vec2 previewOrigin(glm::vec2 W) { return {std::trunc(W.x / 2) - 200 - 350 - 10, std::trunc(W.y / 2) - 285 + 10 + 285}; }
 glm::vec2 rowCorner(int r) { return {10, 40 + PITCH * (float)r}; }
 glm::vec2 tabCorner(int k) { return {4 + 40.f * (float)k, -41.07f}; }
 glm::vec2 upCorner() { return {LIST.x - 30, 10}; }

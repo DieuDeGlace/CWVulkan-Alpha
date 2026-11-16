@@ -441,9 +441,7 @@ class Builder : StructureWriter {
                     F2[u] = T2[u] = m - 1;
                     line(F2, T2);
                 }
-                // (As read: along x the third line's test mixes in x extents, §2.3.)
-                const bool third = m < B.P.x + B.S.x - 1 && (u == 1 && lower ? m < A.P.y + A.S.y - 1 : m < A.P.x + A.S.x - 1);
-                if ((random.draw() & 1) && third) {
+                if ((random.draw() & 1) && corridorThirdLine(u, m, A.P, A.S, B.P, B.S)) {
                     glm::ivec3 F3 = F, T3 = T;
                     F3[u] = T3[u] = m + 1;
                     line(F3, T3);
@@ -1314,6 +1312,13 @@ class Builder : StructureWriter {
 };
 
 } // namespace
+
+bool corridorThirdLine(int32_t u, int32_t m, glm::ivec3 PA, glm::ivec3 SA, glm::ivec3 PB, glm::ivec3 SB) {
+    // Ruling table: A's bound is on y only along x with B lower; B's bound is always on x.
+    const bool aOnY = u == 1 && PB.x < PA.x;
+    const int32_t aBound = aOnY ? PA.y + SA.y - 1 : PA.x + SA.x - 1;
+    return m < aBound && m < PB.x + SB.x - 1;
+}
 
 void Terrain::dungeon(Zone &zone, Random &random, const DungeonCall &call) const {
     Builder(*this, zone, random, call, [&](int32_t x, int32_t y, int32_t z) { return rockBlock(x, y, z, zone); }).run();

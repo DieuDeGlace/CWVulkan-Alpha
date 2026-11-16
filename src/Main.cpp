@@ -1139,7 +1139,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 ui.frontType(0, true);
             return;
         }
-        if ((key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) && ui.hud && !ui.wantsMouse()) {
+        // Screens §9, §11.2 (correction 112): Enter opens the chat whenever the key gate passes
+        // (the five screen containers are handled above); no window condition. The chat box only
+        // exists in game, hence the HUD test.
+        if ((key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) && ui.hud && !ui.startScreen) {
             ui.chatOpen = true;
             return;
         }
@@ -1359,8 +1362,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         auto *in = (Input *)glfwGetWindowUserPointer(w);
         ui::Interface &ui = *in->interface;
         if (ui.mapOpen) {
-            // §5.2.2: each notch up divides the target zoom by 0.9 (closer), down multiplies.
-            ui.mapZoomTarget = std::clamp(dy > 0 ? ui.mapZoomTarget / 0.9f : ui.mapZoomTarget * 0.9f, 0.01f, 10.f);
+            // §5.2.2 (correction 54): n < 0 multiplies the target zoom by 0.9, otherwise ÷ 0.9.
+            ui.mapZoomTarget = std::clamp(dy < 0 ? ui.mapZoomTarget * 0.9f : ui.mapZoomTarget / 0.9f, 0.01f, 10.f);
             return;
         }
         if (in->player)
@@ -1509,7 +1512,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             const creatures::HitRecord heal = creatures::areaHealRecord(c, id, at, rolls);
                             client.sendHit(net::Hit::from(heal));
                             playAt(42, player->body().blocks(), 1, 1);
-                            if (auto text = ui::hitText(heal.amount, heal.kind, heal.critical, false, body.blocks()))
+                            if (auto text = ui::hitText(heal.amount, heal.kind, heal.critical, heal.area, false, body.blocks()))
                                 interface.floating.push_back(*text);
                         };
                         if (!hostile) { // K5 step 5
@@ -1538,7 +1541,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (const creatures::HitRecord &r : out.records) {
                             client.sendHit(net::Hit::from(r));
                             const glm::dvec3 at = glm::dvec3(r.position[0], r.position[1], r.position[2]) / 65536.0;
-                            if (auto text = ui::hitText(r.amount, r.kind, r.critical, r.target == c.id, at))
+                            if (auto text = ui::hitText(r.amount, r.kind, r.critical, r.area, r.target == c.id, at))
                                 interface.floating.push_back(*text);
                             mods.hitSeen(r.attacker, r.target, r.kind, r.amount);
                         }
@@ -1873,10 +1876,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     for (const float pitch : interface.voiceBlips)
                         playAt(0x32, player->body().blocks(), 1, pitch);
                     interface.voiceBlips.clear();
-                    // Skills §1.3: when a window starts holding the input the interface plays 0x53
-                    // (menu-open2.wav), when none holds it any more 0x54 (menu-close2.wav).
+                    // Skills §1.3, ui-screens §7 (correction 88): the toggles play nothing; once
+                    // per update, when the window-open test becomes true 0x53 (menu-open2.wav)
+                    // plays, when it becomes false 0x54. The test includes map mode and the
+                    // options window (§5.2.1, §6.1); its other members are not enumerated.
                     {
-                        const bool holding = interface.inventoryOpen || interface.craftingOpen || interface.skillsOpen;
+                        const bool holding = interface.inventoryOpen || interface.craftingOpen || interface.skillsOpen ||
+                                             interface.mapOpen || interface.optionsOpen;
                         if (holding != windowHeld)
                             if (const char *key = creatures::soundKey(holding ? 0x53 : 0x54))
                                 audio.play(key);
@@ -2155,7 +2161,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 for (const creatures::HitRecord &h : out.records) {
                                     if (h.target == player->combat().id) {
                                         player->takeHit(h);
-                                        if (auto text = ui::hitText(h.amount, h.kind, false, true, player->body().blocks()))
+                                        if (auto text = ui::hitText(h.amount, h.kind, false, false, true, player->body().blocks()))
                                             interface.floating.push_back(*text);
                                     } else {
                                         shotHitsOnNpcs.push_back(h);
@@ -2398,7 +2404,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                         if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
                                             flashes.append({hit.position, a, 20, 0, 400});
                             }
-                            if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.target == c.id, at))
+                            if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.area, hit.target == c.id, at))
                                 interface.floating.push_back(*text);
                             mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
                         }
@@ -2529,7 +2535,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 } else if (emission.applyLocally) {
                                     shotHitsOnNpcs.push_back(h);
                                 }
-                                if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.target == c.id, at))
+                                if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.area, h.target == c.id, at))
                                     interface.floating.push_back(*text);
                                 mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
                             }
@@ -3076,7 +3082,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     }
                     if (hit.attacker != c.id) {
                         const glm::dvec3 at = glm::dvec3(hit.position[0], hit.position[1], hit.position[2]) / 65536.0;
-                        if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.target == c.id, at))
+                        if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.area, hit.target == c.id, at))
                             interface.floating.push_back(*text);
                         mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
                     }
@@ -3156,7 +3162,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const std::string command = line.substr(0, space);
             const std::string argument = space == std::string::npos ? std::string() : line.substr(space + 1);
             if (command == "/name") {
-                if (!argument.empty()) // (engine choice: without an argument /name and /namepet change nothing)
+                if (!argument.empty()) // screens §9 correction 113: an empty /name is ignored
                     own.setName(argument);
             } else if (command == "/namepet") {
                 // Pets §15: the name goes into the pet item, one character (low byte) per entry;
@@ -3250,45 +3256,72 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             } else {
                 map = view.mapItems(zx - 1, zy - 1, zx + 1, zy + 1, seconds * 1000.f, false);
             }
-            // §5.1.2: player markers, head then hair, a black outline pass at 5/s without depth
-            // writes and a coloured pass at 4/s, nearest last.
+            // §5.1.2 creature markers: players (controller 0), mission targets (controller 1 with
+            // flag 0x2000) and, from s 1.6, the town NPCs of classes 0x80..0x87, within
+            // max(r, 1)·256 blocks of the pivot in x and y. Re-certified correction 37: sorted
+            // farthest first; both passes of one creature (black outline at 5/s without depth
+            // writes, then coloured at 4/s) are drawn before the next.
             struct Marker {
-                const creatures::Appearance *looks;
+                const creatures::Appearance *looks; // players: head then hair
+                uint16_t model;                     // otherwise: the skull or the shop sign
                 glm::dvec3 at;
                 float yaw;
+                float scale;
             };
+            const int32_t radius = worldMap ? 16 : s == 0.8f ? 1 : 0;
+            const double reach = 256.0 * std::max(radius, 1);
             std::vector<Marker> markers;
-            markers.push_back({&player->appearance(), at, player->facing()});
+            const auto collect = [&](const creatures::Combatant &who, uint16_t flags, const creatures::Appearance *looks,
+                                     glm::dvec3 p, float bodyYaw) {
+                const bool townNpc = s >= 1.6f && who.characterClass >= 0x80 && who.characterClass <= 0x87;
+                if (!(who.controller == 0 || (who.controller == 1 && (flags & 0x2000)) || townNpc))
+                    return;
+                if (std::abs(p.x - pivot.x) > reach || std::abs(p.y - pivot.y) > reach)
+                    return;
+                static const uint16_t SIGNS[8] = {2452, 2453, 2454, 2455, 2451, 2456, 2457, 2458};
+                if (who.controller == 1)
+                    markers.push_back({nullptr, 2562, p, bodyYaw, 1}); // `skull`
+                else if (who.controller == 3 && townNpc)
+                    markers.push_back({nullptr, SIGNS[who.characterClass - 0x80], p, 180.f - yaw, 0.5f}); // +ψ: faces the viewer
+                else if (looks)
+                    markers.push_back({looks, 0, p, bodyYaw, 1});
+            };
+            collect(player->combat(), 0, &player->appearance(), at, player->facing());
+            if (!client.connected())
+                for (const creatures::Npc &n : npcs.all())
+                    collect(n.fighter, n.looks.flags, &n.looks, n.body.blocks(), n.yaw);
             for (const auto &[id, other] : receivedActors)
                 otherLooks[id] = other.appearance();
-            for (const auto &[id, other] : receivedActors) {
-                const glm::dvec3 p = glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0;
-                if (std::abs(p.x - at.x) <= 256 && std::abs(p.y - at.y) <= 256)
-                    markers.push_back({&otherLooks[id], p, other.yaw()});
-            }
+            for (const auto &[id, other] : receivedActors)
+                collect(other.fighter(), otherLooks[id].flags, &otherLooks[id],
+                        glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0, other.yaw());
             auto depth = [&](const Marker &m) {
                 const glm::vec4 c = frame.minimap * glm::vec4(view.toRender(m.at), 1);
                 return c.z / c.w;
             };
             std::sort(markers.begin(), markers.end(), [&](const Marker &a, const Marker &b) { return depth(a) > depth(b); });
+            const auto drawMarker = [&](const Marker &mk, uint16_t slot, int pass, glm::vec3 colour) {
+                const MeshId mesh = slot == creatures::NO_MODEL ? 0 : creatureView.plainMesh(slot);
+                if (!mesh)
+                    return;
+                const glm::vec3 size = creatureView.voxels(slot);
+                glm::mat4 m = glm::translate(glm::mat4(1), view.toRender(mk.at));
+                m = glm::rotate(m, glm::radians(mk.yaw), glm::vec3(0, 0, 1));
+                m = glm::scale(m, glm::vec3((pass == 0 ? 5.f : 4.f) * mk.scale / s));
+                m = glm::translate(m, glm::vec3(0, 0, -size.z * 0.5f));
+                map.push_back({mesh, m, false, pass == 0 ? Shading::MapOutline : Shading::Map,
+                               glm::vec4(pass == 0 ? glm::vec3(0) : colour, 2)});
+            };
             for (const Marker &mk : markers)
-                for (int pass = 0; pass < 2; pass++)
-                    for (creatures::Part part : {creatures::Part::Head, creatures::Part::Hair}) {
-                        const uint16_t slot = mk.looks->model(part);
-                        const MeshId mesh = slot == creatures::NO_MODEL ? 0 : creatureView.plainMesh(slot);
-                        if (!mesh)
-                            continue;
-                        const glm::vec3 size = creatureView.voxels(slot);
-                        glm::mat4 m = glm::translate(glm::mat4(1), view.toRender(mk.at));
-                        m = glm::rotate(m, glm::radians(mk.yaw), glm::vec3(0, 0, 1));
-                        m = glm::scale(m, glm::vec3((pass == 0 ? 5.f : 4.f) / s));
-                        m = glm::translate(m, glm::vec3(0, 0, -size.z * 0.5f));
-                        glm::vec4 material(pass == 0 ? glm::vec3(0) : glm::vec3(1), 2);
-                        if (pass == 1 && part == creatures::Part::Hair)
-                            material = glm::vec4(mk.looks->hairColour[0] / 255.f, mk.looks->hairColour[1] / 255.f,
-                                                 mk.looks->hairColour[2] / 255.f, 2);
-                        map.push_back({mesh, m, false, pass == 0 ? Shading::MapOutline : Shading::Map, material});
+                for (int pass = 0; pass < 2; pass++) {
+                    if (!mk.looks) {
+                        drawMarker(mk, mk.model, pass, glm::vec3(1));
+                        continue;
                     }
+                    drawMarker(mk, mk.looks->model(creatures::Part::Head), pass, glm::vec3(1));
+                    drawMarker(mk, mk.looks->model(creatures::Part::Hair), pass,
+                               glm::vec3(mk.looks->hairColour[0], mk.looks->hairColour[1], mk.looks->hairColour[2]) / 255.f);
+                }
             interface.mapLabels.clear();
             interface.mapQuestMarks.clear();
             interface.hoveredPortal = glm::ivec2(-1);
@@ -3551,8 +3584,25 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     }
                     return left && right && up && down;
                 };
-                auto addBar = [&](const creatures::Combatant &who, uint64_t id, glm::dvec3 centre, glm::vec3 box,
+                // Re-certified §5.4 (correction 51): no bar for a creature whose link (+0x198, the
+                // owner identifier) names a creature in state 0x6a, nor, while the local player is
+                // in 0x6a, for the creature linked to the local player.
+                std::vector<uint64_t> riding;
+                const auto noteRiding = [&](uint64_t id, const creatures::Combatant &who) {
+                    if (uint8_t(who.action) == 0x6a)
+                        riding.push_back(id);
+                };
+                noteRiding(c.id, c);
+                if (!client.connected())
+                    for (const creatures::Npc &n : npcs.all())
+                        noteRiding(n.fighter.id, n.fighter);
+                for (const auto &[id, other] : receivedActors)
+                    noteRiding(id, other.fighter());
+                const glm::dvec3 viewForward = glm::dvec3(view.camera(renderer.size()).forward());
+                auto addBar = [&](const creatures::Combatant &who, uint64_t id, glm::dvec3 centre, glm::vec3 box, float bob,
                                   uint16_t appearanceFlags, const std::string &ownName) {
+                    if (who.ownerId != 0 && std::find(riding.begin(), riding.end(), who.ownerId) != riding.end())
+                        return;
                     const double distance = glm::distance(centre, me);
                     if (distance > 200)
                         return;
@@ -3560,7 +3610,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     const bool focused = distance * distance <= 3600 && clearSight(centre, 256) && underCrosshair(centre, box);
                     if (!focused && !interface.allLifeBars && !isPlayer)
                         return;
-                    const glm::dvec3 head = centre + glm::dvec3(0, 0, box.z * 0.5);
+                    // §5.4: raised by half the height less the drawn-height offset (+0x1180); for
+                    // states 0x6a/0x6b 2 is added to the camera-space depth (farther, not higher).
+                    glm::dvec3 head = centre + glm::dvec3(0, 0, box.z * 0.5 - bob);
+                    const uint8_t state = uint8_t(who.action);
+                    if (state == 0x6a || state == 0x6b)
+                        head += viewForward * 2.0;
                     const auto p = interface.project(head);
                     if (!p || !clearSight(head, 200))
                         return;
@@ -3599,15 +3654,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                      : power > myPower + 0.1f  ? glm::vec4(1, 0.6f, 0.2f, 1)
                                      : power > myPower - 0.1f  ? glm::vec4(0, 1, 1, 1)
                                                                : glm::vec4(1);
-                    hud.creatureBars.push_back(bar);                };
+                    hud.creatureBars.push_back(bar);
+                };
                 if (!client.connected())
                     for (const creatures::Npc &n : npcs.all())
                         if (n.fighter.health > 0)
-                            addBar(n.fighter, n.fighter.id, n.body.blocks(), n.body.size, n.looks.flags, "");
+                            addBar(n.fighter, n.fighter.id, n.body.blocks(), n.body.size, n.body.bob, n.looks.flags, "");
                 for (const auto &[id, other] : receivedActors) {
                     const creatures::Appearance looks = other.appearance();
+                    // (A received creature's drawn-height offset is not carried here: 0.)
                     addBar(other.fighter(), id, glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
-                           looks.box, looks.flags, other.name());
+                           looks.box, 0.f, looks.flags, other.name());
                 }
                 // Interaction §2: the creature, static and item passes compete on the squared
                 // camera distance B of the boxes under the crosshair; within 4 blocks (squared

@@ -25,7 +25,7 @@ constexpr float PITCH = 45, SLOT = 40;
 constexpr glm::vec2 CHARACTER_AT{20, 340}, CHARACTER_SIZE{260, 200};
 constexpr glm::vec2 TOOLTIP_SIZE{300, 300};
 
-glm::vec2 panelOrigin(glm::vec2 W) { return {W.x / 2 - 200, W.y / 2 - 285}; }
+glm::vec2 panelOrigin(glm::vec2 W) { return {std::trunc(W.x / 2) - 200, std::trunc(W.y / 2) - 285}; } // integer halves
 glm::vec2 slotCorner(int c, int r) { return {10 + PITCH * (float)c, 40 + PITCH * (float)r}; }
 glm::vec2 tabCorner(int k) { return {4 + 40.f * (float)k, -41.07f}; }
 glm::vec2 upCorner() { return {PANEL.x - 30, 10}; }
@@ -93,8 +93,10 @@ void Interface::loadInventory() {
 // §8.1.3 (0x4c6350): how many scroll rows each bag has, the current rows clamped to them.
 void Interface::scrollRange() {
     for (size_t b = 0; b < scrollRow.size(); b++) {
-        const size_t m = inventory && b < inventory->bags.size() ? inventory->bags[b].size() : 0;
-        const int32_t n = m == 0 ? 0 : std::max(1, (int32_t)((m - 1) / COLUMNS) - ROWS + 2);
+        // §8.1.3 (correction 107): no bag for the tab gives one position, an empty bag none.
+        const bool hasBag = inventory && b < inventory->bags.size();
+        const size_t m = hasBag ? inventory->bags[b].size() : 0;
+        const int32_t n = !hasBag ? 1 : m == 0 ? 0 : std::max(1, (int32_t)((m - 1) / COLUMNS) - ROWS + 2);
         scrollPositions[b] = n;
         scrollRow[b] = std::clamp(scrollRow[b], 0, std::max(n - 1, 0));
     }

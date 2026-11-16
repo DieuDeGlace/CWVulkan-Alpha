@@ -1126,8 +1126,9 @@ HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const
             sound(id, pitch);
         }
     }
-    // The native repeated-norm gate never enters its velocity-write tail for
-    // stable finite operands. Preserve the supplied record vector unchanged.
+    // Ruling alpha-rulings-knockback-taming-charge.md A: the repeated-norm gate never enters
+    // its velocity-write tail for any input (NaN and infinities included), so the target
+    // velocity is never written here and the supplied record vector is kept unchanged.
     for (const Buff &b : target.buffs)
         if (b.kind == DAMAGE_TAKEN)
             x = b.value * x;

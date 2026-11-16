@@ -42,14 +42,16 @@ struct Batch {
 // An item model drawn in the interface (alpha-ui-screens.md §8.1.6). `camera` takes the
 // mesh (voxel units, centred on x/y, base at z = 0) to Alpha's camera space (x right, y up,
 // z ahead); `lens` holds the projection's x and y scale and the NDC shift that puts the
-// model's centre on its point.
+// model's centre on its point; `depth` is the NDC depth offset added after the projection.
 struct ItemDraw {
     uint32_t mesh = 0; // the renderer's mesh id
     glm::mat4 camera{1};
     glm::vec4 lens{0};
+    float depth = 0;
 };
 // §8.1.6 steps 3-5: an item model of `size` voxels centred on window point `at`, turned by
-// `turn` (degrees about x, y, z), its largest side `scale` units, `depth` units further away.
+// `turn` (degrees about x, y, z), its largest side `scale` units, with the post-projection
+// depth offset `depth` (it does not change the size on screen).
 ItemDraw itemDraw(uint32_t mesh, glm::vec3 size, bool ring, glm::vec2 at, glm::vec3 turn, float scale, float depth,
                   glm::vec2 window);
 

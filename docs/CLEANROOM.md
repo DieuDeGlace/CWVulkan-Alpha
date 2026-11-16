@@ -2840,3 +2840,26 @@ Not modelled: the escort route copy (patrol waypoints unresolved), the boss help
 house grid +0x18/+0x1c fields (no reader), and items tagged unconfirmed.
 Conflict reported for a ruling: the along-x third corridor line test (structures "x and y
 exchanged" against the explicit extents in open points 7).
+## UI screens; knock-back, taming and charge ruling; corridor third-line ruling (2026-11-16)
+
+A fresh source-only author re-certified `alpha-ui-screens.md` (9DB638FD...FC7F); ruling authors settled the
+creature-behaviour conflicts in `alpha-rulings-knockback-taming-charge.md` (0110F496...0E2D) (the knock-back
+rescale never runs; the in-range combo branch pacifies and taming happens in the action-110 effect;
+pending-charge finalisation runs on every route) and the corridor conflict in
+`alpha-rulings-corridor-third-line.md` (1B10F83E...48E2) (open points 7 is right: three of the four along-x
+third-line bounds use x extents). The engine already matched both rulings. A fresh implementer
+read all three whole.
+Engine changes: location keys cover variants 0-9 for eleven types (every town style reads "N City");
+the item-model depth offset is applied after projection (tooltip model 86.9 px); hit text takes the
++0x44 flag (yellow for flagged damage to others) and the native rise rule; the land-name banner
+alpha is read before the frame's decrease; creature bars skip creatures linked to state 0x6a, rise
+by half the height minus the bob and move states 0x6a/0x6b two blocks along the camera axis; map
+creature markers follow the native collection rules (skulls, town shop signs from scale 1.6,
+max(r, 1) x 256 range, offline NPCs) farthest-first; the map marker tile is 4x4x4 with the bottom
+layer filled; the map wheel multiplies by 0.9 or divides; the window-open sound check includes map
+mode and options; side windows use integer halves; a bagless tab scrolls n = 1; Enter opens chat
+whenever the key gate passes. The corridor third-line test is a named function with tests.
+Not modelled: the code-made land-name and TIME/TEMP labels (visibility open); the 100 ms incoming
+item queue (it would move the pick-up pitch draw); duplicate-name messages from the update routine;
+the Direct3D device reset; the quick-item wheel. Engine adapter retained: taming progress is kept
+outside a kind-7 buff record.

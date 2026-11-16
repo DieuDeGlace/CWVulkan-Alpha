@@ -703,15 +703,18 @@ std::vector<DrawItem> WorldView::mapItems(int32_t zx0, int32_t zy0, int32_t zx1,
             const glm::vec4 material = extras && !known && !target ? glm::vec4(0.6f, 0.6f, 0.6f, 1) : glm::vec4(1);
             out.push_back({t->mesh, m, false, Shading::Map, material});
         }
-    // §5.1.2: the land-border markers, a white 2 x 2 square with a dark rim, scaled by 5.
+    // §5.1.2: the land-border markers, scaled by 5. Re-certified correction 35: the marker tile
+    // is allocated 4 x 4 x 4 and only its bottom layer is filled (a white 2 x 2 centre inside a
+    // (10, 10, 10) border); the three layers above stay empty.
     if (!borderMarker) {
         CubModel marker;
-        marker.sx = marker.sy = 4, marker.sz = 1;
+        marker.sx = marker.sy = marker.sz = 4;
         for (int y = 0; y < 4; y++)
             for (int x = 0; x < 4; x++) {
                 const uint8_t v = (x == 1 || x == 2) && (y == 1 || y == 2) ? 255 : 10;
                 marker.rgb.insert(marker.rgb.end(), {v, v, v});
             }
+        marker.rgb.resize((size_t)4 * 4 * 4 * 3, 0); // layers 1..3: empty voxels
         borderMarker = renderer.addMesh(marker.mesh(glm::vec3(0)));
     }
     for (int32_t zx = zx0; zx <= zx1; zx++)

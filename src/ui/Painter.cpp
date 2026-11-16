@@ -367,10 +367,13 @@ ItemDraw itemDraw(uint32_t mesh, glm::vec3 size, bool ring, glm::vec2 at, glm::v
     }
     const float largest = std::max({size.x, size.y, size.z, 1.f});
     r0 *= scale / largest, r1 *= scale / largest, r2 *= scale / largest;
-    // Centred: the mesh is already centred on x and y.
-    const glm::vec3 t = glm::vec3(0, 0, 1 + depth) - size.z * 0.5f * r2;
+    // Centred one unit ahead: the mesh is already centred on x and y. The depth offset is not a
+    // distance: it is applied after the projection (re-certified §8.1.6 step 5), so it leaves the
+    // on-screen size at 1.2071·H·σ.
+    const glm::vec3 t = glm::vec3(0, 0, 1) - size.z * 0.5f * r2;
     ItemDraw d;
     d.mesh = mesh;
+    d.depth = depth;
     d.camera = glm::mat4(glm::vec4(r0, 0), glm::vec4(r1, 0), glm::vec4(r2, 0), glm::vec4(t, 1));
     // Field of view pi/4 with aspect -W/H (mirrored left-right); Vulkan's y points down.
     const float cot = 1.f / std::tan(glm::pi<float>() / 8);

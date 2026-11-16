@@ -13,6 +13,7 @@ layout(push_constant) uniform Draw {
     mat4 camera; // model -> camera space (x right, y up, z ahead); its unused bottom row carries
                  // a colour (rgb; all zero: white), for attached cubes
     vec4 lens;   // x and y scale, NDC shift
+    vec4 shift;  // x: the depth offset applied after the projection (§8.1.6 step 5)
 } draw;
 
 layout(location = 0) out vec4 lit;
@@ -32,7 +33,7 @@ void main() {
     affine[2][3] = 0.0;
     vec4 p = affine * vec4(inPosition, 1.0);
     gl_Position = vec4(p.x * draw.lens.x + draw.lens.z * p.z, p.y * draw.lens.y + draw.lens.w * p.z,
-                       (p.z - NEAR) * FAR / (FAR - NEAR), p.z);
+                       (p.z - NEAR) * FAR / (FAR - NEAR) + draw.shift.x * p.z, p.z);
     vec3 n = normalize(mat3(affine) * inNormal);
     vec3 T = AMBIENT + max(dot(n, DIRECTION), 0.0) * FRONT + max(dot(n, -DIRECTION), 0.0) * BACK;
     lit = vec4(clamp(T, 0.0, 1.2) * inColour.rgb * tint, 1.0);
