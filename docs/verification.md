@@ -2195,3 +2195,18 @@ saved line counts. The original Alpha dedicated server accepted the new
 client with protocol version 3 and assigned creature ID 1. The Vulkan
 capture confirmed seed 41's Lands of Gami scene, HUD and minimap.
 Original-client combat and last-bit math comparisons remain open.
+
+## Connected ranged dispatch and stat re-certification (2026-11-17)
+
+ActorOrderTests supplies independent pitch samples to actions 34, 47, 89,
+48 and 90 and observes their signed actor order across the controlled turn.
+It checks signed negative quotients, strict anticipation and zero
+crossings, case 89's bracelet numerator, and absent hit, effect and buff
+output on the scoped nonlocal release routes. The Windows x64 build,
+nine focused suites and all 60 CTest suites passed.
+
+Revision 17 parsed and all 48 links resolved. The ranged dispatch and
+re-certified critical and haste contracts matched their complete hashes.
+The recertification checks the client and dedicated arithmetic against
+their original image bytes. Connected projectile receipt and stepping,
+native playback and imported power's last-bit match remain open.

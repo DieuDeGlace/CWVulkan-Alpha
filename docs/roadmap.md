@@ -781,6 +781,10 @@ Differences from the Steam engine that shape the plan:
   saved pulse, selected attack and defense stats, and the alternating sound and
   draw order for hostile hits and the friendly heal route. Verify matched
   original-client combat and numeric runtime behavior separately.
+- [x] Connected nonlocal ranged dispatch (`alpha-connected-ranged-dispatch.md`).
+  Keep the signed windup and zero-crossing cues in the live actor order and
+  respect original pointer ownership on the scoped launch and hit bodies.
+  World projectile receipt, stepping and broader native comparisons remain open.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species

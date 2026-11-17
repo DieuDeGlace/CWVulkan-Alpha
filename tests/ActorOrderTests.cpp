@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <utility>
 
 using namespace creatures;
@@ -1140,6 +1141,67 @@ void checkConnectedStaffAreaHeal() {
     }
 }
 
+void checkConnectedRangedDispatch() {
+    MeleeFixture world;
+    const auto receive = [&](uint64_t id, int32_t action, std::optional<int32_t> clock = std::nullopt) -> Combatant & {
+        Combatant actor;
+        actor.action = action;
+        actor.aim = {3, 1, 0};
+        actor.mana = .75f;
+        if (action == 89) {
+            auto &weapon = actor.equipment[MAIN_HAND];
+            weapon.type = 3;
+            weapon.subtype = BRACELET;
+            weapon.level = 1;
+        }
+        actor.multipliers[1] = 1.f / attackSpeed(actor);
+        const auto timing = phases(actor, action);
+        actor.actionMs = clock.value_or(timing.windUp);
+        return world.receive(id, actor, world.x, world.y);
+    };
+    receive(uint64_t(-5), 34, -200);
+    receive(uint64_t(-4), 34, -201); // both signed quotients truncate to minus one
+    receive(uint64_t(-3), 47, 0);
+    const auto &bracelet = receive(1, 89, 599);
+    receive(2, 48, 0);
+    const auto &ordinary = receive(4, 90, 399);
+    check(phases(bracelet, 89).windUp == 600 && phases(ordinary, 90).windUp == 400,
+          "the scoped bracelet and default windup selectors use the verified numerators");
+    receive(5, 89);
+    receive(6, 90);
+    receive(7, 34);
+    uint64_t id = 8;
+    for (int32_t action : {22, 23, 24, 25, 26, 27, 28, 29, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+                           49, 50, 55, 96, 108})
+        receive(id++, action);
+
+    Combatant local;
+    local.id = 3;
+    Body body;
+    body.place({10, 20, 8});
+    const net::RemoteCreatures::Controlled controlled{local, body};
+    NpcFrame frame;
+    constexpr std::array samples{101, 202, 303, 404, 505};
+    size_t draws = 0;
+    const std::function<int()> draw = [&] {
+        const size_t next = draws++;
+        return next < samples.size() ? samples[next] : 32767;
+    };
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    world.remotes.step(world.actors, 1, floorBlock, {}, &controlled, [&] {
+        check(draws == 4, "only earlier signed nonlocal ranged actors draw before the controlled turn");
+    }, &effects);
+    constexpr std::array ids{36, 14, 36, 14, 36};
+    check(draws == samples.size() && frame.sounds.size() == ids.size() && frame.emittedHits.empty() &&
+              frame.buffs.empty() && frame.bursts.empty(),
+          "ranged dispatch emits only the admitted windup and zero-crossing sounds");
+    if (frame.sounds.size() == ids.size())
+        for (size_t i = 0; i < ids.size(); ++i)
+            check(frame.sounds[i].sound == ids[i] && frame.sounds[i].volume == 1.f &&
+                      frame.sounds[i].pitch == sound::randomPitch(samples[i], .25f, 1.f),
+                  "connected ranged cue draws retain signed bucket, pitch and actor order");
+}
+
 void checkOrdinaryCreatureLink() {
     MeleeFixture world;
     Combatant input;
@@ -1329,6 +1391,7 @@ int main() {
     checkStaffStatSelectors();
     checkConnectedStaffHit();
     checkConnectedStaffAreaHeal();
+    checkConnectedRangedDispatch();
     checkOrdinaryCreatureLink();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();

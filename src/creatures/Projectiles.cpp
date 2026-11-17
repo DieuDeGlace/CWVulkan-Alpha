@@ -279,6 +279,10 @@ struct ChannelBursts {
     std::vector<Burst> &out;
 };
 
+bool crossesChannelBucket(int32_t before, int32_t projected, int32_t anticipation) {
+    return before < anticipation && before / 200 != projected / 200;
+}
+
 void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at, const std::function<int()> &draw,
                         std::vector<SoundEvent> &out, const ChannelBursts *channel, bool includePulseSound) {
     const int32_t action = c.action;
@@ -312,7 +316,7 @@ void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at
     // the step τ < P1 <= τ + dt, or the explosion (81) on the step τ - dt < P1 <= τ. The bursts
     // stay with launch(); the camera shake comes with playing 81.
     if (staff || explosion) {
-        if (t < P1 && after / 200 != t / 200)
+        if (crossesChannelBucket(t, after, P1))
             out.push_back({at, 36, pitch(0.25f, 1.f), 1});
         if ((staff && crossesLate(P1)) || (explosion && previous < P1 && P1 <= t)) {
             const int32_t sound = explosion ? 81 : c.specialization == 1 ? 41 : 38;
@@ -377,15 +381,22 @@ void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const st
 void receivedActionEffects(const Combatant &c, const Body &body, int32_t dt, glm::dvec3 at,
                            const std::function<int()> &draw, std::vector<SoundEvent> &sounds,
                            std::vector<Burst> &bursts) {
-    if (c.action == 47 || c.action == 48) {
-        const int32_t after = std::bit_cast<int32_t>(uint32_t(c.actionMs) + uint32_t(dt));
-        if (c.actionMs <= 0 && after > 0)
+    const int32_t action = c.action;
+    const int32_t before = c.actionMs;
+    const int32_t after = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(dt));
+    if (action == 34 || action == 89 || action == 90) {
+        // Their windup is before local ownership admission. Release belongs
+        // to the owner path.
+        if (crossesChannelBucket(before, after, phases(c, action).windUp))
+            sounds.push_back({at, 36, sound::randomPitch(draw(), 0.25f, 1.f), 1.f});
+    } else if (action == 47 || action == 48) {
+        if (before <= 0 && after > 0)
             sounds.push_back({at, 14, sound::randomPitch(draw(), 0.25f, 1.f), 1.f});
-    } else if (meleeAction(c.action)) {
+    } else if (meleeAction(action)) {
         const ChannelBursts channel{body, bursts};
         // These received pulse sounds follow the corresponding candidate reset.
-        const bool timedInActorTurn = c.action == 11 || (c.action >= 30 && c.action <= 33);
-        appendActionSounds(c, c.actionMs, dt, at, draw, sounds, &channel, !timedInActorTurn);
+        const bool timedInActorTurn = action == 11 || (action >= 30 && action <= 33);
+        appendActionSounds(c, before, dt, at, draw, sounds, &channel, !timedInActorTurn);
     }
 }
 

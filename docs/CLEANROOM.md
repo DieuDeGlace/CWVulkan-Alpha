@@ -3664,3 +3664,25 @@ local mana rewards. The alternate route rechecks the relationship and emits
 its signed heal after a variation draw and an independent critical draw. It
 keeps the target's local health intact in this nonlocal turn. Nonfinite state,
 original-client combat and imported power's last-bit runtime match remain open.
+
+## Connected ranged dispatch and stat re-certification (2026-11-17)
+
+The isolated author finalized [the ranged dispatch contract](specs/alpha-connected-ranged-dispatch.md).
+The implementer read all 256 physical lines and verified SHA-256
+`7f114f58e86a2487be5242c31e244846067f5930bcad27948873cd7c1dfcc14a`.
+The received turn handles actions 34, 89 and 90 at their pre-ownership
+windup site. A change in the signed absolute clock's 200 ms quotient
+consumes one pitch draw if the earlier clock precedes anticipation.
+Actions 47 and 48 retain their strict zero crossing. The reviewed
+nonlocal path leaves the scoped projectile releases and targeted healing
+to their owner. Later projectile receipt and world stepping remain open.
+
+An independent source author re-certified [the critical and haste numerics](specs/alpha-critical-and-haste-stat-numerics.md).
+The implementer read all 341 physical lines and verified SHA-256
+`444bcdfd2701de6eca333bd707c6d37adaca5e57168195754cb2136fd62cab48`.
+The current stat helpers agree with the signed raw item level, equipment
+order, per-item cutoff and finite speed rules in both original images.
+The shared phase helper reuses the pure speed result across scaled legs
+of an unchanged actor state. Critical rolls still sample the probability
+before the draw. Imported power runtime behavior, exceptional arithmetic
+and the full action schedules remain open.

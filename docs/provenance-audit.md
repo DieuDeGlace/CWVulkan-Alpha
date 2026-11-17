@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 48 and the rulings. The 259 tracked contracts
-comprise 202 A, 52 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 49 and the rulings. The 260 tracked contracts
+comprise 204 A, 51 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -103,6 +103,8 @@ Batch 46 covers `alpha-stock-blueprint-placement.md`.
 Batch 47 covers `alpha-connected-melee-actions-9-through-21.md`.
 Batch 48 covers `alpha-connected-melee-actions-30-through-33.md` and
 `alpha-rulings-connected-melee-30-through-33-stats.md`.
+Batch 49 covers `alpha-connected-ranged-dispatch.md` and the re-certified
+`alpha-critical-and-haste-stat-numerics.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -158,6 +160,7 @@ Batch 48 covers `alpha-connected-melee-actions-30-through-33.md` and
 | `alpha-connected-melee-actions-30-through-33.md` | A | 394 | 0 |
 | `alpha-connected-melee-actions-9-through-21.md` | A | 426 | 0 |
 | `alpha-connected-melee-candidates.md` | A | 452 | 0 |
+| `alpha-connected-ranged-dispatch.md` | A | 257 | 0 |
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
 | `alpha-crafting.md` | A | 649 | 2 |
@@ -172,7 +175,7 @@ Batch 48 covers `alpha-connected-melee-actions-30-through-33.md` and
 | `alpha-creature-yaw-light-gates.md` | A | 125 | 1 |
 | `alpha-creatures-behaviour.md` | A | 986 | 0 |
 | `alpha-creatures-models.md` | A | 1920 | 0 |
-| `alpha-critical-and-haste-stat-numerics.md` | B | 137 | 0 |
+| `alpha-critical-and-haste-stat-numerics.md` | A | 342 | 1 |
 | `alpha-data-stores.md` | A | 155 | 0 |
 | `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
 | `alpha-descriptor-equipment-setup.md` | A | 133 | 1 |
