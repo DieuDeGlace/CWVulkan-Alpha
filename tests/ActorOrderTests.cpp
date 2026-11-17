@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 using namespace creatures;
 namespace {
@@ -766,6 +767,108 @@ void checkConnectedMeleeWindow() {
     check(draws == 3 && frame.emittedHits.size() == 1, "the resident struck set suppresses repeat draws across pieces");
 }
 
+void checkConnectedMeleeFamily() {
+    for (const int32_t action : {2, 3, 4, 6, 7}) {
+        MeleeFixture world;
+        Combatant input;
+        input.action = action;
+        input.health = 50;
+        const auto timing = phases(input, action);
+        input.actionMs = timing.windUp + timing.active / 2;
+        const float impulse = (action == 2 ? 6.f : 3.f) / attackSpeed(input);
+        auto &attacker = world.receive(1, input, world.x, world.y);
+        Combatant defender;
+        defender.controller = 6;
+        defender.health = 50;
+        defender.multipliers[3] = 0;
+        const auto &target = world.receive(2, defender);
+        NpcFrame frame;
+        int draws = 0;
+        const std::function<int()> draw = [&] { draws++; return 32767; };
+        const net::RemoteCreatures::StepEffects effects{frame, draw};
+        world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+        check(draws == 3 && attacker.combo == 1 && target.health == 50 && frame.emittedHits.size() == 1,
+              "each ordinary received melee admits the saved upper bound and avoids local-owner draws");
+        if (!frame.emittedHits.empty()) {
+            const auto &hit = frame.emittedHits.front();
+            check(hit.amount == .75f && hit.knockBack == glm::vec3(0, impulse, .25f * impulse) &&
+                      !hit.critical && !hit.area,
+                  "ordinary connected melee uses the held damage coefficient and live impulse selection");
+        }
+        if (action == 3 || action == 4) {
+            input.actionMs = 0;
+            input.mana = .75f;
+            world.receive(1, input, world.x, world.y);
+            world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+            check(attacker.spentPower == .1f && attacker.mana == .75f - .1f && draws == 3,
+                  "actions three and four spend the fixed nominal resource at clock zero");
+        }
+    }
+
+    MeleeFixture world;
+    Combatant input;
+    input.action = 5;
+    input.characterClass = 4;
+    input.specialization = 1;
+    input.health = 50;
+    input.combo = 7;
+    input.mana = .6f;
+    input.charge = .4f;
+    auto &attacker = world.receive(1, input, world.x, world.y);
+    attacker.buffs.push_back({11, 2.f, 100, 18});
+    Combatant defender;
+    defender.controller = 6;
+    defender.health = 50;
+    defender.multipliers[3] = 0;
+    world.receive(2, defender);
+    NpcFrame frame;
+    int draws = 0;
+    const std::function<int()> draw = [&] { draws++; return 32767; };
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 0 && attacker.criticalLatched && attacker.spentPower == .2f && attacker.mana == 0.f &&
+              attacker.dodgeMs == 600 && frame.buffs.size() == 1 && frame.buffs[0].source == 1 &&
+              frame.buffs[0].record.source == 0 && frame.buffs[0].record.timeMs == 0,
+          "action five's startup replaces type eleven and records half the positive pending debit");
+
+    const auto timing = phases(attacker, 5);
+    const int32_t secondPulse = timing.windUp + timing.active / 3;
+    attacker.actionMs = secondPulse - 1;
+    attacker.struck = {91};
+    attacker.deferred = {2};
+    attacker.hitLanded = true;
+    world.remotes.step(world.actors, 1, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 0 && frame.emittedHits.empty() && attacker.struck.empty() && attacker.deferred.empty() &&
+              attacker.hitLanded && attacker.swingCount == 7 && attacker.actionMs == secondPulse,
+          "a projected action-five pulse clears both sets before expiry and keeps the hit latch");
+    world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 0 && frame.emittedHits.empty(), "the saved pulse is strict at its lower bound");
+    attacker.actionMs++;
+    world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 2 && frame.emittedHits.size() == 1 && attacker.combo == 8,
+          "the latched action-five hit uses only jitter and ordinary pitch draws");
+    if (!frame.emittedHits.empty()) {
+        const auto &hit = frame.emittedHits.front();
+        const float amount = .5f * ((.2f * .2f) * 5.f + 1.f) * .75f * 2.f;
+        check(hit.amount == amount && hit.critical && hit.area && hit.knockBack.z == 1.f,
+              "action five retains the half coefficient, constant impulse and charged critical result");
+    }
+
+    int speedQueries = 0;
+    auto &speed = itemBonuses().speed;
+    auto previous = std::exchange(speed, [&](const Item &) { speedQueries++; return 0.f; });
+    Combatant equipped;
+    equipped.action = 5;
+    equipped.equipment[MAIN_HAND].type = 3;
+    Body body, target;
+    strikeInput(equipped, body, target, draw);
+    check(speedQueries == 0, "constant impulse skips the weapon speed query");
+    equipped.action = 4;
+    strikeInput(equipped, body, target, draw);
+    check(speedQueries == 1, "divided impulse samples the live weapon speed once");
+    speed = std::move(previous);
+}
+
 void checkOrdinaryCreatureLink() {
     MeleeFixture world;
     Combatant input;
@@ -949,6 +1052,7 @@ int main() {
     checkConnectedActionEffects();
     checkConnectedMeleeOrder();
     checkConnectedMeleeWindow();
+    checkConnectedMeleeFamily();
     checkOrdinaryCreatureLink();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();

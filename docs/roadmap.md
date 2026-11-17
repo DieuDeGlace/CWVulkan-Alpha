@@ -767,6 +767,11 @@ Differences from the Steam engine that shape the plan:
   Resolve key zero in the live map, respect ordered target health and role
   gates, and copy position, angles and walk before the remaining movement
   and riding work. Core receipts preserve the resident identifier.
+- [x] Connected melee actions 2–7 (`alpha-connected-melee-actions-2-through-7.md`,
+  `alpha-rulings-connected-melee-scalar-selectors.md`). Produce action-specific
+  hit amounts and impulses per live signed candidate. Action 5 clears both
+  candidate sets before feedback when its projected clock starts the next
+  active pulse. The independent ruling resolves disputed scalar selections.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species

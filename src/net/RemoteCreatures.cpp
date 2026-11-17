@@ -63,21 +63,34 @@ bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body 
     const int32_t before = fighter.actionMs;
     const auto timing = creatures::phases(fighter, fighter.action);
     auto window = creatures::ordinaryStrikeBounds(timing);
+    const bool strikes = fighter.action >= 1 && fighter.action <= 7;
+    creatures::updateSwingCount(fighter, before, dt);
     // The live clock after preparation uses these earlier signed bounds.
-    if (fighter.action == 31) {
-        const int32_t start = timing.windUp, period = timing.active / 12;
+    if (fighter.action == 5 || fighter.action == 31) {
+        const int32_t start = timing.windUp, end = start + timing.active;
+        const int32_t period = timing.active / (fighter.action == 5 ? 3 : 12);
         window = {start, start};
-        if (period > 0 && before >= start && before < start + timing.active) {
-            window.lower = start + ((before - start) / period) * period;
-            window.upper = window.lower + 100;
+        if (period > 0 && before >= start && before < end) {
+            const auto pulseStart = [&](int32_t clock) { return start + ((clock - start) / period) * period; };
+            const int32_t lower = pulseStart(before);
+            window = {lower, lower + 100};
+            if (fighter.action == 5) {
+                const int32_t projected = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(dt));
+                const int32_t next = pulseStart(projected);
+                if (next != lower && next < end) {
+                    // Crossing another pulse discards the old candidates before
+                    // deferred feedback and keeps the hit-processing latch.
+                    fighter.struck.clear();
+                    fighter.deferred.clear();
+                }
+            }
         }
     }
-    creatures::updateSwingCount(fighter, before, dt);
     if (before <= timing.windUp) {
         deferredFeedback(fighter);
         fighter.struck.clear();
         fighter.deferred.clear();
-    } else if (fighter.action == 1 && before >= window.upper) {
+    } else if (strikes && before >= window.upper) {
         // Equality expires the old set before the current candidates are tried.
         deferredFeedback(fighter);
         fighter.deferred.clear();
@@ -88,7 +101,7 @@ bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body 
         if (const auto consumed = creatures::consumeBuff(fighter, 9); consumed && effects)
             effects->frame.buffs.push_back(*consumed);
     }
-    return fighter.action == 1 && window.admits(fighter.actionMs);
+    return strikes && window.admits(fighter.actionMs);
 }
 
 template<class Visit>

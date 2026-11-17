@@ -2121,3 +2121,20 @@ accepted this build with protocol version 3, assigned player ID 1 and supplied
 seed 41. The captured Vulkan frame showed the Lands of Gami world, player,
 HUD and minimap. Runtime comparison of ordinary link behavior with an original
 client remains open.
+
+## Connected melee actions 2–7 (2026-11-17)
+
+ActorOrderTests checks the ordinary upper bounds, fixed 0.1 cost at zero
+for actions 3 and 4, and hit amount, impulse and draw counts for the
+remaining ordinary strikes. Action 5 checks the type-11 replacement, half
+pending debit, candidate clear before deferred feedback, strict lower
+bound and latched critical. Its accepted target uses the jitter and impact
+pitch draws. The constant impulse skips the weapon speed query. The nine
+focused suites and all 60 CTests passed on Windows x64.
+
+The visibility re-certification covers the fixed conversions and side
+faces. Current synthetic ray and connected object-adapter checks passed.
+An isolated mod-launcher run started the original 32-bit client and
+loaded Direct3D 9, DirectInput and the Visual C++ runtime. It exposed no
+targetable game window. The desktop launch produced the same window
+outcome. Original-client interactive comparison is still open.

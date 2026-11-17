@@ -62,18 +62,17 @@ float shareOf(int32_t action) {
 float pushOf(const Combatant &c) {
     if (c.controller == 3 || c.controller == 5)
         return 0;
-    const float S = attackSpeed(c);
     switch (c.action) {
     case 30: case 31: case 32: case 33: return 0;
-    case 1: case 2: case 9: case 13: case 14: case 15: case 60: case 61: return 6.f / S;
-    case 3: case 4: case 6: case 7: case 18: case 19: case 62: return 3.f / S;
-    case 65: case 66: return 10.f / S;
+    case 1: case 2: case 9: case 13: case 14: case 15: case 60: case 61: return 6.f / attackSpeed(c);
+    case 3: case 4: case 6: case 7: case 18: case 19: case 62: return 3.f / attackSpeed(c);
+    case 65: case 66: return 10.f / attackSpeed(c);
     case 5: return 4;
     case 11: case 87: return 10;
     case 17: case 20: return 6;
     case 54: return 5;
     case 21: case 88: return 30.f * abilityValue(c, 21) + 5.f;
-    default: return 2.f / S;
+    default: return 2.f / attackSpeed(c);
     }
 }
 

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 44 and the rulings. The 253 tracked contracts
-comprise 195 A, 53 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 45 and the rulings. The 255 tracked contracts
+comprise 198 A, 52 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -97,6 +97,8 @@ Batch 41 covers `alpha-sneak-light-inputs.md`.
 Batch 42 covers `alpha-connected-melee-candidates.md` and `alpha-connected-combo-cleanup.md`.
 Batch 43 covers `alpha-connected-hit-consumption.md`.
 Batch 44 covers `alpha-ordinary-creature-link.md`.
+Batch 45 covers `alpha-connected-melee-actions-2-through-7.md`,
+`alpha-rulings-connected-melee-scalar-selectors.md` and `alpha-visibility-ray-geometry.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -148,6 +150,7 @@ Batch 44 covers `alpha-ordinary-creature-link.md`.
 | `alpha-connected-actor-turn.md` | A | 463 | 0 |
 | `alpha-connected-combo-cleanup.md` | A | 88 | 0 |
 | `alpha-connected-hit-consumption.md` | A | 304 | 0 |
+| `alpha-connected-melee-actions-2-through-7.md` | A | 294 | 0 |
 | `alpha-connected-melee-candidates.md` | A | 452 | 0 |
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
@@ -272,6 +275,7 @@ Batch 44 covers `alpha-ordinary-creature-link.md`.
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
 | `alpha-rulings-channel2-explosion-window.md` | A | 192 | 1 |
 | `alpha-rulings-channel36-cadence.md` | A | 66 | 0 |
+| `alpha-rulings-connected-melee-scalar-selectors.md` | A | 129 | 0 |
 | `alpha-rulings-corridor-third-line.md` | A | 120 | 0 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-held-light-factor.md` | A | 88 | 0 |
@@ -323,7 +327,7 @@ Batch 44 covers `alpha-ordinary-creature-link.md`.
 | `alpha-ui-screens.md` | A | 3719 | 2 |
 | `alpha-vendor-stock-generation.md` | A | 113 | 1 |
 | `alpha-vendor-widget-transactions.md` | A | 82 | 3 |
-| `alpha-visibility-ray-geometry.md` | B | 72 | 0 |
+| `alpha-visibility-ray-geometry.md` | A | 85 | 0 |
 | `alpha-voxel-fallback-record-initialization.md` | A | 87 | 1 |
 | `alpha-water-material-contract.md` | B | 88 | 1 |
 | `alpha-water-projectile-contact-event.md` | B | 113 | 3 |

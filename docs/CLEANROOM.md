@@ -3167,6 +3167,43 @@ selection and the right-button rotation path. Stock activation and
 selection producers, offline blueprint placement, full map projection
 and original-client runtime acceptance remain open.
 
+## Connected melee actions 2–7 (2026-11-17)
+
+The implementer read and verified the two complete held documents.
+
+- [Connected melee actions 2–7](specs/alpha-connected-melee-actions-2-through-7.md), 293 physical lines, `5a9bea098c93e721ccc4a0ce2dc656acc9965b848f6230f8588f69d05d702b3c`.
+- [Connected melee scalar ruling](specs/alpha-rulings-connected-melee-scalar-selectors.md), 128 physical lines, `249b1be7ec07d0fafb97dbd7c4f15d34c7f3427ad63a57ab37070a2cef77c02e`.
+
+A fresh isolated author adjudicated the conflicting early cost, amount
+and impulse entries in sections 3–4. The ruling governs those selectors.
+The original tables give actions 3 and 4 a fixed 0.1 cost, action 5 an
+amount coefficient of one-half, and impulse six over live speed for
+actions 1 and 2, three over live speed for 3, 4, 6 and 7, and constant
+four for action 5. Roles three and five receive zero impulse. The
+shared scalar functions supply those same values. Divided impulse reads
+weapon speed once. The constant and zero branches skip that read.
+
+Received actions 2–7 now run the live signed candidate walk. Action 5
+uses its saved thirds of the active duration. A projected crossing to a
+new pulse clears struck and deferred before feedback, preserving the
+hit latch and the combo used for the original clock decision. The startup
+type-11 replacement, pending resource and latched critical shape the
+same candidate's draw count. The scoped replica helper emits target
+results and resident effects without applying target damage. The
+remaining action families, independent readers for the stock hit totals
+and original-client combat acceptance remain open.
+
+## Visibility geometry re-certification (2026-11-17)
+
+A fresh isolated author independently re-certified [the visibility ray contract](specs/alpha-visibility-ray-geometry.md).
+The implementer read all 84 physical lines and verified SHA-256
+`b9ad1b0a9033068681ca982873f6c0b102bdf2ae2293b8e2c7d54f8c08a4ea10`.
+The re-certification checks the scalar conversions, initialized missing
+cell, held spatial grid, and four side faces. The shared finite-input
+ray kernel already uses the specified step and face order. Current world
+storage supplies cell and object callbacks. Native unloaded-column and
+loader equivalence, and the original server's ray path, remain open.
+
 ## Quick-item wheel and ordered confirmation (2026-11-17)
 
 An isolated source author finalized [the quick-wheel contract](specs/alpha-packet6-quick-wheel.md)
