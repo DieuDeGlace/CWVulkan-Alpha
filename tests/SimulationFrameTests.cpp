@@ -64,7 +64,6 @@ int main() {
             frame.shots.push_back({});
             frame.bursts.push_back({});
             frame.deaths.push_back({});
-            frame.craters.push_back({});
             frame.explosions.push_back({});
             frame.tamed.push_back({});
             frame.petItems.push_back({});
@@ -76,7 +75,7 @@ int main() {
             const auto added = frame.addedSince(cursor);
             check(added.emittedHits.size() == 1 && added.playerHits.size() == 1 && added.sounds.size() == 1 &&
                   added.buffs.size() == 1 && added.kills.size() == 1 && added.shots.size() == 1 && added.bursts.size() == 1 &&
-                  added.deaths.size() == 1 && added.craters.size() == 1 && added.explosions.size() == 1 &&
+                  added.deaths.size() == 1 && added.explosions.size() == 1 &&
                   added.tamed.size() == 1 && added.petItems.size() == 1 && added.seen.size() == 1 && added.experience == 5 &&
                   added.emittedHits[0].amount == (float)index && added.buffs[0].record.typePadding[2] == 3 &&
                   frame.emittedHits.size() == (size_t)index + 1,

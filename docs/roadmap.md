@@ -986,8 +986,11 @@ Differences from the Steam engine that shape the plan:
   until the following step, and an incoming fatal hit can reach the current pass.
 - [x] Bomb terrain edits apply during the death pass. Overlapping blasts see
   previous removals before sound draws and victim effects.
-- [ ] Bomb request timing. Place item-request bombs during the player's turn,
-  preserving mixed requests, actor storage and shared draw order.
+- [x] Bomb request timing. The sender's mixed queue places bombs during the
+  actor turn with the shared draw order. Actor references and the live signed
+  traversal survive in-turn changes.
+- [x] Melee terrain edits apply before target resolution. A later overlapping
+  strike reads the edited cells when deciding whether to draw its removal sound.
 - [ ] Multiplayer, rest: testing against original Alpha clients. Against the original
   Server.exe (2026-11-02, a temp copy of the owner's install): AlphaVulkan clients join ("Client
   version: 3", "Player 0 joined"), take its seed and clock, see its creatures (10 near the

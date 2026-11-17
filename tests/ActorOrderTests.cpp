@@ -1,3 +1,4 @@
+#include "BlockEdits.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Npcs.h"
 #include <algorithm>
@@ -23,9 +24,63 @@ Npc fixture(uint64_t key, float health = 100) {
     npc.home = npc.body.blocks();
     return npc;
 }
+
+void checkOverlappingStrikes() {
+    worldgen::WorldMap map;
+    auto zone = std::make_shared<worldgen::Zone>(0, 0);
+    const worldgen::Block natural{18, 76, 34, worldgen::GRASS | worldgen::SURFACE_COLOURED};
+    zone->place(20, 25, 3, natural);
+    map.add(zone);
+    worldgen::Random random{31};
+    auto expected = random;
+    const float pitch = float(expected.draw()) * 0.4f / 32767.f + 0.5f;
+    Npcs npcs(random);
+    const auto makeStriker = [&](uint64_t id, double x) {
+        Npc &npc = npcs.npcs().emplace_back();
+        npc.fighter.id = id;
+        npc.fighter.controller = 3;
+        npc.fighter.action = 17;
+        const Phases timing = phases(npc.fighter, 17);
+        npc.fighter.actionMs = timing.windUp + timing.active / 2;
+        npc.body.size = glm::vec3(5.6f);
+        npc.body.place({x, 15.5, 3});
+        npc.home = npc.body.blocks();
+    };
+    makeStriker(5, 20.75);
+    makeStriker(uint64_t(-2), 20.25);
+
+    std::vector<int64_t> centres;
+    std::vector<BlockEdit> edits;
+    npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
+                           std::vector<Burst> &bursts) {
+        centres.push_back(centre[0]);
+        const auto cells = breakCells(centre, radius, rounding, 12,
+            [&](int32_t x, int32_t y, int32_t z) { return map.read(x, y, z); });
+        if (cells.empty())
+            return false;
+        auto changed = std::make_shared<worldgen::Zone>(*map.zone(0, 0));
+        for (const BrokenCell &cell : cells) {
+            bursts.push_back(blockBurst(cell.at, glm::vec3(cell.colour)));
+            applyLive(*changed, cell.removal, {});
+            edits.push_back(cell.removal);
+        }
+        map.add(std::move(changed));
+        return true;
+    };
+    const BlockType block = [&](int32_t x, int32_t y, int32_t z) { return map.read(x, y, z).type(); };
+    const auto frame = npcs.step(1, map, {}, 1000, 12, block);
+    check(centres == std::vector<int64_t>{1327104, 1359872}, "overlapping strikes execute in signed actor order");
+    check(edits.size() == 1 && edits.front() == BlockEdit{20, 25, 3, 255, 255, 255, 0, 12} &&
+              frame.bursts.size() == 1 && frame.bursts.front().style == LIT && map.read(20, 25, 3).type() == worldgen::AIR,
+          "the later strike sees the terrain after the first edit and adds no second record or burst");
+    check(frame.sounds.size() == 1 && frame.sounds.front().sound == 2 && frame.sounds.front().pitch == pitch &&
+              frame.sounds.front().position.x == 20.25 && random.count() == 1,
+          "only the first strike spends the removal sound draw");
+}
 }
 
 int main() {
+    checkOverlappingStrikes();
     {
         const std::array<uint64_t, 9> expected{
             minimum, 0xffffffff00000000ull, UINT64_MAX, 0, 0x7fffffffull,

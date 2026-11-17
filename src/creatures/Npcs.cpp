@@ -2237,21 +2237,14 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
     // Strike-call-sites contract K2-K8, §5 and §6.
     const auto rolls = [&] { return draw(); };
     const StrikeGeometry geometry = strikeGeometry(attacker, attackerBody, yaw);
-    // K3: a striker wider than 4 breaks the cells within trunc(R) (at most 8) of the strike
-    // centre, except in actions 0x57, 0x5B and 0x4A; when any goes, sound 2 at the striker
-    // takes one draw here, before every target. (The adapter is set only where the world is
-    // not online; the caller removes the cells and presents them.)
-    if (removesBlocks && attackerBody.size.x > 4.f && attacker.action != 0x57 && attacker.action != 0x5B &&
+    // K3: apply the terrain edits before the sound draw and the target walk.
+    if (breakBlocks && attackerBody.size.x > 4.f && attacker.action != 0x57 && attacker.action != 0x5B &&
         attacker.action != 0x4A) {
-        NpcFrame::Impact impact;
-        impact.radius = std::min(int32_t(geometry.reach), 8);
-        for (size_t axis = 0; axis < 3; axis++)
-            impact.centre[axis] = double(geometry.centre[axis]) / 65536.0;
-        impact.striker = attackerBody.blocks();
-        if (removesBlocks(impact.centre, impact.radius)) {
-            impact.removes = true;
-            impact.pitch = (float)draw() * 0.4f / 32767.f + 0.5f;
-            frame.craters.push_back(impact);
+        const int32_t radius = std::min(int32_t(geometry.reach), 8);
+        if (breakBlocks(geometry.centre, radius, CellRounding::Truncate, frame.bursts)) {
+            const float pitch = (float)draw() * 0.4f / 32767.f + 0.5f;
+            const glm::vec3 at(attackerBody.blocks());
+            frame.sounds.push_back({glm::dvec3(at), 2, pitch, 1});
         }
     }
     // K4: action 0x1F resets a kind-9 effect (with its notice).
@@ -2452,7 +2445,7 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
                 std::copy(centre.begin(), centre.end(), burst.position);
                 frame.bursts.push_back(burst);
                 // Block edits §8: break the terrain before the sound draw and victim hits.
-                if (breakBombBlocks && breakBombBlocks(centre, frame.bursts)) {
+                if (breakBlocks && breakBlocks(centre, 8, CellRounding::FloorAdjusted, frame.bursts)) {
                     explosion.removes = true;
                     explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
                     frame.sounds.push_back({explosion.centre, 1, explosion.pitch, 1});
@@ -2857,7 +2850,7 @@ NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {
     Added added{take(emittedHits, cursor.emittedHits), take(playerHits, cursor.playerHits),
                 take(sounds, cursor.sounds), take(buffs, cursor.buffs), take(kills, cursor.kills),
                 take(shots, cursor.shots), take(bursts, cursor.bursts), take(deaths, cursor.deaths),
-                take(craters, cursor.craters), take(explosions, cursor.explosions), take(tamed, cursor.tamed),
+                take(explosions, cursor.explosions), take(tamed, cursor.tamed),
                 take(petItems, cursor.petItems), std::bit_cast<int32_t>(uint32_t(experience) - uint32_t(cursor.experience)),
                 take(seen, cursor.seen), take(relationships, cursor.relationships), take(staticStates, cursor.staticStates),
                 take(missions, cursor.missions), take(grants, cursor.grants), take(appliedCredits, cursor.appliedCredits)};
@@ -2879,7 +2872,6 @@ void NpcFrame::reset() {
     shots.clear();
     bursts.clear();
     deaths.clear();
-    craters.clear();
     explosions.clear();
     tamed.clear();
     petItems.clear();

@@ -1870,3 +1870,16 @@ order and its 18-draw witness. All seven focused suites passed on the
 Windows x64 build.
 All 60 CTest suites passed, including network loopback, live Vulkan
 water and owner-content zone comparison.
+
+## Melee terrain before target resolution (2026-11-17)
+
+ActorOrderTests runs two overlapping strikes through the live signed actor
+walk. The first emits the dated block record and burst, and the second
+reads the changed cell. The fixture checks the sound position and pitch
+and that the entire pair consumes one removal-sound draw. WorldgenTests
+verifies the negative-height water write affects the following probe and
+checks the horizontal column boundary. CreatureTests checks both strike
+and blast rounding through the shared removal service.
+
+The Windows x64 build, all six focused suites and all 60 CTest suites
+passed. Exact native relight and plant pass footprints remain open.

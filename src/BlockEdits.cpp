@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 using worldgen::Block;
 using worldgen::Zone;
@@ -137,23 +138,46 @@ std::array<int64_t, 3> rawBlocks(glm::dvec3 blocks) {
 std::vector<BrokenCell> breakCells(const std::array<int64_t, 3> &centre, int32_t radius, CellRounding records,
                                    int32_t today, const ReadBlock &read) {
     std::vector<BrokenCell> out;
+    if (radius <= 0)
+        return out;
     const auto recorded = records == CellRounding::Truncate ? truncated : floorAdjusted;
-    for (int32_t i = -radius; i <= radius; i++)
-        for (int32_t j = -radius; j <= radius; j++)
+    const float radiusSquared = float(radius * radius);
+    constexpr uint32_t worldWidth = 1u << 24;
+    for (int32_t i = -radius; i <= radius; i++) {
+        const int64_t rawX = centre[0] + int64_t(i) * 65536;
+        const int32_t x = floorAdjusted(rawX);
+        if (uint32_t(x) >= worldWidth)
+            continue;
+        for (int32_t j = -radius; j <= radius; j++) {
+            const int64_t rawY = centre[1] + int64_t(j) * 65536;
+            const int32_t y = floorAdjusted(rawY);
+            if (uint32_t(y) >= worldWidth)
+                continue;
+            const int32_t horizontalSquared = i * i + j * j;
+            std::optional<int32_t> waterAbove;
             for (int32_t k = -radius; k <= radius; k++) {
-                if (!(float(radius * radius) > float(i * i + j * j + k * k)))
+                if (!(radiusSquared > float(horizontalSquared + k * k)))
                     continue;
-                const std::array<int64_t, 3> at{centre[0] + int64_t(i) * 65536, centre[1] + int64_t(j) * 65536,
-                                                centre[2] + int64_t(k) * 65536};
+                const int64_t rawZ = centre[2] + int64_t(k) * 65536;
+                const int32_t z = floorAdjusted(rawZ);
+                if (waterAbove == z)
+                    continue;
                 // §3: the test is flag 0x20 of the looked-up cell; read() supplies the
                 // lookup's fallbacks (none carries the flag).
-                const worldgen::Block cell = read(floorAdjusted(at[0]), floorAdjusted(at[1]), floorAdjusted(at[2]));
+                const worldgen::Block cell = read(x, y, z);
                 if (!(cell.typeByte & worldgen::SURFACE_COLOURED))
                     continue;
+                const int32_t removalZ = recorded(rawZ);
+                // A negative strike coordinate can clear the cell above the one it tested.
+                // Preserve that water write for the next probe in this column's ordered walk.
+                if (removalZ > z && removalZ <= 0)
+                    waterAbove = removalZ;
                 // §5: the record always carries the air value and the day.
-                const BlockEdit removal{recorded(at[0]), recorded(at[1]), recorded(at[2]), 255, 255, 255, 0, today};
-                out.push_back({removal, at, {cell.r, cell.g, cell.b}});
+                const BlockEdit removal{recorded(rawX), recorded(rawY), removalZ, 255, 255, 255, 0, today};
+                out.push_back({removal, {rawX, rawY, rawZ}, {cell.r, cell.g, cell.b}});
             }
+        }
+    }
     return out;
 }
 

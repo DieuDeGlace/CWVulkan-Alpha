@@ -32,6 +32,8 @@
 #include <tuple>
 #include <vector>
 
+enum class CellRounding;
+
 namespace creatures {
 
 // RandomInteraction (alpha-trails-poses-schedules.md §4): a static a creature may sit or lie
@@ -153,17 +155,6 @@ struct NpcFrame {
     };
     std::vector<Death> deaths;
     std::vector<MissionProgress> missions; // immediate snapshots with engine reward metadata
-    // Strike-call-sites K3: the strikes of creatures wider than 4 blocks, which break the cells
-    // within `radius` of the strike centre where the world is not online (blocks). When cells
-    // go, the striker's sound 2 takes `pitch`, drawn at the strike before any target.
-    struct Impact {
-        glm::dvec3 centre{0};
-        int32_t radius = 0;
-        bool removes = false;
-        float pitch = 0;
-        glm::dvec3 striker{0};
-    };
-    std::vector<Impact> craters;
     // Block edits §8: bombs that went off this step (their first dead step).
     struct Explosion {
         glm::dvec3 centre{0}; // blocks
@@ -197,7 +188,7 @@ struct NpcFrame {
     // A cursor belongs to one aggregate until reset; recreate it after reset.
     struct Cursor {
         size_t emittedHits = 0, playerHits = 0, sounds = 0, buffs = 0, kills = 0, shots = 0, bursts = 0;
-        size_t deaths = 0, craters = 0, explosions = 0, tamed = 0, petItems = 0, seen = 0;
+        size_t deaths = 0, explosions = 0, tamed = 0, petItems = 0, seen = 0;
         size_t relationships = 0;
         size_t staticStates = 0;
         size_t missions = 0;
@@ -213,7 +204,6 @@ struct NpcFrame {
         std::span<const Projectile> shots;
         std::span<const Burst> bursts;
         std::span<const Death> deaths;
-        std::span<const Impact> craters;
         std::span<const Explosion> explosions;
         std::span<const Tamed> tamed;
         std::span<const PetItem> petItems;
@@ -275,11 +265,9 @@ class Npcs {
     std::function<void(const ItemRecord &)> onFatalItem;
     // Final backing admission/write follows every recipient and completion grant.
     std::function<void(const Combatant &)> onFatalBacking;
-    // Apply a bomb's terrain edits at its raw centre and emit the broken-cell bursts.
-    // Return true when the blast removed a cell. The service retains actor storage.
-    std::function<bool(const std::array<int64_t, 3> &, std::vector<Burst> &)> breakBombBlocks;
-    // Strike-call-sites K3: read-only query for deferred melee crater edits.
-    std::function<bool(glm::dvec3 centre, int32_t radius)> removesBlocks;
+    // Apply a strike's or blast's edits at its raw centre and emit the cell bursts.
+    // Return true when any cell passed the removal test. Preserve actor storage.
+    std::function<bool(const std::array<int64_t, 3> &, int32_t, CellRounding, std::vector<Burst> &)> breakBlocks;
     bool markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day);
     // Existing engine descriptor-tail adapter; retains live actors. Native
     // virtual destruction and descriptor lifetime remain separate contracts.

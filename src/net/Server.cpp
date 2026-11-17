@@ -1070,13 +1070,9 @@ void Server::stepWorld(float dtMs) {
         };
     if (!npcs.sit) { // trails spec §4: residents sit on the seats round them
         npcs.seats = [this](glm::ivec3 block, double ms) { return statics.seats(zones, block, ms); };
-        npcs.breakBombBlocks = [this](const std::array<int64_t, 3> &centre, std::vector<creatures::Burst> &bursts) {
-            return breakAround(centre, 8, CellRounding::FloorAdjusted, bursts);
-        };
-        npcs.removesBlocks = [this](glm::dvec3 centre, int32_t radius) {
-            return !breakCells(rawBlocks(centre), radius, CellRounding::FloorAdjusted, (int32_t)clockDay,
-                               [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); })
-                        .empty();
+        npcs.breakBlocks = [this](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
+                                 std::vector<creatures::Burst> &bursts) {
+            return breakAround(centre, radius, rounding, bursts);
         };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };
         npcs.sit = [this](creatures::Npc &n, const creatures::Seat &s, creatures::NpcFrame &frame) {
@@ -1282,12 +1278,7 @@ void Server::stepWorld(float dtMs) {
     }
 
     // Particles §5: this step's bursts, for the players near them.
-    std::vector<creatures::Burst> bursts = frame.bursts;
-    // Strike-call-sites K3: big creatures' strikes break the cells round the strike centre;
-    // the sound at the striker kept the pitch drawn at the strike.
-    for (const auto &impact : frame.craters)
-        if (breakAround(rawBlocks(impact.centre), impact.radius, CellRounding::Truncate, bursts) && impact.removes)
-            frame.sounds.push_back({impact.striker, 2, impact.pitch, 1});
+    std::vector<creatures::Burst> bursts = std::move(frame.bursts);
 
     // Server §6.4: what the dead leave behind, sent in section 7 with their zones.
     for (const creatures::NpcFrame::Death &death : frame.deaths)

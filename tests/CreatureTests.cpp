@@ -2416,9 +2416,11 @@ int main() {
         const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 3);
         int asked = 0;
         std::optional<worldgen::Random> atQuery;
-        npcs.breakBombBlocks = [&](const std::array<int64_t, 3> &centre, std::vector<Burst> &) {
+        npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
+                               std::vector<Burst> &) {
             asked++;
             same(centre[0] == 688128 && centre[1] == 688128, 1, "the terrain service receives the raw bomb centre");
+            same(radius == 8 && rounding == CellRounding::FloorAdjusted, 1, "bomb removal uses its own rounding");
             atQuery = random; // the generator state just before the pitch draw
             return removes;
         };
@@ -2456,9 +2458,10 @@ int main() {
 
         int visits = 0;
         std::vector<BlockEdit> edits;
-        npcs.breakBombBlocks = [&](const std::array<int64_t, 3> &centre, std::vector<Burst> &bursts) {
+        npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
+                               std::vector<Burst> &bursts) {
             visits++;
-            const auto cells = breakCells(centre, 8, CellRounding::FloorAdjusted, 9,
+            const auto cells = breakCells(centre, radius, rounding, 9,
                 [&](int32_t x, int32_t y, int32_t z) { return map.read(x, y, z); });
             if (cells.empty())
                 return false;
@@ -2666,7 +2669,7 @@ int main() {
 
     // Strike-call-sites K3: a striker wider than 4 asks once per strike frame for the cells
     // within min(trunc(R), 8) of the strike centre; when any go, the sound pitch is the draw
-    // right after the query (before any target); none, no draw and no crater.
+    // right after the edit (before any target).
     for (const bool removes : {true, false}) {
         Combatant big;
         big.id = 41;
@@ -2679,25 +2682,30 @@ int main() {
         worldgen::Random random{7};
         Npcs npcs{random};
         int asked = 0;
-        glm::dvec3 at{0};
+        std::array<int64_t, 3> at{};
         int32_t radius = 0;
-        std::optional<worldgen::Random> atQuery;
-        npcs.removesBlocks = [&](glm::dvec3 centre, int32_t r) {
+        std::optional<worldgen::Random> beforeEdit;
+        npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t r, CellRounding rounding,
+                               std::vector<Burst> &) {
             asked++, at = centre, radius = r;
-            atQuery = random;
+            beforeEdit = random;
+            same(rounding == CellRounding::Truncate, 1, "melee removal uses truncating record coordinates");
             return removes;
         };
         NpcFrame frame;
         PlayerView view{big, body, 0, big.actionMs};
         npcs.dispatchPlayerActions({&view, 1}, 16, [](int32_t, int32_t, int32_t) { return uint8_t(0); }, frame);
-        same(asked, 1, "one block query per strike frame");
+        same(asked, 1, "one terrain call per strike frame");
         same(radius, 8, "R = 1.5 x 5.6 truncated and capped at 8");
-        same(at.y, 1.5 * 5.6, "the strike centre, forward by the reach", 1e-4);
-        same((double)frame.craters.size(), removes ? 1 : 0, "a crater only when cells go");
-        if (removes && !frame.craters.empty()) {
-            const float expected = (float)atQuery->draw() * 0.4f / 32767.f + 0.5f;
-            same(frame.craters[0].pitch, expected, "the pitch is the draw right after the query");
-            same(frame.craters[0].striker.y, 0, "the sound is at the striker", 1e-9);
+        same(double(at[1]) / 65536.0, 1.5 * 5.6, "the strike centre, forward by the reach", 1e-4);
+        const auto sound = std::find_if(frame.sounds.begin(), frame.sounds.end(), [](const SoundEvent &s) {
+            return s.sound == 2;
+        });
+        same(sound != frame.sounds.end(), removes, "the removal sound requires an admitted cell");
+        if (removes && sound != frame.sounds.end()) {
+            const float expected = (float)beforeEdit->draw() * 0.4f / 32767.f + 0.5f;
+            same(sound->pitch, expected, "the pitch is the draw right after the edit");
+            same(sound->position.y, 0, "the sound is at the striker", 1e-9);
         }
     }
 

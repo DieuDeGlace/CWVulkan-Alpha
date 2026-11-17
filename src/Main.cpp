@@ -899,8 +899,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     alpha::FogDistance fogDistance;
     bool fogStarted = false;
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
-    const auto breakAround = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
-                                 std::vector<creatures::Burst> &effects) {
+    npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
+                           std::vector<creatures::Burst> &effects) {
         const auto broken = breakCells(centre, radius, rounding, scene.day,
             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); });
         if (broken.empty())
@@ -912,14 +912,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const BlockEdit &edit : removed)
             blockEdits.add(edit);
         return true;
-    };
-    npcs.breakBombBlocks = [&](const std::array<int64_t, 3> &centre, std::vector<creatures::Burst> &effects) {
-        return breakAround(centre, 8, CellRounding::FloorAdjusted, effects);
-    };
-    npcs.removesBlocks = [&](glm::dvec3 centre, int32_t radius) {
-        return !breakCells(rawBlocks(centre), radius, CellRounding::FloorAdjusted, scene.day,
-                           [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); })
-                    .empty();
     };
     if (session) {
         scene.timeOfDayMs = session->clock.timeOfDayMs;
@@ -2599,11 +2591,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 creatures::setItemLevel(inventory.equipment[12], (int16_t)p.level);
                                 wearInventory();
                             }
-                        // Strike-call-sites K3: big creatures' strikes break the cells round the
-                        // strike centre; the sound at the striker kept the pitch drawn at the strike.
-                        for (const auto &impact : happened.craters)
-                            if (breakAround(rawBlocks(impact.centre), impact.radius, CellRounding::Truncate, bursts) && impact.removes)
-                                playAt(2, impact.striker, 1, impact.pitch);
                         for (const auto &credit : happened.appliedCredits)
                             if (credit.direct && credit.record.experience != 0) {
                                 interface.floating.push_back(ui::experienceText(credit.record.experience, player->body().blocks()));

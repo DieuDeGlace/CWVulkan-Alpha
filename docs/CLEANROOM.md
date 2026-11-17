@@ -3228,3 +3228,22 @@ request path.
 NPC potion admission uses two draws in X/Y order. The timed actor
 effects use zero draws. Exact item attachment transforms, native frame
 presentation timing and original multiplayer acceptance remain open.
+
+## Melee terrain inside the strike (2026-11-17)
+
+The implementer reread held `alpha-strike-call-sites.md` K3 and
+`alpha-strike-cell-helpers.md` §§2–8. Their SHA-256 hashes are
+`8849c4207df74650504619231b7d4aba87515606262945cd446796bd512643e7`
+and `cf2cd012585a9bdb004de964d2087166d43b782fbcd45b6bac3bff4ca5e74cec`.
+
+Offline and dedicated melee strikes apply their terrain edits before target
+resolution. The shared removal service receives the raw centre and the
+strike's truncating edit coordinates. When a cell qualifies, the strike
+appends its bursts and draws sound 2 from the shared stream before walking
+targets. Later overlapping strikes see the edited terrain at their own turns.
+At negative heights, a strike can test a cell and fill the one above it with
+water. The ordered probe takes that water fill into account within the same
+column. The native horizontal column bounds apply to both strike and blast.
+
+The engine applies a single batch to each touched zone. Exact native relight
+and plant pass footprints remain open.

@@ -1001,6 +1001,24 @@ int main() {
         same(strikeHalf[0].removal.z, 0, "raw -32768: the strike records 0 (tested at -1)");
         same(breakCells(half, 1, CellRounding::FloorAdjusted, 0, natural)[0].removal.z, -1, "the blast records -1");
         same((double)breakCells(half, 0, CellRounding::Truncate, 0, natural).size(), 0, "radius 0 breaks nothing");
+        auto coast = std::make_unique<Zone>(0, 0);
+        coast->place(10, 10, -1, {20, 30, 40, GRASS | SURFACE_COLOURED});
+        coast->place(10, 10, 0, {50, 60, 70, GRASS | SURFACE_COLOURED | KEEP});
+        const auto cut = breakCells(half, 2, CellRounding::Truncate, 7,
+            [&](int32_t x, int32_t y, int32_t z) { return coast->read(x, y, z); });
+        same(cut.size() == 1 && cut.front().at == half && cut.front().removal.z == 0 &&
+                 cut.front().colour == glm::u8vec3(20, 30, 40),
+             1, "the first negative strike probe fills Z zero with water before that cell is tested");
+        if (!cut.empty())
+            applyLive(*coast, cut.front().removal, {});
+        same(coast->read(10, 10, 0).typeByte == (WATER | KEEP) &&
+                 (coast->read(10, 10, -1).typeByte & SURFACE_COLOURED) != 0,
+             1, "the kept Z-zero cell becomes water and the lower tested cell stays intact");
+
+        asked.clear();
+        const auto beyond = breakCells({int64_t(1 << 24) * 65536, 10 * 65536, 65536}, 1,
+                                       CellRounding::Truncate, 7, natural);
+        same(beyond.empty() && asked.empty(), 1, "the strike lookup rejects columns beyond the Alpha world");
     }
     // §13.2: blueprint 0 (10 x 10 x 6: five grey layers under wood) turned once.
     {
