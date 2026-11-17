@@ -3469,3 +3469,24 @@ The frame applies the usual local-source filter when promoting these buff
 records to transport. Full candidate traversal, hit outcomes, stored
 candidate cleanup and its ordering against all cues, and original-client
 playback remain open.
+
+## Connected action-79 light inputs (2026-11-17)
+
+The isolated author finalized [the sneaking light contract](specs/alpha-sneak-light-inputs.md).
+The implementer read all 282 physical lines and verified SHA-256
+`e104f8c8ccabd1f0dd5e5eab329341a15fef7a2400039d0ec48fd30a74caa4ae`.
+The connected piece fixes zone membership from the three-by-three
+neighborhoods of controller-zero bodies. It keeps the admitted zones in
+resident address order. Zone lights visit flagged model placements, current
+type-50 objects and category-18 items in their respective collection orders.
+A complete section-six snapshot supplies both its current type and its
+fixed position for this sample. Section-seven lists supply the current
+candles. Living and dead lantern-flag carriers contribute in live signed
+actor order after the zone cap, including the subject when flagged.
+
+The connected controlled and received actors use the current light and
+full live velocity for action 79. The result passes through the shared
+type-3 meter override and final mana gain. The implementation uses its own
+resident zone addresses and the existing world cell and material adapters.
+Offline and dedicated action-79 meter inputs, broader section-six placement
+consumers, and matched native lighting and resource comparisons remain open.

@@ -279,12 +279,17 @@ void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *event
 void advanceActionClock(Combatant &c, int32_t dtMs, bool authoritative,
                         const std::function<void(const Buff &)> &periodic = {});
 void updateManaAndBlock(Combatant &c, int32_t dtMs);
-void updateLensMeter(Combatant &c, int32_t dtMs);
+struct SneakLightSample {
+    float light = 0.f;
+    glm::vec3 velocity{0};
+};
+void updateLensMeter(Combatant &c, int32_t dtMs, const std::optional<SneakLightSample> &sneak = {});
 // Periodic callbacks run before expired-node cleanup and stun progression. They
 // may inspect buffs/update other state, but must not mutate the buff collection.
 void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},
                      const std::function<void(const Buff &)> &periodic = {}, const glm::vec3 &intent = glm::vec3(0),
-                     const TimedConsumableEvents *consumables = nullptr);
+                     const TimedConsumableEvents *consumables = nullptr,
+                     const std::optional<SneakLightSample> &sneak = {});
 // Convenience for callers with no action effects to dispatch.
 void stepAction(Combatant &c, float dtMs);
 // Strike-call-sites S7/S9: the deferred-key pass. Deferred keys not struck since go to

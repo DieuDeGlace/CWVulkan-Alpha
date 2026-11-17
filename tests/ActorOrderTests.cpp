@@ -1,5 +1,8 @@
 #include "BlockEdits.h"
 #include "SoundRules.h"
+#include "StaticStates.h"
+#include "WorldItems.h"
+#include "creatures/Abilities.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Npcs.h"
 #include "net/RemoteCreatures.h"
@@ -576,6 +579,101 @@ void checkConnectedActionEffects() {
               frame.bursts[1].position[0] == origin + 5 * 65536 && frame.bursts[1].count == 80 && frame.bursts[1].spread == 20.f,
           "staff visuals use the live aim offset and explosion visuals use the actor's exact fixed position");
 }
+
+void checkConnectedSneakLighting() {
+    constexpr int64_t unit = 65536;
+    constexpr int64_t x = 510 * unit, y = 300 * unit, z = 8 * unit;
+    worldgen::WorldMap world;
+    auto centre = std::make_shared<worldgen::Zone>();
+    centre->zx = centre->zy = 1;
+    centre->place(510, 300, 8, {0, 0, 0, 13});
+    world.add(centre);
+    auto adjacent = std::make_shared<worldgen::Zone>();
+    adjacent->zx = 2;
+    adjacent->zy = 1;
+    worldgen::Sprite torch;
+    torch.flags = 1;
+    torch.x = x + 2 * unit;
+    torch.y = y;
+    torch.z = z;
+    adjacent->sprites.push_back(torch);
+    worldgen::StaticObject streetlight;
+    streetlight.kind = 50;
+    streetlight.x = x + 12 * unit;
+    streetlight.y = y;
+    streetlight.z = z;
+    adjacent->statics.push_back(streetlight);
+    world.add(adjacent);
+    StaticStates statics;
+    statics.generated(*adjacent);
+    WorldItems items;
+    WorldItem candle;
+    candle.item[0] = 18;
+    candle.position[0] = x + 14 * unit;
+    candle.position[1] = y;
+    candle.position[2] = z;
+    items.replace(2, 1, {candle});
+
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    const auto receive = [&](uint64_t id, const Combatant &fighter, int64_t offset, glm::vec3 velocity = glm::vec3(0)) {
+        auto record = net::CreatureRecord::nativeDefaults();
+        record.setFighter(fighter);
+        record.setPosition(0, x + offset);
+        record.setPosition(1, y);
+        record.setPosition(2, z);
+        record.setMotion(velocity, 0.f);
+        remotes.receive(net::CreatureReceipt::fromRecord(id, record, true, true));
+        remotes.updateLive(id, record, actors[id]);
+    };
+    Combatant input;
+    input.controller = 1;
+    input.mode = LANTERN;
+    receive(UINT64_MAX, input, 0); // its equipment check removes the light first
+    input.health = 0;
+    receive(2, input, 6 * unit); // death does not remove the received light bit
+    input.health = 100;
+    input.action = 79;
+    input.mana = 0.6f;
+    input.skills[7] = 10;
+    input.equipment[10].type = 24;
+    receive(1, input, 0, {0, 0, 1});
+    auto &sneaking = actors.at(1).fighter;
+    sneaking.stealth = 0.8f;
+    Combatant local;
+    local.health = 0; // a zero controller still seeds the zone set
+    Body player;
+    player.place({510, 300, 8});
+    const net::RemoteCreatures::Controlled controlled{local, player};
+    const auto night = remotes.makeSneakLight(world, statics, items, 0, actors, &controlled);
+    const auto noon = remotes.makeSneakLight(world, statics, items, 43200000, actors, &controlled);
+    const Body &subject = remotes.find(1)->live;
+    const auto zoneLight = [](float squared) {
+        const float weight = 1.f - squared * 0.00390625f;
+        return 0.5f * (weight * weight);
+    };
+    const float nearby = (1.f - 36.f / 100.f) * (1.f - 36.f / 100.f);
+    const float before = ((zoneLight(4.f) + zoneLight(144.f) + zoneLight(196.f)) + 1.f) + 1.f;
+    check(night(subject) == before + nearby && noon(subject) == 3.f + nearby,
+          "the seeded adjacent zone contributes in group order, then creature lights can take the result above one");
+
+    auto snapshot = statics.record(*adjacent, 0);
+    const int32_t replacement = 51;
+    std::memcpy(snapshot.data() + 0x10, &replacement, sizeof replacement);
+    check(statics.apply(snapshot.data(), &world).has_value(), "the streetlight's live section-six replacement is admitted");
+    const float zoneBrightness = zoneLight(4.f) + zoneLight(196.f);
+    check(night(subject) == ((zoneBrightness + 1.f) + 1.f) + nearby,
+          "a light sample reads live streetlight type from the existing collection slot");
+    remotes.step(actors, 20, floorBlock, {}, &controlled, [&] { player.position[0] += 1024 * unit; }, nullptr, night);
+    const float brightness = (zoneBrightness + 1.f) + nearby;
+    const float gain = (1.f - (0.9f - 0.5f * abilityValue(sneaking, 79)) * brightness) -
+                       (0.5f - 0.5f * abilityValue(sneaking, 79));
+    const float meter = 0.8f + (20.f * 0.0005f) * gain;
+    check(sneaking.stealth == meter && sneaking.mana == (0.6f - 20.f * 0.00005f) + (20.f * 0.00025f) * meter,
+          "sneaking samples earlier live lantern changes, retained zone membership and full velocity before mana credit");
+    const auto next = remotes.makeSneakLight(world, statics, items, 0, actors, &controlled);
+    check(next(subject) < night(subject), "a later world piece rebuilds the zone set from the moved seed");
+}
 }
 
 int main() {
@@ -583,6 +681,7 @@ int main() {
     checkConnectedActionResources();
     checkConnectedMovementSounds();
     checkConnectedActionEffects();
+    checkConnectedSneakLighting();
     checkOverlappingStrikes();
     checkRidingRefillOrder();
     checkConnectedRidingOrder();

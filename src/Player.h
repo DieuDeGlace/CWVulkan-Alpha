@@ -24,7 +24,8 @@ class Player {
     void wheel(int notches) { camera.wheel(notches); }
     // Common actor/physics phase; the world caller owns preliminary health/clock.
     // World calls never poll devices or start actions from current-frame input.
-    void advance(int32_t dtMs, bool replica = false, const creatures::TimedConsumableEvents *consumables = nullptr);
+    void advance(int32_t dtMs, bool replica = false, const creatures::TimedConsumableEvents *consumables = nullptr,
+                 const creatures::SneakLight &sneakLight = {});
     void refreshAbilityBindings() { bindings.refresh(fighter); }
     std::span<const int32_t> abilityBindings() const { return bindings.values(); }
     // A creature the aim may pick under the screen centre (controller aim contract §3.2): its

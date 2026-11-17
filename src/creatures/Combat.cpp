@@ -924,10 +924,18 @@ void updateManaAndBlock(Combatant &c, int32_t milliseconds) {
     c.blockGauge = std::min(c.blockGauge, 1.f);
 }
 
-void updateLensMeter(Combatant &c, int32_t milliseconds) {
+void updateLensMeter(Combatant &c, int32_t milliseconds, const std::optional<SneakLightSample> &sneak) {
     const float dtMs = float(milliseconds);
-    // Action 79's environmental light and movement route still uses the engine adapter.
-    if (c.mode & LENS) {
+    if (c.action == 79 && sneak) {
+        const float lightPenalty = 0.9f - 0.5f * abilityValue(c, 79);
+        const glm::vec3 v = sneak->velocity;
+        const float squared = (v.x * v.x + v.y * v.y) + v.z * v.z;
+        const float speed = float(std::sqrt(double(squared)));
+        const float motionPenalty = 0.5f - 0.5f * abilityValue(c, 79);
+        const float gain = (1.f - lightPenalty * sneak->light) - motionPenalty * speed;
+        c.stealth = std::clamp(c.stealth + (dtMs * 0.0005f) * gain, 0.f, 1.f);
+    } else if (c.mode & LENS) {
+        // The resident paths still use the old approximation for action 79.
         const float skillRate = c.action == 79 ? 0.f : abilityValue(c, 99) * 0.0005f;
         const float rate = skillRate + 0.00001f;
         c.stealth = std::min(1.f, c.stealth + dtMs * rate);
@@ -941,7 +949,7 @@ void updateLensMeter(Combatant &c, int32_t milliseconds) {
 
 void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
                      const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent,
-                     const TimedConsumableEvents *consumables) {
+                     const TimedConsumableEvents *consumables, const std::optional<SneakLightSample> &sneak) {
     if (!role.replica || role.local) {
         c.comboElapsedMs += milliseconds;
         if (c.comboElapsedMs > 4000) {
@@ -961,7 +969,7 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     }
     if ((c.action == 80 || c.action == 81) && (role.local || (!role.replica && c.controller != 0)))
         tickConsumable(c, milliseconds, consumables);
-    updateLensMeter(c, milliseconds);
+    updateLensMeter(c, milliseconds, sneak);
     c.dodgeMs = std::max(0, std::bit_cast<int32_t>(uint32_t(c.dodgeMs) - uint32_t(milliseconds)));
     c.hitFlash = std::max(0.f, c.hitFlash - float(milliseconds) * 0.001f * 4.f); // engine fade rate
 }

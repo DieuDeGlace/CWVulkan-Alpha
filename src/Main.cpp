@@ -2154,6 +2154,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             blockEdits.forget(zx, zy);
                         }
                     }
+                    creatures::SneakLight sneakLight;
                     const auto advancePlayer = [&](int32_t actorElapsed) {
                         // Physics §4.4: living creatures of kind 1 or 6 push the player (kind 0), the
                         // overlap on their box enlarged by (1, 1, 0) unless kind 6, the push scaled by
@@ -2171,7 +2172,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
                         const creatures::TimedConsumableEvents consumables{
                             player->body().position, aggregate.emittedHits, aggregate.sounds};
-                        player->advance(actorElapsed, client.connected(), &consumables);
+                        player->advance(actorElapsed, client.connected(), &consumables, sneakLight);
                         publishPlayerEffects();
                         // Keep offline launch order in the same actor output list.
                         // Online sends remain at this actor's producer boundary.
@@ -2309,6 +2310,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         advanceStaticState(elapsed, {});
                         const net::RemoteCreatures::Controlled controlled{player->combat(), player->body()};
                         const net::RemoteCreatures::StepEffects remoteEffects{aggregate, worldDraw};
+                        sneakLight = remotes.makeSneakLight(view.held(), statics, worldItems,
+                            std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)), otherFighters, &controlled);
                         remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, &controlled,
                             [&] {
                                 for (const auto &target : client.pendingStaticRequests())
@@ -2318,7 +2321,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     player->body().mountValid = pet && pet->health >= 0 && creatures::rideable(pet->type);
                                 }
                                 advancePlayer(elapsed);
-                            }, &remoteEffects);
+                            }, &remoteEffects, sneakLight);
                         stepAirships(elapsed);
                         remotes.finishStep(otherFighters, &controlled);
                     }
@@ -2779,7 +2782,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     worldItems.step(elapsed, !client.connected(), worldBlock, worldDraw, aggregate.sounds);
                     if (client.connected()) {
                         const net::RemoteCreatures::StepEffects remoteEffects{aggregate, worldDraw};
-                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, nullptr, {}, &remoteEffects);
+                        const auto sneakLight = remotes.makeSneakLight(view.held(), statics, worldItems,
+                            std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)), otherFighters);
+                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, nullptr, {}, &remoteEffects, sneakLight);
                     } else
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, worldBlock, aggregate);
                     stepAirships(elapsed);

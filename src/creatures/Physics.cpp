@@ -275,7 +275,7 @@ static bool advanceWalk(Body &body, int32_t dt, float seconds) {
 }
 
 void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy,
-          Combatant *fighter) {
+          Combatant *fighter, const SneakLight &sneakLight) {
     const float dts = (float)dt * 0.001f;
     auto blocks = [&](int32_t x, int32_t y, int32_t z) {
         const uint8_t t = block(x, y, z);
@@ -366,7 +366,10 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     if (fighter) {
         fighter->action = b.action;
         fighter->mode = b.mode;
-        updateLensMeter(*fighter, dt);
+        std::optional<SneakLightSample> sample;
+        if (b.action == 79 && sneakLight)
+            sample = SneakLightSample{sneakLight(b), b.velocity};
+        updateLensMeter(*fighter, dt, sample);
     }
     if (b.action == 79) { // sneaking; a non-player without the skill uses its fallback
         const int32_t n = b.skills[7] == 0 && b.controller != 0 ? b.skillFallback : b.skills[7];

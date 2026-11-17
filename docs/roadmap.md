@@ -353,6 +353,10 @@ Differences from the Steam engine that shape the plan:
   run retained character payload, seed/location, clock, nine map tiles, world
   preview and 170 edited blocks across reload. Interactive menu and original-game
   save interoperability acceptance remain open.
+- [x] Original dedicated world-clock interchange. The engine read an isolated
+  original server save. The original server loaded an engine-written day and time
+  from a separate copy and advertised them over loopback. Wider save interchange
+  remains open.
 
 - [x] Water extension, clarified 2026-11-07: reuse the Steam engine's shared water
   surface shader, make all water swimmable (including Alpha's shallow walkable
@@ -746,9 +750,13 @@ Differences from the Steam engine that shape the plan:
   Opening and repeat draws, fixed-position releases, ordinary and pending
   spending, type-11 zero-duration replacement and the saved action-31
   type-9 window run before general clock progression.
+- [x] Connected action-79 meter inputs (`alpha-sneak-light-inputs.md`).
+  Build one resident-neighborhood set per active piece and sample live
+  daylight, terrain, zone lights and lantern carriers before the meter.
+  Local offline and dedicated meter inputs remain open.
 - [ ] Complete connected candidate traversal, hit outcomes, stored candidate
-  cleanup, other action effects, action-79 lighting inputs, the ordinary
-  creature link and original-client acceptance.
+  cleanup, other action effects, the ordinary creature link and
+  original-client acceptance.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

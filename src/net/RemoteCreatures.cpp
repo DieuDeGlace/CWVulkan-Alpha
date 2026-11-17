@@ -1,5 +1,7 @@
 #include "net/RemoteCreatures.h"
 #include "SoundRules.h"
+#include "StaticStates.h"
+#include "WorldItems.h"
 #include "creatures/Abilities.h"
 #include "creatures/AngleStep.h"
 #include "creatures/Npcs.h"
@@ -7,6 +9,7 @@
 #include "creatures/Strike.h"
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <utility>
 
 namespace net {
@@ -20,6 +23,32 @@ glm::vec3 rotationOf(const creatures::Body &body) {
 glm::dvec3 soundPosition(const int64_t *position) {
     const glm::vec3 blocks{float(position[0]), float(position[1]), float(position[2])};
     return glm::dvec3(blocks * (1.f / 65536.f));
+}
+
+template<class Visit>
+void visitBodies(const RemoteCreatures &remotes, creatures::ActorMap<RemoteFighter> &fighters,
+                 const RemoteCreatures::Controlled *controlled, const Visit &visit) {
+    const auto received = [&](uint64_t id, const RemoteFighter &state) {
+        if (const auto *remote = remotes.find(id))
+            visit(state.fighter, remote->live);
+    };
+    if (controlled) {
+        creatures::visitReceivedActors(fighters, controlled->fighter.id, [&] {
+            visit(controlled->fighter, controlled->body);
+        }, received);
+    } else {
+        for (const auto &[id, actor] : fighters)
+            received(id, actor);
+    }
+}
+
+float lightDistanceSquared(const int64_t *from, const int64_t *to) {
+    float offset[3];
+    for (int axis = 0; axis < 3; axis++) {
+        const auto distance = std::bit_cast<int64_t>(uint64_t(to[axis]) - uint64_t(from[axis]));
+        offset[axis] = float(distance) * (1.f / 65536.f);
+    }
+    return (offset[0] * offset[0] + offset[1] * offset[1]) + offset[2] * offset[2];
 }
 
 void prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
@@ -158,6 +187,93 @@ void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {
     std::erase_if(list, [&](const auto &entry) { return !listed.contains(entry.first); });
 }
 
+creatures::SneakLight RemoteCreatures::makeSneakLight(const worldgen::WorldMap &world, const StaticStates &statics,
+                                                     const WorldItems &items, int32_t clock,
+                                                     creatures::ActorMap<RemoteFighter> &fighters,
+                                                     const Controlled *controlled) const {
+    const bool controlledSneaks = controlled && controlled->fighter.action == 79;
+    const auto sneaks = [](const auto &entry) { return entry.second.fighter.action == 79; };
+    if (!controlledSneaks && !std::any_of(fighters.begin(), fighters.end(), sneaks))
+        return {};
+
+    std::vector<std::shared_ptr<const worldgen::Zone>> zones;
+    visitBodies(*this, fighters, controlled, [&](const creatures::Combatant &actor, const creatures::Body &body) {
+        if (actor.controller != 0)
+            return;
+        const auto [zx, zy] = zoneForRawPosition(body.position[0], body.position[1]);
+        for (int32_t x = std::max(0, zx - 1); x <= std::min(65535, zx + 1); x++) {
+            for (int32_t y = std::max(0, zy - 1); y <= std::min(65535, zy + 1); y++) {
+                const auto found = world.zones().find({x, y});
+                if (found != world.zones().end())
+                    zones.push_back(found->second);
+            }
+        }
+    });
+    // The native set deduplicates by resident address and uses the same address order.
+    std::sort(zones.begin(), zones.end());
+    zones.erase(std::unique(zones.begin(), zones.end()), zones.end());
+    const float day = (2.f * float(clock)) / 86400000.f - 1.f;
+    const float factor = 1.f - float(std::pow(double(day), 2.0));
+    const float daylight = float(std::pow(double(factor), 2.0));
+    return [this, &world, &statics, &items, &fighters, controlled, zones = std::move(zones), daylight]
+           (const creatures::Body &subject) {
+        const auto block = [](int64_t fixed) { return std::bit_cast<int32_t>(uint32_t(fixed / 65536)); };
+        const auto &at = subject.position;
+        const auto cell = world.read(block(at[0]), block(at[1]), block(at[2]));
+        const uint8_t type = cell.type();
+        int32_t numerator = 0;
+        if (type == 13)
+            numerator = 255;
+        else if (type == 0 || type == 2)
+            numerator = std::max(5, int32_t(cell.r));
+        float light = daylight * (float(numerator) / 255.f);
+        const auto addZoneLight = [&](const int64_t *source) {
+            const float squared = lightDistanceSquared(at, source);
+            if (squared < 256.f) {
+                const float weight = 1.f - squared * 0.00390625f;
+                light += 0.5f * (weight * weight);
+            }
+        };
+        for (const auto &zone : zones) {
+            for (const auto &sprite : zone->sprites) {
+                if (sprite.flags & 1) {
+                    const int64_t position[3]{sprite.x, sprite.y, sprite.z};
+                    addZoneLight(position);
+                }
+            }
+            const auto *states = statics.zone(zone->zx, zone->zy);
+            for (size_t index = 0; index < zone->statics.size(); index++) {
+                if (states && index < states->size() && (*states)[index].receivedPlacement) {
+                    const auto &received = *(*states)[index].receivedPlacement;
+                    if (received.kind == 50)
+                        addZoneLight(received.position.data());
+                } else {
+                    const auto &object = zone->statics[index];
+                    if (object.kind == 50) {
+                        const int64_t position[3]{object.x, object.y, object.z};
+                        addZoneLight(position);
+                    }
+                }
+            }
+            if (const auto *list = items.zone(zone->zx, zone->zy))
+                for (const auto &item : *list)
+                    if (creatures::itemType(item.item) == 18)
+                        addZoneLight(item.position);
+        }
+        light = std::min(light, 1.f);
+        visitBodies(*this, fighters, controlled, [&](const creatures::Combatant &actor, const creatures::Body &body) {
+            if (actor.mode & creatures::LANTERN) {
+                const float squared = lightDistanceSquared(at, body.position);
+                if (squared < 100.f) {
+                    const float weight = 1.f - squared / 100.f;
+                    light += weight * weight;
+                }
+            }
+        });
+        return light;
+    };
+}
+
 bool RemoteCreatures::attach(Remote &pet, const creatures::Combatant &fighter,
                              const creatures::ActorMap<RemoteFighter> &fighters, const Controlled *controlled) {
     if (fighter.controller != 5)
@@ -183,7 +299,7 @@ bool RemoteCreatures::attach(Remote &pet, const creatures::Combatant &fighter,
 void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs,
                            const creatures::BlockType &block, const creatures::ObjectTest &objects,
                            const Controlled *controlled, const std::function<void()> &advanceControlled,
-                           const StepEffects *effects) {
+                           const StepEffects *effects, const creatures::SneakLight &sneakLight) {
     // §2.2: the fraction f approaches 1 at 0.015 once per millisecond of the step.
     float f = 0.f;
     for (int32_t ms = 0; ms < dtMs; ms++)
@@ -226,7 +342,7 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
                 else if (const auto owner = list.find(fighter.ownerId); owner != list.end())
                     riderEnergy = &owner->second.live.ridingEnergy;
             }
-            creatures::step(body, dtMs, block, objects, riderEnergy, &fighter);
+            creatures::step(body, dtMs, block, objects, riderEnergy, &fighter, sneakLight);
         }
         appendMovementEffects(body, block, controlled != nullptr, effects);
         creatures::faceReceivedActor(body.yaw, r.headPitch, r.drawnLook, body, fighter, dtMs);

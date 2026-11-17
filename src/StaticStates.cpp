@@ -132,6 +132,9 @@ std::optional<StaticStates::Key> StaticStates::apply(const uint8_t *r, const wor
     if (it == zones.end() || index < 0 || size_t(index) >= it->second.size())
         return std::nullopt;
     StaticState &s = it->second[index];
+    auto &placement = s.receivedPlacement.emplace();
+    std::memcpy(&placement.kind, r + 0x10, 4);
+    std::memcpy(placement.position.data(), r + 0x18, 24);
     s.state = r[0x40];
     std::memcpy(&s.timerMs, r + 0x44, 4);
     std::memcpy(&s.stateWord, r + 0x48, 4);

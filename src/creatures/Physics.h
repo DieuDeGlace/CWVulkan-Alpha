@@ -194,6 +194,7 @@ float stepHeadPitch(float pitch, bool climbing, int32_t dtMs);
 // §4.1 step 3), or is null.
 using ObjectTest =
     std::function<bool(glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const IgnoredStatics *ignored)>;
+using SneakLight = std::function<float(const Body &)>;
 
 // §1: runs the world step for a frame of `dtMs`, in pieces of at most 20 ms.
 void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
@@ -201,7 +202,7 @@ void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTes
 // §2: one piece. A role-five actor can refill its resolved owner's meter during terrain contact.
 // When supplied, the fighter shares the resource and action phases inside the movement step.
 void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
-          float *riderEnergy = nullptr, Combatant *fighter = nullptr);
+          float *riderEnergy = nullptr, Combatant *fighter = nullptr, const SneakLight &sneakLight = {});
 // Riding actor step §4. Copy the admitted owner's physical and follow pose.
 void copyRidingPose(Body &pet, const Body &rider, float riderYaw);
 

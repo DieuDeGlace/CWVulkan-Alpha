@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 40 and the rulings. The 248 tracked contracts
-comprise 190 A, 53 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 41 and the rulings. The 249 tracked contracts
+comprise 191 A, 53 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -93,6 +93,7 @@ Batch 38 covers `alpha-connected-actor-turn.md`.
 Batch 39 covers `alpha-connected-walk-phases.md`.
 Batch 40 covers `alpha-common-action-processing-state.md`,
 `alpha-connected-action-audio.md` and `alpha-rulings-channel36-cadence.md`.
+Batch 41 covers `alpha-sneak-light-inputs.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -288,6 +289,7 @@ Batch 40 covers `alpha-common-action-processing-state.md`,
 | `alpha-server-simulation.md` | A | 732 | 0 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
 | `alpha-skills.md` | A | 624 | 0 |
+| `alpha-sneak-light-inputs.md` | A | 283 | 0 |
 | `alpha-spatial-association-producers.md` | A | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |

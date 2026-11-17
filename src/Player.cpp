@@ -241,7 +241,8 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     fighter.mode = state.mode;
 }
 
-void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableEvents *consumables) {
+void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableEvents *consumables,
+                     const creatures::SneakLight &sneakLight) {
     using namespace creatures;
     replicaWorld = replica;
     const float dtMs = (float)dt;
@@ -253,7 +254,10 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
     actionMsBefore = fighter.actionMs;
     if (onActionEffects)
         onActionEffects(actionMsBefore, dt);
-    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit, state.intent, consumables);
+    std::optional<SneakLightSample> sample;
+    if (fighter.action == 79 && sneakLight)
+        sample = SneakLightSample{sneakLight(state), state.velocity};
+    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit, state.intent, consumables, sample);
 
     // The physics on whole milliseconds.
     state.mode = fighter.mode;

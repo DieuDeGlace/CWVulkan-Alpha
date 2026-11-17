@@ -2041,3 +2041,23 @@ and a player join. AlphaVulkan reported the connection and adopted seed
 HUD and minimap. This test covers original-server startup, the client
 handshake and a rendered connected frame. Original-client gameplay,
 sustained combat and matched visual acceptance remain open.
+
+## Connected sneaking light (2026-11-17)
+
+ActorOrderTests checks daylight, the stored terrain cell, flagged placements,
+streetlights, candles and live signed-order lanterns. It verifies the zone
+subtotal cap, the extra light from a dead lantern carrier, the clear by an
+earlier actor, a live section-six replacement and unchanged zone membership
+when the controlled actor moves mid-piece. The meter calculation reads full
+velocity and feeds the same turn's mana gain. The Windows x64 build, nine
+focused suites and all 60 CTest suites passed.
+
+## Original dedicated clock interchange (2026-11-17)
+
+The engine's save reader opened the original server's isolated world
+database and read day 0 and clock 43,299,980 ms. The engine wrote day 5 and
+36,000,000 ms to the clock record in a separate copy. The original server
+opened that copy and advertised day 5 and 36,009,230 ms over loopback.
+The input database hash was unchanged. This covers the dedicated world's
+clock record in both directions. Interactive character, zone and map save
+interchange remain open.

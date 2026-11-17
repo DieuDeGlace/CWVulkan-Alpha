@@ -8,6 +8,11 @@
 #include "net/RemoteFighter.h"
 #include <map>
 
+class StaticStates;
+class WorldItems;
+namespace worldgen {
+class WorldMap;
+}
 namespace creatures {
 struct NpcFrame;
 }
@@ -41,11 +46,18 @@ class RemoteCreatures {
     void writeLive(uint64_t id, CreatureRecord &record, const RemoteFighter &state) const;
     // §1.5: creatures no longer listed are gone.
     void retain(const std::map<uint64_t, CreatureRecord> &listed);
+    // Take this piece's zone membership. The returned sample reads live objects,
+    // item lists and actors until the piece finishes.
+    creatures::SneakLight makeSneakLight(const worldgen::WorldMap &world, const StaticStates &statics,
+                                        const WorldItems &items, int32_t clock,
+                                        creatures::ActorMap<RemoteFighter> &fighters,
+                                        const Controlled *controlled = nullptr) const;
     // §3.2 then §2, one world piece. Visit the controlled and received actors
     // by signed key. Each received actor uses its live fighter and body.
     void step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs, const creatures::BlockType &block,
               const creatures::ObjectTest &objects, const Controlled *controlled = nullptr,
-              const std::function<void()> &advanceControlled = {}, const StepEffects *effects = nullptr);
+              const std::function<void()> &advanceControlled = {}, const StepEffects *effects = nullptr,
+              const creatures::SneakLight &sneakLight = {});
     // Riding actor step §4: revisit attachments after the actor and object passes.
     void finishStep(creatures::ActorMap<RemoteFighter> &fighters, const Controlled *controlled = nullptr);
     const Remote *find(uint64_t id) const;
