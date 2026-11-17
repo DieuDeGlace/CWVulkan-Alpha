@@ -1,7 +1,10 @@
 #include "ui/Screens.h"
 #include "ui/Widgets.h"
+#include "creatures/Physics.h"
+#include "worldgen/Regions.h"
 #include "stb_image.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 
@@ -1050,14 +1053,22 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
     return painter.take();
 }
 
-void Interface::mapRelease() {
+void Interface::mapRelease(creatures::Body *body) {
     if (teleportMode && selectedPortal != glm::ivec2(-1) && selectedPortal == hoveredPortal) {
-        teleportTo = selectedPortal;
+        const auto centre = [](int32_t zone) {
+            const int32_t block = std::bit_cast<int32_t>(uint32_t(zone) * worldgen::ZONE + worldgen::ZONE / 2);
+            return int64_t(block) * 65536;
+        };
+        if (body) {
+            body->position[0] = centre(selectedPortal.x);
+            body->position[1] = centre(selectedPortal.y);
+            body->position[2] = 0;
+        }
         hoveredPortal = selectedPortal = glm::ivec2(-1);
         mapOpen = false;
-    } else {
-        selectedPortal = hoveredPortal; // a click off every portal label deselects
+        return;
     }
+    selectedPortal = hoveredPortal;
 }
 
 Action Interface::click(glm::vec2 size, glm::vec2 mouse) {

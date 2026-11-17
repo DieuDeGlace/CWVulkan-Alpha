@@ -4352,6 +4352,64 @@ int main() {
         same(snapshots.size() == 2 && snapshots[0] == snapshots[1], 1, "link snapshots both identify the lever");
     }
 
+    checkInSeparateFrame([] {
+        worldgen::WorldMap world;
+        auto west = std::make_shared<worldgen::Zone>(0, 0);
+        auto east = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::StaticObject closerWest;
+        closerWest.x = 255ll << 16;
+        closerWest.y = 4ll << 16;
+        closerWest.z = 7ll << 16;
+        auto stone = closerWest;
+        stone.kind = 45;
+        stone.x = 257ll << 16;
+        stone.descriptorIndex = 1;
+        worldgen::StaticObject linkedWest;
+        linkedWest.x = (18ll << 16) + 37;
+        linkedWest.y = (32ll << 16) + 5;
+        linkedWest.z = (80ll << 16) + 121;
+        auto linkedEast = linkedWest;
+        linkedEast.x += 256ll << 16;
+        west->statics = {closerWest, linkedWest};
+        east->statics = {stone, linkedEast};
+        world.add(west);
+        world.add(east);
+
+        StaticStates states;
+        states.generated(*east);
+        WorldItems items;
+        Combatant c;
+        c.action = 79;
+        c.stealth = 1;
+        Body body;
+        body.place({256, 4, 7});
+        body.velocity = {1, 2, 3};
+        body.intent = {-1, 0, 1};
+        float yaw = 30;
+        const BlockType block = [](int32_t, int32_t, int32_t) { return uint8_t(0); };
+        int draws = 0;
+        const auto draw = [&] { return ++draws; };
+        std::vector<SoundEvent> sounds;
+        std::vector<std::array<uint8_t, 88>> snapshots;
+        states.use(*east, 0, c, body, yaw, items, 0, block, draw, sounds, &snapshots);
+        same(c.action == 0 && c.stealth == 0 && body.blocks() == glm::dvec3(256, 4, 7) &&
+             sounds.empty(), 1, "a dedicated runestone request only cancels stealth");
+
+        states.use(*east, 0, c, body, yaw, items, 0, block, draw, sounds, &snapshots, false, &world);
+        same(body.position[0] == linkedWest.x && body.position[1] == linkedWest.y &&
+             body.position[2] == linkedWest.z + (2ll << 16), 1,
+             "the first tied spatial bucket selects the destination zone, independent of the used stone's zone");
+        same(body.velocity == glm::vec3(1, 2, 3) && body.intent == glm::vec3(-1, 0, 1) && yaw == 30, 1,
+             "linked runestone moves only the actor's position");
+        same(sounds.size() == 1 && sounds[0].sound == 47 && sounds[0].position == glm::dvec3(256, 4, 7) &&
+             snapshots.empty() && draws == 0, 1, "connected runestone emits only sound 47 at the old position");
+
+        sounds.clear();
+        body.place({1024, 4, 7});
+        states.use(*east, 0, c, body, yaw, items, 0, block, draw, sounds, &snapshots, true, &world);
+        same(body.position[0] == linkedWest.x && sounds.size() == 1, 1,
+             "the local runestone's missing nearest result uses the origin zone fallback");
+    });
     // Loot rolls §1, §2 and §5: the rolls' vectors and the goblin's two worked streams.
     {
         worldgen::Random r123(123), r42(42);

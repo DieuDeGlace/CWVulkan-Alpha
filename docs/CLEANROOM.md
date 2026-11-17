@@ -3142,3 +3142,27 @@ initial quick-use selection uses the first eligible item while the full
 selection wheel remains open work. The queued local-only runestone branch,
 stock blueprint activation, blueprint placement in offline play, full
 native input admission and original-client runtime acceptance remain open.
+
+## Runestone map release and queued links (2026-11-17)
+
+An isolated source author finalized [the placement and runestone contract](specs/alpha-packet6-placement-producers.md)
+(`4bd8666a716c82e9fe89a1506ff6284e6e80f098f0447e76c2f18fc2975ba99d`).
+The clean team verified its hash and read the complete held text. The
+stock runestone action opens the map without an interaction record.
+The second matching release now writes the main-thread player's raw
+fixed position at the selected zone centre with Z zero, then clears
+the map selection. Motion is preserved. This follows the held signed
+32-bit block calculation. The existing map traversal uses X then Y
+ordering and the specified inclusive lower and exclusive upper hit edges.
+
+Queued kind 3 uses the separate local runestone branch from the held
+sender-turn contract. It uses the zone of the first closest static in
+spatial bucket order, with the origin-zone fallback, and takes the link
+from the requested stone. It emits sound 47 at the old position before
+copying the linked position with two blocks of lift. It consumes no
+random draws. Dedicated and resident callers omit the local context.
+
+The placement contract establishes the mode check, the live record
+selection and the right-button rotation path. Stock activation and
+selection producers, offline blueprint placement, full map projection
+and original-client runtime acceptance remain open.

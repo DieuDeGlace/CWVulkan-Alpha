@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 31 and the rulings. The 238 tracked contracts
-comprise 179 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 32 and the rulings. The 239 tracked contracts
+comprise 180 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -83,6 +83,7 @@ Batch 29 covers `alpha-client-action-input-phase.md`,
 Batch 30 covers `alpha-packet6-sender-turn.md` and
 `alpha-rulings-packet6-bomb-default.md`.
 Batch 31 covers `alpha-packet6-client-queue.md`.
+Batch 32 covers `alpha-packet6-placement-producers.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -209,6 +210,7 @@ Batch 31 covers `alpha-packet6-client-queue.md`.
 | `alpha-open-points-9.md` | A | 114 | 0 |
 | `alpha-particles.md` | A | 607 | 0 |
 | `alpha-packet6-client-queue.md` | A | 333 | 0 |
+| `alpha-packet6-placement-producers.md` | A | 127 | 0 |
 | `alpha-packet6-sender-turn.md` | A | 439 | 0 |
 | `alpha-path-expansion-order.md` | A | 124 | 1 |
 | `alpha-path-following-update.md` | A | 108 | 2 |

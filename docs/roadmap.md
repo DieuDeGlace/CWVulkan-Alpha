@@ -842,8 +842,13 @@ Differences from the Steam engine that shape the plan:
   producers append after the world pieces. Offline pickups are granted at the
   actor turn and results play after all pieces. Connected static requests keep
   their position in the one-record-per-iteration sender queue.
-- [ ] Complete native client blueprint and local runestone request handling.
-  The quick-item wheel and original-client acceptance also remain open.
+- [x] Runestone map release and local queued links
+  (`alpha-packet6-placement-producers.md`). A confirmed map release moves the
+  player using the raw fixed coordinates. The separate queued static branch
+  resolves the link in the nearest static's zone and emits its ordered sound.
+- [ ] Complete offline blueprint placement and trace the stock mode and
+  selection producers. The quick-item wheel and original-client acceptance
+  also remain open.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

@@ -7,6 +7,7 @@
 #include "ui/Interaction.h"
 #include "ui/LandNames.h"
 #include "ui/Screens.h"
+#include "creatures/Physics.h"
 #include "Loot.h"
 #include <cmath>
 #include <cstdio>
@@ -655,19 +656,27 @@ int main(int argc, char **argv) {
     {
         // Screens §5.2.6: a teleport takes two clicks on the same portal label.
         ui::Interface map;
+        creatures::Body body;
+        body.place({10, 20, 30});
+        body.velocity = {-3, 5, 7};
         map.mapOpen = map.teleportMode = true;
         map.hoveredPortal = {5, 7};
-        map.mapRelease();
-        check(map.selectedPortal == glm::ivec2(5, 7) && !map.teleportTo && map.mapOpen, "first click selects");
-        map.mapRelease();
-        check(map.teleportTo == glm::ivec2(5, 7) && !map.mapOpen && map.selectedPortal == glm::ivec2(-1), "second teleports");
-        map.mapOpen = true, map.teleportMode = false, map.teleportTo.reset();
+        map.mapRelease(&body);
+        check(body.blocks() == glm::dvec3(10, 20, 30) && map.selectedPortal == glm::ivec2(5, 7) && map.mapOpen,
+              "first release selects the portal and keeps the current position");
+        map.mapRelease(&body);
+        check(body.position[0] == (1408ll << 16) && body.position[1] == (1920ll << 16) && body.position[2] == 0 &&
+              !map.mapOpen && map.selectedPortal == glm::ivec2(-1) && map.hoveredPortal == glm::ivec2(-1),
+              "second release writes the fixed zone centre and clears both map indices");
+        check(body.velocity == glm::vec3(-3, 5, 7), "portal release preserves motion");
+        map.mapOpen = true, map.teleportMode = false;
         map.hoveredPortal = {5, 7};
-        map.mapRelease();
-        map.mapRelease();
-        check(!map.teleportTo && map.mapOpen, "without teleport mode clicks only select");
+        body.place({10, 20, 30});
+        map.mapRelease(&body);
+        map.mapRelease(&body);
+        check(body.blocks() == glm::dvec3(10, 20, 30) && map.mapOpen, "without teleport mode clicks only select");
         map.hoveredPortal = glm::ivec2(-1);
-        map.mapRelease();
+        map.mapRelease(&body);
         check(map.selectedPortal == glm::ivec2(-1), "a click elsewhere deselects");
     }
     {

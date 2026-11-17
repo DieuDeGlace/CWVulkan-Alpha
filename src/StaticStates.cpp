@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 float openFraction(int32_t kind, const StaticState &s) {
     const float t = (float)s.timerMs;
@@ -285,16 +286,80 @@ void StaticStates::set(const worldgen::StaticObject &o, StaticState &s, uint8_t 
         sounds.push_back({at, sound, 1, 1});
 }
 
+static const worldgen::Zone *nearestStaticZone(const worldgen::WorldMap &world, const int64_t position[3]) {
+    constexpr int64_t fixed = 65536;
+    constexpr int64_t bucketSize = 8 * fixed;
+    constexpr int64_t bucketsPerZone = worldgen::ZONE / 8;
+    constexpr int64_t maxDelta = 4 * fixed;
+    constexpr int64_t maxDistance = 16 * fixed;
+    const auto floor = [](int64_t value, int64_t divisor) {
+        return value / divisor - (value % divisor < 0);
+    };
+    const int64_t bx = floor(position[0], bucketSize), by = floor(position[1], bucketSize);
+    const int64_t zx0 = floor(bx - 1, bucketsPerZone), zy0 = floor(by - 1, bucketsPerZone);
+    const int64_t zx1 = floor(bx + 1, bucketsPerZone), zy1 = floor(by + 1, bucketsPerZone);
+    const worldgen::Zone *nearest = world.zone(0, 0);
+    int64_t bestDistance = maxDistance + 1;
+    std::pair<int64_t, int64_t> bestBucket{};
+    // Scan each intersecting zone once. Bucket order breaks equal-distance
+    // ties, then the order of statics within the bucket.
+    for (int64_t zx = zx0; zx <= zx1; ++zx) {
+        for (int64_t zy = zy0; zy <= zy1; ++zy) {
+            if (!std::in_range<int32_t>(zx) || !std::in_range<int32_t>(zy))
+                continue;
+            const auto *zone = world.zone((int32_t)zx, (int32_t)zy);
+            if (!zone)
+                continue;
+            for (const auto &object : zone->statics) {
+                const std::pair bucket{floor(object.x, bucketSize), floor(object.y, bucketSize)};
+                if (bucket.first < bx - 1 || bucket.first > bx + 1 ||
+                    bucket.second < by - 1 || bucket.second > by + 1)
+                    continue;
+                const auto delta = [](int64_t a, int64_t b) {
+                    return std::bit_cast<int64_t>(uint64_t(a) - uint64_t(b));
+                };
+                const int64_t dx = delta(object.x, position[0]), dy = delta(object.y, position[1]),
+                              dz = delta(object.z, position[2]);
+                if (dx < -maxDelta || dx > maxDelta || dy < -maxDelta || dy > maxDelta ||
+                    dz < -maxDelta || dz > maxDelta)
+                    continue;
+                const int64_t distance = dx * dx / fixed + dy * dy / fixed + dz * dz / fixed;
+                if (distance <= maxDistance &&
+                    (distance < bestDistance || (distance == bestDistance && bucket < bestBucket))) {
+                    nearest = zone;
+                    bestDistance = distance;
+                    bestBucket = bucket;
+                }
+            }
+        }
+    }
+    return nearest;
+}
+
 void StaticStates::use(const worldgen::Zone &zone, int32_t index, creatures::Combatant &c, creatures::Body &body,
                        float &yaw, WorldItems &items, int32_t day, const creatures::BlockType &block,
                        const std::function<int()> &draw, std::vector<creatures::SoundEvent> &sounds,
-                       std::vector<std::array<uint8_t, 88>> *snapshots, bool authoritative) {
+                       std::vector<std::array<uint8_t, 88>> *snapshots, bool authoritative,
+                       const worldgen::WorldMap *localWorld) {
     if (c.action == 79)
         c.action = 0, c.stealth = 0;
     const auto it = zones.find({zone.zx, zone.zy});
     if (it == zones.end() || index < 0 || index >= (int32_t)it->second.size() || index >= (int32_t)zone.statics.size())
         return;
     const worldgen::StaticObject &o = zone.statics[index];
+    if (o.kind == 45) {
+        if (localWorld && o.descriptorIndex >= 0) {
+            const auto *nearest = nearestStaticZone(*localWorld, body.position);
+            if (nearest && size_t(o.descriptorIndex) < nearest->statics.size()) {
+                const auto &destination = nearest->statics[o.descriptorIndex];
+                sounds.push_back({body.blocks(), 47, 1, 1});
+                body.position[0] = destination.x;
+                body.position[1] = destination.y;
+                body.position[2] = std::bit_cast<int64_t>(uint64_t(destination.z) + 2 * 65536);
+            }
+        }
+        return;
+    }
     StaticState &s = it->second[index];
     const Key key{zone.zx, zone.zy};
     const auto publish = [&] {

@@ -18,6 +18,9 @@
 #include <optional>
 
 struct CubModel;
+namespace creatures {
+struct Body;
+}
 
 namespace ui {
 
@@ -351,13 +354,12 @@ class Interface {
         float size;
     };
     std::vector<MapLabel> mapLabels;
-    // §5.2.1, §5.2.6: the map opened from a portal. A first click on a portal label selects it,
-    // a second while hovering it asks for a teleport to that zone's centre (`teleportTo`).
+    // §5.2.1, §5.2.6: a first release selects the portal. A second release over
+    // the selected portal moves the controlled actor.
     bool teleportMode = false;
     glm::ivec2 hoveredPortal{-1}, selectedPortal{-1};
-    std::optional<glm::ivec2> teleportTo;
     std::u16string cursorLabel; // shown at the cursor ("Teleport")
-    void mapRelease(); // the left button released over the map
+    void mapRelease(creatures::Body *body);
 
     // §6: the options window. It edits `optionsCopy`; Apply and OK hand it to the game.
     // `resolutions` is the display modes' distinct sizes (§6.5).

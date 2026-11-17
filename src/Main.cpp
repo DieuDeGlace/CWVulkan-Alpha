@@ -1055,7 +1055,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const auto [x, y, index] = target;
         if (const auto *zone = view.held().zone(x, y))
             statics.use(*zone, index, fighter, player->body(), player->facing(), worldItems, scene.day, worldBlock,
-                        worldDraw, frame.sounds, &frame.staticStates, authoritative);
+                        worldDraw, frame.sounds, &frame.staticStates, authoritative, &view.held());
         else if (fighter.action == 79)
             fighter.action = 0, fighter.stealth = 0;
     };
@@ -1365,7 +1365,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE && menu.mapOpen && !menu.startScreen &&
             !menu.systemMenu && !menu.optionsOpen) {
-            menu.mapRelease(); // screens §5.2.6
+            menu.mapRelease(in->player ? &in->player->body() : nullptr);
             return;
         }
         if (action == GLFW_PRESS) {
@@ -3658,20 +3658,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 interface.mapLabels.push_back({*px, ui::utf16(text), colour, 12});
                     }
             }
-            // §5.2.6: "Teleport" at the cursor over the selected portal; the second click there
-            // moves the player to the centre of the portal's zone. The game puts it at height 0
-            // and lets physics lift it out of the ground; the engine sets it on the ground.
+            // §5.2.6: show "Teleport" at the cursor over the selected portal.
             interface.cursorLabel = interface.mapOpen && interface.teleportMode &&
                                             interface.selectedPortal != glm::ivec2(-1) &&
                                             interface.selectedPortal == interface.hoveredPortal
                                         ? u"Teleport"
                                         : u"";
-            if (interface.teleportTo) {
-                const int32_t x = 256 * interface.teleportTo->x + 128, y = 256 * interface.teleportTo->y + 128;
-                player->body().place(glm::dvec3(x, y, view.groundHeight(x, y) + 1));
-                player->body().velocity = glm::vec3(0);
-                interface.teleportTo.reset();
-            }
             renderer.setMinimap(std::move(map));
         } else {
             renderer.setMinimap({});
@@ -4065,15 +4057,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // the creature effects of the same press, whenever the object target resolves.
                 const auto objectEffects = [&] {
                     const int32_t kind = targeted->kind;
+                    const auto [zx, zy, k] = *objectTarget;
                     if (kind == ui::RUNESTONE) { // the map in teleport mode, no packet
-                        interface.mapOpen = true;
-                        interface.teleportMode = true;
+                        if (zx >= 0) {
+                            interface.mapOpen = true;
+                            interface.teleportMode = true;
+                        }
                         return;
                     }
                     // Crafting stations toggle their windows. Generic statics
                     // append kind 3 for the next actor turn.
                     const bool station = kind == 65 || (kind >= 71 && kind <= 77);
-                    const auto [zx, zy, k] = *objectTarget;
                     // Crafting §4.1: a station opens the crafting window (the campfire on Cooking,
                     // the furnace, spinning wheel and sawbench on the ingredients). (The
                     // customization bench's spirit editor is not in yet.)

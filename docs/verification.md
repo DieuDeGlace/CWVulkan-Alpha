@@ -1816,3 +1816,17 @@ The Windows x64 build and all 60 CTest suites passed. The initial focused
 loopback run missed its placement deadline. It passed in isolation and in
 the full suite. The full run included live Vulkan water and zone comparison.
 Native client timing, graphics and physical controller acceptance remain open.
+
+## Runestone releases and local links (2026-11-17)
+
+UiTests verifies that the first release selects without moving the body and
+that confirmation writes the fixed zone centre with Z zero, preserves
+velocity and clears both map indices. CreatureTests verifies the dedicated
+admission gate, equal-distance spatial order across zones, raw position
+copy, the two-block lift, the fallback zone and the old-position sound.
+The fixture checks that the local link appends no static snapshot and
+spends zero random draws.
+
+The Windows x64 build, all five focused suites and the full 60-suite CTest
+run passed. Native portal projection and original-client runtime acceptance
+remain open.
