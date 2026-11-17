@@ -1,6 +1,8 @@
 #include "net/Protocol.h"
 #include "Bytes.h"
 #include "ZlibStream.h"
+#include "worldgen/Zone.h"
+#include <bit>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -8,12 +10,31 @@
 
 namespace net {
 
-void SenderPacing::endPass() {
+uint32_t networkTimeMs() {
     using namespace std::chrono;
-    const uint32_t now = (uint32_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    return (uint32_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+void SenderPacing::endPass() {
+    const uint32_t now = networkTimeMs();
     if (const uint32_t wait = paceSleepMs(now, stampMs.load()))
-        std::this_thread::sleep_for(milliseconds(wait));
+        std::this_thread::sleep_for(std::chrono::milliseconds(wait));
     stampMs = now;
+}
+
+bool requestSnapshotDue(uint32_t nowMs, uint32_t &stampMs) {
+    if (std::bit_cast<int32_t>(nowMs - stampMs) <= 1000)
+        return false;
+    stampMs = nowMs;
+    return true;
+}
+
+std::pair<int32_t, int32_t> zoneForRawPosition(int64_t x, int64_t y) {
+    const auto index = [](int64_t raw) {
+        const int32_t block = std::bit_cast<int32_t>(uint32_t(raw / 65536));
+        return block / worldgen::Zone::SIZE;
+    };
+    return {index(x), index(y)};
 }
 
 // Packets §2.1. Bits 41 and 42 are in the opposite order to their offsets.

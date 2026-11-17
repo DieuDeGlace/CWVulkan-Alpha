@@ -3,7 +3,6 @@
 #include "Bytes.h"
 #include "ZlibStream.h"
 #include <bit>
-#include <chrono>
 #include <cstring>
 #include <set>
 #include <utility>
@@ -73,6 +72,13 @@ void Client::disconnect() {
     credits.clear();
     outgoingEvents.clear();
     outgoingItems.clear();
+    outgoingZones.clear();
+    outgoingRegions.clear();
+    missionRecords.clear();
+    zoneItems.clear();
+    zonePlacements.clear();
+    staticStates.clear();
+    blockEdits.clear();
     haveClock = false;
     pendingClock.reset();
     sentOnce = false;
@@ -117,14 +123,14 @@ std::vector<std::array<int32_t, 3>> Client::pendingStaticRequests() const {
     return targets;
 }
 
-void Client::requestZones(const std::vector<std::pair<int32_t, int32_t>> &zones) {
+void Client::requestZones(std::span<const std::pair<int32_t, int32_t>> zones) {
     std::lock_guard guard(lock);
-    outgoingZones = zones;
+    outgoingZones.assign(zones.begin(), zones.end());
 }
 
-void Client::requestRegions(const std::vector<std::pair<int32_t, int32_t>> &regions) {
+void Client::requestRegions(std::span<const std::pair<int32_t, int32_t>> regions) {
     std::lock_guard guard(lock);
-    outgoingRegions = regions;
+    outgoingRegions.assign(regions.begin(), regions.end());
 }
 
 std::vector<std::array<uint8_t, 56>> Client::takeMissionRecords() {
@@ -135,6 +141,11 @@ std::vector<std::array<uint8_t, 56>> Client::takeMissionRecords() {
 std::vector<Client::ZoneItems> Client::takeZoneItems() {
     std::lock_guard guard(lock);
     return std::exchange(zoneItems, {});
+}
+
+std::vector<Client::ZonePlacements> Client::takeZonePlacements() {
+    std::lock_guard guard(lock);
+    return std::exchange(zonePlacements, {});
 }
 
 std::vector<std::array<uint8_t, 88>> Client::takeStaticStates() {
@@ -230,6 +241,8 @@ SenderPacing clientPacing; // transport §3.3: the client image's one pacing sta
 } // namespace
 
 void Client::sendLoop() {
+    uint32_t requestStamp = networkTimeMs();
+    std::vector<std::pair<int32_t, int32_t>> zones, regions;
     while (online) {
         // The native header precedes the locked queue/state snapshot. Encoding
         // and socket writes remain outside the frame gate.
@@ -242,7 +255,6 @@ void Client::sendLoop() {
         std::vector<std::array<uint8_t, 40>> batchEvents;
         std::vector<std::array<uint8_t, 112>> batchShoots;
         std::optional<std::array<uint8_t, 300>> item;
-        std::vector<std::pair<int32_t, int32_t>> zones, regions;
         {
             auto frame = lockFrame();
             std::lock_guard guard(lock);
@@ -259,8 +271,6 @@ void Client::sendLoop() {
                 item = outgoingItems.front();
                 outgoingItems.pop_front();
             }
-            zones = std::exchange(outgoingZones, {});
-            regions = std::exchange(outgoingRegions, {});
             current = own;
             previous = ownSent;
             first = !sentOnce;
@@ -292,22 +302,35 @@ void Client::sendLoop() {
             w.u32(SHOOT);
             w.write(shot.data(), shot.size());
         }
-        for (const auto &[zx, zy] : zones) {
-            w.u32(ZONE_REQUEST);
-            w.i32(zx);
-            w.i32(zy);
-        }
-        for (const auto &[rx, ry] : regions) {
-            w.u32(REGION_REQUEST);
-            w.i32(rx);
-            w.i32(ry);
-        }
         if (!socket.send(w.data()))
             break;
         {
             std::lock_guard guard(lock);
             ownSent = current;
             sentOnce = true;
+        }
+        // Blueprint zone delivery §5. Take both live snapshots after the gameplay
+        // batch. Retain the live lists and keep the socket writes outside the locks.
+        {
+            auto frame = lockFrame();
+            std::lock_guard guard(lock);
+            zones = outgoingZones;
+            regions = outgoingRegions;
+        }
+        if (requestSnapshotDue(networkTimeMs(), requestStamp) && (!zones.empty() || !regions.empty())) {
+            w.data().clear();
+            for (const auto &[zx, zy] : zones) {
+                w.u32(ZONE_REQUEST);
+                w.i32(zx);
+                w.i32(zy);
+            }
+            for (const auto &[rx, ry] : regions) {
+                w.u32(REGION_REQUEST);
+                w.i32(rx);
+                w.i32(ry);
+            }
+            if (!socket.send(w.data()))
+                break;
         }
         clientPacing.endPass();
     }
@@ -511,6 +534,16 @@ void Client::receiveLoop() {
                         z.second.push_back(record);
                     }
                 zoneItems.push_back(std::move(z));
+            }
+            for (const auto &list : update->keyed[1]) { // section 8: changed placed-object lists
+                ZonePlacements snapshot{{(int32_t)(uint32_t)list.key, (int32_t)(uint32_t)(list.key >> 32)}, {}};
+                snapshot.second.reserve(list.records.size());
+                for (const auto &bytes : list.records) {
+                    std::array<int32_t, 4> placement;
+                    std::memcpy(placement.data(), bytes.data(), sizeof placement);
+                    snapshot.second.push_back(placement);
+                }
+                zonePlacements.push_back(std::move(snapshot));
             }
             for (const auto &bytes : update->sections[4]) // section 5: shoot records
                 if (bytes.size() == 112) {

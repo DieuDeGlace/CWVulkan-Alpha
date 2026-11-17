@@ -8,7 +8,33 @@ void WorldMap::add(std::shared_ptr<const Zone> zone) {
     held[key] = std::move(zone);
 }
 
-void WorldMap::remove(int32_t zx, int32_t zy) { held.erase({zx, zy}); }
+void WorldMap::remove(int32_t zx, int32_t zy) {
+    held.erase({zx, zy});
+    zoneContents.erase({zx, zy});
+}
+
+bool WorldMap::containsNetworkZone(ZoneKey key) const {
+    return uint32_t(key.first) < 65536u && uint32_t(key.second) < 65536u && held.contains(key);
+}
+
+bool WorldMap::needsZoneContents(ZoneKey key) const {
+    return containsNetworkZone(key) && !zoneContents.contains(key);
+}
+
+void WorldMap::acknowledgeZoneContents(ZoneKey key) {
+    if (containsNetworkZone(key))
+        zoneContents.try_emplace(key);
+}
+
+void WorldMap::replacePlacedObjects(ZoneKey key, PlacedObjects records) {
+    if (containsNetworkZone(key))
+        zoneContents.insert_or_assign(key, std::move(records));
+}
+
+const WorldMap::PlacedObjects *WorldMap::placedObjects(ZoneKey key) const {
+    const auto found = zoneContents.find(key);
+    return found == zoneContents.end() ? nullptr : &found->second;
+}
 
 const Zone *WorldMap::zone(int32_t zx, int32_t zy) const {
     const auto it = held.find({zx, zy});

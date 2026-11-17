@@ -3247,3 +3247,32 @@ column. The native horizontal column bounds apply to both strike and blast.
 
 The engine applies a single batch to each touched zone. Exact native relight
 and plant pass footprints remain open.
+
+## Placed-object snapshots and zone requests (2026-11-17)
+
+The isolated source author finalized [the blueprint delivery contract](specs/alpha-blueprint-zone-delivery.md).
+The implementer read all 244 lines and verified SHA-256
+`f5bc972a487e774996eeb23caf01f067db531cb9603b6ffbcc61894994a2f0ee`.
+Dedicated placements publish the whole anchor-zone list to every peer.
+The connected frame applies item, block-edit, static and placed-object
+records after the world pieces. A section-8 entry replaces the held
+zone's list, including when empty, and updates no terrain. An absent zone
+discards the entry. Valid sections 6, 7 and 8 each satisfy the held zone's
+request latch. Unloading a zone discards its latch and placed objects.
+
+The ordinary connected client considers only the controlled actor's current
+zone. The raw signed coordinate, low-word narrowing and final division
+are shared with the dedicated server. The sender takes copies of the live
+lists after its gameplay batch. The signed wrapping clock admits a request
+turn above 1,000 ms, advances even for an empty turn and emits packet 11
+before packet 12. The server appends each requested snapshot in receive
+order after the corresponding world outputs. Duplicate requests receive
+complete replies. Packet 11 supplies an empty item list for a resident
+zone with no items and leaves section 8 to the world output.
+
+The engine uses its frame lock and steady clock for transport. The current
+region request persists until its 64 cells arrive and refreshes while the
+map is open. Exact native packet-12 production remains open. The current
+client connects before loading zones and has no hosted mode or in-place
+rebind. Stock blueprint activation and selection, offline placement,
+native lighting footprints and original-client timing remain open.

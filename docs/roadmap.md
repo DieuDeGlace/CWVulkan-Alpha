@@ -854,6 +854,10 @@ Differences from the Steam engine that shape the plan:
   authority use the 200 ms health and recovery ticks and 400 ms recurring
   sounds. Local timed healing reports a floating number without sending a
   hit request. NPCs publish their results through the dedicated world update.
+- [x] Connected zone contents (`alpha-blueprint-zone-delivery.md`). Receive
+  complete placed-object lists, acknowledge valid zone data, and request only
+  the current held pending zone. The sender retains the ordered lists across
+  timed turns and the dedicated server answers each request in arrival order.
 - [ ] Complete offline blueprint placement and trace the stock mode and
   selection producers. Original-client acceptance remains open.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the

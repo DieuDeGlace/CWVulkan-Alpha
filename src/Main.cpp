@@ -65,6 +65,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <bit>
+#include <bitset>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -453,7 +454,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Held weapon-attachment contract: the weapon points of each creature's last
     // pose refresh. Lights read them before this frame's refresh replaces them.
     std::map<uint64_t, std::array<std::optional<terrain_lights::FixedPosition>, 2>> weaponPoints;
-    std::pair<int32_t, int32_t> missionRegionAsked{INT32_MIN, INT32_MIN}; // online: the region last asked for
+    std::optional<Missions::Key> missionRequestRegion;
+    std::bitset<64> missionCellsReceived;
     std::optional<MissionArea> questRemembered; // missions §8.2: the mission the quest tag shows
     // Mod SDK v5: missions to read and block edits to make, while this world runs.
     mods.hooks().getMission = [&](int32_t cx, int32_t cy, AvMission &out) {
@@ -774,7 +776,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Last observed recipe level. Saved characters synchronize this after load;
     // only the engine's unsaved diagnostic character needs a first-frame grant.
     int32_t grantedLevel = 0;
-    double lastZoneRequest = -1;
     std::vector<ItemRequest> offlineItemRequests;
     const auto queueItemRequest = [&](ItemRequest request) {
         if (client.connected())
@@ -1766,6 +1767,32 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const auto received = client.takeRelationships();
         creatures::receiveRelationships(received, frameActor);
     };
+    const auto applyReceivedZoneContents = [&] {
+        if (!client.connected())
+            return;
+        // Blueprint zone delivery §4–5: apply these after the world pieces
+        // and before rebuilding the live requests.
+        for (const auto &[key, records] : client.takeZoneItems()) {
+            if (!view.held().containsNetworkZone(key))
+                continue;
+            std::vector<WorldItem> list;
+            list.reserve(records.size());
+            for (const auto &r : records)
+                list.push_back(WorldItem::fromRecord(r.data()));
+            worldItems.replace(key.first, key.second, std::move(list));
+            view.acknowledgeZoneContents(key);
+        }
+        std::vector<BlockEdit> edits;
+        for (const auto &record : client.takeBlockEdits())
+            edits.push_back(BlockEdit::parse(record.data()));
+        if (!edits.empty())
+            view.applyEdits(edits, false);
+        for (const auto &record : client.takeStaticStates())
+            if (const auto key = statics.apply(record.data(), &view.held()))
+                view.acknowledgeZoneContents(*key);
+        for (auto &[key, records] : client.takeZonePlacements())
+            view.replacePlacedObjects(key, std::move(records));
+    };
     const auto refreshReceivedLinks = [&] {
         for (const auto &[key, remote] : otherFighters)
             creatures::refreshForwardLink(remote.fighter, frameActor);
@@ -2257,34 +2284,15 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     };
                     if (client.connected()) {
                         worldItems.step(elapsed, false, worldBlock, worldDraw, aggregate.sounds);
-                        // Online: the zones round the player are asked for once a second (net server
-                        // §4.3); their item lists and the player's gifts come back.
                         if (firstWorldCall) {
-                            if (lastZoneRequest < 0 || now - lastZoneRequest >= 1) {
-                                lastZoneRequest = now;
-                                const glm::dvec3 me = player->body().blocks();
-                                const int32_t zx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);
-                                const int32_t zy = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::ZONE);
-                                std::vector<std::pair<int32_t, int32_t>> wanted;
-                                for (int32_t dx = -1; dx <= 1; dx++)
-                                    for (int32_t dy = -1; dy <= 1; dy++)
-                                        if (view.held().zone(zx + dx, zy + dy))
-                                            wanted.push_back({zx + dx, zy + dy});
-                                client.requestZones(wanted);
-                                // Missions §6.3: the cell records of the player's region, asked for when
-                                // the player enters it and while the map is open.
-                                const std::pair<int32_t, int32_t> region{worldgen::floorDiv(zx, 64), worldgen::floorDiv(zy, 64)};
-                                if (region != missionRegionAsked || interface.mapOpen) {
-                                    missionRegionAsked = region;
-                                    client.requestRegions({region});
-                                }
-                            }
                             for (const auto &record : client.takeMissionRecords()) {
                                 missions.apply(record.data());
                                 // Open points 1 §2: a completed mission's record shows the banner (every
                                 // player with the region loaded sees it, as in Alpha).
                                 int32_t cx = 0, cy = 0;
                                 const MissionArea m = MissionArea::fromRecord(record.data(), cx, cy);
+                                if (cx >= 0 && cy >= 0 && missionRequestRegion == Missions::Key(cx / 8, cy / 8))
+                                    missionCellsReceived.set(size_t(cx % 8) * 8 + size_t(cy % 8));
                                 if (m.kind != 0 && m.state == 2)
                                     if (const worldgen::Location *L = cellLocation(view.terrainWorld(), cx, cy)) {
                                         interface.questComplete(ui::objectiveText(m, *L, dictionary));
@@ -2292,20 +2300,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                             audio.play(key);
                                     }
                             }
-                            for (const auto &[key, records] : client.takeZoneItems()) {
-                                std::vector<WorldItem> list;
-                                for (const auto &r : records)
-                                    list.push_back(WorldItem::fromRecord(r.data()));
-                                worldItems.replace(key.first, key.second, std::move(list));
-                            }
-                            for (const auto &record : client.takeStaticStates())
-                                statics.apply(record.data());
-                            // Block edits §4.1, §3 step 7: the server's edits are applied and forgotten.
-                            std::vector<BlockEdit> edits;
-                            for (const auto &record : client.takeBlockEdits())
-                                edits.push_back(BlockEdit::parse(record.data()));
-                            if (!edits.empty())
-                                view.applyEdits(edits, false);
                         }
                         advanceStaticState(elapsed, {});
                         creatures::visitReceivedActors(otherFighters, player->combat().id,
@@ -2686,6 +2680,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     firstWorldCall = false;
                 },
                 [&](creatures::NpcFrame &aggregate) {
+                    applyReceivedZoneContents();
                     if (client.connected())
                         for (const auto &gift : client.takeGifts())
                             receiveGrant(gift, true);
@@ -2783,6 +2778,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         remotes.step(elapsed, block, npcs.objects);
                 },
                 [&](creatures::NpcFrame &aggregate) {
+                    applyReceivedZoneContents();
                     applyReceivedRelationships();
                     simulationInputFrames++;
                     view.move({held(GLFW_KEY_D) - held(GLFW_KEY_A), held(GLFW_KEY_W) - held(GLFW_KEY_S), held(GLFW_KEY_E) - held(GLFW_KEY_Q)},
@@ -4762,17 +4758,37 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (interface.mapOpen)
             items.clear(), effects.clear();
         if (client.connected()) {
+            std::optional<Missions::Key> region;
             if (player) {
+                const auto &position = player->body().position;
                 for (int axis = 0; axis < 3; axis++)
-                    own.setPosition(axis, player->body().position[axis]);
+                    own.setPosition(axis, position[axis]);
                 own.setMotion(player->body().velocity, player->facing(), player->body().push, player->body().intent);
                 own.setFighter(player->combat());
                 own.setManaCubeCounter(manaCubes);
+                const auto zone = net::zoneForRawPosition(position[0], position[1]);
+                if (view.held().needsZoneContents(zone))
+                    client.requestZones(std::array{zone});
+                else
+                    client.requestZones({});
+                if (uint32_t(zone.first) < 65536u && uint32_t(zone.second) < 65536u)
+                    region = Missions::Key{zone.first / 64, zone.second / 64};
             } else {
                 const glm::dvec3 at = view.worldPosition();
                 for (int axis = 0; axis < 3; axis++)
                     own.setPosition(axis, (int64_t)(at[axis] * 65536.0));
+                client.requestZones({});
             }
+            // Retain the current region until all of its cells arrive. An open
+            // map continues to refresh that region on each request turn.
+            if (region != missionRequestRegion) {
+                missionRequestRegion = region;
+                missionCellsReceived.reset();
+            }
+            if (region && (!missionCellsReceived.all() || interface.mapOpen))
+                client.requestRegions(std::array{*region});
+            else
+                client.requestRegions({});
             client.setOwn(own);
         }
         if (networkFrame.owns_lock())

@@ -12,6 +12,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <span>
 #include <thread>
 
 namespace net {
@@ -51,10 +52,9 @@ class Client {
     // The connected simulation can observe the static subset without removing
     // a record from the sender's FIFO. Call while holding the frame gate.
     std::vector<std::array<int32_t, 3>> pendingStaticRequests() const;
-    // Asks for zones' data (packet 11; the server answers with their item lists).
-    void requestZones(const std::vector<std::pair<int32_t, int32_t>> &zones);
-    // Asks for regions' map-cell records (packet 12; answered in section 13).
-    void requestRegions(const std::vector<std::pair<int32_t, int32_t>> &regions);
+    // Replace the live lists sampled by the sender on a request turn.
+    void requestZones(std::span<const std::pair<int32_t, int32_t>> zones); // packet 11
+    void requestRegions(std::span<const std::pair<int32_t, int32_t>> regions); // packet 12
 
     // What the server last listed: other creatures by id.
     std::map<uint64_t, CreatureRecord> others() const;
@@ -103,6 +103,9 @@ class Client {
     // 328-byte records.
     using ZoneItems = std::pair<std::pair<int32_t, int32_t>, std::vector<std::array<uint8_t, 328>>>;
     std::vector<ZoneItems> takeZoneItems();
+    // Section 8 snapshots in receipt order. Each record holds model number, X, Y and Z.
+    using ZonePlacements = std::pair<std::pair<int32_t, int32_t>, std::vector<std::array<int32_t, 4>>>;
+    std::vector<ZonePlacements> takeZonePlacements();
     // Inventory grants to the local player in section 9 (pick-ups and rewards).
     std::vector<std::array<uint8_t, 280>> takeGifts();
     // Static-object states received in section 6 (88-byte records, interaction §4.5).
@@ -136,6 +139,7 @@ class Client {
     std::vector<std::pair<int32_t, int32_t>> outgoingZones, outgoingRegions;
     std::vector<std::array<uint8_t, 56>> missionRecords;
     std::vector<ZoneItems> zoneItems;
+    std::vector<ZonePlacements> zonePlacements;
     std::vector<std::array<uint8_t, 280>> gifts;
     std::vector<std::array<uint8_t, 88>> staticStates;
     std::vector<std::array<uint8_t, 20>> blockEdits;

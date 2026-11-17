@@ -145,6 +145,10 @@ class WorldView {
     void setRadius(int32_t zones) { radius = std::max(zones, 1); }
     // The zones held now (main thread).
     const worldgen::WorldMap &held() const { return map; }
+    void acknowledgeZoneContents(worldgen::WorldMap::ZoneKey key) { map.acknowledgeZoneContents(key); }
+    void replacePlacedObjects(worldgen::WorldMap::ZoneKey key, worldgen::WorldMap::PlacedObjects records) {
+        map.replacePlacedObjects(key, std::move(records));
+    }
     // Called with each land picture as it is rebuilt (the game saves it): the land's cell,
     // the picture's origin (zones) and its voxels.
     std::function<void(int32_t lx, int32_t ly, const worldgen::RegionCell &cell, glm::ivec2 origin, const CubModel &picture)>

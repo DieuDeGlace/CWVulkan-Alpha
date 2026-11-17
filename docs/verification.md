@@ -1883,3 +1883,22 @@ and blast rounding through the shared removal service.
 
 The Windows x64 build, all six focused suites and all 60 CTest suites
 passed. Exact native relight and plant pass footprints remain open.
+
+## Placed-object snapshots and zone requests (2026-11-17)
+
+NetTests checks that the receiver retains repeated zone keys, empty lists
+and signed placement coordinates. Its held-zone fixture checks replacement,
+invalid static indices, terrain-only copies and unloading. Clock tests cover
+the strict 1,000 ms threshold, timestamp advancement and signed wrap.
+A scripted peer observes two copies of the same live request lists, with
+all zone pairs before the region pair in each turn.
+
+Two real peers receive the placed-object list from a dedicated server. The
+second peer requests two resident zones, with one repeated and one
+out-of-range request interleaved. The replies preserve the resident keys'
+exact sequence and replay all 500 stored solid edits in order. The request
+emits no section-8 entry. Each copy of a repeated region request supplies
+its 64 records.
+
+The Windows x64 build, seven focused suites and all 60 CTest suites passed.
+Original-client interoperation and the stock blueprint controls remain open.

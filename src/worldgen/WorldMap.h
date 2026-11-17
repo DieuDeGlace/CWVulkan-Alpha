@@ -24,6 +24,8 @@ inline bool zoneKeptNear(int32_t zx, int32_t zy, int32_t px, int32_t py) {
 
 class WorldMap {
   public:
+    using ZoneKey = std::pair<int32_t, int32_t>;
+    using PlacedObjects = std::vector<std::array<int32_t, 4>>;
     void add(std::shared_ptr<const Zone> zone);
     void remove(int32_t zx, int32_t zy);
     const Zone *zone(int32_t zx, int32_t zy) const;
@@ -34,9 +36,16 @@ class WorldMap {
     // A map of zone (zx, zy) and the eight round it, as far as they are held.
     WorldMap neighbourhood(int32_t zx, int32_t zy) const;
     const std::map<std::pair<int32_t, int32_t>, std::shared_ptr<const Zone>> &zones() const { return held; }
+    bool containsNetworkZone(ZoneKey key) const;
+    // A held zone starts eligible. Any valid section 6, 7 or 8 update satisfies it.
+    bool needsZoneContents(ZoneKey key) const;
+    void acknowledgeZoneContents(ZoneKey key);
+    void replacePlacedObjects(ZoneKey key, PlacedObjects records);
+    const PlacedObjects *placedObjects(ZoneKey key) const;
 
   private:
     std::map<std::pair<int32_t, int32_t>, std::shared_ptr<const Zone>> held;
+    std::map<ZoneKey, PlacedObjects> zoneContents;
 };
 
 } // namespace worldgen

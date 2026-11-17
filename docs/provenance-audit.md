@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 34 and the rulings. The 241 tracked contracts
-comprise 182 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 35 and the rulings. The 242 tracked contracts
+comprise 183 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -86,6 +86,7 @@ Batch 31 covers `alpha-packet6-client-queue.md`.
 Batch 32 covers `alpha-packet6-placement-producers.md`.
 Batch 33 covers `alpha-packet6-quick-wheel.md`.
 Batch 34 covers `alpha-timed-consumables.md`.
+Batch 35 covers `alpha-blueprint-zone-delivery.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -100,6 +101,7 @@ Batch 34 covers `alpha-timed-consumables.md`.
 | `alpha-beam-height-leftovers.md` | A | 228 | 0 |
 | `alpha-behavior-target-selection.md` | B | 78 | 0 |
 | `alpha-block-edits.md` | A | 688 | 1 |
+| `alpha-blueprint-zone-delivery.md` | A | 245 | 0 |
 | `alpha-buff-record-replication-recovered.md` | B | 414 | 2 |
 | `alpha-camera-follow-collision.md` | A | 119 | 4 |
 | `alpha-camera-initial-state.md` | A | 227 | 1 |

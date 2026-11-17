@@ -120,19 +120,23 @@ std::array<uint8_t, 88> StaticStates::record(const worldgen::Zone &zone, int32_t
     return r;
 }
 
-void StaticStates::apply(const uint8_t *r) {
+std::optional<StaticStates::Key> StaticStates::apply(const uint8_t *r, const worldgen::WorldMap *resident) {
     int32_t zx, zy, index;
     std::memcpy(&zx, r, 4);
     std::memcpy(&zy, r + 4, 4);
     std::memcpy(&index, r + 8, 4);
-    const auto it = zones.find({zx, zy});
-    if (it == zones.end() || index < 0 || index >= (int32_t)it->second.size())
-        return;
+    const Key key{zx, zy};
+    if (resident && !resident->containsNetworkZone(key))
+        return std::nullopt;
+    const auto it = zones.find(key);
+    if (it == zones.end() || index < 0 || size_t(index) >= it->second.size())
+        return std::nullopt;
     StaticState &s = it->second[index];
     s.state = r[0x40];
     std::memcpy(&s.timerMs, r + 0x44, 4);
     std::memcpy(&s.stateWord, r + 0x48, 4);
     std::memcpy(&s.occupant, r + 0x50, 8);
+    return it->first;
 }
 
 bool StaticStates::fatal(const worldgen::WorldMap &map, const creatures::BackingReference &backing,
@@ -158,7 +162,7 @@ bool StaticStates::fatal(const worldgen::WorldMap &map, const creatures::Backing
 }
 
 void StaticStates::appendUpdates(const worldgen::WorldMap &map, std::span<const std::array<uint8_t, 88>> immediate,
-                                 const std::set<Key> &changedZones, const std::set<Key> &requestedZones,
+                                 const std::set<Key> &changedZones, const std::vector<Key> &requestedZones,
                                  std::vector<std::vector<uint8_t>> &output) const {
     std::map<std::array<int32_t, 3>, const std::array<uint8_t, 88> *> latest;
     for (const auto &snapshot : immediate) {
@@ -167,14 +171,12 @@ void StaticStates::appendUpdates(const worldgen::WorldMap &map, std::span<const 
         std::memcpy(key.data(), snapshot.data(), 12);
         latest[key] = &snapshot;
     }
-    std::set<Key> listed = changedZones;
-    listed.insert(requestedZones.begin(), requestedZones.end());
-    for (const auto &[x, y] : listed) {
+    const auto appendZone = [&](const Key &key, bool requested) {
+        const auto [x, y] = key;
         const auto *held = map.zone(x, y);
         const auto *current = zone(x, y);
         if (!held || !current)
-            continue; // engine omission policy for incomplete retained storage
-        const bool requested = requestedZones.contains({x, y});
+            return; // engine omission policy for incomplete retained storage
         const size_t count = std::min({held->statics.size(), current->size(), size_t(INT32_MAX) + 1});
         for (size_t index = 0; index < count; index++) {
             const auto snapshot = record(*held, (int32_t)index);
@@ -185,7 +187,12 @@ void StaticStates::appendUpdates(const worldgen::WorldMap &map, std::span<const 
             }
             output.emplace_back(snapshot.begin(), snapshot.end());
         }
-    }
+    };
+    for (const auto &key : changedZones)
+        appendZone(key, false);
+    for (const auto &key : requestedZones)
+        if (map.containsNetworkZone(key))
+            appendZone(key, true);
 }
 
 void StaticStates::traps(int32_t dtMs, const std::vector<Creature> &unordered,

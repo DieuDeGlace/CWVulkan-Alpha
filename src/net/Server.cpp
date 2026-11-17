@@ -540,18 +540,22 @@ void Server::receiveLoop(Connection &c) {
             }
             break;
         }
-        case ZONE_REQUEST: { // net server §4.3: answered with the zone's items
+        case ZONE_REQUEST: { // packets §4.4: enqueue the exact zone
             int32_t zone[2];
             ok = c.socket.readExact(zone, 8);
-            std::lock_guard guard(lock);
-            c.wantedZones.push_back({zone[0], zone[1]});
+            if (ok) {
+                std::lock_guard guard(lock);
+                c.wantedZones.emplace_back(zone[0], zone[1]);
+            }
             break;
         }
         case REGION_REQUEST: { // net packets §4.4: answered with the region's 64 cell records
             int32_t region[2];
             ok = c.socket.readExact(region, 8);
-            std::lock_guard guard(lock);
-            c.wantedRegions.push_back({region[0], region[1]});
+            if (ok) {
+                std::lock_guard guard(lock);
+                c.wantedRegions.emplace_back(region[0], region[1]);
+            }
             break;
         }
         default:
@@ -656,10 +660,6 @@ void Server::sendLoop(Connection &c) {
     });
 }
 
-std::pair<int32_t, int32_t> serverZoneOf(int64_t x, int64_t y) {
-    return {(int32_t)(x / 65536) / worldgen::ZONE, (int32_t)(y / 65536) / worldgen::ZONE};
-}
-
 void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs, bool accelerated) {
     // The time of day runs 10 (or 100) times as fast as real time (vegetation-wind.md §2).
     uint64_t ms = timeOfDayMs + (uint64_t)elapsedMs * (accelerated ? 100u : 10u);
@@ -729,7 +729,7 @@ std::vector<std::pair<int32_t, int32_t>> Server::playerZones() const {
     // truncating toward zero.
     for (const auto &[id, c] : connections)
         if (c->alive)
-            out.push_back(serverZoneOf(c->creature.position(0), c->creature.position(1)));
+            out.push_back(zoneForRawPosition(c->creature.position(0), c->creature.position(1)));
     return out;
 }
 
@@ -810,7 +810,7 @@ void Server::advanceZoneState(int32_t elapsed, std::span<creatures::PlayerView> 
     const auto draw = [this] { return worldRandom.draw(); };
     std::set<WorldItems::Key> activeZones;
     for (const auto &player : players) {
-        const auto [zx, zy] = serverZoneOf(player.body.position[0], player.body.position[1]);
+        const auto [zx, zy] = zoneForRawPosition(player.body.position[0], player.body.position[1]);
         for (int32_t x = zx - 1; x <= zx + 1; ++x)
             for (int32_t y = zy - 1; y <= zy + 1; ++y)
                 if (zones.zone(x, y))
@@ -1364,42 +1364,12 @@ void Server::stepWorld(float dtMs) {
         }
         for (const auto &g : gifts) // section 9: the gifts, for the named player's client
             out.sections[8].emplace_back(g.begin(), g.end());
-        // Packets §4.4: every copy of a request is answered. The first copy of each goes through
-        // the merged lists below; each further copy is answered again after them.
-        std::set<std::pair<int32_t, int32_t>> requestedZones, requestedRegions;
-        std::vector<std::pair<int32_t, int32_t>> repeatedZones, repeatedRegions;
-        for (const auto &key : c->wantedZones)
-            if (!requestedZones.insert(key).second)
-                repeatedZones.push_back(key);
-        for (const auto &key : c->wantedRegions)
-            if (!requestedRegions.insert(key).second)
-                repeatedRegions.push_back(key);
-        // Section 7: every changed zone's items, and those of the zones this player asked for.
-        std::set<std::pair<int32_t, int32_t>> listed = changedZones;
-        for (const auto &key : requestedZones)
-            if (items.zone(key.first, key.second))
-                listed.insert(key);
-        statics.appendUpdates(zones, frame.staticStates, changedStatics, requestedZones, out.sections[5]);
-        for (const auto &[zx, zy] : repeatedZones)
-            if (const auto *zone = zones.zone(zx, zy); zone && statics.zone(zx, zy)) {
-                const size_t count = std::min(zone->statics.size(), statics.zone(zx, zy)->size());
-                for (size_t index = 0; index < count; index++) {
-                    const auto record = statics.record(*zone, (int32_t)index);
-                    out.sections[5].emplace_back(record.begin(), record.end());
-                }
-            }
-        // Block edits §3, §10: this step's edits go to everyone; a requested zone's whole list
-        // goes to whoever asked. Section 8: the changed placed-object lists.
+        // Distribute world outputs ahead of requested zone snapshots in each section.
+        statics.appendUpdates(zones, frame.staticStates, changedStatics, c->wantedZones, out.sections[5]);
         for (const BlockEdit &e : stepEdits) {
             const auto bytes = e.bytes();
             out.sections[0].emplace_back(bytes.begin(), bytes.end());
         }
-        for (const auto &[zx, zy] : c->wantedZones)
-            if (const auto *list = edits.zone(zx, zy))
-                for (const BlockEdit &e : *list) {
-                    const auto bytes = e.bytes();
-                    out.sections[0].emplace_back(bytes.begin(), bytes.end());
-                }
         for (const auto &key : objectsChanged) {
             WorldUpdate::KeyedList list;
             list.key = (uint64_t)(uint32_t)key.first | (uint64_t)(uint32_t)key.second << 32;
@@ -1410,23 +1380,6 @@ void Server::stepWorld(float dtMs) {
             }
             out.keyed[1].push_back(std::move(list));
         }
-        c->wantedZones.clear();
-        // Missions §6.2: changed cells to everyone; a requested region's 64 to whoever asked.
-        std::set<std::pair<int32_t, int32_t>> requestedCells;
-        for (const auto &[rx, ry] : requestedRegions)
-            if (world->region(rx, ry))
-                for (int32_t k = 0; k < 64; k++)
-                    requestedCells.insert({8 * rx + k / 8, 8 * ry + k % 8});
-        c->wantedRegions.clear();
-        missions.appendUpdates(frame.missions, missionCells, requestedCells, out.sections[12]);
-        for (const auto &[rx, ry] : repeatedRegions)
-            if (world->region(rx, ry))
-                for (int32_t k = 0; k < 64; k++) {
-                    const int32_t x = 8 * rx + k / 8, y = 8 * ry + k % 8;
-                    const auto *entry = missions.cell(x, y);
-                    const auto record = (entry ? entry->mission : MissionArea{}).record(x, y);
-                    out.sections[12].emplace_back(record.begin(), record.end());
-                }
         const auto zoneItemList = [&](int32_t zx, int32_t zy) {
             WorldUpdate::KeyedList list;
             list.key = (uint64_t)(uint32_t)zx | (uint64_t)(uint32_t)zy << 32;
@@ -1437,11 +1390,32 @@ void Server::stepWorld(float dtMs) {
                 }
             out.keyed[0].push_back(std::move(list));
         };
-        for (const auto &[zx, zy] : listed)
+        for (const auto &[zx, zy] : changedZones)
             zoneItemList(zx, zy);
-        for (const auto &[zx, zy] : repeatedZones)
-            if (items.zone(zx, zy))
-                zoneItemList(zx, zy);
+        // Packet 11 contributes the stored edits, statics and whole item list
+        // of each requested resident zone, including duplicates and empty lists.
+        for (const auto &[zx, zy] : c->wantedZones) {
+            if (!zones.containsNetworkZone({zx, zy}))
+                continue;
+            if (const auto *list = edits.zone(zx, zy))
+                for (const BlockEdit &e : *list) {
+                    const auto bytes = e.bytes();
+                    out.sections[0].emplace_back(bytes.begin(), bytes.end());
+                }
+            zoneItemList(zx, zy);
+        }
+        c->wantedZones.clear();
+        // Missions §6.2: each packet 12 contributes the region's 64 cell records.
+        missions.appendUpdates(frame.missions, missionCells, {}, out.sections[12]);
+        for (const auto &[rx, ry] : c->wantedRegions)
+            if (world->region(rx, ry))
+                for (int32_t k = 0; k < 64; k++) {
+                    const int32_t x = 8 * rx + k / 8, y = 8 * ry + k % 8;
+                    const auto *entry = missions.cell(x, y);
+                    const auto record = (entry ? entry->mission : MissionArea{}).record(x, y);
+                    out.sections[12].emplace_back(record.begin(), record.end());
+                }
+        c->wantedRegions.clear();
         // Net server §4.2: wire sections 3 and 4 keep records strictly within 200 blocks
         // (squared distance below 40,000) of this player. Section 3 uses the i64 position
         // (difference scaled by 1/65,536; f32 as in §4.1), section 4 the record's f32 block

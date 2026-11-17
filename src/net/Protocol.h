@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace net {
@@ -32,6 +33,11 @@ struct SenderPacing {
     std::atomic<uint32_t> stampMs{0};
     void endPass();
 };
+
+uint32_t networkTimeMs();
+// Blueprint zone delivery §5. The stamp advances even when neither list has entries.
+bool requestSnapshotDue(uint32_t nowMs, uint32_t &stampMs);
+std::pair<int32_t, int32_t> zoneForRawPosition(int64_t x, int64_t y);
 
 // Packet ids (packets §0, transport §2).
 enum Packet : uint32_t {

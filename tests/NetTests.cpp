@@ -138,6 +138,13 @@ static void checkClientPackets() {
     if (!listener.listen(0, nullptr, "127.0.0.1")) { check(false, "packet fixture listens"); return; }
     std::atomic<bool> deleteAll{false}, finish{false};
     std::atomic<int> itemBeforeHit{0}; // 1 in order, -1 out of order
+    std::atomic<int> requestOrder{0};
+    const std::pair<int32_t, int32_t> heldKey{33, 44}, absentKey{34, 44};
+    const std::array<int32_t, 4> firstObject{0, 8500, 11400, -2}, secondObject{11, 8511, 11415, 8};
+    const std::vector<Client::ZonePlacements> expectedPlacements{
+        {heldKey, {firstObject}}, {absentKey, {secondObject}}, {heldKey, {firstObject, secondObject}}, {heldKey, {}}};
+    const std::array<std::array<int32_t, 3>, 4> requestPass{{
+        {ZONE_REQUEST, 33, 44}, {ZONE_REQUEST, 34, 44}, {ZONE_REQUEST, 33, 44}, {REGION_REQUEST, 1, 2}}};
     std::thread peer([&] {
         Socket socket = listener.accept();
         socket.setReadTimeout(3000);
@@ -156,6 +163,17 @@ static void checkClientPackets() {
         std::vector<uint8_t> burst(72, 0);
         burst[8] = 1; // (a target id of the local player, were it read as a hit)
         update.sections[2].push_back(burst);
+        for (const auto &[key, records] : expectedPlacements) {
+            WorldUpdate::KeyedList snapshot;
+            snapshot.key = uint64_t(uint32_t(key.first)) | (uint64_t(uint32_t(key.second)) << 32);
+            for (const auto &record : records) {
+                ByteWriter bytes;
+                for (const int32_t field : record)
+                    bytes.i32(field);
+                snapshot.records.push_back(std::move(bytes.data()));
+            }
+            update.keyed[1].push_back(std::move(snapshot));
+        }
         w.u32(WORLD_UPDATE), w.bytes(compressed(update.encode()));
         CreatureRecord remote;
         remote.setPosition(0, 4242);
@@ -166,7 +184,9 @@ static void checkClientPackets() {
         }
         if (!socket.send(w.data())) return;
         bool item = false;
-        while (!finish && itemBeforeHit == 0 && socket.readU32(packet)) {
+        size_t requestsSeen = 0;
+        bool requestSequenceMatches = true;
+        while (!finish && (itemBeforeHit == 0 || requestOrder == 0) && socket.readU32(packet)) {
             uint32_t skip = 0;
             switch (packet) {
             case CREATURE: if (!socket.readU32(skip)) return; break;
@@ -180,6 +200,13 @@ static void checkClientPackets() {
             }
             std::vector<uint8_t> bytes(skip);
             if (!socket.readExact(bytes.data(), skip)) return;
+            if ((packet == ZONE_REQUEST || packet == REGION_REQUEST) && requestOrder == 0) {
+                ByteReader r(bytes);
+                const std::array<int32_t, 3> request{(int32_t)packet, r.i32(), r.i32()};
+                requestSequenceMatches &= request == requestPass[requestsSeen++ % requestPass.size()];
+                if (requestsSeen == 2 * requestPass.size())
+                    requestOrder = requestSequenceMatches ? 1 : -1;
+            }
         }
         while (!deleteAll && !finish) std::this_thread::sleep_for(std::chrono::milliseconds(1));
         ByteWriter none;
@@ -196,6 +223,8 @@ static void checkClientPackets() {
         client.sendItemRequest(ItemRequest{ItemRequest::UseStatic, {}, {1, 2, 3}}.packet());
         client.sendItemRequest(ItemRequest{ItemRequest::CallPet}.packet());
         client.sendItemRequest(ItemRequest{ItemRequest::UseStatic, {}, {3, 2, 1}}.packet());
+        client.requestZones(std::array{heldKey, absentKey, heldKey});
+        client.requestRegions(std::array{std::pair<int32_t, int32_t>{1, 2}});
         const std::vector<std::array<int32_t, 3>> expected{{1, 2, 3}, {3, 2, 1}};
         check(client.pendingStaticRequests() == expected && client.pendingStaticRequests() == expected,
               "online frame sampling keeps the pending static subsequence on the sender's queue");
@@ -207,7 +236,47 @@ static void checkClientPackets() {
     const auto receipts = client.takeReceipts();
     check(receipts.size() == 2 && receipts[0].snap && receipts[1].snap, "creatures created by packet 1 snap");
     check(waitFor([&] { return itemBeforeHit != 0; }) && itemBeforeHit == 1, "packet 6 is sent before the tick's hits");
+    check(waitFor([&] { return requestOrder != 0; }, 5000) && requestOrder == 1,
+          "two sender turns retain and repeat the same ordered packet-11 and packet-12 snapshots");
+    client.requestZones({});
+    client.requestRegions({});
     check(client.takeHits().empty() && client.takeBursts().size() == 1, "section 3 is not passed to hit handling");
+    const auto placements = client.takeZonePlacements();
+    check(placements == expectedPlacements && client.takeZonePlacements().empty(),
+          "section 8 keeps signed fields, repeated keys and empty inner snapshots in order");
+    if (placements == expectedPlacements) {
+        worldgen::WorldMap world;
+        auto held = std::make_shared<worldgen::Zone>(heldKey.first, heldKey.second);
+        held->statics.emplace_back();
+        world.add(held);
+        check(world.needsZoneContents(heldKey) && !world.needsZoneContents(absentKey),
+              "only a held pending zone can be requested");
+        for (size_t k = 0; k < 3; k++)
+            world.replacePlacedObjects(placements[k].first, placements[k].second);
+        const auto *placed = world.placedObjects(heldKey);
+        check(placed && *placed == placements[2].second && !world.placedObjects(absentKey) &&
+                  !world.needsZoneContents(heldKey),
+              "the latest complete list replaces the prior list and acknowledges only a resident zone");
+        world.add(std::make_shared<worldgen::Zone>(*held));
+        check(!world.needsZoneContents(heldKey), "terrain-only replacement keeps a zone's request acknowledgement");
+        world.replacePlacedObjects(heldKey, placements.back().second);
+        placed = world.placedObjects(heldKey);
+        check(placed && placed->empty() && !world.needsZoneContents(heldKey), "an empty section 8 clears the live list");
+        world.remove(heldKey.first, heldKey.second);
+        world.add(held);
+        check(world.needsZoneContents(heldKey) && !world.placedObjects(heldKey), "unload discards the placed list and latch");
+        StaticStates states;
+        states.generated(*held);
+        const auto valid = states.record(*held, 0);
+        auto rejected = valid;
+        const int32_t invalidIndex = 1;
+        std::memcpy(rejected.data() + 8, &invalidIndex, 4);
+        check(!states.apply(rejected.data(), &world) && world.needsZoneContents(heldKey),
+              "an invalid static index leaves a held zone's request pending");
+        if (const auto key = states.apply(valid.data(), &world))
+            world.acknowledgeZoneContents(*key);
+        check(!world.needsZoneContents(heldKey), "a valid static response can satisfy the latch without a placement");
+    }
     check(client.takeChat().empty() && client.connected(),
           "packet 3 (count 0 and 1) and a negative chat count keep the stream in step");
     deleteAll = true;
@@ -589,9 +658,21 @@ int main() {
     }
     // Transport N-8: the main loop's zone index truncates toward zero at both divisions.
     {
-        check(serverZoneOf(int64_t(300) * 65536, int64_t(511) * 65536) == std::pair(1, 1), "zone of a positive position");
-        check(serverZoneOf(-1, -65537) == std::pair(0, 0), "negative positions truncate toward zero");
-        check(serverZoneOf(int64_t(-257) * 65536, 0) == std::pair(-1, 0), "zone -1 only below block -256");
+        check(zoneForRawPosition(int64_t(300) * 65536, int64_t(511) * 65536) == std::pair(1, 1), "zone of a positive position");
+        check(zoneForRawPosition(-1, -65537) == std::pair(0, 0), "negative positions truncate toward zero");
+        check(zoneForRawPosition(int64_t(-257) * 65536, 0) == std::pair(-1, 0), "zone -1 only below block -256");
+        constexpr int64_t wrap = int64_t{1} << 48;
+        check(zoneForRawPosition(wrap + 256 * 65536, wrap - 257 * 65536) == std::pair(1, -1),
+              "request zones use the signed low 32 bits of the block quotient");
+        constexpr uint32_t start = 0xfffffff0u;
+        uint32_t stamp = start;
+        check(!requestSnapshotDue(start + 1000u, stamp) && stamp == start,
+              "an elapsed 1000 ms across clock wrap does not admit a request turn");
+        check(requestSnapshotDue(start + 1001u, stamp) && stamp == start + 1001u,
+              "an admitted request turn advances the timestamp whether entries exist or not");
+        const auto advanced = stamp;
+        check(!requestSnapshotDue(advanced + 0x80000000u, stamp) && stamp == advanced,
+              "the elapsed comparison interprets the wrapping difference as signed");
     }
     // Net server §2.2: one zone per pass, nearest first; ties by request order, x, then y.
     {
@@ -999,9 +1080,9 @@ int main() {
         drop[0] = 3, drop[0x0d] = 1;
         drop[0x128] = 6;
         a.sendItemRequest(drop);
+        a.requestZones(std::array{aliceZone});
         int32_t index = -1;
         check(waitFor([&] {
-                  a.requestZones({{zx, zy}});
                   for (const auto &[key, records] : a.takeZoneItems())
                       if (key == std::make_pair(zx, zy))
                           for (size_t k = 0; k < records.size(); k++)
@@ -1010,6 +1091,7 @@ int main() {
                   return index >= 0;
               }),
               "the dropped sword lies in Alice's zone");
+        a.requestZones({});
         std::array<uint8_t, 300> pick{};
         const int32_t target[3] = {zx, zy, index};
         std::memcpy(&pick[0x118], target, 12);
@@ -1104,18 +1186,44 @@ int main() {
                     }
         }
         check(orderedSolids, "section 1 contains the 500 solid voxels in model traversal order");
-        b.requestZones({{zx, zy}});
-        check(waitFor([&] { return collectSlab(replayed); }, 15000) && replayed == placed,
+        const Client::ZonePlacements expectedSnapshot{{zx, zy}, {{0, base[0], base[1], base[2]}}};
+        const auto hasPlacement = [&](Client &peer) {
+            const auto snapshots = peer.takeZonePlacements();
+            return std::find(snapshots.begin(), snapshots.end(), expectedSnapshot) != snapshots.end();
+        };
+        bool placerSaw = false, distantPeerSaw = false;
+        check(waitFor([&] {
+                  placerSaw |= hasPlacement(a);
+                  distantPeerSaw |= hasPlacement(b);
+                  return placerSaw && distantPeerSaw;
+              }), "the dedicated placement broadcasts the section-8 list to both peers, including the distant peer");
+        const std::pair<int32_t, int32_t> neighbour{zx + 1, zy}, outsideWorld{65536, zy};
+        check(waitFor([&] { return server.block(neighbour.first * 256 + 128, zy * 256 + 128, 0).has_value(); }, 15000),
+              "the adjacent request zone is resident");
+        b.takeZoneItems();
+        b.requestZones(std::array{neighbour, outsideWorld, aliceZone, neighbour});
+        std::vector<std::pair<int32_t, int32_t>> zoneReplies;
+        check(waitFor([&] {
+                  for (const auto &[key, records] : b.takeZoneItems())
+                      zoneReplies.push_back(key);
+                  return collectSlab(replayed) && zoneReplies.size() >= 3;
+              }, 15000) && replayed == placed,
               "the zone request replays the same ordered placement records");
+        b.requestZones({});
+        check(zoneReplies == std::vector{neighbour, aliceZone, neighbour},
+              "zone item replies keep request order and duplicates and omit an invalid zone");
+        check(b.takeZonePlacements().empty(), "packet 11 replays block edits without a placed-object snapshot");
         // Missions §6.2: packet 12 brings the region's 64 cell records in section 13.
         std::vector<std::array<uint8_t, 56>> cells;
+        const std::pair<int32_t, int32_t> region{zx / 64, zy / 64};
+        a.requestRegions(std::array{region});
         check(waitFor([&] {
-                  a.requestRegions({{zx / 64, zy / 64}});
                   for (auto &r : a.takeMissionRecords())
                       cells.push_back(r);
                   return cells.size() >= 64;
               }),
               "a region request brings its 64 cell records");
+        a.requestRegions({});
         int32_t missionCount = 0;
         for (const auto &r : cells)
             missionCount += r[24] != 0;
@@ -1123,8 +1231,7 @@ int main() {
         // Packets §4.4: duplicate requests are not merged; each copy is answered.
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         a.takeMissionRecords();
-        const std::pair<int32_t, int32_t> region{zx / 64, zy / 64};
-        a.requestRegions({region, region});
+        a.requestRegions(std::array{region, region});
         size_t answered = 0;
         check(waitFor([&] {
                   for (auto &r : a.takeMissionRecords()) {
@@ -1135,6 +1242,7 @@ int main() {
                   return answered >= 128;
               }),
               "a repeated region request is answered once per copy");
+        a.requestRegions({});
     }
     {
         uint64_t target = 0;

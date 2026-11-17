@@ -63,8 +63,6 @@ void advanceServerClock(uint32_t &day, uint32_t &timeOfDayMs, int32_t elapsedMs,
 // Net server §2.1 item 4: dt is added to the step's millisecond accumulator; `time` is due when
 // the accumulator before and after fall into different multiples of 10,000 (signed, truncated).
 bool clockSaveDue(int32_t &accumulatorMs, int32_t dtMs);
-// Transport N-8: a player's zone in the server main loop, each division truncating toward zero.
-std::pair<int32_t, int32_t> serverZoneOf(int64_t x, int64_t y);
 // Net server §2.2: the one zone a generation pass makes, the not-loaded zone in 0..65,535 nearest
 // (squared zone distance below 9) some requested zone; ties go to the first found (requests in
 // list order, then x ascending, then y ascending).
