@@ -54,8 +54,7 @@ template <class T> void put(CreatureRecord &r, size_t offset, T value) { std::me
 
 // Simulation §5.5: an NPC's position as its record carries it.
 std::array<int64_t, 3> npcPosition(const creatures::Npc &n) {
-    const glm::dvec3 at = n.body.blocks();
-    return {(int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0), (int64_t)(at.z * 65536.0)};
+    return {n.body.position[0], n.body.position[1], n.body.position[2]};
 }
 
 std::array<int64_t, 3> recordPosition(const CreatureRecord &r) { return {r.position(0), r.position(1), r.position(2)}; }
@@ -69,6 +68,8 @@ CreatureRecord npcRecord(const creatures::Npc &n) {
     r.setMotion(n.body.velocity, n.yaw, n.body.push, n.body.intent);
     r.setAppearance(n.looks);
     r.setFighter(n.fighter);
+    r.setHomeSpawn(n.spawn == creatures::Npc::NO_SPAWN ? std::array<int32_t, 3>{-1, -1, 0}
+                                                        : std::array<int32_t, 3>{n.zone.first, n.zone.second, (int32_t)n.spawn});
     r.bytes[0x50] = n.fighter.controller;
     return r;
 }
@@ -900,18 +901,7 @@ void Server::consumeItemRequests(Connection &sender, creatures::PlayerView &acto
         const glm::dvec3 at = body.blocks();
         switch (request.kind) {
         case ItemRequest::UseItem:
-            if (creatures::itemType(request.item) == 1 && creatures::itemSubtype(request.item) == 7) {
-                npcs.placeBombFixed(body.position, creatures::itemLevel(request.item));
-            } else {
-                const float heal = creatures::itemHeal(creatures::Item::parse(request.item.data()));
-                fighter.health += heal;
-                frame.sounds.push_back({at, 44, 1, 1});
-                creatures::HitRecord hit;
-                hit.target = id;
-                hit.amount = -heal;
-                std::copy_n(body.position, 3, hit.position.begin());
-                frame.emittedHits.push_back(hit);
-            }
+            npcs.useItemRequest(actor, request.item, frame);
             break;
         case ItemRequest::Talk: {
             if (x == -2) { // Engine quest prisoner interaction.
@@ -942,9 +932,7 @@ void Server::consumeItemRequests(Connection &sender, creatures::PlayerView &acto
             put(sender.creature, 0x05c, fighter.actionMs);
             break;
         case ItemRequest::PickUp: {
-            int32_t manaCounter;
-            std::memcpy(&manaCounter, &sender.creature.bytes[0x1154], sizeof manaCounter);
-            items.pickUpFixed(x, y, index, body.position, manaCounter, [&](const creatures::ItemRecord &item) {
+            items.pickUpFixed(x, y, index, body.position, sender.creature.manaCubeCounter(), [&](const creatures::ItemRecord &item) {
                 frame.grants.push_back({id, item});
                 frame.sounds.push_back({at, 45, (float)draw() * 0.1f / 32767.f + 1.f, 1});
             });
@@ -1001,7 +989,7 @@ void Server::stepWorld(float dtMs) {
     std::vector<creatures::PlayerView> players;
     for (size_t i = 0; i < fighters.size(); i++) {
         players.push_back({fighters[i], bodies[i], who[i]->creature.yaw(), fighters[i].actionMs, false, true});
-        std::memcpy(players.back().home.data(), &who[i]->creature.bytes[0x1a0], sizeof(int32_t) * 3);
+        players.back().home = who[i]->creature.homeSpawn();
     }
 
     // §6.1: a hit on a player is relayed for that player's client to apply; one on an NPC is
@@ -1091,13 +1079,13 @@ void Server::stepWorld(float dtMs) {
                         .empty();
         };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };
-        npcs.sit = [this](creatures::Npc &n, const creatures::Seat &s) {
-            if (const worldgen::Zone *zone = zones.zone(s.zx, s.zy)) {
-                std::vector<creatures::SoundEvent> ignored;
+        npcs.sit = [this](creatures::Npc &n, const creatures::Seat &s, creatures::NpcFrame &frame) {
+            if (n.fighter.action == 79)
+                n.fighter.action = 0, n.fighter.stealth = 0;
+            if (const worldgen::Zone *zone = zones.zone(s.zx, s.zy))
                 statics.use(*zone, s.index, n.fighter, n.body, n.yaw, items, (int32_t)clockDay,
                             [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); },
-                            [this] { return worldRandom.draw(); }, ignored);
-            }
+                            [this] { return worldRandom.draw(); }, frame.sounds, &frame.staticStates);
         };
     }
     if (!missions.wildlife)

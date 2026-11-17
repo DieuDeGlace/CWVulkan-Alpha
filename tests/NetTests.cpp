@@ -5,6 +5,7 @@
 #include "ZlibStream.h"
 #include "Saves.h"
 #include "net/Client.h"
+#include "ItemRequest.h"
 #include "net/Server.h"
 #include <chrono>
 #include <atomic>
@@ -191,6 +192,12 @@ static void checkClientPackets() {
         auto frame = client.lockFrame();
         client.sendHit(Hit::make(1, 19, 1, 0, {}, 0));
         client.sendItemRequest({});
+        client.sendItemRequest(ItemRequest{ItemRequest::UseStatic, {}, {1, 2, 3}}.packet());
+        client.sendItemRequest(ItemRequest{ItemRequest::CallPet}.packet());
+        client.sendItemRequest(ItemRequest{ItemRequest::UseStatic, {}, {3, 2, 1}}.packet());
+        const std::vector<std::array<int32_t, 3>> expected{{1, 2, 3}, {3, 2, 1}};
+        check(client.pendingStaticRequests() == expected && client.pendingStaticRequests() == expected,
+              "online frame sampling keeps the pending static subsequence on the sender's queue");
     }
     check(waitFor([&] {
         const auto others = client.others();

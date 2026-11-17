@@ -837,9 +837,13 @@ Differences from the Steam engine that shape the plan:
   attempts share the drop helper and its conditional draw. Pickup pitch follows
   the gift append and precedes item erasure. Bombs copy fixed position and
   signed level and keep the constructor's 500 health until their first turn.
-- [ ] Client packet-6 sender turns.
-  Move offline producers onto the shared actor-turn boundary and preserve the
-  connected sender's one-record pacing. Reconcile the input and result phases.
+- [x] Client packet-6 sender turns (`alpha-packet6-client-queue.md`).
+  Inventory mouse callbacks reach the first eligible piece. Supported gameplay
+  producers append after the world pieces. Offline pickups are granted at the
+  actor turn and results play after all pieces. Connected static requests keep
+  their position in the one-record-per-iteration sender queue.
+- [ ] Complete native client blueprint and local runestone request handling.
+  The quick-item wheel and original-client acceptance also remain open.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

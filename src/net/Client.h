@@ -48,6 +48,9 @@ class Client {
     void sendShoot(const std::array<uint8_t, 112> &record);
     // Queues an interaction request, sent as packet 6, one per tick (server simulation §8).
     void sendItemRequest(const std::array<uint8_t, 300> &record);
+    // The connected simulation can observe the static subset without removing
+    // a record from the sender's FIFO. Call while holding the frame gate.
+    std::vector<std::array<int32_t, 3>> pendingStaticRequests() const;
     // Asks for zones' data (packet 11; the server answers with their item lists).
     void requestZones(const std::vector<std::pair<int32_t, int32_t>> &zones);
     // Asks for regions' map-cell records (packet 12; answered in section 13).

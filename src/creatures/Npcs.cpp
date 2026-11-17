@@ -596,6 +596,21 @@ uint64_t Npcs::placeBombFixed(const int64_t (&position)[3], int32_t level) {
     return id;
 }
 
+void Npcs::useItemRequest(PlayerView &actor, const ItemRecord &item, NpcFrame &frame) {
+    if (itemType(item) == 1 && itemSubtype(item) == 7) {
+        placeBombFixed(actor.body.position, itemLevel(item));
+        return;
+    }
+    const float heal = itemHeal(Item::parse(item.data()));
+    actor.fighter.health += heal;
+    frame.sounds.push_back({actor.body.blocks(), 44, 1, 1});
+    HitRecord hit;
+    hit.target = actor.fighter.id;
+    hit.amount = -heal;
+    std::copy_n(actor.body.position, 3, hit.position.begin());
+    frame.emittedHits.push_back(hit);
+}
+
 void Npcs::appendNpc(Npc npc) {
     list.push_back(std::move(npc));
     Npc &added = list.back();
@@ -914,12 +929,12 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
             goal.z -= 1;
         n.path.start(feetPlusHalf(n.body), goal, 2, n.body.size);
     }
-    // Steps 6-7: walk, and take the seat within 3 blocks of the creature's centre.
+    // Within 3 blocks, append the action for this actor's next request pass.
     if (n.path.searching())
         n.path.rounds(n.body.size, 2, block);
     const glm::dvec3 d = centre - n.seat.at;
     if (glm::dot(d, d) < 9) {
-        sit(n, n.seat);
+        n.pendingSeat = n.seat;
         n.path.clear();
         n.seat.index = -1;
         n.body.intent = glm::vec3(0);
@@ -2610,6 +2625,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         if (!actor.npc)
             continue;
         Npc &npc = *actor.npc;
+        if (const auto request = std::exchange(npc.pendingSeat, std::nullopt); request && sit)
+            sit(npc, *request, frame);
         npc.path.records = routeRecords;
         npc.path.columns = routeColumns;
         npc.path.activate = routeActivate;

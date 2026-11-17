@@ -1801,3 +1801,18 @@ ordered effects for interleaved heals, a rejected pickup and a drop.
 
 The Windows x64 build, five focused suites and the full 60-suite CTest
 run passed. Original-client runtime order and visual acceptance remain open.
+
+## Client packet-6 frame boundaries (2026-11-17)
+
+SimulationFrameTests verifies that the inventory callback's bomb reaches
+the first of several world pieces. Later chest, drop and pickup inputs
+stay queued until the next frame. The fixture checks their exact draw
+count, the order of the sounds and gift, and the new item's landing timer.
+CreatureTests verifies a resident's next-piece seat request and the connected
+static gate. NetTests verifies the static snapshot preserves the sender's
+pending queue and exercises the mixed dedicated request sequence.
+
+The Windows x64 build and all 60 CTest suites passed. The initial focused
+loopback run missed its placement deadline. It passed in isolation and in
+the full suite. The full run included live Vulkan water and zone comparison.
+Native client timing, graphics and physical controller acceptance remain open.

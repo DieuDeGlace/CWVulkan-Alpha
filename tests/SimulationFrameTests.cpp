@@ -1,4 +1,5 @@
 #include "SimulationFrame.h"
+#include "ItemRequest.h"
 #include "Saves.h"
 #include "StaticStates.h"
 #include "WorldItems.h"
@@ -414,6 +415,93 @@ int main() {
         useBoundAbilities(actor, body, bindings.values(), {true, false, false, false, false, false}, {});
         check(bindings.values()[0] == 6 && actor.action == 22,
               "ordinary primary fallback selects from current state rather than the captured bar entry");
+    }
+    {
+        worldgen::WorldMap map;
+        auto zone = std::make_shared<worldgen::Zone>(0, 0);
+        worldgen::StaticObject chest;
+        chest.kind = 10;
+        chest.state = 2;
+        chest.x = chest.y = 10ll << 16;
+        chest.z = 3ll << 16;
+        chest.contents.resize(1);
+        chest.contents.front().type = 11;
+        chest.contents.front().level = 1;
+        zone->statics.push_back(chest);
+        map.add(zone);
+        StaticStates statics;
+        statics.generated(*zone);
+        WorldItems items;
+        items.generated(*zone);
+        worldgen::Random random{73};
+        Npcs npcs{random};
+        Combatant fighter;
+        fighter.id = 1;
+        Body body;
+        body.place({10, 10, 3});
+        const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 2 ? 1 : 0); };
+        const auto draw = [&] { return random.draw(); };
+        ItemRecord bomb{}, sword{};
+        bomb[0] = 1;
+        bomb[1] = 7;
+        setItemLevel(bomb, 1);
+        sword[0] = 3;
+        setItemLevel(sword, 1);
+        const ItemRequest inventoryClick{ItemRequest::UseItem, bomb};
+        check(inventoryClick.packet()[0x12a] == 1 && ItemRequest::parse(inventoryClick.packet()).target ==
+              std::array<int32_t, 3>{-1, -1, -1}, "packet 6 preserves the native default target and final word");
+        std::vector<ItemRequest> pending{inventoryClick};
+        std::vector<ItemRequest::Kind> consumed;
+        const auto piece = [&](int32_t dt, NpcFrame &output) {
+            npcs.stepInto((float)dt, map, {{fighter, body, 0, 0, false}}, 1000, 9, floor, output, {}, {}, {},
+                [&](PlayerView &actor) {
+                    for (const auto &request : pending) {
+                        consumed.push_back(request.kind);
+                        switch (request.kind) {
+                        case ItemRequest::UseItem:
+                            npcs.useItemRequest(actor, request.item, output);
+                            break;
+                        case ItemRequest::UseStatic:
+                            statics.use(*zone, request.target[2], fighter, body, actor.yaw, items, 9, floor, draw,
+                                        output.sounds, &output.staticStates);
+                            break;
+                        case ItemRequest::Drop:
+                            items.drop(request.item, body.position, 1.f, 9, floor, draw);
+                            output.sounds.push_back({body.blocks(), 57, 1, 1});
+                            break;
+                        case ItemRequest::PickUp:
+                            items.pickUpFixed(0, 0, request.target[2], body.position, 0, [&](const ItemRecord &item) {
+                                output.grants.push_back({fighter.id, item});
+                                output.sounds.push_back({body.blocks(), 45, (float)draw() * 0.1f / 32767.f + 1.f, 1});
+                            });
+                            break;
+                        default:
+                            break;
+                        }
+                    }
+                    pending.clear();
+                }, [&](int32_t elapsed, std::span<PlayerView>) { items.step(elapsed, true, floor, draw, output.sounds); });
+        };
+        NpcFrame frame;
+        simulation::clientFrame(45, true, frame, piece, [&](NpcFrame &) {
+            check(consumed == std::vector<ItemRequest::Kind>{ItemRequest::UseItem} &&
+                  npcs.all().size() == 1 && npcs.all().front().fighter.health == 99.375f && random.count() == 5,
+                  "the inventory callback bomb reaches the first piece and is burned on the later pieces");
+            pending = {{ItemRequest::UseStatic, {}, {0, 0, 0}}, {ItemRequest::Drop, sword},
+                       {ItemRequest::PickUp, {}, {0, 0, 0}}};
+        });
+        check(frame.sounds.empty() && consumed.size() == 1, "late frame inputs wait after all 45 ms of pieces");
+        simulation::clientFrame(20, true, frame, piece, [&](NpcFrame &output) {
+            check(consumed == std::vector<ItemRequest::Kind>{ItemRequest::UseItem, ItemRequest::UseStatic,
+                  ItemRequest::Drop, ItemRequest::PickUp} && random.count() == 13,
+                  "next sender turn preserves the mixed FIFO and its eight draws");
+            const auto *list = items.zone(0, 0);
+            check(list && list->size() == 1 && itemType(list->front().item) == 3 && list->front().landingMs >= 500 &&
+                  output.grants.size() == 1 && itemType(output.grants.front().item) == 11,
+                  "pickup observes the chest item before the sword and its own piece leaves the new timer untouched");
+            check(output.sounds.size() == 3 && output.sounds[0].sound == 54 && output.sounds[1].sound == 57 &&
+                  output.sounds[2].sound == 45, "frame results retain the actor's sound order");
+        });
     }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

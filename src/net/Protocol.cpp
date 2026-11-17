@@ -63,6 +63,11 @@ constexpr size_t EQUIPMENT = 0x2f0, ITEM_SIZE = 0x118;
 
 } // namespace
 
+std::array<int32_t, 3> CreatureRecord::homeSpawn() const { return get<std::array<int32_t, 3>>(bytes, 0x1a0); }
+void CreatureRecord::setHomeSpawn(const std::array<int32_t, 3> &home) { put(bytes, 0x1a0, home); }
+int32_t CreatureRecord::manaCubeCounter() const { return get<int32_t>(bytes, 0x1154); }
+void CreatureRecord::setManaCubeCounter(int32_t counter) { put(bytes, 0x1154, counter); }
+
 CreatureRecord CreatureRecord::nativeDefaults() {
     // alpha-network-creature-state-defaults.md. No stat queries or random draws.
     // Zeroing unspecified bytes is an engine choice, not a native byte-parity claim.

@@ -70,6 +70,7 @@ struct Npc {
     // RandomInteraction §4.2: its timer and the seat it is bound for (index -1: none).
     float interactMs = 0;
     Seat seat;
+    std::optional<Seat> pendingSeat;
     // AlphaVulkan's quests (docs/design/quests.md): the quest it belongs to, its role there
     // (quests::Role: 1 enemy, 2 prisoner, 3 ally), and for a freed prisoner the time left
     // before it is gone (ms; negative: staying).
@@ -353,7 +354,7 @@ class Npcs {
     // Open points 2 §1: the statics the path search sees (left empty: none).
     std::function<Seats(glm::ivec3 block, double timeOfDayMs)> seats;
     std::function<bool(const Seat &)> seatFree;
-    std::function<void(Npc &, const Seat &)> sit;
+    std::function<void(Npc &, const Seat &, NpcFrame &)> sit;
     // Physics §3.3: whether a hostile creature is in contact range of `fighter` (its lunge stops).
     bool hostileInContact(const Combatant &fighter, const Body &body) const;
     // Pets and bombs §3: a bomb (type 144, controller 6) at the placing player's position
@@ -362,6 +363,7 @@ class Npcs {
     // goes off on its first dead step (§4). Its id is one below the smallest in use. Returns it.
     uint64_t placeBomb(glm::dvec3 at, int32_t level);
     uint64_t placeBombFixed(const int64_t (&position)[3], int32_t level);
+    void useItemRequest(PlayerView &actor, const ItemRecord &item, NpcFrame &frame);
     // Pets §13 (packet 6 kind 8, the T key): the owner's pet stops fighting and, more than
     // 200 blocks away, comes to `at`.
     void callPet(Combatant &owner, glm::dvec3 at);

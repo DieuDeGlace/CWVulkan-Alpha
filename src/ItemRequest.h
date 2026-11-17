@@ -12,13 +12,14 @@ struct ItemRequest {
 
     Kind kind;
     creatures::ItemRecord item{};
-    std::array<int32_t, 3> target{};
+    std::array<int32_t, 3> target{-1, -1, -1};
 
     Packet packet() const {
         Packet bytes{};
         std::memcpy(bytes.data(), item.data(), item.size());
         std::memcpy(bytes.data() + 0x118, target.data(), 12);
         bytes[0x128] = kind;
+        bytes[0x12a] = 1;
         return bytes;
     }
 

@@ -3113,3 +3113,32 @@ Active zones retain the engine's zone-key order. Trap target snapshots, remote
 player movement ownership and blueprint terrain finalization retain engine
 adapters. Inherited native-client playback and the new offline sender-turn path
 remain separate reconciliation and acceptance work.
+
+## Client packet-6 append and result phases (2026-11-17)
+
+An isolated source author finalized [the client queue contract](specs/alpha-packet6-client-queue.md)
+(`8c9e544b59f227f40fae27d5b8add45155362b152e46ce18d0dade8d0776ee2f`).
+The clean team verified the hash and read the entire held contract. The
+bomb-default ruling and sender-turn contract govern the five initializer
+draws and shared authority handlers. The fixed species branch itself adds
+zero draws.
+
+The inventory mouse path delivers its consumable uses before the world
+pieces. Supported frame producers append after the pieces in Q, drop,
+talk, generic static, pickup and pet order. Offline requests share one
+mixed FIFO and consume at the controlled actor's signed key. A resident's
+furniture behavior leaves its static request for that resident's next piece
+on both authority hosts. Ordinary consumable use continues to start
+actions 80 and 81. Ordinary local pickup stores the item before the pitch
+draw and erasure, then grant handling and world sound playback run once
+after the pieces. Newly dropped timers first count down in a subsequent piece. Changed zone
+lists are saved after the piece that changed them.
+
+The connected client samples permitted pending static actions at the
+controlled actor's turn and retains one-request-per-iteration transport.
+The engine publishes NPC home triples and the local mana-cube counter.
+Online seats follow an authoritative occupancy update. The engine's
+initial quick-use selection uses the first eligible item while the full
+selection wheel remains open work. The queued local-only runestone branch,
+stock blueprint activation, blueprint placement in offline play, full
+native input admission and original-client runtime acceptance remain open.

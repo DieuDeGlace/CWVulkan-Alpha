@@ -2952,16 +2952,20 @@ int main() {
             return out;
         };
         npcs.seatFree = [&](const Seat &) { return !taken; };
-        npcs.sit = [&](Npc &n, const Seat &) {
+        npcs.sit = [&](Npc &n, const Seat &, NpcFrame &) {
             taken = true;
             n.fighter.action = 83;
             sat++;
         };
-        bool satDown = false, stoodUp = false;
+        bool satDown = false, stoodUp = false, queued = false, satPendingRequest = false;
         for (int i = 0; i < 2500; i++) { // 40 s at noon
+            const bool pending = !npcs.all().empty() && npcs.all().front().pendingSeat.has_value();
+            const int before = sat;
             npcs.step(16, map, {{me, body, 0, me.actionMs}}, 12 * 3600000.0, 0, flat);
             if (npcs.all().empty())
                 continue;
+            queued |= npcs.all().front().pendingSeat.has_value() && sat == before;
+            satPendingRequest |= pending && sat > before;
             const int32_t action = npcs.all()[0].fighter.action;
             satDown = satDown || action == 83;
             stoodUp = stoodUp || (satDown && action == 0);
@@ -2969,6 +2973,7 @@ int main() {
         same(satDown, 1, "the resident sat on the bench");
         same(stoodUp, 1, "and stood up after its 20 s");
         same(sat, 1, "it sat once (20 s of rest after standing)");
+        same(queued && satPendingRequest, 1, "the resident's request drains the piece after its behavior appended it");
     }
 
     // Trails spec §3.6: a town builder's mission creature runs Combat, then WalkPath (r = 2)
@@ -4231,6 +4236,17 @@ int main() {
         body.size.z = 1.8f;
         float yaw = 0;
         std::vector<SoundEvent> sounds;
+        me.action = 79;
+        me.stealth = 1;
+        int onlineDraws = 0;
+        const auto onlineDraw = [&] { return ++onlineDraws; };
+        statics.use(zone, 0, me, body, yaw, items, 0, ground, onlineDraw, sounds, nullptr, false);
+        same(me.action == 0 && me.stealth == 0 && onlineDraws == 0 && sounds.empty() &&
+             (*statics.zone(0, 0))[0].state == 2, 1, "the connected static request clears stealth without opening the chest");
+        body.intent = {1, 0, 0};
+        statics.use(zone, 2, me, body, yaw, items, 0, ground, onlineDraw, sounds, nullptr, false);
+        same(body.intent == glm::vec3(0) && me.action == 0 && (*statics.zone(0, 0))[2].occupant == 0,
+             1, "the connected free seat clears intent while leaving the claim to authority");
         const auto use = [&](int32_t k) {
             sounds.clear();
             statics.use(zone, k, me, body, yaw, items, 0, ground, [] { return 16383; }, sounds);

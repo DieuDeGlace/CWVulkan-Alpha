@@ -1,4 +1,5 @@
 #include "net/Client.h"
+#include "ItemRequest.h"
 #include "Bytes.h"
 #include "ZlibStream.h"
 #include <bit>
@@ -71,6 +72,7 @@ void Client::disconnect() {
     relationshipEvents.clear();
     credits.clear();
     outgoingEvents.clear();
+    outgoingItems.clear();
     haveClock = false;
     pendingClock.reset();
     sentOnce = false;
@@ -104,6 +106,15 @@ void Client::sendShoot(const std::array<uint8_t, 112> &record) {
 void Client::sendItemRequest(const std::array<uint8_t, 300> &record) {
     std::lock_guard guard(lock);
     outgoingItems.push_back(record);
+}
+
+std::vector<std::array<int32_t, 3>> Client::pendingStaticRequests() const {
+    std::lock_guard guard(lock);
+    std::vector<std::array<int32_t, 3>> targets;
+    for (const auto &packet : outgoingItems)
+        if (packet[0x128] == ItemRequest::UseStatic)
+            targets.push_back(ItemRequest::parse(packet).target);
+    return targets;
 }
 
 void Client::requestZones(const std::vector<std::pair<int32_t, int32_t>> &zones) {

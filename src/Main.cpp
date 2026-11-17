@@ -23,6 +23,7 @@
 #include "Install.h"
 #include "OwnerContent.h"
 #include "GenerationProfile.h"
+#include "ItemRequest.h"
 #include "Mods.h"
 #include "Renderer.h"
 #include "CreatureView.h"
@@ -663,13 +664,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const auto &column = zone->column(x, y);
         return creatures::route::Column{column.bottom, int32_t(column.blocks.size()), std::as_bytes(std::span(column.blocks))};
     };
-    npcs.sit = [&](creatures::Npc &n, const creatures::Seat &s) {
-        if (const worldgen::Zone *zone = view.held().zone(s.zx, s.zy)) {
-            std::vector<creatures::SoundEvent> ignored;
-            statics.use(*zone, s.index, n.fighter, n.body, n.yaw, worldItems, 0, // (the day matters only for chests)
+    npcs.sit = [&](creatures::Npc &n, const creatures::Seat &s, creatures::NpcFrame &frame) {
+        if (n.fighter.action == 79)
+            n.fighter.action = 0, n.fighter.stealth = 0;
+        if (const worldgen::Zone *zone = view.held().zone(s.zx, s.zy))
+            statics.use(*zone, s.index, n.fighter, n.body, n.yaw, worldItems, 0,
                         [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                        [&] { return worldRandom.draw(); }, ignored);
-        }
+                        [&] { return worldRandom.draw(); }, frame.sounds, &frame.staticStates);
     };
     // Behaviour §9.2 step 6: in a cell with a dungeon mission (kind 5) the location's creatures
     // take the mission's level and tier, and its boss becomes the target.
@@ -774,18 +775,31 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // only the engine's unsaved diagnostic character needs a first-frame grant.
     int32_t grantedLevel = 0;
     double lastZoneRequest = -1;
-    // Server simulation §8: a packet-6 request (an item, a target, a kind).
-    const auto itemRequest = [](const creatures::ItemRecord &item, std::array<int32_t, 3> target, uint8_t kind) {
-        std::array<uint8_t, 300> r{};
-        std::memcpy(r.data(), item.data(), 280);
-        std::memcpy(r.data() + 0x118, target.data(), 12);
-        r[0x128] = kind;
-        return r;
+    std::vector<ItemRequest> offlineItemRequests;
+    const auto queueItemRequest = [&](ItemRequest request) {
+        if (client.connected())
+            client.sendItemRequest(request.packet());
+        else
+            offlineItemRequests.push_back(std::move(request));
+    };
+    const auto useConsumable = [&](const creatures::ItemRecord &item) {
+        const uint8_t subtype = creatures::itemSubtype(item);
+        if (subtype == 7) {
+            queueItemRequest({ItemRequest::UseItem, item});
+            return;
+        }
+        auto &fighter = player->combat();
+        fighter.action = subtype == 1 || subtype == 2 ? 80 : 81;
+        fighter.actionMs = 0;
+        fighter.dodgeMs = 0;
+        player->body().dodgeMs = 0;
+        fighter.copyHeld(item);
     };
     // Interaction §2.4: the world item E would pick up, (zone x, zone y, index).
     std::optional<std::array<int32_t, 3>> itemTarget;
     bool eWasDown = false;
     bool tWasDown = false; // pets §13: T calls the pet back
+    bool qWasDown = false;
     if (options.walk) {
         creatures::Appearance looks;
         int32_t type = 2;
@@ -1017,6 +1031,81 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         interface.chatAdd("You receive ", {255, 255, 255});
         interface.chatAdd(receivedText(got, dictionary), type == 12 ? glm::vec3(255) : creatures::nameColour(got) * 255.f);
         interface.chatAdd(".\n", {255, 255, 255});
+    };
+    const auto receiveGrant = [&](const creatures::ItemRecord &item, bool store) {
+        receive(item, store);
+        auto &fighter = player->combat();
+        switch (creatures::itemType(item)) {
+        case 13:
+            fighter.experience = std::bit_cast<int32_t>(uint32_t(fighter.experience) +
+                                                        uint32_t(10 * int32_t(creatures::itemLevel(item))));
+            break;
+        case 25:
+            fighter.action = 109;
+            fighter.actionMs = 0;
+            break;
+        default:
+            break;
+        }
+    };
+    const creatures::BlockType worldBlock = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
+    const auto worldDraw = [&] { return worldRandom.draw(); };
+    const auto useStaticRequest = [&](const std::array<int32_t, 3> &target, bool authoritative, creatures::NpcFrame &frame) {
+        auto &fighter = player->combat();
+        const auto [x, y, index] = target;
+        if (const auto *zone = view.held().zone(x, y))
+            statics.use(*zone, index, fighter, player->body(), player->facing(), worldItems, scene.day, worldBlock,
+                        worldDraw, frame.sounds, &frame.staticStates, authoritative);
+        else if (fighter.action == 79)
+            fighter.action = 0, fighter.stealth = 0;
+    };
+    const auto consumeOfflineItemRequests = [&](creatures::PlayerView &actor, creatures::NpcFrame &frame) {
+        auto &fighter = actor.fighter;
+        const auto &body = actor.body;
+        for (const ItemRequest &request : offlineItemRequests) {
+            const auto [x, y, index] = request.target;
+            const glm::dvec3 at = body.blocks();
+            switch (request.kind) {
+            case ItemRequest::UseItem:
+                npcs.useItemRequest(actor, request.item, frame);
+                break;
+            case ItemRequest::Talk:
+                if (npcs.innRestAvailable(request.target)) {
+                    scene.day = std::bit_cast<int32_t>(uint32_t(scene.day) + 1u);
+                    scene.timeOfDayMs = 7 * 3600000.0;
+                    if (session) {
+                        session->clock.day = (uint32_t)scene.day;
+                        session->clock.timeOfDayMs = 7 * 3600000u;
+                    }
+                    frame.sounds.push_back({at, 29, 1, 0.75f});
+                    npcs.restAll(view.held());
+                    missions.clearGenerated();
+                }
+                break;
+            case ItemRequest::UseStatic:
+                useStaticRequest(request.target, true, frame);
+                actor.yaw = player->facing();
+                break;
+            case ItemRequest::PickUp:
+                worldItems.pickUpFixed(x, y, index, body.position, manaCubes, [&](const creatures::ItemRecord &item) {
+                    frame.grants.push_back({fighter.id, item});
+                    if (creatures::itemType(item) != 25)
+                        inventory.add(item);
+                    frame.sounds.push_back({at, 45, (float)worldDraw() * 0.1f / 32767.f + 1.f, 1});
+                });
+                break;
+            case ItemRequest::Drop:
+                worldItems.drop(request.item, body.position, 1.f, scene.day, worldBlock, worldDraw);
+                frame.sounds.push_back({at, 57, 1, 1});
+                break;
+            case ItemRequest::CallPet:
+                npcs.callPetFixed(fighter, body.position);
+                break;
+            default:
+                break;
+            }
+        }
+        offlineItemRequests.clear();
     };
     interface.itemModel = [&](const creatures::ItemRecord &record) {
         const uint16_t slot = creatures::itemModel(creatures::Item::parse(record.data()));
@@ -1971,39 +2060,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         c.action = 0;
                         interface.gliderEquipped = false;
                     }
-                    // §8.1.10: drinking (80) or eating (81) a consumable; the action step heals
-                    // (item names §9). A bomb (subtype 7) is placed at the player's feet: by the
-                    // server online (packet 6 kind 1), here offline (server §8 kind 1).
-                    for (const creatures::ItemRecord &item : interface.itemsToUse)
-                        if (creatures::itemSubtype(item) == 7) {
-                            if (client.connected())
-                                client.sendItemRequest(itemRequest(item, {0, 0, 0}, 1));
-                            else
-                                npcs.placeBomb(player->body().blocks(), creatures::itemLevel(item));
-                        } else {
-                            const uint8_t sub = creatures::itemSubtype(item);
-                            c.action = sub == 1 || sub == 2 ? 80 : 81;
-                            c.actionMs = 0;
-                            c.copyHeld(item);
-                        }
-                    interface.itemsToUse.clear();
-                }
-                {
-                    const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
-                    if (input.dropOne) {
-                        input.dropOne = false;
-                        if (const auto item = inventory.dropOne()) {
-                            // Online the server drops it (packet 6 kind 6) and sends the zone's list.
-                            if (client.connected()) {
-                                client.sendItemRequest(itemRequest(*item, {0, 0, 0}, 6));
-                            } else {
-                                // Ruling audio-ui-sounds 3: dropping plays no sound directly; the
-                                // world item's countdown record (0x3a / 0x3b) sounds later.
-                                worldItems.drop(*item, player->body().blocks() - glm::dvec3(0, 0, player->body().size.z / 2),
-                                                1, scene.day, block, [&] { return worldRandom.draw(); });
-                            }
-                        }
-                    }
                 }
             };
             const auto publishPlayerEffects = [&] {
@@ -2018,6 +2074,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 for (const creatures::BuffEvent &b : effects.buffs)
                     sendBuff(b);
             };
+            // Inventory mouse-down callbacks precede the world pieces.
+            for (const auto &item : interface.itemsToUse)
+                useConsumable(item);
+            interface.itemsToUse.clear();
             // Select concrete bindings once before all world pieces. Later
             // equipment, action-clock and skill changes do not rebuild this list.
             player->refreshAbilityBindings();
@@ -2039,6 +2099,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         refreshReceivedLinks();
                     else
                         refreshAirships();
+                    if (firstWorldCall) {
+                        std::vector<WorldItems::Key> gone;
+                        for (const auto &[key, items] : worldItems.all())
+                            if (!view.held().zone(key.first, key.second))
+                                gone.push_back(key);
+                        for (const auto &[zx, zy] : gone) {
+                            worldItems.forget(zx, zy);
+                            statics.forget(zx, zy);
+                            blockEdits.forget(zx, zy);
+                        }
+                    }
                     const auto advancePlayer = [&](int32_t actorElapsed) {
                         // Physics §4.4: living creatures of kind 1 or 6 push the player (kind 0), the
                         // overlap on their box enlarged by (1, 1, 0) unless kind 6, the push scaled by
@@ -2084,22 +2155,97 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
 
                     };
-                    if (client.connected())
-                        creatures::visitReceivedActors(otherFighters, player->combat().id,
-                            [&] { advancePlayer(elapsed); }, [&](net::RemoteFighter &remote) {
-                                if (remote.fighter.health > 0)
-                                    creatures::tickBuffs(remote.fighter, elapsed, false);
+                    const auto advanceStaticState = [&](int32_t dt, std::span<creatures::PlayerView> players) {
+                        std::map<StaticStates::Key, const worldgen::Zone *> held;
+                        for (const auto &[key, zone] : view.held().zones())
+                            held[key] = zone.get();
+                        statics.step(dt,
+                                     [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
+                                         if (id == player->combat().id) {
+                                             at = player->body().blocks();
+                                             intent = player->body().intent;
+                                             action = player->combat().action;
+                                             stun = player->combat().hitStun;
+                                             return true;
+                                         }
+                                         for (const creatures::Npc &n : npcs.npcs()) // seated residents
+                                             if (n.fighter.id == id && n.fighter.health > 0) {
+                                                 at = n.body.blocks();
+                                                 intent = n.body.intent;
+                                                 action = n.fighter.action;
+                                                 stun = n.fighter.hitStun;
+                                                 return true;
+                                             }
+                                         return false;
+                                     },
+                                     held, !client.connected(), // open points 1 §1.6: releases not remote
+                                     // §6.4: the local actor follows its occupied static.
+                                     [&](uint64_t id, glm::dvec3 top, float yaw, int32_t action) -> std::optional<glm::dvec3> {
+                                         const auto seat = [&](creatures::Body &body, creatures::Combatant &who, float &facing) {
+                                             body.place(top + glm::dvec3(0, 0, body.size.z / 2));
+                                             body.velocity = glm::vec3(0);
+                                             facing = yaw;
+                                             who.action = action;
+                                             return body.blocks();
+                                         };
+                                         if (id == player->combat().id)
+                                             return seat(player->body(), player->combat(), player->facing());
+                                         if (client.connected())
+                                             return std::nullopt;
+                                         for (creatures::Npc &n : npcs.npcs())
+                                             if (n.fighter.id == id && n.fighter.health > 0)
+                                                 return seat(n.body, n.fighter, n.yaw);
+                                         return std::nullopt;
+                                     });
+                        // Traps run in the authoritative zone phase before the actor walk.
+                        if (!client.connected()) {
+                            std::vector<StaticStates::Creature> here{{player->combat().id, player->body().blocks(), 0}};
+                            for (const creatures::Npc &n : npcs.all())
+                                if (n.fighter.health > 0)
+                                    here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
+                            std::sort(here.begin(), here.end(), [](const auto &a, const auto &b) {
+                                return creatures::ActorKeyLess{}(a.id, b.id);
                             });
-                    // World items §3: timers and landing sounds, a dropped item from the hand, and the
-                    // zones whose items changed saved.
-                    {
-                        const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
-                        const int32_t dt = elapsed;
-                        std::vector<creatures::SoundEvent> landed;
-                        worldItems.step(dt, !client.connected(), block, [&] { return worldRandom.draw(); }, landed);
+                            const worldgen::World &world = view.terrainWorld();
+                            // Attack-routine site 1: each trap hit runs the attack routine with no
+                            // attacker on the target as it is reached (one discarded draw, the 0.5
+                            // flash, the damage-taken buffs), then lands as before.
+                            const auto trapStrike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push,
+                                                        bool resistance) {
+                                creatures::Combatant *target = nullptr;
+                                if (c.id == player->combat().id)
+                                    target = &player->combat();
+                                else
+                                    for (creatures::Npc &n : npcs.npcs())
+                                        if (n.fighter.id == c.id)
+                                            target = &n.fighter;
+                                if (!target || target->health <= 0)
+                                    return;
+                                const auto in = creatures::trapHitInput(c.at, damage, push, resistance);
+                                glm::vec3 velocity(0);
+                                const auto out = creatures::resolveHit(*target, velocity, nullptr, in,
+                                                                       [&] { return worldRandom.draw(); });
+                                for (const creatures::HitRecord &h : out.records) {
+                                    if (h.target == player->combat().id) {
+                                        player->takeHit(h);
+                                        if (auto text = ui::hitText(h.amount, h.kind, false, false, true, player->body().blocks()))
+                                            interface.floating.push_back(*text);
+                                    } else {
+                                        npcs.applyWorldHit(h, players, aggregate);
+                                        aggregate.seen.push_back({h, c.at});
+                                    }
+                                }
+                            };
+                            statics.traps(dt, here, held,
+                                          [&](glm::dvec3 at) { return world.levelAtFx((int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0)); },
+                                          trapStrike, aggregate.sounds);
+                        }
+                    };
+                    if (client.connected()) {
+                        worldItems.step(elapsed, false, worldBlock, worldDraw, aggregate.sounds);
                         // Online: the zones round the player are asked for once a second (net server
                         // §4.3); their item lists and the player's gifts come back.
-                        if (firstWorldCall && client.connected()) {
+                        if (firstWorldCall) {
                             if (lastZoneRequest < 0 || now - lastZoneRequest >= 1) {
                                 lastZoneRequest = now;
                                 const glm::dvec3 me = player->body().blocks();
@@ -2146,109 +2292,19 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 edits.push_back(BlockEdit::parse(record.data()));
                             if (!edits.empty())
                                 view.applyEdits(edits, false);
-                            for (const auto &gift : client.takeGifts()) {
-                                creatures::ItemRecord got;
-                                std::memcpy(got.data(), gift.data(), 280);
-                                receive(got);
-                                // Packets §3.6, after the inventory: a type-13 item adds ten times its
-                                // field 0x10 to record field 34; a type-25 one sets record 0x58 to 0x6d
-                                // and 0x5C to 0. (Other creatures' type-25 records are not modelled.)
-                                creatures::Combatant &c = player->combat();
-                                const uint8_t type = creatures::itemType(got);
-                                if (type == 13)
-                                    c.experience = std::bit_cast<int32_t>(uint32_t(c.experience) +
-                                                                          uint32_t(10 * int32_t(creatures::itemLevel(got))));
-                                else if (type == 25)
-                                    c.action = 0x6d, c.actionMs = 0;
-                            }
                         }
-                        for (const creatures::SoundEvent &s : landed)
-                            playAt(s.sound, s.position, s.volume, s.pitch);
-                        // Interaction §6.3, §6.4: the statics' timers, and seats freed.
-                        std::map<StaticStates::Key, const worldgen::Zone *> held;
-                        for (const auto &[key, zone] : view.held().zones())
-                            held[key] = zone.get();
-                        statics.step(dt,
-                                     [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
-                                         if (id == player->combat().id) {
-                                             at = player->body().blocks();
-                                             intent = player->body().intent;
-                                             action = player->combat().action;
-                                             stun = player->combat().hitStun;
-                                             return true;
-                                         }
-                                         for (const creatures::Npc &n : npcs.npcs()) // seated residents
-                                             if (n.fighter.id == id && n.fighter.health > 0) {
-                                                 at = n.body.blocks();
-                                                 intent = n.body.intent;
-                                                 action = n.fighter.action;
-                                                 stun = n.fighter.hitStun;
-                                                 return true;
-                                             }
-                                         return false;
-                                     },
-                                     held, !client.connected(), // open points 1 §1.6: releases not remote
-                                     // §6.4: offline the occupant is placed back each step.
-                                     [&](uint64_t id, glm::dvec3 top, float yaw, int32_t action) -> std::optional<glm::dvec3> {
-                                         const auto seat = [&](creatures::Body &body, creatures::Combatant &who, float &facing) {
-                                             body.place(top + glm::dvec3(0, 0, body.size.z / 2));
-                                             body.velocity = glm::vec3(0);
-                                             facing = yaw;
-                                             who.action = action;
-                                             return body.blocks();
-                                         };
-                                         if (client.connected())
-                                             return std::nullopt;
-                                         if (id == player->combat().id)
-                                             return seat(player->body(), player->combat(), player->facing());
-                                         for (creatures::Npc &n : npcs.npcs())
-                                             if (n.fighter.id == id && n.fighter.health > 0)
-                                                 return seat(n.body, n.fighter, n.yaw);
-                                         return std::nullopt;
-                                     });
-                        // Traps (alpha-open-points-1.md §1): offline this game runs them; the hits land
-                        // on the player at once and on creatures in the next creature step.
-                        if (!client.connected()) {
-                            std::vector<StaticStates::Creature> here{{player->combat().id, player->body().blocks(), 0}};
-                            for (const creatures::Npc &n : npcs.all())
-                                if (n.fighter.health > 0)
-                                    here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
-                            std::vector<creatures::SoundEvent> trapSounds;
-                            const worldgen::World &world = view.terrainWorld();
-                            // Attack-routine site 1: each trap hit runs the attack routine with no
-                            // attacker on the target as it is reached (one discarded draw, the 0.5
-                            // flash, the damage-taken buffs), then lands as before.
-                            const auto trapStrike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push,
-                                                        bool resistance) {
-                                creatures::Combatant *target = nullptr;
-                                if (c.id == player->combat().id)
-                                    target = &player->combat();
-                                else
-                                    for (creatures::Npc &n : npcs.npcs())
-                                        if (n.fighter.id == c.id)
-                                            target = &n.fighter;
-                                if (!target)
-                                    return;
-                                const auto in = creatures::trapHitInput(c.at, damage, push, resistance);
-                                glm::vec3 velocity(0);
-                                const auto out = creatures::resolveHit(*target, velocity, nullptr, in,
-                                                                       [&] { return worldRandom.draw(); });
-                                for (const creatures::HitRecord &h : out.records) {
-                                    if (h.target == player->combat().id) {
-                                        player->takeHit(h);
-                                        if (auto text = ui::hitText(h.amount, h.kind, false, false, true, player->body().blocks()))
-                                            interface.floating.push_back(*text);
-                                    } else {
-                                        shotHitsOnNpcs.push_back(h);
-                                    }
-                                }
-                            };
-                            statics.traps(dt, here, held,
-                                          [&](glm::dvec3 at) { return world.levelAtFx((int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0)); },
-                                          trapStrike, trapSounds);
-                            for (const creatures::SoundEvent &e : trapSounds)
-                                playAt(e.sound, e.position, e.volume, e.pitch);
-                        }
+                        advanceStaticState(elapsed, {});
+                        creatures::visitReceivedActors(otherFighters, player->combat().id,
+                            [&] {
+                                for (const auto &target : client.pendingStaticRequests())
+                                    useStaticRequest(target, false, aggregate);
+                                advancePlayer(elapsed);
+                            }, [&](net::RemoteFighter &remote) {
+                                if (remote.fighter.health > 0)
+                                    creatures::tickBuffs(remote.fighter, elapsed, false);
+                            });
+                    }
+                    const auto flushZoneState = [&] {
                         // Changed zones are saved, items and states together (a zone save without its
                         // items would empty the zone when it loads again, world items §4.3).
                         std::set<WorldItems::Key> changedZones = worldItems.takeChanged();
@@ -2266,16 +2322,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     session->saveZoneStates(zx, zy, statics.stateBytes(zx, zy));
                                     session->saveZoneEdits(zx, zy, blockEdits.saved(zx, zy));
                                 }
-                        std::vector<WorldItems::Key> gone;
-                        for (const auto &[key, list] : worldItems.all())
-                            if (!view.held().zone(key.first, key.second))
-                                gone.push_back(key);
-                        for (const auto &[zx, zy] : gone) {
-                            worldItems.forget(zx, zy);
-                            statics.forget(zx, zy);
-                            blockEdits.forget(zx, zy);
-                        }
-                    }
+                    };
                     // Offline the creatures live here (behaviour §13.1); online the server runs them.
                     if (!client.connected()) {
                         creatures::Combatant &c = player->combat();
@@ -2400,8 +2447,20 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         npcs.stepInto((float)elapsed, view.held(),
                             {{c, player->body(), player->facing(), player->actionBefore(), false, false, true,
                               &player->appearance(), &playerCreationConfig}}, scene.timeOfDayMs, scene.day,
-                            [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                            aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer);
+                            worldBlock, aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer,
+                            [&](creatures::PlayerView &actor) { consumeOfflineItemRequests(actor, aggregate); },
+                            [&](int32_t dt, std::span<creatures::PlayerView> actors) {
+                                const glm::dvec3 at = player->body().blocks();
+                                const int32_t zx = worldgen::floorDiv((int32_t)std::floor(at.x), worldgen::ZONE);
+                                const int32_t zy = worldgen::floorDiv((int32_t)std::floor(at.y), worldgen::ZONE);
+                                std::set<WorldItems::Key> active;
+                                for (int32_t x = zx - 1; x <= zx + 1; ++x)
+                                    for (int32_t y = zy - 1; y <= zy + 1; ++y)
+                                        if (view.held().zone(x, y))
+                                            active.insert({x, y});
+                                worldItems.step(dt, true, worldBlock, worldDraw, aggregate.sounds, &active);
+                                advanceStaticState(dt, actors);
+                            });
                         stepAirships(elapsed); // world objects §6: after the creature loop
                         if (client.connected()) // remote smoothing §3.2, §2: advance, then follow
                             remotes.step(elapsed, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
@@ -2447,9 +2506,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         };
                         for (const auto &progress : happened.missions)
                             showMission(progress);
-                        for (const auto &grant : happened.grants)
-                            if (grant.recipient == c.id)
-                                receive(grant.item, false); // inventory already changed before the next reward draw
                         // Non-hit corpse deaths retain their separate legacy admission.
                         for (const creatures::NpcFrame::Death &death : happened.deaths) {
                             if (death.regionApplied)
@@ -2497,8 +2553,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 interface.floating.push_back(*text);
                             mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
                         }
-                        for (const creatures::SoundEvent &s : happened.sounds)
-                            playAt(s.sound, s.position, s.volume, s.pitch);
                         bursts.insert(bursts.end(), happened.bursts.begin(), happened.bursts.end());
                         // Pets §7.4: a creature tamed by this player turns the food in the Pet slot into
                         // its pet item; §12: the pet item follows the pet's level and experience.
@@ -2619,9 +2673,16 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             }
                         }
                     }
+                    flushZoneState();
                     firstWorldCall = false;
                 },
-                [&](creatures::NpcFrame &) {
+                [&](creatures::NpcFrame &aggregate) {
+                    if (client.connected())
+                        for (const auto &gift : client.takeGifts())
+                            receiveGrant(gift, true);
+                    for (const auto &grant : aggregate.grants)
+                        if (grant.recipient == player->combat().id)
+                            receiveGrant(grant.item, false);
                     applyReceivedRelationships();
                     simulationInputFrames++;
                     const std::array<bool, 2> mouseButtons{input.pointerButtons.held(0), input.pointerButtons.held(1)};
@@ -2645,6 +2706,24 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (const glm::vec3 intent = player->body().intent; glm::dot(intent, intent) > 0)
                         interface.inventoryOpen = interface.craftingOpen = interface.skillsOpen = false;
                     updatePlayerInterface();
+                    const bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || pad.gameplay().quick;
+                    if (qDown && !qWasDown && !interface.wantsMouse() && !interface.typing()) {
+                        const auto &fighter = player->combat();
+                        const auto items = inventory.quickItems(fighter.level);
+                        if (!items.empty()) {
+                            const auto [bag, slot] = items.front();
+                            const auto result = inventory.useSlot(bag, slot, false, fighter.level, fighter.characterClass,
+                                                                  fighter.hitStun < 1);
+                            if (result.consume)
+                                useConsumable(*result.consume);
+                        }
+                    }
+                    qWasDown = qDown;
+                    for (const auto &sound : aggregate.sounds)
+                        playAt(sound.sound, sound.position, sound.volume, sound.pitch);
+                    if (std::exchange(input.dropOne, false))
+                        if (const auto item = inventory.dropOne())
+                            queueItemRequest({ItemRequest::Drop, *item});
                     publishPlayerEffects();
                     // Held initial-state contract: the front-end rotation assigns
                     // its targets before the same update's camera smoothing.
@@ -3912,30 +3991,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 const WorldItem *targetedItem = nullptr;
                 if (itemTarget)
                     if (const auto *list = worldItems.zone((*itemTarget)[0], (*itemTarget)[1]))
-                        if ((*itemTarget)[2] < (int32_t)list->size())
+                        if ((*itemTarget)[2] >= 0 && (*itemTarget)[2] < (int32_t)list->size())
                             targetedItem = &(*list)[(*itemTarget)[2]];
                 interface.targetItem = targetedItem ? std::optional<creatures::ItemRecord>(targetedItem->item) : std::nullopt;
                 const bool padInteract = !interface.wantsMouse() && pad.gameplay().interact;
                 const bool padPickup = padInteract && targetedItem;
-                const bool eDown = (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || padPickup) && !interface.typing();
-                if (eDown && !eWasDown && targetedItem) { // §5.4: whatever the player's health
-
-                    if (!inventory.canCarry(targetedItem->item)) {
-                        interface.chatAdd("You can't carry more of these items.\n", {255, 51, 51});
-                        audio.play("human-voice01.wav");
-                    } else if (client.connected()) {
-                        // Online the server takes it from the zone and gives it back in section 9.
-                        client.sendItemRequest(itemRequest({}, *itemTarget, 5));
-                    } else if (const auto got = worldItems.pickUp((*itemTarget)[0], (*itemTarget)[1], (*itemTarget)[2], me,
-                                                                  manaCubes)) {
-                        // World items §3.3 kind 5: into the bags, announced in the chat, with the
-                        // pick-up sound.
-                        receive(*got);
-                        audio.play("pickup.wav", 1, 1 + 0.1f * (float)worldRandom.draw() / 32767.f);
-                        interface.targetItem.reset();
-                    }
-                }
-                eWasDown = eDown;
                 // §3: the prompt. Revive while dead; a later assignment replaces an earlier one:
                 // the creature target's Talk or Ride, else the object target's prompt.
                 const worldgen::StaticObject *targeted = nullptr;
@@ -3994,15 +4054,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     player->combat().action = 106;
                     player->combat().actionMs = 0;
                 }
-                // Pets §13: T calls the pet back (packet 6 kind 8 online).
-                const bool tDown = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS && !interface.typing();
-                if (tDown && !tWasDown && c.health > 0) {
-                    if (client.connected())
-                        client.sendItemRequest(itemRequest({}, {0, 0, 0}, 8));
-                    else
-                        npcs.callPet(player->combat(), me);
-                }
-                tWasDown = tDown;
                 // Travel §5.3: riding needs the pet alive and rideable (online the server's
                 // pet is trusted).
                 {
@@ -4019,8 +4070,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         interface.teleportMode = true;
                         return;
                     }
-                    // Crafting stations toggle their windows; every other static is used with
-                    // packet 6 kind 3 (§6), run here offline.
+                    // Crafting stations toggle their windows. Generic statics
+                    // append kind 3 for the next actor turn.
                     const bool station = kind == 65 || (kind >= 71 && kind <= 77);
                     const auto [zx, zy, k] = *objectTarget;
                     // Crafting §4.1: a station opens the crafting window (the campfire on Cooking,
@@ -4038,27 +4089,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         else if (kind == 71 || kind == 73 || kind == 75)
                             interface.craftingTab = 5;
                     }
-                    // (Online the server decides and answers in section 6; the client seats its
-                    // own player at once, as the server cannot move a player's record.)
-                    if (!station && client.connected())
-                        client.sendItemRequest(itemRequest({}, {zx, zy, (int32_t)k}, 3));
+                    if (!station)
+                        queueItemRequest({ItemRequest::UseStatic, {}, {zx, zy, (int32_t)k}});
                     // §5.2 steps 3-4, after the kind-3 record: a bubble already on the player
                     // advances or completes whatever the kind; otherwise most statics make the
                     // player say "There is nothing special."
                     static const std::set<int32_t> QUIET = {1, 2, 3, 10, 16, 18, 19, 69};
                     if (!station)
                         interface.talk(c.id, [&] { return QUIET.count(kind) ? std::vector<SpeechPage>{} : nothingSpecial(); });
-                    if (!station) {
-                        if (const worldgen::Zone *zone = view.held().zone(zx, zy)) {
-                            std::vector<creatures::SoundEvent> used;
-                            statics.use(*zone, (int32_t)k, player->combat(), player->body(), player->facing(), worldItems,
-                                        scene.day,
-                                        [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                                        [&] { return worldRandom.draw(); }, used);
-                            for (const creatures::SoundEvent &e : used)
-                                playAt(e.sound, e.position, e.volume, e.pitch);
-                        }
-                    }
                 };
                 // §5.1 Talk, on a frame showing "[R] Talk" (no quick-item wheel test). Talk §1.3,
                 // §2.4: the bubble opens or advances; the talk request (packet 6 kind 2) rests
@@ -4091,21 +4129,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 target = n.talkTarget;
                                 home = {n.zone.first, n.zone.second, (int32_t)n.spawn};
                             }
-                    if (const auto other = receivedActors.find(creatureTarget); other != receivedActors.end())
+                    if (const auto other = receivedActors.find(creatureTarget); other != receivedActors.end()) {
                         characterClass = other->second.fighter().characterClass;
-                    // §5.1 step 2: the talk record, queued on every Talk press before the bubble.
-                    if (client.connected()) {
-                        client.sendItemRequest(itemRequest({}, home, 2));
-                    } else if (characterClass == 132 &&
-                               (scene.timeOfDayMs >= 18 * 3600000.0 || scene.timeOfDayMs <= 6 * 3600000.0)) {
-                        scene.day++;
-                        scene.timeOfDayMs = 7 * 3600000.0;
-                        if (session)
-                            session->clock.day = (uint32_t)scene.day, session->clock.timeOfDayMs = 7 * 3600000u;
-                        audio.play("levelup2.wav", 0.75f);
-                        npcs.restAll(view.held());
-                        missions.clearGenerated(); // missions §2.1: a new day's missions
+                        home = other->second.homeSpawn();
                     }
+                    // §5.1 step 2: the talk record, queued on every Talk press before the bubble.
+                    queueItemRequest({ItemRequest::Talk, {}, home});
                     {
                         const uint64_t who = creatureTarget;
                         // Quests: a giver offers its quest of the day, or takes back a done one.
@@ -4216,7 +4245,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     // guard is near (online the server decides: a talk request naming the quest
                     // and the creature's index).
                     if (controller == 6 && client.connected() && (who >> 56) == 0x51)
-                        client.sendItemRequest(itemRequest({}, {-2, (int32_t)(uint32_t)(who >> 12), (int32_t)(who & 0xfff)}, 2));
+                        queueItemRequest({ItemRequest::Talk, {}, {-2, (int32_t)(uint32_t)(who >> 12), (int32_t)(who & 0xfff)}});
                     if (controller == 6 && options.extendedQuests && !client.connected())
                         for (const creatures::Npc &n : npcs.all())
                             if (n.fighter.id == who && n.questRole == quests::PRISONER) {
@@ -4288,6 +4317,20 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // b) The object effects of the same press.
                 if (rBlock && targeted)
                     objectEffects();
+                const bool eDown = (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || padPickup) && !interface.typing();
+                if (eDown && !eWasDown && targetedItem) {
+                    if (inventory.canCarry(targetedItem->item))
+                        queueItemRequest({ItemRequest::PickUp, {}, *itemTarget});
+                    else {
+                        interface.chatAdd("You can't carry more of these items.\n", {255, 51, 51});
+                        audio.play("human-voice01.wav");
+                    }
+                }
+                eWasDown = eDown;
+                const bool tDown = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS && !interface.typing();
+                if (tDown && !tWasDown)
+                    queueItemRequest({ItemRequest::CallPet});
+                tWasDown = tDown;
                 rWasDown = rDown;
                 interface.hud = hud;
                 // Missions §8.2: the small quest tag, shown inside a location's area (for a hunt,
@@ -4686,6 +4729,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     own.setPosition(axis, player->body().position[axis]);
                 own.setMotion(player->body().velocity, player->facing(), player->body().push, player->body().intent);
                 own.setFighter(player->combat());
+                own.setManaCubeCounter(manaCubes);
             } else {
                 const glm::dvec3 at = view.worldPosition();
                 for (int axis = 0; axis < 3; axis++)
