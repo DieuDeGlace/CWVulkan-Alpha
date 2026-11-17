@@ -51,6 +51,6 @@ AbilityEffects useAbilities(Combatant &c, Body &body, const std::array<bool, 6> 
 // Valid binding/input storage remains unchanged during this phase. The engine
 // bounds configured inputs to its six supported controls.
 AbilityEffects useBoundAbilities(Combatant &c, Body &body, std::span<const int32_t> bindings,
-                                const std::array<bool, 6> &held, glm::vec3 aim);
+                               const std::array<bool, 6> &held, glm::vec3 aim, bool allowPrimary = true);
 
 } // namespace creatures

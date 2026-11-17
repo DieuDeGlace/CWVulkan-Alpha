@@ -32,6 +32,29 @@ enum class Action {
     OptionsApply, OptionsOk, OptionsCancel,
 };
 
+// The quick-item selector retains its ordinal across wheel openings.
+struct QuickItemWheel {
+    using Slot = std::pair<int, size_t>;
+    bool open = false;
+    bool selectorVisible = false;
+    int32_t index = 0;
+    float radius = 0;
+    float angle = 0;
+    size_t earlyCount = 0;
+    std::optional<Slot> hudSlot;
+    int32_t hudCount = 0;
+
+    size_t selected(size_t count) const;
+    size_t lateSelection(size_t count) const;
+    int32_t steer(int32_t elapsed, bool left, bool right, bool close);
+    void layout(int32_t elapsed, size_t count);
+    glm::vec2 offset(size_t item, size_t count) const;
+
+  private:
+    int32_t leftMs = 0, rightMs = 0;
+    bool ready = false;
+};
+
 // What the in-game HUD shows (§5.3, §5.8), filled by the game each frame.
 struct HudState {
     std::string name;
@@ -69,7 +92,6 @@ struct HudState {
         bool held = false;     // its control is held (tints the frame)
     };
     AbilitySlot abilities[6];
-    std::u16string quickCount = u" "; // the quick item's stack size
     bool quickHeld = false;
 };
 
@@ -341,6 +363,8 @@ class Interface {
     std::vector<int32_t> inventorySounds;
     std::vector<creatures::ItemRecord> itemsToUse;
     bool equipmentChanged = false, gliderEquipped = false;
+    QuickItemWheel quickWheel;
+    void setQuickWheelLabel(const creatures::Stack *selection);
 
     // §5.2: the world map. While it is open the game draws the map instead of the world and the
     // interface shows only these labels (positions in window pixels).
@@ -428,10 +452,11 @@ class Interface {
     // deformation, and per ability id the texture ids of its icon in colour and in grey (the
     // same in every button).
     std::vector<plasma::Document> abilityButtons;
-    std::optional<plasma::Document> quickItemButton;
+    std::optional<plasma::Document> quickItemButton, quickItemSelector;
     glm::mat4 cooldownRest{1};
     std::map<int32_t, std::pair<int32_t, int32_t>> abilityIcons;
     void drawAbilityBar(Painter &painter, glm::vec2 window, const HudState &state);
+    void drawQuickItems(Painter &painter, glm::vec2 window, const HudState &state);
 
     void drawFloating(Painter &painter, float dtMs);
     // §8.1, in InventoryScreen.cpp.

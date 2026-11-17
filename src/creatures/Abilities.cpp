@@ -312,7 +312,7 @@ AbilityEffects useAbilities(Combatant &c, Body &body, const std::array<bool, 6> 
 }
 
 AbilityEffects useBoundAbilities(Combatant &c, Body &body, std::span<const int32_t> slots,
-                                const std::array<bool, 6> &held, glm::vec3 aim) {
+                                const std::array<bool, 6> &held, glm::vec3 aim, bool allowPrimary) {
     AbilityEffects out;
     const size_t count = std::min(slots.size(), held.size());
     bool used = false;
@@ -332,7 +332,7 @@ AbilityEffects useBoundAbilities(Combatant &c, Body &body, std::span<const int32
             release(c, id);
         }
     }
-    if (!used && c.action != 48 && held[0])
+    if (allowPrimary && !used && c.action != 48 && held[0])
         startPrimaryAttack(c); // the chaining rule; no mana, cooldown or free-to-act test
     if (count > 1 && !held[1] && slots[1] == 28 && c.action == 28)
         c.action = 0;

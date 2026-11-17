@@ -1,5 +1,6 @@
 #include "ui/Screens.h"
 #include "ui/Widgets.h"
+#include "creatures/Names.h"
 #include "creatures/Physics.h"
 #include "worldgen/Regions.h"
 #include "stb_image.h"
@@ -7,6 +8,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 
 namespace ui {
 namespace {
@@ -114,6 +116,8 @@ bool Interface::load(const std::filesystem::path &install, std::string *error) {
         }
     if (const int32_t n = gui.find("quickitembutton"); n >= 0)
         quickItemButton = clone(gui, n);
+    if (const int32_t n = gui.find("selector"); n >= 0)
+        quickItemSelector = clone(gui, n);
     if (const int32_t n = gui.find("landname"); n >= 0)
         landName = clone(gui, n);
     // Missions §8.2: the small quest tag, from quest-tag.plx (missing it only loses the tag).
@@ -508,12 +512,13 @@ void Interface::drawFloating(Painter &painter, float dtMs) {
                    floating.end());
 }
 
+static void frameColour(plasma::Document &doc, bool held) {
+    if (const int32_t f = doc.find("frame"); f >= 0 && doc.nodes[f].display >= 0)
+        doc.displays[doc.nodes[f].display].fillColor.value = held ? glm::vec4(1, 0, 0.2f, 1) : glm::vec4(1);
+}
+
 // §5.5: the buttons in a row from (W/2 - 162, H - 50), 48 px apart.
 void Interface::drawAbilityBar(Painter &painter, glm::vec2 W, const HudState &s) {
-    auto frameColour = [](plasma::Document &doc, bool held) {
-        if (const int32_t f = doc.find("frame"); f >= 0 && doc.nodes[f].display >= 0)
-            doc.displays[doc.nodes[f].display].fillColor.value = held ? glm::vec4(1, 0, 0.2f, 1) : glm::vec4(1);
-    };
     for (size_t i = 0; i < abilityButtons.size() && i < 6; i++) {
         plasma::Document &doc = abilityButtons[i];
         const HudState::AbilitySlot &slot = s.abilities[i];
@@ -534,11 +539,106 @@ void Interface::drawAbilityBar(Painter &painter, glm::vec2 W, const HudState &s)
         anchor(doc, {W.x / 2 - 162 + 48.f * (float)i, W.y - 50});
         painter.draw(doc, 0, Transform(1));
     }
-    if (quickItemButton) {
-        setText(*quickItemButton, "count", s.quickCount);
+}
+
+size_t QuickItemWheel::selected(size_t count) const {
+    if (!count)
+        return 0;
+    const int64_t slot = int64_t(index) % int64_t(count);
+    return size_t(slot < 0 ? slot + int64_t(count) : slot);
+}
+
+size_t QuickItemWheel::lateSelection(size_t count) const {
+    if (index < 0 && earlyCount && count)
+        return selected(earlyCount) % count;
+    return selected(count);
+}
+
+int32_t QuickItemWheel::steer(int32_t elapsed, bool left, bool right, bool close) {
+    if (!open)
+        ready = false;
+    if (close)
+        open = false;
+    if (!open)
+        return 0;
+    if (!left)
+        leftMs = 0;
+    if (!right)
+        rightMs = 0;
+    if (!left && !right)
+        ready = true;
+    if (!ready)
+        return 0;
+
+    int32_t steps = 0;
+    if (left && leftMs <= 0) {
+        index = std::bit_cast<int32_t>(uint32_t(index) - 1u);
+        leftMs = 200;
+        ++steps;
+    }
+    if (right && rightMs <= 0) {
+        index = std::bit_cast<int32_t>(uint32_t(index) + 1u);
+        rightMs = 200;
+        ++steps;
+    }
+    leftMs = std::max(0, std::bit_cast<int32_t>(uint32_t(leftMs) - uint32_t(elapsed)));
+    rightMs = std::max(0, std::bit_cast<int32_t>(uint32_t(rightMs) - uint32_t(elapsed)));
+    return steps;
+}
+
+void QuickItemWheel::layout(int32_t elapsed, size_t count) {
+    if (!open) {
+        radius = 0;
+        return;
+    }
+    const float blend = creatures::blendWeight(0.01f, elapsed);
+    radius = (1.f - blend) * radius + blend * 200.f;
+    if (count) {
+        const float target = -360.f * float(index) / float(count);
+        angle = (1.f - blend) * angle + blend * target;
+    }
+}
+
+glm::vec2 QuickItemWheel::offset(size_t item, size_t count) const {
+    constexpr double pi = std::numbers::pi_v<double>;
+    const float turn = float(2 * pi * double(item) / double(count) + double(angle) * (pi / 180) - pi / 2);
+    return radius * glm::vec2(float(std::cos(double(turn))), float(std::sin(double(turn))));
+}
+
+void Interface::setQuickWheelLabel(const creatures::Stack *selection) {
+    if (!quickItemSelector)
+        return;
+    setText(*quickItemSelector, "count", selection ? utf16(std::to_string(selection->count)) : u"");
+    if (selection && itemName) {
+        const float display = creatures::levelCurve(creatures::itemLevel(selection->item)) * 100.f + 1.f;
+        const int32_t level = display >= -2147483648.f && display < 2147483648.f ? int32_t(display) : INT32_MIN;
+        setText(*quickItemSelector, "name", itemName(selection->item) + u" +" + utf16(std::to_string(level)));
+    }
+}
+
+void Interface::drawQuickItems(Painter &painter, glm::vec2 W, const HudState &s) {
+    const auto stackAt = [&](QuickItemWheel::Slot choice) -> const creatures::Stack & {
+        const auto [bag, slot] = choice;
+        return inventory->bags[bag][slot];
+    };
+    const creatures::Stack *hudItem = inventory && quickWheel.hudSlot ? &stackAt(*quickWheel.hudSlot) : nullptr;
+    if (quickItemButton && !mapOpen) {
+        const glm::vec2 at{W.x / 2 - 162 + 48.f * 6, W.y - 50};
+        setText(*quickItemButton, "count", hudItem ? utf16(std::to_string(quickWheel.hudCount)) : u" ");
         frameColour(*quickItemButton, s.quickHeld);
-        anchor(*quickItemButton, {W.x / 2 - 162 + 48.f * 6, W.y - 50});
+        anchor(*quickItemButton, at);
         painter.draw(*quickItemButton, 0, Transform(1));
+        if (hudItem && !hudItem->empty())
+            drawItem(painter, W, hudItem->item, at, 0.0216f);
+    }
+    if (quickWheel.open && inventory) {
+        const auto choices = inventory->quickItems(s.level);
+        for (size_t i = 0; i < choices.size(); ++i)
+            drawItem(painter, W, stackAt(choices[i]).item, W * 0.5f + quickWheel.offset(i, choices.size()), 0.09f);
+    }
+    if (quickWheel.selectorVisible && quickItemSelector) {
+        anchor(*quickItemSelector, {W.x * 0.5f, W.y * 0.5f - 200.f});
+        painter.draw(*quickItemSelector, 0, Transform(1));
     }
 }
 
@@ -1011,6 +1111,8 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
             }
         }
     }
+    if (hud && !startScreen)
+        drawQuickItems(painter, size, *hud);
     if (startScreen) // skills §1.3: the start screen (U-7 reading) closes the skill window and the inventory
         skillsOpen = inventoryOpen = false;
     if (craftingOpen)

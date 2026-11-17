@@ -58,7 +58,7 @@ void Player::revive() {
 
 void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, const Gamepad *pad,
                        const std::array<bool, 2> *mouseButtons, const creatures::visibility::RecordLookup *records,
-                       std::span<const AimCandidate> candidates) {
+                       std::span<const AimCandidate> candidates, bool allowPrimary) {
     using namespace creatures;
     const float dtMs = (float)milliseconds;
     const bool usePad = controls && pad && pad->connected && pad->context() == Gamepad::Context::Gameplay;
@@ -235,7 +235,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
                 fighter.action = 0, fighter.actionMs = 0;
         }
     }
-    const creatures::AbilityEffects effects = useBoundAbilities(fighter, state, bindings.values(), slotsHeld, fighter.aim);
+    const auto effects = useBoundAbilities(fighter, state, bindings.values(), slotsHeld, fighter.aim, allowPrimary);
     abilityEffects.buffs.insert(abilityEffects.buffs.end(), effects.buffs.begin(), effects.buffs.end());
     abilityEffects.sounds.insert(abilityEffects.sounds.end(), effects.sounds.begin(), effects.sounds.end());
     fighter.mode = state.mode;

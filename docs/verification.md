@@ -1830,3 +1830,15 @@ spends zero random draws.
 The Windows x64 build, all five focused suites and the full 60-suite CTest
 run passed. Native portal projection and original-client runtime acceptance
 remain open.
+
+## Quick-item wheel timing (2026-11-17)
+
+UiTests verifies signed ordinal wrapping across independent candidate counts,
+neutral steering admission, repeat testing before elapsed subtraction, two
+simultaneous directions, layout endpoints and stack decrement after its use
+callback. SimulationFrameTests verifies the ordinary primary start gate and
+the mixed queue ending in pet recall and wheel bomb. Its two bombs, chest,
+drop and pickup consume exactly 18 draws.
+
+The Windows x64 build, six focused suites and all 60 CTests passed. Original
+controller hardware, native input and native visual acceptance remain open.

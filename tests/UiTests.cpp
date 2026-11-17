@@ -654,6 +654,57 @@ int main(int argc, char **argv) {
         check(levelUpText(glm::dvec3(0)).lifeMs == 3000 && experienceText(12, glm::dvec3(0)).text == u"XP +12", "level and XP");
     }
     {
+        QuickItemWheel wheel;
+        wheel.index = -1;
+        check(wheel.selected(4) == 3, "quick-item selection wraps a negative ordinal");
+        wheel.earlyCount = 3;
+        check(wheel.selected(2) == 1 && wheel.lateSelection(2) == 0,
+              "negative late selection wraps against the early stack count before the new count");
+        wheel.open = true;
+        wheel.index = 1;
+        wheel.layout(1, 4);
+        check(std::abs(wheel.radius - 2.f) < 0.00001f && std::abs(wheel.angle + 0.9f) < 0.00001f,
+              "one millisecond moves the wheel radius and angle one percent toward their targets");
+        wheel.layout(10000, 4);
+        const glm::vec2 first = wheel.offset(0, 4), selected = wheel.offset(1, 4);
+        check(glm::length(first - glm::vec2(-200, 0)) < 0.001f &&
+              glm::length(selected - glm::vec2(0, -200)) < 0.001f, "chosen item lands at the top of the wheel");
+        wheel.open = false;
+        wheel.layout(16, 0);
+        check(!wheel.open && wheel.radius == 0 && wheel.index == 1,
+              "a closed wheel clears only the radius");
+
+        wheel.open = true;
+        check(wheel.steer(16, true, false, false) == 0, "a held direction at opening waits for a neutral frame");
+        wheel.steer(16, false, false, false);
+        check(wheel.steer(16, true, false, false) == 1 && wheel.index == 0, "a neutral frame arms left steering");
+        check(wheel.steer(183, true, false, false) == 0 &&
+              wheel.steer(1, true, false, false) == 0 &&
+              wheel.steer(1, true, false, false) == 1 && wheel.index == -1,
+              "repeat admission tests the timer before subtracting each frame duration");
+        wheel.steer(0, false, false, false);
+        check(wheel.steer(0, true, true, false) == 2 && wheel.index == -1,
+              "simultaneous fresh directions make two selections");
+        check(wheel.steer(200, false, false, true) == 0 && !wheel.open, "forward or back closes before selection");
+    }
+    {
+        creatures::Inventory inventory = creatures::Inventory::fresh();
+        creatures::ItemRecord bomb{};
+        bomb[0] = 1;
+        bomb[1] = 7;
+        creatures::setItemLevel(bomb, 1);
+        inventory.bags[0][0] = {1, bomb};
+        int calls = 0;
+        const auto apply = [&](const creatures::ItemRecord &item) {
+            ++calls;
+            check(item == bomb && inventory.bags[0][0].count == 1, "item use observes the stack before decrement");
+        };
+        inventory.useSlot(0, 0, false, 1, 1, false, apply);
+        check(calls == 0 && !inventory.bags[0][0].empty(), "stun declines use and preserves the stack");
+        inventory.useSlot(0, 0, false, 1, 1, true, apply);
+        check(calls == 1 && inventory.bags[0][0].empty(), "an eligible quick use removes exactly one unit afterward");
+    }
+    {
         // Screens §5.2.6: a teleport takes two clicks on the same portal label.
         ui::Interface map;
         creatures::Body body;

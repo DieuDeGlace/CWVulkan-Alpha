@@ -35,7 +35,7 @@ class Player {
     void readInput(GLFWwindow *window, int32_t dtMs, bool controls, const Gamepad *pad = nullptr,
                    const std::array<bool, 2> *mouseButtons = nullptr,
                    const creatures::visibility::RecordLookup *records = nullptr,
-                   std::span<const AimCandidate> candidates = {});
+                   std::span<const AimCandidate> candidates = {}, bool allowPrimary = true);
     // The nearest creature whose box straddles the screen centre (C+0x800A70), 0 for none.
     uint64_t hoveredCreature() const { return hovered; }
     // The world's time of day in milliseconds, for the pick's daylight factor (none: full day).

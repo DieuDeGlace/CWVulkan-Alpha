@@ -412,6 +412,8 @@ int main() {
         actor.equipment[MAIN_HAND].subtype = 6;
         actor.action = 0;
         actor.actionMs = 10000;
+        useBoundAbilities(actor, body, bindings.values(), {true, false, false, false, false, false}, {}, false);
+        check(actor.action == 0, "wheel admission suppresses the ordinary primary start");
         useBoundAbilities(actor, body, bindings.values(), {true, false, false, false, false, false}, {});
         check(bindings.values()[0] == 6 && actor.action == 22,
               "ordinary primary fallback selects from current state rather than the captured bar entry");
@@ -475,6 +477,9 @@ int main() {
                                 output.sounds.push_back({body.blocks(), 45, (float)draw() * 0.1f / 32767.f + 1.f, 1});
                             });
                             break;
+                        case ItemRequest::CallPet:
+                            npcs.callPetFixed(fighter, body.position);
+                            break;
                         default:
                             break;
                         }
@@ -488,13 +493,13 @@ int main() {
                   npcs.all().size() == 1 && npcs.all().front().fighter.health == 99.375f && random.count() == 5,
                   "the inventory callback bomb reaches the first piece and is burned on the later pieces");
             pending = {{ItemRequest::UseStatic, {}, {0, 0, 0}}, {ItemRequest::Drop, sword},
-                       {ItemRequest::PickUp, {}, {0, 0, 0}}};
+                       {ItemRequest::PickUp, {}, {0, 0, 0}}, {ItemRequest::CallPet}, {ItemRequest::UseItem, bomb}};
         });
         check(frame.sounds.empty() && consumed.size() == 1, "late frame inputs wait after all 45 ms of pieces");
         simulation::clientFrame(20, true, frame, piece, [&](NpcFrame &output) {
             check(consumed == std::vector<ItemRequest::Kind>{ItemRequest::UseItem, ItemRequest::UseStatic,
-                  ItemRequest::Drop, ItemRequest::PickUp} && random.count() == 13,
-                  "next sender turn preserves the mixed FIFO and its eight draws");
+                  ItemRequest::Drop, ItemRequest::PickUp, ItemRequest::CallPet, ItemRequest::UseItem} &&
+                  random.count() == 18, "the final wheel bomb follows pickup and pet recall in the mixed FIFO");
             const auto *list = items.zone(0, 0);
             check(list && list->size() == 1 && itemType(list->front().item) == 3 && list->front().landingMs >= 500 &&
                   output.grants.size() == 1 && itemType(output.grants.front().item) == 11,

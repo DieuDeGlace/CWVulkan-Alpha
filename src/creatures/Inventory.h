@@ -111,7 +111,8 @@ struct Inventory {
     // §8.1.8, a left press on equipment box `box`.
     int32_t pressBox(int box, int32_t level, int32_t characterClass);
     // §8.1.8, a right (`middle` false) or middle press on a bag slot with no window open.
-    UseOutcome useSlot(int bag, size_t index, bool middle, int32_t level, int32_t characterClass, bool canAct);
+    UseOutcome useSlot(int bag, size_t index, bool middle, int32_t level, int32_t characterClass, bool canAct,
+                       const std::function<void(const ItemRecord &)> &applyConsumable = {});
     // §8.1.8, a right press on an equipment box: the item goes to the bags.
     int32_t unequip(int box);
     // §8.1.8, a left press over nothing: one item leaves the hand to be dropped in the world.

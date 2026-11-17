@@ -3166,3 +3166,28 @@ The placement contract establishes the mode check, the live record
 selection and the right-button rotation path. Stock activation and
 selection producers, offline blueprint placement, full map projection
 and original-client runtime acceptance remain open.
+
+## Quick-item wheel and ordered confirmation (2026-11-17)
+
+An isolated source author finalized [the quick-wheel contract](specs/alpha-packet6-quick-wheel.md)
+(`9aab793438e4a2ee8bdc84c49d3bac95bf9938b77e51c0b709e8599dff4f1fbf`).
+The clean team verified the hash and read all 199 lines. Keyboard messages
+toggle the wheel. The early scan admits Q from the retained ordinal and
+only advances its edge history on an eligible pass. The late wheel handles
+held movement closure, neutral steering admission and the two 200 ms
+repeat clocks. An index below zero wraps against the early scan before
+the late selection, including when Q removed a candidate in the same frame.
+
+Q and R/E use the same inventory and consumable paths. The late R/E
+confirmation follows drop, talk, static, pickup and pet producers. The
+bomb enqueue precedes its stack decrement. The wheel emits fixed interface
+sounds with no game random draws. The open wheel suppresses the ordinary
+primary start for the frame, including a frame that confirms and closes it.
+
+The existing selector template and item-model renderer draw the late
+selection and ring. The ring uses the raw ordinal with the held mixed
+precision easing and projection arithmetic. The engine retains the last
+finite angle when the render list is empty. Keyboard navigation follows
+the traced focused route. The existing controller quick and interact
+actions reach the corresponding use sites. Exact modal widget equivalence,
+native pixels and physical controller acceptance remain open.

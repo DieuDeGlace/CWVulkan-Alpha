@@ -846,9 +846,12 @@ Differences from the Steam engine that shape the plan:
   (`alpha-packet6-placement-producers.md`). A confirmed map release moves the
   player using the raw fixed coordinates. The separate queued static branch
   resolves the link in the nearest static's zone and emits its ordered sound.
+- [x] Quick-item wheel (`alpha-packet6-quick-wheel.md`). Tab opens the
+  selector, Q uses the retained selection, and R/E confirmation appends after
+  the earlier frame inputs. Neutral admission and independent repeat timers
+  govern A/D navigation.
 - [ ] Complete offline blueprint placement and trace the stock mode and
-  selection producers. The quick-item wheel and original-client acceptance
-  also remain open.
+  selection producers. Original-client acceptance remains open.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

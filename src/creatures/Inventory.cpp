@@ -307,7 +307,8 @@ int32_t Inventory::pressBox(int box, int32_t level, int32_t cls) {
     return hand.empty() ? SOUND_PUT_DOWN : SOUND_GRAB;
 }
 
-UseOutcome Inventory::useSlot(int b, size_t index, bool middle, int32_t level, int32_t cls, bool canAct) {
+UseOutcome Inventory::useSlot(int b, size_t index, bool middle, int32_t level, int32_t cls, bool canAct,
+                               const std::function<void(const ItemRecord &)> &applyConsumable) {
     UseOutcome out;
     if (b < 0 || b >= (int)bags.size() || index >= bags[b].size() || bags[b][index].empty())
         return out;
@@ -374,8 +375,11 @@ UseOutcome Inventory::useSlot(int b, size_t index, bool middle, int32_t level, i
         break;
     case 1:
         if (canAct) {
+            if (applyConsumable)
+                applyConsumable(item);
+            else
+                out.consume = item;
             take();
-            out.consume = item;
         }
         break;
     case 2: {

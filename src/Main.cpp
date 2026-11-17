@@ -795,6 +795,20 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         player->body().dodgeMs = 0;
         fighter.copyHeld(item);
     };
+    const auto playInterfaceSound = [&](int32_t id) {
+        if (const char *key = creatures::soundKey(id))
+            audio.play(key);
+    };
+    const auto useQuickItem = [&](ui::QuickItemWheel::Slot choice) {
+        const auto &fighter = player->combat();
+        const auto [bag, slot] = choice;
+        if (creatures::itemLevel(inventory.bags[bag][slot].item) > fighter.level) {
+            playInterfaceSound(creatures::SOUND_REFUSED);
+            return false;
+        }
+        inventory.useSlot(bag, slot, false, fighter.level, fighter.characterClass, fighter.hitStun < 1, useConsumable);
+        return true;
+    };
     // Interaction §2.4: the world item E would pick up, (zone x, zone y, index).
     std::optional<std::array<int32_t, 3>> itemTarget;
     bool eWasDown = false;
@@ -1289,6 +1303,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             ui.mapOpen = !ui.mapOpen; // screens §5.2.1
             return;
         }
+        if (key == GLFW_KEY_TAB && !ui.startScreen && in->player) {
+            ui.quickWheel.open = !ui.quickWheel.open;
+            return;
+        }
         if (key == GLFW_KEY_C && action == GLFW_PRESS && !ui.startScreen && in->player) {
             ui.craftingOpen = !ui.craftingOpen; // crafting §4.1
             return;
@@ -1316,7 +1334,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
         } else if (key == GLFW_KEY_V && action == GLFW_PRESS && !in->interface->startScreen) {
             in->interface->allLifeBars = !in->interface->allLifeBars; // screens §5.4
-        } else if (key == GLFW_KEY_R && action == GLFW_PRESS && in->player && in->player->combat().health <= 0) {
+        } else if (key == GLFW_KEY_R && action == GLFW_PRESS && in->player && in->player->combat().health <= 0 &&
+                   !ui.quickWheel.open) {
             in->player->revive(); // §5.8
             in->revived = true;
         } else if (key == GLFW_KEY_O && !in->interface->startScreen) {
@@ -1760,6 +1779,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         [&]() -> creatures::Combatant * { return player ? &player->combat() : nullptr; }, 1, {}};
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
+        const bool closeQuickWheel = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS ||
+                                     glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
         if (interface.optionsToApply) {
             interface.optionsToApply = false;
             game = interface.optionsCopy;
@@ -2039,18 +2060,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     for (const float pitch : interface.voiceBlips)
                         playFixed(0x32, atPlayer, 1, pitch);
                     interface.voiceBlips.clear();
-                    // Skills §1.3, ui-screens §7 (correction 88): the toggles play nothing; once
-                    // per update, when the window-open test becomes true 0x53 (menu-open2.wav)
-                    // plays, when it becomes false 0x54. The test includes map mode and the
-                    // options window (§5.2.1, §6.1); its other members are not enumerated.
-                    {
-                        const bool holding = interface.inventoryOpen || interface.craftingOpen || interface.skillsOpen ||
-                                             interface.mapOpen || interface.optionsOpen;
-                        if (holding != windowHeld)
-                            if (const char *key = creatures::soundKey(holding ? 0x53 : 0x54))
-                                audio.play(key);
-                        windowHeld = holding;
-                    }
                     if (interface.equipmentChanged) {
                         wearInventory();
                         c.health = std::min(c.health, creatures::maxHealth(c));
@@ -2074,6 +2083,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 for (const creatures::BuffEvent &b : effects.buffs)
                     sendBuff(b);
             };
+            // Sample the combined interface state before early or late wheel closure.
+            const bool holding = interface.quickWheel.open || interface.inventoryOpen || interface.craftingOpen ||
+                                 interface.skillsOpen || interface.mapOpen || interface.optionsOpen;
+            if (holding != windowHeld)
+                playInterfaceSound(holding ? 0x53 : 0x54);
+            windowHeld = holding;
             // Inventory mouse-down callbacks precede the world pieces.
             for (const auto &item : interface.itemsToUse)
                 useConsumable(item);
@@ -2685,6 +2700,23 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             receiveGrant(grant.item, false);
                     applyReceivedRelationships();
                     simulationInputFrames++;
+                    auto &wheel = interface.quickWheel;
+                    const auto choices = inventory.quickItems(player->combat().level);
+                    wheel.earlyCount = choices.size();
+                    wheel.hudSlot.reset();
+                    if (choices.empty()) {
+                        wheel.open = false;
+                    } else if (!interface.wantsMouse() && !interface.typing()) {
+                        const auto choice = choices[wheel.selected(choices.size())];
+                        const auto [bag, slot] = choice;
+                        wheel.hudSlot = choice;
+                        wheel.hudCount = inventory.bags[bag][slot].count;
+                        const bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || pad.gameplay().quick;
+                        if (qDown && !qWasDown)
+                            useQuickItem(choice);
+                        qWasDown = qDown;
+                    }
+                    wheel.selectorVisible = wheel.open;
                     const std::array<bool, 2> mouseButtons{input.pointerButtons.held(0), input.pointerButtons.held(1)};
                     // Controller aim contract §3.2: the creatures the aim may pick, at their +0x1350
                     // point (offline the follow point; online the received position).
@@ -2699,26 +2731,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     }
                     player->timeOfDay = [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); };
                     player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
-                                      interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates);
+                                      interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates,
+                                      !wheel.open || closeQuickWheel);
                     // Skills §1.3: every input pass with a non-zero walking intent (object +0x40)
                     // hides the inventory, crafting and skill windows. (The other nodes it hides are
                     // not identified; movement keys stay gated while a window holds the mouse.)
                     if (const glm::vec3 intent = player->body().intent; glm::dot(intent, intent) > 0)
                         interface.inventoryOpen = interface.craftingOpen = interface.skillsOpen = false;
                     updatePlayerInterface();
-                    const bool qDown = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || pad.gameplay().quick;
-                    if (qDown && !qWasDown && !interface.wantsMouse() && !interface.typing()) {
-                        const auto &fighter = player->combat();
-                        const auto items = inventory.quickItems(fighter.level);
-                        if (!items.empty()) {
-                            const auto [bag, slot] = items.front();
-                            const auto result = inventory.useSlot(bag, slot, false, fighter.level, fighter.characterClass,
-                                                                  fighter.hitStun < 1);
-                            if (result.consume)
-                                useConsumable(*result.consume);
-                        }
-                    }
-                    qWasDown = qDown;
                     for (const auto &sound : aggregate.sounds)
                         playAt(sound.sound, sound.position, sound.volume, sound.pitch);
                     if (std::exchange(input.dropOne, false))
@@ -4207,9 +4227,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             interface.talk(who, nativeSpeech);
                     }
                 }
-                // §5.2: the R block (the quick-item wheel it waits for is not modelled), skipped
+                // §5.2: the R block waits for the quick-item wheel to close, and is skipped
                 // on the press that revived. a) The creature effects.
-                const bool rBlock = rPressed && !revivedNow && c.health > 0;
+                const bool rBlock = rPressed && !interface.quickWheel.open && !revivedNow && c.health > 0;
                 if (rBlock)
                     talkPartner = 0; // talk §3.3: replaced below when the target is a creature
                 if (rBlock && !creatureTarget && !client.connected()) {
@@ -4312,7 +4332,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (rBlock && targeted)
                     objectEffects();
                 const bool eDown = (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || padPickup) && !interface.typing();
-                if (eDown && !eWasDown && targetedItem) {
+                const bool ePressed = eDown && !eWasDown;
+                if (ePressed && targetedItem) {
                     if (inventory.canCarry(targetedItem->item))
                         queueItemRequest({ItemRequest::PickUp, {}, *itemTarget});
                     else {
@@ -4320,10 +4341,30 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         audio.play("human-voice01.wav");
                     }
                 }
-                eWasDown = eDown;
                 const bool tDown = glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS && !interface.typing();
                 if (tDown && !tWasDown)
                     queueItemRequest({ItemRequest::CallPet});
+                auto &wheel = interface.quickWheel;
+                const int32_t steps = wheel.steer(frameElapsedMs, glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS,
+                                                  glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS, closeQuickWheel);
+                for (int32_t i = 0; i < steps; ++i)
+                    playInterfaceSound(0x55);
+                size_t wheelCount = 0;
+                if (wheel.open) {
+                    const auto choices = inventory.quickItems(c.level);
+                    wheelCount = choices.size();
+                    if (choices.empty()) {
+                        interface.setQuickWheelLabel(nullptr);
+                    } else {
+                        const auto choice = choices[wheel.lateSelection(choices.size())];
+                        const auto [bag, slot] = choice;
+                        interface.setQuickWheelLabel(&inventory.bags[bag][slot]);
+                        if ((rPressed || ePressed) && useQuickItem(choice))
+                            wheel.open = false;
+                    }
+                }
+                wheel.layout(frameElapsedMs, wheelCount);
+                eWasDown = eDown;
                 tWasDown = tDown;
                 rWasDown = rDown;
                 interface.hud = hud;
