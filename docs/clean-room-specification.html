@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 2 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 3 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -301,6 +301,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
             <tr><td><b>Saves</b></td><td>Read and write the Alpha save databases so that Alpha and AlphaVulkan can open each other's saves.</td><td class="mono">alpha-saves</td><td><span class="status partial">Original-save interchange untested</span></td></tr>
             <tr><td><b>Multiplayer</b></td><td>Host and join sessions with Alpha's protocol, roles and server simulation.</td><td class="mono">alpha-net-*, alpha-server-simulation</td><td><span class="status partial">Original-client test pending</span></td></tr>
             <tr><td><b>Connected creature motion</b></td><td>Advance received bodies alongside the controlled actor in signed key order. Preserve the live and drawn poses, refill riding energy during the pet's terrain probe, and resolve attachment at the drawn-pose boundary and again after the actor pass.</td><td class="mono"><a href="specs/alpha-remote-creature-interpolation.md">alpha-remote-creature-interpolation</a>, <a href="specs/alpha-riding-actor-step.md">alpha-riding-actor-step</a></td><td><span class="status partial">Native interoperation pending</span></td></tr>
+            <tr><td><b>Creature receipt order</b></td><td>Keep the position and rotation of each snap through frame publication. Merge repeated packet-1 records in wire order, then apply each key once in signed order. Packet 2 prunes by the independent packet-0 seen set.</td><td class="mono"><a href="specs/alpha-creature-receipt-order.md">alpha-creature-receipt-order</a></td><td><span class="status partial">Native timing pending</span></td></tr>
           </tbody>
         </table>
       </div>

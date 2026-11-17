@@ -2,6 +2,7 @@
 #include "ItemRequest.h"
 #include "Bytes.h"
 #include "ZlibStream.h"
+#include "creatures/ActorMap.h"
 #include <bit>
 #include <cstring>
 #include <set>
@@ -346,7 +347,7 @@ void Client::commit(uint64_t id, CreatureRecord &&decoded, bool created) {
     constexpr size_t SNAP_FIELD = 0x1B0, SNAP_BYTES = 24;
     CreatureRecord &held = creatures[id];
     const bool fieldChanged = std::memcmp(held.bytes.data() + SNAP_FIELD, decoded.bytes.data() + SNAP_FIELD, SNAP_BYTES) != 0;
-    receipts.push_back({id, created || fieldChanged || 0.f >= held.health()});
+    receipts.push_back(Receipt::fromRecord(id, decoded, fieldChanged || 0.f >= held.health(), created));
     held = std::move(decoded);
 }
 
@@ -408,53 +409,55 @@ void Client::receiveLoop() {
             break;
         }
         case CREATURE_BATCH: {
-            // Packets §3.2: i32 count, then per creature u64 id, u64 mask and the masked fields,
-            // uncompressed. Each entry is gathered as a packet-0 plain payload and decoded below.
+            // Creature receipt order §1–2. Seed the temporary records before
+            // reading the stream. Repeated IDs edit the same record in wire order.
             int32_t count = 0;
             ok = socket.readExact(&count, 4);
-            std::vector<std::vector<uint8_t>> entries;
+            if (!ok)
+                break;
+            creatures::ActorMap<CreatureRecord> decoded;
+            {
+                auto frame = lockFrame();
+                std::lock_guard guard(lock);
+                decoded.insert(creatures.begin(), creatures.end());
+                decoded.emplace(ownId, own);
+            }
+            std::set<uint64_t, creatures::ActorKeyLess> listed;
+            std::vector<uint8_t> plain;
             for (int32_t k = 0; ok && k < count; k++) {
-                std::vector<uint8_t> plain(16);
+                plain.resize(16);
                 ok = socket.readExact(plain.data(), 16);
-                uint64_t mask = 0;
+                if (!ok)
+                    break;
+                uint64_t id, mask;
+                std::memcpy(&id, plain.data(), 8);
                 std::memcpy(&mask, plain.data() + 8, 8);
-                ok = ok && (mask >> 48) == 0; // (engine choice: bits 48-63 are never set)
+                ok = (mask >> 48) == 0; // engine validation of the known mask width
                 for (size_t n = 0; ok && n < CREATURE_FIELDS.size(); n++)
                     if (mask & (1ull << n)) {
                         const size_t at = plain.size();
                         plain.resize(at + CREATURE_FIELDS[n].size);
                         ok = socket.readExact(plain.data() + at, CREATURE_FIELDS[n].size);
                     }
-                entries.push_back(std::move(plain));
+                if (!ok)
+                    break;
+                auto [entry, created] = decoded.try_emplace(id);
+                if (created)
+                    entry->second = CreatureRecord::nativeDefaults();
+                ok = applyDelta(plain, entry->second).has_value();
+                if (ok)
+                    listed.insert(id);
             }
             if (!ok)
                 break;
             auto frame = lockFrame();
             std::lock_guard guard(lock);
-            // Decoded onto copies of the current records; then every creature not in the batch is
-            // deleted (all of them for a count <= 0); then the others' records are committed.
-            struct Decoded {
-                uint64_t id;
-                CreatureRecord record;
-                bool created;
-            };
-            std::vector<Decoded> decoded;
-            std::set<uint64_t> listed;
-            for (const auto &plain : entries) {
-                uint64_t id;
-                std::memcpy(&id, plain.data(), 8);
-                const auto held = creatures.find(id);
-                const bool created = id != ownId && held == creatures.end();
-                Decoded d{id, id == ownId ? own : created ? CreatureRecord::nativeDefaults() : held->second, created};
-                applyDelta(plain, d.record);
-                listed.insert(id);
-                if (id != ownId)
-                    decoded.push_back(std::move(d));
-            }
             std::erase_if(creatures, [&](const auto &entry) { return !listed.contains(entry.first); });
-            for (Decoded &d : decoded)
-                commit(d.id, std::move(d.record), d.created);
-            updatedThisBatch.insert(listed.begin(), listed.end());
+            // Prune, then publish each merged record once, in signed key order.
+            // Packet 2 keeps its independent packet-0 seen set.
+            for (const uint64_t id : listed)
+                if (id != ownId)
+                    commit(id, std::move(decoded.at(id)), !creatures.contains(id));
             break;
         }
         case STATIC_OBJECTS: {

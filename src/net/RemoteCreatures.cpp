@@ -22,9 +22,26 @@ const creatures::Combatant *fighterAt(uint64_t id, const creatures::ActorMap<Rem
 
 } // namespace
 
-void RemoteCreatures::receive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter, bool snap) {
-    const auto [it, created] = list.try_emplace(id);
-    Remote &r = it->second;
+void RemoteCreatures::receive(const CreatureReceipt &receipt) {
+    auto &r = list[receipt.id];
+    if (receipt.initialAim) {
+        r = Remote{};
+        r.drawnLook = *receipt.initialAim; // engine's starting drawn aim
+    }
+    r.smoothing = !receipt.snap;
+    if (receipt.snap) {
+        std::copy_n(receipt.snap->position.begin(), 3, r.live.follow);
+        r.drawnRotation = receipt.snap->rotation;
+    }
+    r.needsLiveSnapshot = true;
+}
+
+void RemoteCreatures::updateLive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter) {
+    const auto found = list.find(id);
+    if (found == list.end() || !found->second.needsLiveSnapshot)
+        return;
+    auto &r = found->second;
+    r.needsLiveSnapshot = false;
     // §1.6: every received field lands on the live state (the whole-record copy).
     creatures::Body &b = r.live;
     for (int axis = 0; axis < 3; axis++)
@@ -48,16 +65,6 @@ void RemoteCreatures::receive(uint64_t id, const CreatureRecord &record, const c
     b.bank = rotation.y;
     b.yaw = rotation.z;
     r.headPitch = record.headPitch();
-    // A first receipt always snaps (the drawn pose of a new creature starts at the record).
-    if (snap || created) {
-        r.smoothing = false;
-        std::copy_n(b.position, 3, b.follow);
-        r.drawnRotation = rotation;
-        if (created)
-            r.drawnLook = b.look; // engine choice: a new creature's drawn aim starts at its aim
-    } else {
-        r.smoothing = true;
-    }
 }
 
 void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {

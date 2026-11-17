@@ -3332,3 +3332,26 @@ pose, and remote facing retains the received clock for its timing.
 Walk phase and amplitude still live in the renderer. The precise remote
 action clock and all movement inputs, frame publication of multiple receipt
 poses, the dormant mount-ID path and original-client acceptance remain open.
+
+## Creature receipt publication (2026-11-17)
+
+The isolated source author finalized [the creature receipt contract](specs/alpha-creature-receipt-order.md).
+The implementer read all 145 physical lines and verified SHA-256
+`894b3ea606c54f188154b4ee05cce2ff2a281c06c3320fc5fde1d1c1fba0a03b`.
+
+Packet 1 takes its temporary record snapshot at the count boundary, folds
+each repeated key's fields into the same record in wire order, then prunes
+unlisted creatures and commits once per distinct key in signed order.
+Its snap decision uses the final merged record and the held pre-assignment
+health and snap field. Packet 2 uses only the persistent set of successful
+packet-0 keys, which survives packet 1. The engine maps received records by
+their own identifier and retains its known mask-width validation.
+
+Each snap publishes the position and rotation of that receipt. The frame
+drains these in order and applies the newest live record once per actor with
+pending receipts. If the same key returns as a new creature, the body,
+fighter and cached presentation state start a new lifetime. The engine
+seeds its drawn-aim adapter from the creation receipt. The native
+write-only saved pose and container semantics, exact live-field baselines
+between frame and receiver snapshots, and original-client timing remain
+open.

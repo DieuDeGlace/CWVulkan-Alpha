@@ -1832,16 +1832,27 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         receivedActors = client.connected() ? client.others() : std::map<uint64_t, net::CreatureRecord>{};
         remotes.retain(receivedActors);
         std::erase_if(otherFighters, [&](const auto &entry) { return !receivedActors.contains(entry.first); });
+        // Publish snap poses in receipt order. An ID re-created between frames
+        // starts with empty client-side state even when it is still listed.
+        for (const auto &receipt : client.takeReceipts()) {
+            if (!receivedActors.contains(receipt.id))
+                continue;
+            if (receipt.initialAim) {
+                otherFighters.erase(receipt.id);
+                otherPoses.erase(receipt.id);
+                otherLooks.erase(receipt.id);
+                weaponPoints.erase(receipt.id);
+                shattered.erase(receipt.id);
+            }
+            remotes.receive(receipt);
+        }
         for (const auto &[id, record] : receivedActors) {
             auto snapshot = record.fighter();
             snapshot.id = id;
-            otherFighters[id].refresh(std::move(snapshot), frameElapsedMs);
+            auto &state = otherFighters[id];
+            state.refresh(std::move(snapshot), frameElapsedMs);
+            remotes.updateLive(id, record, state.fighter);
         }
-        // Remote smoothing §1.3-§1.5. Reuse the decoded core fields when
-        // applying this frame's existing snap decisions to the body.
-        for (const net::Client::Receipt &receipt : client.takeReceipts())
-            if (const auto record = receivedActors.find(receipt.id); record != receivedActors.end())
-                remotes.receive(receipt.id, record->second, otherFighters.at(receipt.id).fighter, receipt.snap);
         mods.frame(seconds);
         auto held = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS ? 1.f : 0.f; };
         if (player) {

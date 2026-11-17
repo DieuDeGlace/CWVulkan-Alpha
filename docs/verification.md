@@ -1938,3 +1938,22 @@ to held contracts resolve.
 All 60 CTest suites passed, including dedicated loopback, live Vulkan water
 and the owner-content zone comparison. Original-client interoperation and
 renderer walk-phase acceptance remain open.
+
+## Creature receipt publication (2026-11-17)
+
+NetTests sends a snap followed by a smooth receipt and verifies each
+position and rotation at the frame boundary. It removes the creature
+and creates it again at the same key before the frame drains its
+receipts. Its pose check uses the recreated snap, the recreated initial
+aim and the newest live record.
+
+A five-entry packet-1 fixture interleaves three keys and repeats two
+of them. It verifies field retention, one commit per distinct signed
+key and a snap decision against the final merged field. The subsequent
+packet 2 keeps the key previously seen in packet 0 and prunes the two
+keys supplied by packet 1 alone.
+
+The Windows x64 build, seven focused suites and all 60 CTest suites
+passed. The HTML specification parsed and all three added contract links
+resolve. Exact live-field baselines between locks and original-client
+interoperation remain open.

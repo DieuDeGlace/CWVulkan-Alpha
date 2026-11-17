@@ -117,6 +117,20 @@ struct CreatureRecord {
     }
 };
 
+// Copy the displayed-pose payload of the particular packet that supplied it.
+// A new actor also starts a new client-side lifetime and drawn aim.
+struct CreatureReceipt {
+    struct Pose {
+        std::array<int64_t, 3> position;
+        glm::vec3 rotation;
+    };
+    uint64_t id = 0;
+    std::optional<Pose> snap;
+    std::optional<glm::vec3> initialAim; // present only on creation
+
+    static CreatureReceipt fromRecord(uint64_t id, const CreatureRecord &record, bool snap, bool created);
+};
+
 // Packets §2.1: one field of the record.
 struct CreatureField {
     uint16_t offset, size;

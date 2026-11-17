@@ -331,6 +331,16 @@ std::optional<uint64_t> applyDelta(const std::vector<uint8_t> &plain, CreatureRe
     return id;
 }
 
+CreatureReceipt CreatureReceipt::fromRecord(uint64_t id, const CreatureRecord &record, bool snap, bool created) {
+    CreatureReceipt receipt;
+    receipt.id = id;
+    if (snap || created)
+        receipt.snap = Pose{{record.position(0), record.position(1), record.position(2)}, record.orientation()};
+    if (created)
+        receipt.initialAim = record.look();
+    return receipt;
+}
+
 std::vector<uint8_t> compressed(const std::vector<uint8_t> &plain) {
     const std::vector<uint8_t> packed = zlibCompress(plain);
     ByteWriter w;

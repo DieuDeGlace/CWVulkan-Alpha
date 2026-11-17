@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 36 and the rulings. The 243 tracked contracts
-comprise 184 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 37 and the rulings. The 244 tracked contracts
+comprise 185 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -88,6 +88,7 @@ Batch 33 covers `alpha-packet6-quick-wheel.md`.
 Batch 34 covers `alpha-timed-consumables.md`.
 Batch 35 covers `alpha-blueprint-zone-delivery.md`.
 Batch 36 covers `alpha-riding-actor-step.md`.
+Batch 37 covers `alpha-creature-receipt-order.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -143,6 +144,7 @@ Batch 36 covers `alpha-riding-actor-step.md`.
 | `alpha-created-companion-navigation.md` | B | 120 | 2 |
 | `alpha-creature-light-attachment-producers.md` | A | 91 | 1 |
 | `alpha-creature-map-key-order.md` | B | 70 | 1 |
+| `alpha-creature-receipt-order.md` | A | 146 | 0 |
 | `alpha-creature-update-phases.md` | A | 172 | 0 |
 | `alpha-creature-yaw-light-gates.md` | A | 125 | 1 |
 | `alpha-creatures-behaviour.md` | A | 986 | 0 |

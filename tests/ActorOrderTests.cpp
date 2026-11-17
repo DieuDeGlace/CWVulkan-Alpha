@@ -162,7 +162,9 @@ void checkConnectedRidingOrder() {
         snapshot.id = fighter.id;
         auto &entry = actors[fighter.id];
         entry.refresh(std::move(snapshot), 0);
-        remotes.receive(fighter.id, record, entry.fighter, snap);
+        const bool created = !remotes.find(fighter.id);
+        remotes.receive(net::CreatureReceipt::fromRecord(fighter.id, record, snap, created));
+        remotes.updateLive(fighter.id, record, entry.fighter);
     };
     Combatant rider;
     rider.id = 2;

@@ -718,8 +718,13 @@ Differences from the Steam engine that shape the plan:
   `alpha-riding-actor-step.md`). The controlled and received bodies advance in
   one signed-key pass. Terrain refill and both attachment passes use the live
   owner. Rendering and interaction read the resulting drawn pose.
-  Remote action-clock inputs, renderer walk state, receipt batching and native
+  Remote action-clock inputs, renderer walk state and native
   multiplayer acceptance remain open.
+- [x] Creature receipt publication (`alpha-creature-receipt-order.md`).
+  Keep each snap pose through frame publication, reset state when an ID is
+  recreated, and apply repeated batch records once per distinct signed key
+  with the merged fields. Packet 2 prunes from the independent packet-0
+  seen set. Exact live-field baselines between locks remain open.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

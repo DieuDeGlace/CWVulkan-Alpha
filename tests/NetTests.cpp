@@ -5,6 +5,7 @@
 #include "ZlibStream.h"
 #include "Saves.h"
 #include "net/Client.h"
+#include "net/RemoteCreatures.h"
 #include "ItemRequest.h"
 #include "net/Server.h"
 #include <chrono>
@@ -283,6 +284,143 @@ static void checkClientPackets() {
     check(waitFor([&] { return client.others().empty(); }), "a packet-1 count <= 0 deletes every other creature");
     finish = true;
     client.disconnect();
+    peer.join();
+}
+
+static void checkCreatureReceiptPoses() {
+    Socket listener;
+    if (!listener.listen(0, nullptr, "127.0.0.1")) {
+        check(false, "receipt pose fixture listens");
+        return;
+    }
+    std::atomic<bool> finish{false}, sendBatch{false}, sendEnd{false};
+    const uint64_t actor = UINT64_MAX, earlier = UINT64_MAX - 1, later = 7;
+    const auto poseRecord = [](int64_t x, float yaw, glm::vec3 aim) {
+        auto record = CreatureRecord::nativeDefaults();
+        record.setPosition(0, x);
+        record.setPosition(1, x + 1024);
+        record.setPosition(2, x + 2048);
+        record.setMotion({}, yaw);
+        std::memcpy(record.bytes.data() + 0x150, &aim, sizeof aim);
+        return record;
+    };
+    const auto first = poseRecord(100000, 10.f, {1, 0, 0});
+    auto snapped = poseRecord(200000, 20.f, {2, 0, 0});
+    snapped.bytes[0x1b0] = 1;
+    auto smooth = poseRecord(300000, 30.f, {3, 0, 0});
+    smooth.bytes[0x1b0] = 1;
+    const auto recreated = poseRecord(400000, 40.f, {4, 0, 0});
+    const auto latest = poseRecord(500000, 50.f, {5, 0, 0});
+    std::thread peer([&] {
+        Socket socket = listener.accept();
+        socket.setReadTimeout(3000);
+        uint32_t packet = 0, version = 0;
+        if (!socket.readU32(packet) || packet != HELLO || !socket.readU32(version) || version != VERSION)
+            return;
+        ByteWriter wire;
+        const auto initial = CreatureRecord::nativeDefaults();
+        wire.u32(ACCEPTED), wire.u32(CREATURE), wire.u64(1);
+        wire.write(initial.bytes.data(), initial.bytes.size());
+        wire.u32(SEED), wire.u32(1);
+        const auto append = [&](const CreatureRecord &record, const CreatureRecord *previous) {
+            wire.u32(CREATURE);
+            wire.bytes(compressed(encodeDelta(actor, record, changedFields(record, previous))));
+        };
+        append(first, nullptr);
+        append(snapped, &first);
+        append(smooth, &snapped);
+        wire.u32(CREATURE_BATCH), wire.i32(0); // drop the actor before it returns at the same key
+        append(recreated, nullptr);
+        append(latest, &recreated);
+        if (!socket.send(wire.data()))
+            return;
+        while (!sendBatch && !finish)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        if (finish)
+            return;
+        ByteWriter batch;
+        batch.u32(CREATURE_BATCH);
+        batch.i32(5);
+        auto record = poseRecord(250000, 60.f, {});
+        batch.bytes(encodeDelta(later, record, 1)); // deliberately out of signed order
+        batch.bytes(encodeDelta(earlier, record, 1));
+        record.bytes[0x1b0] = 1;
+        batch.bytes(encodeDelta(actor, record, uint64_t(1) << 40)); // temporary snap field change
+        record.bytes[0x1b0] = 0;
+        record.setHealth(123.f);
+        constexpr uint64_t health = uint64_t(1) << 27;
+        batch.bytes(encodeDelta(actor, record, (uint64_t(1) << 40) | health));
+        batch.bytes(encodeDelta(earlier, record, 2 | health));
+        if (!socket.send(batch.data()))
+            return;
+        while (!sendEnd && !finish)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        if (!finish && socket.sendU32(END_OF_BATCH))
+            while (!finish)
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    });
+    Client client;
+    const bool connected = client.connect("127.0.0.1", listener.boundPort());
+    check(connected, "receipt pose fixture connects");
+    if (connected) {
+        const bool received = waitFor([&] {
+            const auto actors = client.others();
+            const auto found = actors.find(actor);
+            return found != actors.end() && found->second.position(0) == latest.position(0);
+        });
+        check(received, "the wire reaches the smooth update of the recreated actor");
+        if (received) {
+            const auto receipts = client.takeReceipts();
+            check(receipts.size() == 5, "every applied packet produces one ordered receipt");
+            if (receipts.size() == 5) {
+                check(receipts[0].id == actor && receipts[0].initialAim == first.look() &&
+                          receipts[1].snap && receipts[1].snap->position == std::array<int64_t, 3>{200000, 201024, 202048} &&
+                          receipts[1].snap->rotation.z == 20.f && !receipts[1].initialAim && !receipts[2].snap,
+                      "a changed snap field retains that packet's pose even with a newer smooth receipt");
+                check(receipts[3].initialAim == recreated.look() && receipts[3].snap &&
+                          receipts[3].snap->position[0] == 400000 && !receipts[4].snap,
+                      "a deleted key's new incarnation carries its own initial pose and aim");
+                const auto record = client.others().at(actor);
+                net::RemoteCreatures remotes;
+                for (const auto &receipt : receipts)
+                    remotes.receive(receipt);
+                remotes.updateLive(actor, record, record.fighter());
+                const auto &remote = *remotes.find(actor);
+                check(remote.live.follow[0] == 400000 && remote.drawnRotation.z == 40.f &&
+                          remote.drawnLook == recreated.look() && remote.smoothing &&
+                          remote.live.position[0] == 500000 && remote.live.yaw == 50.f,
+                      "a single frame preserves the recreated snap and newest live pose separately");
+            }
+        }
+        sendBatch = true;
+        const bool batched = waitFor([&] {
+            const auto actors = client.others();
+            return actors.size() == 3 && actors.contains(earlier) && actors.at(earlier).health() == 123.f;
+        });
+        check(batched, "the repeated-key batch reaches its final publication");
+        if (batched) {
+            const auto actors = client.others();
+            check(actors.at(earlier).position(0) == 250000 && actors.at(earlier).yaw() == 60.f &&
+                      actors.at(actor).position(0) == 500000 && actors.at(actor).health() == 123.f,
+                  "packet 1 keeps earlier occurrences' fields and the seeded live record");
+            const auto receipts = client.takeReceipts();
+            check(receipts.size() == 3 && receipts[0].id == earlier && receipts[1].id == actor && receipts[2].id == later,
+                  "packet 1 commits each distinct key once in signed order");
+            if (receipts.size() == 3) {
+                check(receipts[0].snap && receipts[0].snap->position[0] == 250000 &&
+                          receipts[0].snap->rotation.z == 60.f && !receipts[1].snap && !receipts[1].initialAim,
+                      "packet 1 makes one snap decision from the final merged record");
+            }
+        }
+        sendEnd = true;
+        check(waitFor([&] {
+            const auto actors = client.others();
+            return actors.size() == 1 && actors.contains(actor);
+        }), "packet 2 keeps the packet-0 key and prunes keys listed only by packet 1");
+    }
+    finish = true;
+    client.disconnect();
+    listener.close();
     peer.join();
 }
 
@@ -624,6 +762,7 @@ static void checkCombatTransport() {
 int main() {
     checkIdentityAdoption();
     checkClientPackets();
+    checkCreatureReceiptPoses();
     checkCombatTransport();
     // Server buff-update admission: the day clock factor is 10, or 100 when the scan found
     // a living role-zero creature in action 0x54.

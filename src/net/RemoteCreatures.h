@@ -19,13 +19,16 @@ class RemoteCreatures {
         glm::vec3 drawnLook{0};          // drawn aim; follows the received aim (+0x160)
         bool smoothing = false;          // the flag +0x1398 (60 or 0)
         bool attached = false;
+        bool needsLiveSnapshot = false;
     };
     struct Controlled {
         creatures::Combatant &fighter;
         creatures::Body &body;
     };
-    // §1.3 step 7: a record applied with the receive's snap decision.
-    void receive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter, bool snap);
+    // §1.3 step 7: apply the receipt's drawn pose in message order. After
+    // draining receipts, publish the latest live record once for each actor.
+    void receive(const CreatureReceipt &receipt);
+    void updateLive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter);
     // §1.5: creatures no longer listed are gone.
     void retain(const std::map<uint64_t, CreatureRecord> &listed);
     // §3.2 then §2, one world piece. Visit the controlled and received actors

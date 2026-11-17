@@ -59,12 +59,8 @@ class Client {
     // What the server last listed: other creatures by id.
     std::map<uint64_t, CreatureRecord> others() const;
     // Remote smoothing §1.3: each applied creature record since the last call, in order, with
-    // whether it snaps (a new creature, a changed snap field record +0x1B0, or old health
-    // 0.0 >= health) or smooths.
-    struct Receipt {
-        uint64_t id = 0;
-        bool snap = false;
-    };
+    // snapshots of the pose on snap (new, changed field +0x1B0, or old health <= 0).
+    using Receipt = CreatureReceipt;
     std::vector<Receipt> takeReceipts();
     // Frame-side credit cleanup, under lockFrame. Later network deltas may
     // replace this field; unrelated received core bytes remain untouched.
