@@ -280,7 +280,7 @@ struct ChannelBursts {
 };
 
 void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at, const std::function<int()> &draw,
-                        std::vector<SoundEvent> &out, const ChannelBursts *channel) {
+                        std::vector<SoundEvent> &out, const ChannelBursts *channel, bool includePulseSound) {
     const int32_t action = c.action;
     // These dispatch branches own their audio. The native melee lift/swing
     // branch does not surround ranged dispatch or its input-start helpers.
@@ -351,7 +351,7 @@ void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at
     case 31: case 33: interval = P.active / 12; break;
     default: break;
     }
-    if (interval > 0 && P1 <= t && t < P1 + P2) {
+    if (includePulseSound && interval > 0 && P1 <= t && t < P1 + P2) {
         const auto k = [&](int32_t x) { return std::bit_cast<int32_t>(uint32_t(x) - uint32_t(P1)) / interval; };
         if (previous < P1 || k(after) != k(t)) {
             out.push_back({at, 15, pitch(0.25f, 1.f), 1});
@@ -371,7 +371,7 @@ void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at
 
 void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const std::function<int()> &draw,
                   std::vector<SoundEvent> &out) {
-    appendActionSounds(c, int32_t(t), int32_t(dt), at, draw, out, nullptr);
+    appendActionSounds(c, int32_t(t), int32_t(dt), at, draw, out, nullptr, true);
 }
 
 void receivedActionEffects(const Combatant &c, const Body &body, int32_t dt, glm::dvec3 at,
@@ -383,7 +383,8 @@ void receivedActionEffects(const Combatant &c, const Body &body, int32_t dt, glm
             sounds.push_back({at, 14, sound::randomPitch(draw(), 0.25f, 1.f), 1.f});
     } else if (meleeAction(c.action)) {
         const ChannelBursts channel{body, bursts};
-        appendActionSounds(c, c.actionMs, dt, at, draw, sounds, &channel);
+        // The received action-11 pulse sounds after its candidate reset.
+        appendActionSounds(c, c.actionMs, dt, at, draw, sounds, &channel, c.action != 11);
     }
 }
 

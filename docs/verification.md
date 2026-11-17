@@ -2156,3 +2156,20 @@ history and a second anchor entry. The remesh completed and the Vulkan
 capture showed the placed floor in the generated terrain. The Windows x64
 build, nine focused suites and all 60 CTest suites passed. Stock input
 activation, native preview and the placement save boundary remain open.
+
+## Connected melee actions 9–21 (2026-11-17)
+
+ActorOrderTests checks all thirteen received actions at their saved strike
+windows, including the zero base amount and constant impulse of action 11,
+the skill-based action-21 impulse, and the full and half-resource routes.
+One fixture observes the action-11 candidate sets before the pulse pitch
+draw, then checks critical, damage variation and impact pitch in sequence.
+The startup fixture checks the roll before counter feedback, followed by the
+type-11 replacement and pending debit. The action-17 fixture sees the new
+buff at the end of the resident list before the target's own turn. The
+target ages the new entry and keeps its health under connected authority.
+
+The Windows x64 build, nine focused suites and all 60 CTest suites passed.
+Revision 15 parsed
+and all 44 links resolved. The held contract's full hash and line count
+matched. Original-client combat and the zero-period action-11 case remain open.

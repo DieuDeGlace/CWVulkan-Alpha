@@ -321,7 +321,6 @@ namespace {
 HitInput commonHitInput(const Combatant &a, glm::vec3 displacement, glm::dvec3 position, glm::vec3 box,
                         glm::dvec3 target, glm::vec3 targetBox, const std::function<int()> &draw) {
     HitInput in;
-    in.critical = a.criticalLatched || (float)draw() / 32767.f < criticalChance(a);
     displacement.z = 0;
     const float squared = (displacement.x * displacement.x + displacement.y * displacement.y) +
                           displacement.z * displacement.z;
@@ -330,6 +329,11 @@ HitInput commonHitInput(const Combatant &a, glm::vec3 displacement, glm::dvec3 p
         displacement *= 1.f / root;
     }
     displacement.z = .25f;
+    in.critical = a.criticalLatched;
+    if (!in.critical) {
+        const float probability = criticalChance(a);
+        in.critical = (float)draw() / 32767.f < probability;
+    }
     const float sizeRatio = box.x / targetBox.x;
     displacement *= (float)std::sqrt((double)sizeRatio);
     displacement *= pushOf(a);

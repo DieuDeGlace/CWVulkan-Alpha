@@ -54,39 +54,50 @@ float lightDistanceSquared(const int64_t *from, const int64_t *to) {
 template<class Feedback>
 bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
                            const RemoteCreatures::StepEffects *effects, const Feedback &deferredFeedback) {
+    creatures::startMeleeRoll(fighter);
     if (effects)
         creatures::receivedActionEffects(fighter, body, dt, soundPosition(body.position), effects->draw,
                                          effects->frame.sounds, effects->frame.bursts);
-    if (!creatures::meleeAction(fighter.action))
+    const int32_t action = fighter.action;
+    if (!creatures::meleeAction(action))
         return false;
 
     const int32_t before = fighter.actionMs;
-    const auto timing = creatures::phases(fighter, fighter.action);
+    const auto timing = creatures::phases(fighter, action);
     auto window = creatures::ordinaryStrikeBounds(timing);
-    const bool strikes = fighter.action >= 1 && fighter.action <= 7;
-    creatures::updateSwingCount(fighter, before, dt);
+    const bool strikes = (action >= 1 && action <= 7) || (action >= 9 && action <= 21);
+    const bool repeating = action == 5 || action == 11;
+    if (!strikes)
+        creatures::updateSwingCount(fighter, before, dt);
     // The live clock after preparation uses these earlier signed bounds.
-    if (fighter.action == 5 || fighter.action == 31) {
+    if (repeating || action == 31) {
         const int32_t start = timing.windUp, end = start + timing.active;
-        const int32_t period = timing.active / (fighter.action == 5 ? 3 : 12);
+        const int32_t period = timing.active / (repeating ? 3 : 12);
         window = {start, start};
         if (period > 0 && before >= start && before < end) {
-            const auto pulseStart = [&](int32_t clock) { return start + ((clock - start) / period) * period; };
-            const int32_t lower = pulseStart(before);
+            const auto pulseIndex = [&](int32_t clock) {
+                return std::bit_cast<int32_t>(uint32_t(clock) - uint32_t(start)) / period;
+            };
+            const int32_t current = pulseIndex(before);
+            const int32_t lower = start + current * period;
             window = {lower, lower + 100};
-            if (fighter.action == 5) {
+            if (repeating) {
                 const int32_t projected = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(dt));
-                const int32_t next = pulseStart(projected);
-                if (next != lower && next < end) {
-                    // Crossing another pulse discards the old candidates before
-                    // deferred feedback and keeps the hit-processing latch.
+                const int32_t next = pulseIndex(projected);
+                if (next != current && start + next * period < end) {
+                    fighter.swingCount = fighter.combo;
                     fighter.struck.clear();
                     fighter.deferred.clear();
                 }
+                const int32_t previous = std::bit_cast<int32_t>(uint32_t(before) - uint32_t(dt));
+                if (action == 11 && effects && (previous < start || next != current))
+                    effects->frame.sounds.push_back({soundPosition(body.position), 15,
+                                                     sound::randomPitch(effects->draw(), .25f, 1.f), 1.f});
             }
         }
     }
     if (before <= timing.windUp) {
+        fighter.swingCount = fighter.combo;
         deferredFeedback(fighter);
         fighter.struck.clear();
         fighter.deferred.clear();
@@ -139,6 +150,7 @@ void strikeReceivedMelee(creatures::Combatant &attacker, const creatures::Body &
         frame.emittedHits.insert(frame.emittedHits.end(), outcome.records.begin(), outcome.records.end());
         frame.sounds.insert(frame.sounds.end(), outcome.sounds.begin(), outcome.sounds.end());
         frame.bursts.insert(frame.bursts.end(), outcome.bursts.begin(), outcome.bursts.end());
+        frame.buffs.insert(frame.buffs.end(), outcome.buffs.begin(), outcome.buffs.end());
         if (!outcome.hitAccepted)
             return;
         if (first) {

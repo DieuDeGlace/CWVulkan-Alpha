@@ -3620,3 +3620,23 @@ Construction and actor reset default the identifier to zero, and the core
 packet copy preserves it. The dedicated server keeps its existing movement
 route. Stock nonzero producers, fresh offline production of actor key zero
 and original-client runtime acceptance remain open.
+
+## Connected melee actions 9–21 (2026-11-17)
+
+The isolated author finalized [the connected actions 9–21 contract](specs/alpha-connected-melee-actions-9-through-21.md).
+The implementer read all 425 physical lines and verified SHA-256
+`43206c115392d0d53c59cff91d00ba8032edc68bfbad9253f9cd7cb196f84900`.
+The received living turn now admits these actions to the signed candidate
+walk and keeps the saved early-clock bounds through combo retiming. Action 11
+resets its candidate sets before the pulse pitch draw and deferred feedback.
+It keeps its prior window for the rest of the turn and spends the full pending
+amount before halving the recorded resource. The critical probability is
+sampled before its draw. A zero amount still follows the applicable draws.
+
+Class-four specialization-one actions 17 and 20 write the startup roll before
+the early sounds and deferred feedback. The common hit resolver appends the
+action-17 timed buff after damage multipliers and publishes the returned buff
+record before the next actor. The connected actor's own buff pass ages the
+resident effect. Finite nonlocal living actors with positive stat divisors are
+covered. Original-client combat, the zero-period case, other action families
+and the wider stat and presentation acceptance gates remain open.

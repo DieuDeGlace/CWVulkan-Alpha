@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 14 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 15 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -309,6 +309,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
             <tr><td><b>Connected sneaking meter</b></td><td>Use the seeded zone set for each world piece. Read daylight, the terrain cell, placement lights, streetlights and candles. Cap that subtotal, add live lantern carriers in signed order, and use the resulting light and current velocity for the action-79 meter.</td><td class="mono"><a href="specs/alpha-sneak-light-inputs.md">alpha-sneak-light-inputs</a></td><td><span class="status partial">Offline and native acceptance open</span></td></tr>
             <tr><td><b>Connected action-1 melee</b></td><td>Use the saved window with the live pre-increment clock. Traverse live actors in signed key order, keep defensive and ordinary hit outputs in candidate order, and reserve health application to its authority path. Run deferred feedback at the documented boundaries and publish combo fields to the receiver baseline.</td><td class="mono"><a href="specs/alpha-connected-melee-candidates.md">alpha-connected-melee-candidates</a>, <a href="specs/alpha-connected-combo-cleanup.md">alpha-connected-combo-cleanup</a></td><td><span class="status partial">Other actions and native acceptance open</span></td></tr>
             <tr><td><b>Connected melee actions 2–7</b></td><td>Use the same live target admission for each action. When action 5 projects into a different pulse inside the active interval, clear both candidate sets before deferred feedback and keep the hit latch. Apply the independently verified cost, damage and impulse selections.</td><td class="mono"><a href="specs/alpha-connected-melee-actions-2-through-7.md">alpha-connected-melee-actions-2-through-7</a>, <a href="specs/alpha-rulings-connected-melee-scalar-selectors.md">alpha-rulings-connected-melee-scalar-selectors</a></td><td><span class="status partial">Native combat acceptance open</span></td></tr>
+            <tr><td><b>Connected melee actions 9–21</b></td><td>Walk live candidates in signed key order with saved early-clock bounds. Action 11 clears its prior candidates before the next pulse cue and retains the earlier bounds. Actions 17 and 20 set the qualifying startup roll before feedback. A successful action-17 hit appends a timed damage effect and its output record before the next actor.</td><td class="mono"><a href="specs/alpha-connected-melee-actions-9-through-21.md">alpha-connected-melee-actions-9-through-21</a></td><td><span class="status partial">Native combat acceptance open</span></td></tr>
             <tr><td><b>Connected hit receipt and presentation</b></td><td>Apply received hits to the resolved local target in wire order after world pieces. Append foreign-source receipts after produced hits. Admit local combat labels and fixed-position weapon lights through their own gates, then queue full-ID local-source hits and buffs in frame order.</td><td class="mono"><a href="specs/alpha-connected-hit-consumption.md">alpha-connected-hit-consumption</a></td><td><span class="status partial">Stock counters and native acceptance open</span></td></tr>
             <tr><td><b>Creature receipt order</b></td><td>Keep the position and rotation of each snap through frame publication. Merge repeated packet-1 records in wire order, then apply each key once in signed order. Packet 2 prunes by the independent packet-0 seen set.</td><td class="mono"><a href="specs/alpha-creature-receipt-order.md">alpha-creature-receipt-order</a></td><td><span class="status partial">Native timing pending</span></td></tr>
           </tbody>
@@ -372,13 +373,12 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
     <section id="library">
       <h3><span class="num">C2</span>Specification library</h3>
       <div class="stats">
-        <div><b>218</b>contracts</div>
-        <div><b>193</b>with held status</div>
-        <div><b>63</b>inherited contracts re-certified</div>
-        <div><b>4</b>source-side rulings</div>
-        <div><b>5</b>reclassified as engine documents</div>
+        <div><b>257</b>tracked contracts</div>
+        <div><b>200</b>held with recorded hashes</div>
+        <div><b>52</b>held awaiting hash records</div>
+        <div><b>5</b>engine, guidance and superseded records</div>
       </div>
-      <p>Each contract answers one area or question, cites the image and RVA for every fact, and ends with an unresolved section. Re-certified contracts end with a dated record of what was confirmed, corrected, removed and left open. When two held contracts disagree, a fresh author writes a short ruling from the original evidence; the ruling names which statement is right. <span class="mono">docs/provenance-audit.md</span> classifies every contract, and <span class="mono">docs/CLEANROOM.md</span> records which contracts governed each checkpoint.</p>
+      <p>Each contract answers one area or question, cites the image and RVA for every fact, and ends with an unresolved section. Re-certified contracts record what was confirmed, corrected, removed and left open. When two held contracts disagree, a fresh author writes a ruling from the original evidence. The <a href="provenance-audit.md">provenance audit</a> classifies each contract, and the <a href="CLEANROOM.md">clean-room record</a> gives the evidence for each checkpoint.</p>
     </section>
 
     <section id="thirdparty">

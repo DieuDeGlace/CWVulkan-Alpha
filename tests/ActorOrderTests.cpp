@@ -869,6 +869,139 @@ void checkConnectedMeleeFamily() {
     speed = std::move(previous);
 }
 
+void checkConnectedMeleeActionsNineThroughTwentyOne() {
+    const float rank = 1.f - 1.f / (1.f + 8.f * .1f);
+    const std::array impulses{6.f, 2.f, 10.f, 2.f, 6.f, 6.f, 6.f, 2.f, 6.f, 3.f, 3.f, 6.f, rank * 30.f + 5.f};
+    for (int32_t action = 9; action <= 21; ++action) {
+        MeleeFixture world;
+        Combatant input;
+        input.action = action;
+        input.health = 50;
+        input.skills[6] = 8;
+        const auto timing = phases(input, action);
+        input.actionMs = action == 11 ? 1 : timing.windUp + timing.active / 2;
+        auto &attacker = world.receive(1, input, world.x, world.y);
+        float impulse = impulses[action - 9];
+        if (action != 11 && action != 17 && action != 20 && action != 21)
+            impulse /= attackSpeed(attacker);
+        Combatant defender;
+        defender.controller = 6;
+        defender.health = 50;
+        defender.multipliers[3] = 0;
+        const auto &target = world.receive(2, defender);
+        int draws = 0;
+        const std::function<int()> draw = [&] { ++draws; return 32767; };
+        NpcFrame frame;
+        const net::RemoteCreatures::StepEffects effects{frame, draw};
+        world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+        check(draws == 3 && attacker.combo == 1 && target.health == 50 && frame.emittedHits.size() == 1,
+              "each action 9 through 21 emits one accepted hit in the connected receiver turn");
+        if (!frame.emittedHits.empty()) {
+            const auto &hit = frame.emittedHits.front();
+            const float amount = action == 11 ? 0.f : action == 21 ? .1f * .75f : .75f;
+            const bool matches = hit.amount == amount && hit.knockBack == glm::vec3(0, impulse, .25f * impulse) &&
+                                 hit.area == (action == 11);
+            if (!matches)
+                std::printf("Action %d amount %g / %g, impulse %g / %g\n", action, hit.amount, amount, hit.knockBack.y, impulse);
+            check(matches, "physical coefficient, action-eleven zero baseline and all impulse selectors match");
+        }
+    }
+
+    for (const int32_t action : {17, 20, 21}) {
+        MeleeFixture world;
+        Combatant input;
+        input.action = action;
+        input.characterClass = 4;
+        input.specialization = 1;
+        input.mana = .5f;
+        input.charge = action == 21 ? 0.f : .25f;
+        auto &attacker = world.receive(1, input, world.x, world.y);
+        if (action != 21)
+            attacker.deferred = {1}; // the early roll permits live self feedback
+        NpcFrame frame;
+        int draws = 0;
+        const std::function<int()> draw = [&] { ++draws; return 32767; };
+        const net::RemoteCreatures::StepEffects effects{frame, draw};
+        world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+        if (action == 21) {
+            check(attacker.mana == .5f && attacker.spentPower == 1.f && frame.buffs.empty() && draws == 0,
+                  "action twenty-one sets the recorded resource to one without a mana debit or draw");
+        } else {
+            check(attacker.dodgeMs == 600 && attacker.criticalLatched && attacker.mana == 0.f &&
+                      attacker.spentPower == .25f && attacker.buffs.empty() && draws == 0 &&
+                      frame.buffs.size() == 2 && frame.buffs[0].record.timeMs == 30000 &&
+                      frame.buffs[1].record.timeMs == 0 && frame.emittedHits.size() == 1 &&
+                      frame.emittedHits[0].kind == HIT_COUNTER,
+                  "startup roll precedes feedback, then pending resource overrides the mana snapshot without clearing critical");
+        }
+    }
+}
+
+void checkConnectedMeleePulseAndEffect() {
+    MeleeFixture world;
+    Combatant input;
+    input.action = 11;
+    input.characterClass = 4;
+    input.health = 50;
+    input.mana = .75f;
+    input.charge = .5f;
+    input.combo = 4;
+    const int32_t pulse = phases(input, 11).active / 3;
+    input.actionMs = pulse - 1;
+    auto &attacker = world.receive(1, input, world.x, world.y);
+    attacker.struck = {3};
+    attacker.deferred = {3};
+    attacker.hitLanded = true;
+    Combatant defender;
+    defender.controller = 6;
+    defender.health = 50;
+    defender.multipliers[3] = 0;
+    auto &target = world.receive(3, defender);
+    NpcFrame frame;
+    constexpr std::array samples{127, 32767, 16384, 277};
+    size_t draws = 0;
+    const std::function<int()> draw = [&] {
+        if (draws == 0)
+            check(attacker.struck.empty() && attacker.deferred.empty() && attacker.swingCount == 4 && attacker.hitLanded,
+                  "action-eleven pulse clears before its sound draw and retains the hit latch");
+        const size_t i = draws++;
+        return i < samples.size() ? samples[i] : 32767;
+    };
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    world.remotes.step(world.actors, 2, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == samples.size() && frame.sounds.size() == 2 && frame.emittedHits.size() == 1 &&
+              attacker.spentPower == .25f && attacker.charge == 0.f && attacker.combo == 5 &&
+              attacker.stealth == .25f - 2.f * .0005f && attacker.actionMs == pulse + 1,
+          "earlier saved pulse window consumes full pending, deals one charged hit and avoids counter feedback");
+    if (frame.sounds.size() == 2 && frame.emittedHits.size() == 1) {
+        check(frame.sounds[0].sound == 15 && frame.sounds[0].pitch == sound::randomPitch(127, .25f, 1.f) &&
+                  frame.sounds[1].sound == 5 && frame.sounds[1].pitch == sound::randomPitch(277, .2f, .9f) &&
+                  frame.emittedHits[0].amount == (.25f * .25f * 5.f) * (1.25f - 16384.f * .5f / 32767.f),
+              "pulse, critical, variation and impact draws keep their exact order");
+    }
+
+    input.action = 17;
+    input.actionMs = phases(input, 17).windUp + 101;
+    input.charge = 0.f;
+    world.receive(1, input, world.x, world.y);
+    attacker.struck.clear();
+    target.buffs.push_back({DAMAGE_OVER_TIME, .125f, 100, 111});
+    Combatant local;
+    local.id = 2;
+    Body localBody;
+    localBody.place({0, 0, 8});
+    const net::RemoteCreatures::Controlled controlled{local, localBody};
+    frame.reset();
+    world.remotes.step(world.actors, 20, floorBlock, {}, &controlled, [&] {
+        check(target.buffs.size() == 2 && target.buffs.front().source == 111 && target.buffs.back().source == 1 &&
+                  target.buffs.back().timeMs == 3000 && frame.buffs.size() == 1 && frame.buffs[0].target == 3,
+              "action seventeen publishes a new trailing buff before the next signed actor turn");
+    }, &effects);
+    check(frame.emittedHits.size() == 1 && target.health == 50 && target.buffs.size() == 2 &&
+              target.buffs.back().timeMs == 2980 && target.buffs.back().value == frame.emittedHits[0].amount * .1f,
+          "the later target ages the appended damage-over-time effect without applying periodic damage locally");
+}
+
 void checkOrdinaryCreatureLink() {
     MeleeFixture world;
     Combatant input;
@@ -1053,6 +1186,8 @@ int main() {
     checkConnectedMeleeOrder();
     checkConnectedMeleeWindow();
     checkConnectedMeleeFamily();
+    checkConnectedMeleeActionsNineThroughTwentyOne();
+    checkConnectedMeleePulseAndEffect();
     checkOrdinaryCreatureLink();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();

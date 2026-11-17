@@ -276,6 +276,8 @@ struct ActionTickRole {
     bool replica = false;
 };
 void advanceActionTimers(Combatant &c, int32_t dtMs);
+// The startup roll can be observed by the following deferred counter pass.
+void startMeleeRoll(Combatant &c);
 void prepareCommonAction(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *events = nullptr);
 void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *events = nullptr);
 void advanceActionClock(Combatant &c, int32_t dtMs, bool authoritative,

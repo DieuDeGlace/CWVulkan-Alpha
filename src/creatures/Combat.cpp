@@ -734,14 +734,17 @@ void advanceActionTimers(Combatant &c, int32_t milliseconds) {
         c.recoveryPenalty = std::min(0.f, c.recoveryPenalty + (float(milliseconds) * 0.001f) / 180.f);
 }
 
+void startMeleeRoll(Combatant &c) {
+    if (c.actionMs == 0 && c.characterClass == 4 && c.specialization == 1 &&
+        (c.action == 5 || c.action == 17 || c.action == 20))
+        c.dodgeMs = 600;
+}
+
 void prepareCommonAction(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
     // Healing and projectile bodies have separate resource boundaries: action 0x5F pays at its
     // first crossing in the ray case (beam-leftovers §1.3), action 0x22 at each heal pulse
     // (head-pitch-and-pick §3.1).
     if (meleeAction(c.action)) {
-        if (c.actionMs == 0 && c.characterClass == 4 && c.specialization == 1 &&
-            (c.action == 5 || c.action == 17 || c.action == 20))
-            c.dodgeMs = 600;
         const Phases timing = phases(c, c.action);
         if (c.actionMs <= timing.windUp) { // strike-call-sites S7
             deferredPass(c);
@@ -803,6 +806,7 @@ void prepareCommonAction(Combatant &c, int32_t milliseconds, std::vector<BuffEve
 
 void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
     advanceActionTimers(c, milliseconds);
+    startMeleeRoll(c);
     prepareCommonAction(c, milliseconds, events);
 }
 

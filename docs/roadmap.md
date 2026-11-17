@@ -772,6 +772,10 @@ Differences from the Steam engine that shape the plan:
   hit amounts and impulses per live signed candidate. Action 5 clears both
   candidate sets before feedback when its projected clock starts the next
   active pulse. The independent ruling resolves disputed scalar selections.
+- [x] Connected melee actions 9–21 (`alpha-connected-melee-actions-9-through-21.md`).
+  Use exact signed windows, pulse and per-target draws, action-specific resource
+  and impulse selectors, and the timed action-17 buff append before the target's
+  own turn. Original-client combat acceptance remains open.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
