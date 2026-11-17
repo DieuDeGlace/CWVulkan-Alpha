@@ -23,7 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-16 (after batches 1-26 and the rulings; 234 tracked contracts, local ignored variants excluded): 168 A, 61 B, 0 C (0 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 27 and the rulings. The 234 tracked contracts
+comprise 170 A, 59 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -72,6 +73,9 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 (plus the ruling `alpha-rulings-knockback-snap.md`); `alpha-travel.md`, `alpha-particles.md`,
 `alpha-crafting.md`, `alpha-open-points-3.md` (plus the ruling `alpha-rulings-walk-flag-pitch.md`); `alpha-path-search.md`, `alpha-worldgen-locations.md`,
 `alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`; `alpha-creatures-behaviour.md` (plus the ruling `alpha-rulings-beam-flag-strike-origin.md`); `alpha-worldgen-structures.md`; `alpha-ui-screens.md` (plus the rulings `alpha-rulings-knockback-taming-charge.md` and `alpha-rulings-corridor-third-line.md`); `alpha-creatures-models.md`, `alpha-missions.md` and `alpha-rendering.md` (plus the rulings `alpha-rulings-mission-rewards.md`, `alpha-rulings-pose-49-50-mount.md`, `alpha-rulings-rendering-clouds-lights.md` and `alpha-rulings-shimmer-phase.md`); `alpha-pets-bombs.md` and `alpha-character-screens.md`; `alpha-materials-wildlife-routes.md` (plus the ruling `alpha-rulings-held-light-factor.md`); `alpha-trails-poses-schedules.md`, `alpha-ui-plasma.md`, `alpha-audio.md` and `alpha-extractor.md` (plus the rulings `alpha-rulings-pose-69-arc.md`, `alpha-rulings-manacubebar-sequence.md`, `alpha-rulings-audio-ui-sounds.md`, `alpha-rulings-zone-fields.md`, `alpha-rulings-spawn-rounds-ruin-routes.md` and `alpha-rulings-channel2-explosion-window.md`).
+
+Batch 27 covers `alpha-terrain-chunk-point-lights.md` and
+`alpha-terrain-shader-color-numerics.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -267,10 +271,10 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-template-stamping-markers.md` | A | 504 | 0 |
 | `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
 | `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
-| `alpha-terrain-chunk-point-lights.md` | B | 92 | 0 |
+| `alpha-terrain-chunk-point-lights.md` | A | 102 | 0 |
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
-| `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
+| `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
 | `alpha-trails-poses-schedules.md` | A | 900 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |

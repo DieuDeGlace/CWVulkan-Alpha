@@ -10,6 +10,10 @@ uint64_t key(int32_t x, int32_t y) { return uint64_t(uint32_t(x)) << 32 | uint32
 bool inWorld(glm::ivec2 chunk) {
     return uint32_t(chunk.x) < 0x80000u && uint32_t(chunk.y) < 0x80000u;
 }
+int32_t chunkEndpoint(int64_t fixed) {
+    const auto column = std::bit_cast<int32_t>(uint32_t(fixed / 65536));
+    return column / 32;
+}
 int64_t squaredDistance(const FixedPosition &position, const FixedPosition &reference) {
     int64_t sum = 0;
     for (size_t axis = 0; axis < 3; ++axis) {
@@ -157,6 +161,7 @@ const std::vector<Selection> &Selector::rebuild(std::span<const Candidate> order
     if (index.empty())
         return selections;
 
+    const FixedPosition renderShift{shift[0], shift[1], 0};
     for (const Candidate &candidate : ordered) {
         const float scaledRadius = candidate.radius * 65536.f;
         // Exceptional radius conversion is outside the native ordinary-input
@@ -164,13 +169,17 @@ const std::vector<Selection> &Selector::rebuild(std::span<const Candidate> order
         if (!(double(scaledRadius) >= -0x1p63 && double(scaledRadius) < 0x1p63))
             continue;
         const int64_t radius = static_cast<int64_t>(scaledRadius);
-        const int64_t x0 = std::max<int64_t>(first.x, subtract(candidate.position[0], radius) / 65536 / 32);
-        const int64_t x1 = std::min<int64_t>(last.x, add(candidate.position[0], radius) / 65536 / 32);
-        const int64_t y0 = std::max<int64_t>(first.y, subtract(candidate.position[1], radius) / 65536 / 32);
-        const int64_t y1 = std::min<int64_t>(last.y, add(candidate.position[1], radius) / 65536 / 32);
-        for (int64_t x = x0; x <= x1; ++x)
-            for (int64_t y = y0; y <= y1; ++y) {
-                const uint64_t coordinate = key(int32_t(x), int32_t(y));
+        const int32_t x0 = std::max(first.x, chunkEndpoint(subtract(candidate.position[0], radius)));
+        const int32_t x1 = std::min(last.x, chunkEndpoint(add(candidate.position[0], radius)));
+        const int32_t y0 = std::max(first.y, chunkEndpoint(subtract(candidate.position[1], radius)));
+        const int32_t y1 = std::min(last.y, chunkEndpoint(add(candidate.position[1], radius)));
+        if (x0 > x1 || y0 > y1)
+            continue;
+        const glm::vec4 position(renderPosition(candidate.position, renderShift), candidate.radius);
+        const glm::vec4 colour(candidate.colour, 0);
+        for (int32_t x = x0; x <= x1; ++x)
+            for (int32_t y = y0; y <= y1; ++y) {
+                const uint64_t coordinate = key(x, y);
                 const auto found = std::lower_bound(index.begin(), index.end(), coordinate,
                     [](const auto &entry, uint64_t value) { return entry.first < value; });
                 if (found == index.end() || found->first != coordinate)
@@ -178,10 +187,9 @@ const std::vector<Selection> &Selector::rebuild(std::span<const Candidate> order
                 Selection &selection = selections[found->second];
                 if (selection.count >= CAPACITY)
                     continue;
-                const glm::vec4 position(renderPosition(candidate.position, shift), candidate.radius);
                 const size_t slot = selection.count++;
                 selection.positions[slot] = position;
-                selection.colours[slot] = glm::vec4(candidate.colour, 0);
+                selection.colours[slot] = colour;
             }
     }
     return selections;

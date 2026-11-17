@@ -68,10 +68,10 @@ Palette palette(float L, const ZoneFactors &zone, bool underwater) {
                    w * std::bit_cast<float>(0xbe4cccccu) + 1.f};
     }
     if (wm > .3f && mo > .6f) { // warm and wet: green haze and sky
-        float m = std::min((wm - .3f) / .7f * 4, 1.f);
-        float w = (1 - se) * ((mo - .6f) * m / .4f);
+        const float m = std::min((wm - .3f) / .7f * 4, 1.f);
+        const float w = ((mo - .6f) * m / .4f) * (1.f - se);
         day.fog = day.fog + (glm::vec3(0, .7f, .5f) - day.fog) * w;
-        day.sky1 = {w * .4f + .1f, w * std::bit_cast<float>(0x3e999998u) + .6f, 1};
+        day.sky1 = {w * .4f + .1f, w * std::bit_cast<float>(0x3e999998u) + .6f, w * 0.f + 1.f};
         day.sky2 = {-.01f * w + .01f, w * std::bit_cast<float>(0x3f0ccccdu) + .05f,
                     w * std::bit_cast<float>(0xbdccccd0u) + 1.f};
     }

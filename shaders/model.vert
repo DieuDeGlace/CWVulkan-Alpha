@@ -38,9 +38,10 @@ void main() {
     vec4 clip = f.viewProjection * world;
     gl_Position = clip;
 
-    // §5.2: screen height for the gradient, divided per vertex. Vulkan's clip y points down.
-    fogInputs.x = clip.x / clip.w;
-    fogInputs.y = -clip.y / clip.w + f.params.y;
+    // Share the per-vertex reciprocal for both fog coordinates. Vulkan's clip y points down.
+    precise float inverseW = 1.0 / clip.w;
+    fogInputs.x = clip.x * inverseW;
+    fogInputs.y = fma(-clip.y, inverseW, f.params.y);
     // §5.4: squared, scaled distances to the camera, all and horizontal only.
     vec3 toCamera = f.camera.xyz - world.xyz;
     float scale2 = f.params.x * f.params.x;

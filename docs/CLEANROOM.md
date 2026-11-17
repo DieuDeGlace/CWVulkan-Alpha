@@ -2993,3 +2993,26 @@ zero-duration calls. Its non-hit death notifications remain an adapter for death
 outside the synchronous fatal-hit path. Client and server still batch explosion
 voxel edits after the creature walk. Bomb item requests still enter the outer
 client and server paths ahead of the requesting player's turn.
+
+## Terrain point lights and shader numerics (2026-11-17)
+
+A fresh source-only author re-certified `alpha-terrain-chunk-point-lights.md`
+(`61f806721de76968b7f0160d330032241a9d9633986cb07a601fa4a01c2b4996`) and
+`alpha-terrain-shader-color-numerics.md`
+(`dfbb9588d86f209b28550990a62b9a457af58223fdc1c26cc7081cd1ad0bc217`). The clean team
+verified the hashes, read both held contracts in full and reconciled the engine.
+
+Chunk selection divides signed fixed endpoints into columns, keeps the signed low
+32 bits, then divides into chunks. Resident positions apply only horizontal
+translation and keep the original fixed coordinates through conversion. Each light
+supplies a shared position and colour across its receiving chunks. Selection keeps
+16 resident slots and uploads the first 10. The cached-source radius phase and
+sector-object culling already use the held operation order and positions.
+
+The ordinary world shader now uses a single clip-W reciprocal for its two fog
+coordinates and a fused vertical translation. The CPU palette keeps the observed
+zero product and addition for the warm/wet blue term. The existing paths use the
+ten-light accumulation and the specified order of the cubic, haze and sky blends.
+Release checks still cover broader equal-key sort witnesses, untraced source and
+device state, Vulkan transform and interpolation differences, and native raster
+and display output. Explicit lighting extensions continue through their own settings.

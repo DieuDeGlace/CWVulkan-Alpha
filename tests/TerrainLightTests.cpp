@@ -134,13 +134,13 @@ int main() {
     const std::array<Chunk, 3> chunks{{{{0, 0}, 7}, {{1, 0}, 8}, {{1, 1}, 9}}};
     std::vector<Candidate> candidates{light(31, 31, 1, {.3f, .5f, .7f})};
     candidates[0].position[2] = 10000 * 65536ll;
-    const auto &corner = selector.rebuild(candidates, chunks, {-32768, 65536, 0});
+    const auto &corner = selector.rebuild(candidates, chunks, {-32768, 65536, 65536});
     check(corner[0].count == 1 && corner[1].count == 1 && corner[2].count == 1,
           "inclusive XY rectangles admit corner chunks without a sphere or vertical test");
     check(corner[0].positions[0] == glm::vec4(30.5f, 32.f, 10000.f, 1.f) &&
               corner[1].positions[0] == corner[0].positions[0] &&
               corner[0].colours[0] == glm::vec4(.3f, .5f, .7f, 0),
-          "full shifts precede narrowing and the selected position is independent of receiving chunk");
+          "horizontal shifts precede narrowing and the selected position is shared across chunks");
 
     candidates.clear();
     for (int i = 0; i < 19; ++i) {
@@ -163,6 +163,13 @@ int main() {
     candidates = {light(-1, 0, 0)};
     const auto &negative = selector.rebuild(candidates, chunks, {});
     check(negative[0].count == 1, "negative endpoints use two truncating divisions before world bounds");
+    const std::array wrappedCandidates{light(0xffff'ffffll, 0, 0, {1, 0, 0}),
+                                      light(0x1'0000'0020ll, 0, 0, {0, 1, 0})};
+    const auto &wrapped = selector.rebuild(wrappedCandidates, chunks, {});
+    check(wrapped[0].count == 1 && wrapped[0].colours[0] == glm::vec4(1, 0, 0, 0) &&
+              wrapped[0].positions[0].x == float(0xffff'ffffll) &&
+              wrapped[1].count == 1 && wrapped[1].colours[0] == glm::vec4(0, 1, 0, 0) && wrapped[2].count == 0,
+          "chunk endpoints divide the signed low 32 column bits and keep the full light position for upload");
     const auto &cleared = selector.rebuild({}, chunks, {});
     bool allZero = true;
     for (const auto &selection : cleared) {

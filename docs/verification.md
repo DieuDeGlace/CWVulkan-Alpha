@@ -1744,3 +1744,13 @@ render flows pass. Town captures cover the same camera and player position acros
 the two engine checkpoints, with different simulation elapsed times and pixel
 output. The town run establishes render completion. Native acceptance and pixel
 parity remain open.
+
+## Terrain light and fog reconciliation (2026-11-17)
+
+TerrainLightTests cover the signed low-32 endpoint conversion, including a low
+word that represents a negative column. Resident uploads retain full light
+positions, apply horizontal translation and still publish ten of sixteen slots.
+The Windows x64 build compiles the revised world shader. All 60 CTests pass,
+including the live Vulkan water suite. The player/controller diagnostic and five
+actual-client flows pass, including the town render. The town frame uses a
+different elapsed world time than the prior frame. Native pixel parity remains open.
