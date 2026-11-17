@@ -1842,3 +1842,14 @@ drop and pickup consume exactly 18 draws.
 
 The Windows x64 build, six focused suites and all 60 CTests passed. Original
 controller hardware, native input and native visual acceptance remain open.
+
+## Dedicated blueprint placement replay (2026-11-17)
+
+NetTests places a rotated slab with a hollow interior. It verifies the
+protected air in the authoritative world and checks the exact traversal
+order, coordinates and bytes of all 500 solid records. A second peer
+requests the loaded zone once and receives the same records in order.
+The initial replay fixture missed its deadline on the placing client.
+The final loopback fixture passed with a single request from the second peer.
+The Windows x64 build and all 60 CTest suites passed, including the live
+Vulkan water and owner-content zone comparison suites.

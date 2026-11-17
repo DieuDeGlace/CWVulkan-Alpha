@@ -3191,3 +3191,18 @@ finite angle when the render list is empty. Keyboard navigation follows
 the traced focused route. The existing controller quick and interact
 actions reach the corresponding use sites. Exact modal widget equivalence,
 native pixels and physical controller acceptance remain open.
+
+## Dedicated blueprint placement writes (2026-11-17)
+
+Using held `alpha-block-edits.md` §6.3
+(SHA-256 `d08f1b86f5d5259a4005b5863158e96f88f648db17a123ef2fc34de2c965de7b`), the server applies the prepared
+blueprint writes in model traversal order within each affected zone. A
+single copy and relight handles the solids and protected interior air.
+The section-one and saved edit lists include the reported solid cells
+in the same order. Interior air is available to later world reads
+without a section-one record. The placed-object entry follows the
+terrain writes.
+
+The engine retains its affected-zone batching, lighting and floating
+sprite cleanup. Matching the original footprint passes, the offline
+placement path and the stock mode and selection producers remain open.

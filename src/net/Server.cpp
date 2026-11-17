@@ -1553,7 +1553,7 @@ bool Server::breakAround(const std::array<int64_t, 3> &centre, int32_t radius, C
     return true;
 }
 
-void Server::writeBlocks(const std::vector<BlockEdit> &list, bool recorded) {
+void Server::writeBlocks(const std::vector<BlockEdit> &list, bool recordProtectedAir) {
     std::map<std::pair<int32_t, int32_t>, std::vector<const BlockEdit *>> byZone;
     for (const BlockEdit &e : list)
         if (const worldgen::Zone *zone = zones.zoneAt(e.x, e.y))
@@ -1567,9 +1567,9 @@ void Server::writeBlocks(const std::vector<BlockEdit> &list, bool recorded) {
         terrain->relight(*zone);
         zones.add(std::move(zone));
     }
-    if (!recorded)
-        return;
     for (const BlockEdit &e : list) {
+        if (!recordProtectedAir && e.typeByte == worldgen::DRY_AIR)
+            continue;
         stepEdits.push_back(e);
         if (zones.zoneAt(e.x, e.y))
             edits.add(e); // (a record whose zone is not loaded is sent but not stored)
@@ -1594,12 +1594,12 @@ void Server::placeObject(const CreatureRecord &sender, const creatures::Body &bo
     const auto base = placementBase(body.position, aim);
     const auto blocks = placeBlueprint(model, base, (int8_t)sender.bytes[0x17c],
                                        [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); });
-    std::vector<BlockEdit> recorded, air;
+    std::vector<BlockEdit> writes;
+    writes.reserve(blocks.size());
+    const int32_t day = (int32_t)clockDay;
     for (const BlueprintBlock &b : blocks)
-        (b.recorded ? recorded : air)
-            .push_back({b.x, b.y, b.z, b.block.r, b.block.g, b.block.b, b.block.typeByte, (int32_t)clockDay});
-    writeBlocks(recorded);
-    writeBlocks(air, false);
+        writes.push_back({b.x, b.y, b.z, b.block.r, b.block.g, b.block.b, b.block.typeByte, day});
+    writeBlocks(writes, /*recordProtectedAir=*/false);
     // §6.4: the zone's placed-object list.
     if (const worldgen::Zone *zone = zones.zoneAt(base[0], base[1])) {
         placedObjects[{zone->zx, zone->zy}].push_back({number, base[0], base[1], base[2]});

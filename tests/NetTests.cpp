@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <set>
 #include <thread>
 #include <algorithm>
 
@@ -772,13 +773,14 @@ int main() {
     options.seed = 2412123;
     options.port = 0; // any free port
     options.folder = std::filesystem::temp_directory_path() / "AlphaVulkan-NetTests";
-    // Block edits §6.2: blueprint 0 as a plain 10 x 10 x 6 slab.
+    // Block edits §6.2: blueprint 0 with a protected interior layer.
     options.prefabs = [](const std::string &key) -> std::shared_ptr<const worldgen::Prefab> {
         if (key != "framework-floor-wood.cub")
             return nullptr;
         auto slab = std::make_shared<worldgen::Prefab>();
         slab->sx = slab->sy = 10, slab->sz = 6;
         slab->rgb.assign(10 * 10 * 6 * 3, 165);
+        std::fill_n(slab->rgb.begin() + 2 * 10 * 10 * 3, 10 * 10 * 3, uint8_t(0));
         return slab;
     };
     std::filesystem::remove_all(options.folder);
@@ -1061,35 +1063,50 @@ int main() {
                   "the two potions emit ordered negative heals with attacker id zero");
             check(sounds == std::vector<int32_t>{44, 57, 44}, "rejected pickup makes no sound between two heals and a drop");
         }
-        // Block edits §6: a kind-7 request stamps the slab in front of Alice; its records come
-        // in section 1 as the step makes them, and again whole when her zone is asked for.
+        // Block edits §6: Alice places a slab. Bob sees the broadcast and requests its zone once.
         CreatureRecord placing = ra;
         const glm::vec3 aim(0, 6, 0);
         std::memcpy(&placing.bytes[0x150], &aim, 12);
         placing.bytes[0x17c] = 1, placing.bytes[0x17d] = 0;
+        const int64_t position[3] = {placing.position(0), placing.position(1), placing.position(2)};
+        const auto base = placementBase(position, aim);
+        check(waitFor([&] { return server.block(base[0], base[1], base[2]).has_value(); }, 15000),
+              "the placement zone is resident");
         a.setOwn(placing);
+        b.takeBlockEdits();
         std::array<uint8_t, 300> build{};
         build[0x128] = 7;
-        std::vector<std::array<uint8_t, 20>> placed;
-        int polls = 0;
-        check(waitFor(
-                  [&] {
-                      if (placed.empty() && polls++ % 200 == 0) // (asked again every 2 s until it lands)
-                          a.sendItemRequest(build);
-                      for (auto &e : a.takeBlockEdits())
-                          placed.push_back(e);
-                      return placed.size() >= 300;
-                  },
-                  15000),
+        a.sendItemRequest(build);
+        constexpr size_t solidCount = 10 * 10 * 5;
+        const auto collectSlab = [&](std::vector<std::array<uint8_t, 20>> &records) {
+            for (const auto &record : b.takeBlockEdits()) {
+                const auto e = BlockEdit::parse(record.data());
+                if (e.x >= base[0] - 5 && e.x < base[0] + 5 && e.y >= base[1] - 5 && e.y < base[1] + 5 &&
+                    e.z >= base[2] && e.z < base[2] + 6)
+                    records.push_back(record);
+            }
+            return records.size() >= solidCount;
+        };
+        std::vector<std::array<uint8_t, 20>> placed, replayed;
+        check(waitFor([&] { return collectSlab(placed); }, 15000),
               "the placed slab arrives in section 1");
-        check(!placed.empty() && placed[0][0x0f] == 0x46 && placed[0][0x0c] == 165, "placed blocks are grey, type byte 0x46");
-        size_t again = 0;
-        check(waitFor([&] {
-                  a.requestZones({{zx, zy}});
-                  again += a.takeBlockEdits().size();
-                  return again >= placed.size();
-              }),
-              "a zone request sends its whole edit list");
+        const auto air = server.block(base[0] + 4, base[1] - 5, base[2] + 2);
+        check(air && air->typeByte == worldgen::DRY_AIR, "blueprint writes protected interior air to the live world");
+        bool orderedSolids = placed.size() == solidCount;
+        if (orderedSolids) {
+            size_t index = 0;
+            for (int i = 0; i < 10; i++)
+                for (int j = 0; j < 10; j++)
+                    for (const int k : {0, 1, 3, 4, 5}) {
+                        const auto e = BlockEdit::parse(placed[index++].data());
+                        orderedSolids &= e.x == base[0] + 4 - j && e.y == base[1] - 5 + i && e.z == base[2] + k &&
+                                         e.r == 165 && e.g == 165 && e.b == 165 && e.typeByte == 0x46;
+                    }
+        }
+        check(orderedSolids, "section 1 contains the 500 solid voxels in model traversal order");
+        b.requestZones({{zx, zy}});
+        check(waitFor([&] { return collectSlab(replayed); }, 15000) && replayed == placed,
+              "the zone request replays the same ordered placement records");
         // Missions §6.2: packet 12 brings the region's 64 cell records in section 13.
         std::vector<std::array<uint8_t, 56>> cells;
         check(waitFor([&] {
