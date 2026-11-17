@@ -2936,3 +2936,40 @@ Not modelled: equipped-item cubes still use the spirit colour times glow and onl
 the engine block adapter (MW-8); ring trig uses platform double functions; the native Lc lookup equivalence is unconfirmed;
 held-light hand positions use the engine weapon-point fallback (MW-1). Engine policy: a non-finite held-light colour (zero
 divisor) omits that source.
+## Trails, poses and schedules; interface Plasma; audio; content extractor; six rulings (2026-11-16)
+
+Fresh source-only authors re-certified `alpha-trails-poses-schedules.md` (302AE51F...06AD),
+`alpha-ui-plasma.md` (F22B9FD5...73D2), `alpha-audio.md` (B95F12A6...37FB) and `alpha-extractor.md`
+(23DDA955...6B23); the extractor contract gained a native content-store part (file identification, blob schema,
+store roles, scrambling decode, payload formats, start-up checks) and lost its dump-tool advice. Ruling authors settled the
+conflicts they raised: `alpha-rulings-pose-69-arc.md` (06CBBACD...4AF5) (an open 16-point arc of
+168.75 degrees, not a circle); `alpha-rulings-manacubebar-sequence.md` (AF0E4BB4...E20E) (the
+fourth cube plays `manacubes` once and all four icons stay lit while it runs); `alpha-rulings-audio-ui-sounds.md`
+(062C2766...178A) (no voice is panned; 0x58 is the skill-lowered sound; buy/sell/landing sites);
+`alpha-rulings-zone-fields.md` (B7313316...76A2) (ambience walks chunk records gated at 64 blocks by squared
+distance; zone vectors +0x04 sprites, +0x0c statics, +0x18 spawns, +0x24 location objects);
+`alpha-rulings-spawn-rounds-ruin-routes.md` (E0B1CBF5...A080) (SpawnLocation runs one round on
+an entry change; ruin group creatures walk to a point of a drawn house; ring route points are exact; open-plot ruin creatures
+get the activation default); `alpha-rulings-channel2-explosion-window.md` (DA620D4A...77D3)
+(the particles' duration is P1; the explosion uses the late crossing; action 104 never plays 5/16). Fresh implementers read
+each contract whole.
+Record correction: the pushed commit 32d121b carries the Recert24 subject line by mistake; its content is the materials,
+wildlife and routes batch recorded above.
+Engine changes: each creature draw is its own pose call (ghosts and translucent colour at dt 0), opaque trails show the same
+frame's ageing, the chain is inert at dt 0, unarmed hands drift point 0, the pose-69 arc follows the ruling, trail alpha in
+single precision; mission creatures run Combat and WalkPath only; house test and path start truncate; SpawnLocation's single
+entry round and 11-test ground fit; ruin group two-point routes in native draw order; fixed-point exact route points.
+Interface nodes use the full pivoted 4x4 matrix; frame 0 is the current value; sequences start, clamp, wrap and stop as
+specified and advance once per update; `show`/`shine` play once; mana cube pickups show both messages and the sound, and
+the bar plays `manacubes` on every fourth cube. Sound volume, 100-block falloff and the d squared boundary follow the
+contract; random pitches in single precision; swing crossings, multi-hit intervals, channel2 ticks, staff release and
+explosion windows follow the ruling; ambience walks a chunk grid with the 64-block squared gate and native draw order; buy,
+sell and adapt sounds play at the player and dropping plays nothing. The setup tool and content loader check native headers,
+the blob schema, store roles and counts and reference sizes and hashes, never create files in the installation, reject empty
+stores and require db.dat; .cub loading follows the payload rules with marker points; zones are kept in a squared-distance
+disc below 16 and cleaned up after 1000 ms.
+Not modelled: the trail view test, outer pose callers and trail blend state; the combo-points `hit` sequence, edge fringes and
+blur layers; music; a few refusal and pickup sounds still play at the listener; the db.dat content rule, dict_de selection,
+the .plx internals and spawn save words. Engine adapters: silent audio when the backend fails (native exits); hidden interface
+nodes advance (root update flag inferred); unloaded zones keep the engine's own block type (native reads grey type 0x01 and
+would lift creatures there); the dedicated server keeps its own zone unload distance.

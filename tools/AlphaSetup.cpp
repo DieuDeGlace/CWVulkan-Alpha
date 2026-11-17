@@ -1,5 +1,6 @@
 // Validate/register an owned Alpha installation, optionally extracting a private
-// asset cache. This tool never executes or patches the original Cube.exe.
+// asset cache. This tool never executes or patches the original Cube.exe and never
+// creates or writes anything in the installation (alpha-extractor.md Part A).
 #include "Config.h"
 #include "Install.h"
 #include "OwnerContent.h"
@@ -38,6 +39,8 @@ int wmain(int argc, wchar_t **argv) {
             std::fprintf(stderr, "%s\n", problem.c_str());
         if (!report.ready())
             return 1;
+        for (const auto &note : report.notes)
+            std::printf("Note: %s\n", note.c_str());
         std::printf("Supported Alpha executable: %s\n", report.executableHash.c_str());
         for (size_t index = 0; index < report.storeEntries.size(); index++)
             std::printf("data%zu.db: %zu verified assets\n", index + 1, report.storeEntries[index]);

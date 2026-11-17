@@ -19,6 +19,23 @@ namespace {
 constexpr int64_t ONE = 65536;
 constexpr int64_t HALF = 32768;
 
+// Rulings spawn-rounds-ruin-routes §2: a ruin mission creature runs Combat 20 and WalkPath 2,
+// whose first route point is an exact copy of its own position.
+void ruinMission(Spawn &c) {
+    c.behaviour = MISSION_BEHAVIOUR;
+    c.route = {{c.x, c.y, c.z}};
+}
+
+// §5.5.9 Ruins: e = d & 1 healing potions (category 1, subtype 1, the creature's level).
+void ruinPotions(Spawn &c, const std::function<int32_t()> &draw) {
+    const int32_t e = draw() & 1;
+    for (int32_t n = 0; n < e; n++) {
+        ItemRecord potion;
+        potion.type = 1, potion.subtype = 1, potion.level = (int16_t)c.level;
+        c.inventory.push_back(potion);
+    }
+}
+
 // §5.2: one plot's record.
 struct Plot {
     int32_t lo = INT32_MAX, hi = INT32_MIN, inner = -10000;
@@ -1374,17 +1391,11 @@ class TownBuilder : StructureWriter {
         }
         default: K = {11, 12}, GL = {{{46}, {19}}}; break;
         }
+        const std::function<int32_t()> draw = [&] { return (int32_t)random.draw(); };
         auto hostile = [&](int64_t x, int64_t y, int64_t z, const std::vector<int32_t> &kinds) {
-            Spawn c;
-            c.x = x, c.y = y, c.z = z;
-            c.yaw = f(f((float)random.draw() * 360.f) / 32767.f);
-            c.level = L.level;
-            c.controller = 1;
-            c.appearanceFlags |= 0x1000;
-            c.type = kinds[(uint32_t)random.draw() % kinds.size()];
-            c.powerTier = (uint8_t)L.subLevel;
-            return c;
+            return ruinCreature(x, y, z, kinds, L, draw);
         };
+        const auto mission = ruinMission;
         for (int32_t i = 0; i < g; i++)
             for (int32_t j = 0; j < g; j++) {
                 const Plot &p = plots[i + g * j];
@@ -1393,6 +1404,7 @@ class TownBuilder : StructureWriter {
                                          (int64_t)(openAbove(cx(p), cy(p)) + 1) * ONE, K);
                     boss.appearanceFlags |= 0x200;
                     boss.bossLoot = true;
+                    mission(boss);
                     zone.spawns.push_back(boss);
                 } else if (p.kind != HOUSE && p.wc > 0.2f) {
                     for (int32_t pp : {0, s})
@@ -1406,14 +1418,14 @@ class TownBuilder : StructureWriter {
                 }
             }
         constexpr double PI = 3.141592653589793;
-        auto potions = [&](Spawn &c) {
-            const int32_t e = random.draw() & 1;
-            for (int32_t n = 0; n < e; n++) {
-                ItemRecord potion;
-                potion.type = 1, potion.subtype = 1, potion.level = (int16_t)c.level;
-                c.inventory.push_back(potion);
-            }
-        };
+        const auto potions = [&](Spawn &c) { ruinPotions(c, draw); };
+        // The groups' lists a and the original spawn lists of the zone's houses, in list order.
+        std::vector<std::vector<int32_t>> groupKinds;
+        for (const RuinGroup &group : GL)
+            groupKinds.push_back(group.a);
+        std::vector<const std::vector<glm::ivec3> *> houseSpawns;
+        for (const House &h : houses)
+            houseSpawns.push_back(&h.spawn);
         for (House &h : houses) {
             if (h.spawn.empty())
                 continue;
@@ -1441,6 +1453,7 @@ class TownBuilder : StructureWriter {
                     c.appearanceFlags |= 0x1000;
                     c.type = K[(uint32_t)random.draw() % K.size()];
                     c.powerTier = (uint8_t)L.subLevel;
+                    mission(c); // its sub-block position, exactly (§3(a))
                     potions(c);
                     zone.spawns.push_back(c);
                 }
@@ -1448,20 +1461,9 @@ class TownBuilder : StructureWriter {
             if (GL.empty())
                 continue;
             const int32_t groups = random.draw() & 1;
-            for (int32_t m = 0; m < groups && !P.empty(); m++) {
-                const glm::ivec3 at = take();
-                const RuinGroup &group = GL[(uint32_t)random.draw() % GL.size()];
-                if (group.a.empty())
-                    continue;
-                Spawn c = hostile((int64_t)at.x * ONE, (int64_t)at.y * ONE, (int64_t)(at.z + 1) * ONE, group.a);
-                if (!houses.empty()) {
-                    const House &other = houses[(uint32_t)random.draw() % houses.size()];
-                    if (!other.spawn.empty())
-                        random.draw(); // a point of that house joins the creature's route (not kept here)
-                }
-                potions(c);
-                zone.spawns.push_back(c);
-            }
+            for (int32_t m = 0; m < groups && !P.empty(); m++)
+                if (auto c = ruinGroupCreature(P, groupKinds, houseSpawns, L, draw))
+                    zone.spawns.push_back(std::move(*c));
         }
     }
 
@@ -1473,6 +1475,44 @@ class TownBuilder : StructureWriter {
 };
 
 } // namespace
+
+Spawn ruinCreature(int64_t x, int64_t y, int64_t z, const std::vector<int32_t> &kinds, const Location &L,
+                   const std::function<int32_t()> &draw) {
+    Spawn c;
+    c.x = x, c.y = y, c.z = z;
+    c.yaw = f(f((float)draw() * 360.f) / 32767.f);
+    c.level = L.level;
+    c.controller = 1;
+    c.appearanceFlags |= 0x1000;
+    c.type = kinds[(uint32_t)draw() % kinds.size()];
+    c.powerTier = (uint8_t)L.subLevel;
+    return c;
+}
+
+std::optional<Spawn> ruinGroupCreature(std::vector<glm::ivec3> &P, const std::vector<std::vector<int32_t>> &groupKinds,
+                                       const std::vector<const std::vector<glm::ivec3> *> &houseSpawns,
+                                       const Location &L, const std::function<int32_t()> &draw) {
+    const size_t index = (uint32_t)draw() % P.size();
+    const glm::ivec3 at = P[index];
+    P.erase(P.begin() + (ptrdiff_t)index);
+    const std::vector<int32_t> &kinds = groupKinds[(uint32_t)draw() % groupKinds.size()];
+    if (kinds.empty())
+        return std::nullopt;
+    Spawn c = ruinCreature((int64_t)at.x * ONE, (int64_t)at.y * ONE, (int64_t)(at.z + 1) * ONE, kinds, L, draw);
+    ruinMission(c);
+    // Route point 2: a spawn point of a house drawn from the zone's list (this one included),
+    // from its original list, in whole blocks without the raise; a house with no spawn points
+    // consumes the draw and adds nothing.
+    if (!houseSpawns.empty()) {
+        const std::vector<glm::ivec3> &spawns = *houseSpawns[(uint32_t)draw() % houseSpawns.size()];
+        if (!spawns.empty()) {
+            const glm::ivec3 point = spawns[(uint32_t)draw() % spawns.size()];
+            c.route.push_back({(int64_t)point.x * ONE, (int64_t)point.y * ONE, (int64_t)point.z * ONE});
+        }
+    }
+    ruinPotions(c, draw);
+    return c;
+}
 
 void Terrain::town(Zone &zone, Random &random, const Location &L, int32_t quarter) const {
     TownBuilder(*this, zone, random, L, quarter, [&](int32_t x, int32_t y, int32_t z) { return rockBlock(x, y, z, zone); })

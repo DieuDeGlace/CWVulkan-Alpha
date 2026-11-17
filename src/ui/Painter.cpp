@@ -9,7 +9,11 @@ namespace {
 
 constexpr float PI = 3.14159265358979f;
 
-glm::vec2 apply(const Transform &t, glm::vec2 p) { return glm::vec2(t * glm::vec3(p, 1)); }
+// A point through a transform; a deformation with a projective w column divides by w.
+glm::vec2 apply(const Transform &t, glm::vec2 p) {
+    const glm::vec3 h = t * glm::vec3(p, 1);
+    return h.z == 1 || h.z == 0 ? glm::vec2(h) : glm::vec2(h) / h.z;
+}
 
 // A vertex of an outline loop with everything the subdivision carries along (§4.2).
 struct LoopVertex {
@@ -293,22 +297,32 @@ Transform translate(glm::vec2 t) {
     return m;
 }
 
-// §4.1, as the shipped files need it: x' = t + p + R(θ) · D · (x − p), so the pivot is the
-// centre of rotation and deformation and the translation moves it (open question P-7; with
-// x' = t + R·D·(x − p) the groups of start.plx land thousands of pixels away).
+// §4.1: for row vectors M = T(−p)·D·Rz·Ry·Rx·T(p)·T(t), i.e. x′ = t + p + R·D·(x − p): the
+// pivot is subtracted, the full 4×4 deformation applied, the point turned about z, then y,
+// then x (a positive z angle turns +x towards +y, clockwise on screen with y down), and the
+// pivot and translation added. glm's column vectors take the transposed product in reverse.
+// M's z column is then forced to (0, 0, 1, 0), so plane points (z = 0) keep z = 0 through the
+// whole hierarchy and the matrix reduces exactly to its x, y and w rows and columns.
 Transform Painter::nodeTransform(const plasma::Document &doc, const plasma::Node &n) {
     if (n.transformation < 0)
         return Transform(1);
     const plasma::Transformation &tr = doc.transformations[n.transformation];
-    const float angle = tr.rotation.value.z * PI / 180.f;
-    Transform R(1);
-    R[0] = {std::cos(angle), std::sin(angle), 0};
-    R[1] = {-std::sin(angle), std::cos(angle), 0};
-    const glm::mat4 &d = tr.deformation.value;
-    Transform D(1);
-    D[0] = {d[0][0], d[0][1], 0};
-    D[1] = {d[1][0], d[1][1], 0};
-    return translate(tr.translation.value + tr.pivot.value) * R * D * translate(-tr.pivot.value);
+    const glm::vec3 angle = tr.rotation.value * 0.0174533f; // degrees to radians, as §4.1
+    const glm::vec3 c = glm::cos(angle), s = glm::sin(angle);
+    glm::mat4 Rx(1), Ry(1), Rz(1);
+    Rx[1] = {0, c.x, s.x, 0}, Rx[2] = {0, -s.x, c.x, 0}; // (y, z) → (y·c − z·s, y·s + z·c)
+    Ry[0] = {c.y, 0, -s.y, 0}, Ry[2] = {s.y, 0, c.y, 0}; // (x, z) → (x·c + z·s, −x·s + z·c)
+    Rz[0] = {c.z, s.z, 0, 0}, Rz[1] = {-s.z, c.z, 0, 0}; // (x, y) → (x·c − y·s, x·s + y·c)
+    const auto shift = [](glm::vec2 v) {
+        glm::mat4 m(1);
+        m[3] = glm::vec4(v, 0, 1);
+        return m;
+    };
+    glm::mat4 m = shift(tr.translation.value) * shift(tr.pivot.value) * Rx * Ry * Rz * tr.deformation.value *
+                  shift(-tr.pivot.value);
+    m[0][2] = 0, m[1][2] = 0, m[2][2] = 1, m[3][2] = 0;
+    return Transform(glm::vec3(m[0][0], m[0][1], m[0][3]), glm::vec3(m[1][0], m[1][1], m[1][3]),
+                     glm::vec3(m[3][0], m[3][1], m[3][3]));
 }
 
 void Painter::cut(Batch::Op op, uint8_t level) {
@@ -720,6 +734,7 @@ void Painter::image(const AtlasRect &picture, glm::vec2 a, glm::vec2 b, glm::vec
 plasma::Document clone(const plasma::Document &doc, int32_t node) {
     plasma::Document out;
     out.textures = doc.textures;
+    out.updates = doc.updates; // (the copied objects keep their update stamps)
     // Breadth-first, so the template itself becomes node 0.
     std::vector<int32_t> order{node};
     std::map<int32_t, int32_t> renumber{{node, 0}};

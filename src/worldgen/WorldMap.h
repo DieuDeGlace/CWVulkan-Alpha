@@ -11,6 +11,17 @@
 
 namespace worldgen {
 
+// The original client's zone clean-up (alpha-extractor.md §B5.2): a pass runs when more than
+// ZONE_CLEANUP_INTERVAL_MS have passed since the last one, and a loaded zone survives it while
+// its squared zone distance to an interest point is below KEPT_ZONE_DISTANCE2 (a disc: (3, 2)
+// stays, (3, 3) and (4, 0) go). A world change unloads every zone.
+inline constexpr int64_t ZONE_CLEANUP_INTERVAL_MS = 1000;
+inline constexpr int64_t KEPT_ZONE_DISTANCE2 = 16;
+inline bool zoneKeptNear(int32_t zx, int32_t zy, int32_t px, int32_t py) {
+    const int64_t dx = (int64_t)zx - px, dy = (int64_t)zy - py;
+    return dx * dx + dy * dy < KEPT_ZONE_DISTANCE2;
+}
+
 class WorldMap {
   public:
     void add(std::shared_ptr<const Zone> zone);

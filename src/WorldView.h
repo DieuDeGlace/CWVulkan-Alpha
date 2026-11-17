@@ -18,6 +18,7 @@
 #include "worldgen/Clouds.h"
 #include "worldgen/Terrain.h"
 #include "worldgen/WorldMap.h"
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -70,6 +71,12 @@ class WorldView {
     std::optional<glm::ivec2> playerColumn;
     // §7.1 steps 1-3: this frame's fog target from the chunks held round the camera.
     float fogTarget() const;
+    // Whether chunk (cx, cy) (32-block units) has built geometry here: the ambience slot's
+    // "populated" test (zone-fields ruling 1 §1.2).
+    bool chunkBuilt(int32_t cx, int32_t cy) const {
+        const auto it = chunks.find({cx * CHUNK, cy * CHUNK});
+        return it != chunks.end() && (it->second.solid != 0 || it->second.water != 0);
+    }
     // The render origin as raw fixed coordinates; heights are not rebased.
     std::array<int64_t, 3> originFixed() const { return {int64_t(origin.x) * 65536, int64_t(origin.y) * 65536, 0}; }
     void move(glm::vec3 local, float seconds, bool fast); // x right, y forward, z up
@@ -198,6 +205,7 @@ class WorldView {
     worldgen::World world;
     worldgen::Terrain terrain;
     worldgen::WorldMap map; // the zones taken in (main thread)
+    std::chrono::steady_clock::time_point lastZoneCleanup{}; // the last zone clean-up pass
     int32_t radius;
     glm::ivec2 origin; // render origin, blocks
     glm::vec3 eye{0};  // render-origin relative

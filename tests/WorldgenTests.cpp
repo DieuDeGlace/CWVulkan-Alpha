@@ -17,6 +17,7 @@
 #include "worldgen/SpatialScalars.h"
 #include "worldgen/Terrain.h"
 #include "worldgen/Trees.h"
+#include "worldgen/WorldMap.h"
 #include "creatures/InventoryValue.h"
 #include <cmath>
 #include <cstdio>
@@ -36,6 +37,38 @@ static void same(double got, double want, const std::string &what, double tolera
 }
 
 int main() {
+    // Extractor §B5.2: the clean-up keeps a disc of squared zone distance < 16 and runs only
+    // when more than 1000 ms have passed.
+    {
+        same(zoneKeptNear(13, 12, 10, 10), 1, "zone (3, 2) away is kept");
+        same(zoneKeptNear(13, 13, 10, 10), 0, "zone (3, 3) away (distance squared 18) is freed");
+        same(zoneKeptNear(14, 10, 10, 10), 0, "zone (4, 0) away (distance squared 16) is freed");
+        same(zoneKeptNear(7, 10, 10, 10), 1, "zone (-3, 0) away is kept");
+        same(zoneKeptNear(65535, 0, 0, 0), 0, "distances across the whole zone range do not wrap");
+        same((double)ZONE_CLEANUP_INTERVAL_MS, 1000, "clean-up interval");
+    }
+    // Extractor §B2.3 / correction 7: implicit block values of a loaded zone.
+    {
+        Zone zone;
+        zone.zx = zone.zy = 0;
+        Column &column = zone.column(5, 6);
+        column.bottom = -2;
+        column.blocks = {Block{10, 20, 30, ROCK}, Block{1, 2, 3, AIR}, Block{4, 5, 6, (uint8_t)(AIR | DRY_AIR)}, Block{7, 8, 9, GRASS}};
+        const auto bytes = [&](int32_t z) {
+            const Block b = zone.read(5, 6, z);
+            return (double)((uint32_t)b.r << 24 | (uint32_t)b.g << 16 | (uint32_t)b.b << 8 | b.typeByte);
+        };
+        same(bytes(-3), 0xc8c8c801u, "below the column: solid grey 200/200/200, type byte 0x01");
+        same(bytes(-2), 0x0a141e06u, "a stored block reads as stored");
+        same(bytes(-1), 0xffffff82u, "stored type 0 at z <= 0 without 0x40 reads as water");
+        same(bytes(0), 0x04050640u, "stored dry air stays air below sea level");
+        same(bytes(2), 0xffffff00u, "above the column at z > 0: air 255/255/255, type byte 0x00");
+        Column &low = zone.column(7, 7);
+        low.bottom = -10;
+        low.blocks = {Block{1, 1, 1, ROCK}};
+        same((double)zone.read(7, 7, -5).typeByte, 0x82, "above the column at z <= 0: water, type byte 0x82");
+        same((double)zone.read(7, 7, -5).r, 255, "implicit water is white");
+    }
     // Random spec §1.3 and §2.2 (seed 123).
     Random r(123);
     same(r.draw(), 440, "draw 1");

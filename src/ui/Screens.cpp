@@ -94,6 +94,8 @@ bool Interface::load(const std::filesystem::path &install, std::string *error) {
     bar(petExperiencebar, "experiencebar", {"bar"});
     if (const int32_t n = gui.find("ridingbar"); n >= 0)
         ridingbar = clone(gui, n);
+    if (const int32_t n = gui.find("manacubebar"); n >= 0)
+        manaCubeBar = clone(gui, n);
     bar(creatureBars[0], "enemylifebar:small", {"bar", "bar2"});
     bar(creatureBars[1], "friendlifebar:small", {"bar", "bar2"});
     bar(creatureBars[2], "staticlifebar:small", {"bar", "bar2"});
@@ -379,6 +381,11 @@ void Interface::drawHud(Painter &painter, glm::vec2 W, const HudState &s) {
         setText(*experiencebar.doc, "text", numbers((float)s.experience, (float)s.experienceNeeded));
     show(experiencebar, {100, 75},
          {std::min(1.f, s.experienceNeeded > 0 ? (float)s.experience / (float)s.experienceNeeded : 0.f)});
+    // §5.3: the mana cubes, always; their icons were chosen before this frame's update.
+    if (manaCubeBar) {
+        anchor(*manaCubeBar, {100, 130});
+        painter.draw(*manaCubeBar, 0, Transform(1));
+    }
     // §5.3: the pet's life and experience bars and the riding bar, while the player has a pet.
     if (s.hasPet) {
         if (petLifebar.doc) {
@@ -615,21 +622,55 @@ void Interface::showLandName(const std::string &name, const std::string &detail)
     }
 }
 
+// Plasma §6.5: the game plays `show` once (period 0) on `smallquesttag`.
 void Interface::setObjective(const std::u16string &text) {
-    if (smallQuestTag)
-        setText(*smallQuestTag, "objective", text);
-    questShowMs = 0;
+    if (!smallQuestTag)
+        return;
+    setText(*smallQuestTag, "objective", text);
+    plasma::play(*smallQuestTag, 0, "show");
 }
 
+// Plasma §6.5: the game plays `shine` once (period 0) on `questtag`.
 void Interface::questComplete(const std::u16string &objective) {
     if (!questBanner)
         return;
     setText(*questBanner, "objective", objective);
+    plasma::play(*questBanner, 0, "shine");
     questBannerMs = 0;
 }
 
+void Interface::playManaCubes() {
+    if (manaCubeBar)
+        plasma::play(*manaCubeBar, 0, "manacubes");
+}
+
+int32_t showManaCubeIcons(plasma::Document &bar, int32_t cubes) {
+    if (bar.nodes.empty())
+        return 0;
+    const int32_t k = plasma::playing(bar, 0) ? 4 : cubes % 4;
+    const plasma::Node &root = bar.nodes[0];
+    if (root.display >= 0)
+        bar.displays[(size_t)root.display].visibility.value = 1;
+    int32_t left = k;
+    for (int32_t child : root.children) {
+        if (const int32_t d = bar.nodes[(size_t)child].display; d >= 0)
+            bar.displays[(size_t)d].visibility.value = left > 0 ? 1 : 0;
+        left--;
+    }
+    return k;
+}
+
+// Rulings manacubebar §2: one interface update per frame, after the HUD block has read the
+// playing state. Whether the game's interface root passes UPDATE_HIDDEN down to these templates
+// was not traced; every file's root node carries it, so it is taken to.
+void Interface::advanceSequences(float dtMs) {
+    for (std::optional<plasma::Document> *doc : {&manaCubeBar, &smallQuestTag, &questBanner})
+        if (*doc)
+            plasma::advance(**doc, 0, dtMs, true);
+}
+
 // The banner shows while its `shine` sequence runs (open point Q-1: its length is the file's;
-// 4 s when the file gives none).
+// 4 s when the file gives none). The sequence itself advances in `advanceSequences`.
 void Interface::drawQuestBanner(Painter &painter, glm::vec2 W, float dtMs) {
     if (!questBanner || questBannerMs < 0)
         return;
@@ -638,17 +679,14 @@ void Interface::drawQuestBanner(Painter &painter, glm::vec2 W, float dtMs) {
         questBannerMs = -1;
         return;
     }
-    plasma::play(*questBanner, 0, "shine", questBannerMs);
     anchor(*questBanner, {W.x / 2, W.y - 300});
     painter.draw(*questBanner, 0, Transform(1));
 }
 
-void Interface::drawQuestTag(Painter &painter, glm::vec2 W, float dtMs) {
+void Interface::drawQuestTag(Painter &painter, glm::vec2 W) {
     if (!smallQuestTag || !questTagShown)
         return;
     plasma::Document &doc = *smallQuestTag;
-    questShowMs += dtMs;
-    plasma::play(doc, 0, "show", questShowMs);
     widgets::setVisible(doc, "questbar", questBar);
     if (questBar && questBarFill >= 0)
         fill(doc, questBarFill, questBarRest, std::clamp(questFill, 0.f, 1.f));
@@ -890,6 +928,14 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
     Painter painter(fonts, atlas);
     const float dtMs = lastSeconds < 0 ? 0.f : (float)((seconds - lastSeconds) * 1000.0);
     lastSeconds = seconds;
+    // Rulings manacubebar §2 timeline: the game's update has run (pickups); the HUD block reads
+    // "a sequence plays" for the mana-cube icons, then the interface update advances the
+    // sequences, and the frame is drawn with the advanced values.
+    if (!startScreen && front == Front::None) {
+        if (hud && manaCubeBar)
+            showManaCubeIcons(*manaCubeBar, manaCubes);
+        advanceSequences(dtMs);
+    }
     if (startScreen && !optionsOpen) {
         if (logo) {
             anchor(*logo, size * 0.5f);
@@ -946,7 +992,7 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
         drawLandName(painter, size, dtMs);
         if (hud) {
             drawHud(painter, size, *hud);
-            drawQuestTag(painter, size, dtMs);
+            drawQuestTag(painter, size);
             drawQuestBanner(painter, size, dtMs);
         }
         drawBubbles(painter, size);

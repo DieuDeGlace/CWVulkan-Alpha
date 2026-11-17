@@ -1,10 +1,12 @@
 #include "ui/Plasma.h"
 #include "ZlibStream.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <functional>
 #include <stdexcept>
+#include <type_traits>
 
 namespace ui::plasma {
 namespace {
@@ -505,111 +507,229 @@ template <class T> std::vector<T> bezier(const std::vector<T> &p0, const std::ve
         out[k] = bezier(p0[k], p1[k], p2[k], p3[k], s1, s2, u);
     return out;
 }
-int32_t bezier(int32_t, int32_t p1, int32_t, int32_t, float, float, float) { return p1; } // (steps)
-std::u16string bezier(const std::u16string &, const std::u16string &p1, const std::u16string &, const std::u16string &,
-                      float, float, float) {
-    return p1;
+// Integer and text attributes step: key i's value while u < 1, key i + 1's at u = 1.
+int32_t bezier(int32_t, int32_t p1, int32_t p2, int32_t, float, float, float u) { return u < 1 ? p1 : p2; }
+std::u16string bezier(const std::u16string &, const std::u16string &p1, const std::u16string &p2, const std::u16string &,
+                      float, float, float u) {
+    return u < 1 ? p1 : p2;
 }
 
-template <class T> void evaluate(Attribute<T> &a, const std::string &name, float t) {
+// Frame `f` of an attribute; frame 0 is the current value (§2.4). Null for a missing frame.
+template <class T> const T *frameOf(const Attribute<T> &a, int32_t f) {
+    if (f == 0)
+        return &a.value;
+    return f > 0 && f < (int32_t)a.frames.size() ? &a.frames[(size_t)f] : nullptr;
+}
+
+// §6.5 evaluating, at time `t` of the working key list: writes the current value and says
+// whether the attribute still runs (rulings manacubebar §2). Played once, the last key is
+// applied on the first evaluation at or after its time and the next one reports the end; a
+// key on a missing frame ends it too.
+template <class T> bool evaluate(Attribute<T> &a, float t) {
+    Playback &pb = a.playback;
+    const std::vector<Key> &k = pb.keys;
+    const size_t n = k.size();
+    if (n == 0)
+        return false;
+    const bool looping = pb.periodMs >= 1;
+    if (n == 1 || (!looping && t >= (float)k[n - 1].timeMs)) {
+        const Key &last = k[n - 1];
+        if (!looping && pb.applied == last.frame)
+            return false;
+        const T *v = frameOf(a, last.frame);
+        if (!v)
+            return false;
+        a.value = *v;
+        pb.applied = last.frame;
+        return true;
+    }
+    if (!looping && t < (float)k[0].timeMs) {
+        const T *v = frameOf(a, k[0].frame);
+        if (!v)
+            return false;
+        a.value = *v;
+        pb.applied = -1;
+        return true;
+    }
+    // The segment i, i + 1 holding t, searched from the one found last time. Looping, the key
+    // times repeat every period: there are n segments, the last one from key n − 1 to key 0 a
+    // period later, and neighbours wrap; played once, neighbours clamp to the ends.
+    size_t i = std::min(pb.segment, looping ? n - 1 : n - 2), before, after, beyond;
+    float local = t;
+    int32_t from, to;
+    if (looping) {
+        const float period = (float)pb.periodMs;
+        local = t - std::floor(t / period) * period;
+        if (local < (float)k[0].timeMs) {
+            local += period;
+            i = n - 1;
+        } else {
+            while (i > 0 && local < (float)k[i].timeMs)
+                i--;
+            while (i + 1 < n && local > (float)k[i + 1].timeMs)
+                i++;
+        }
+        before = (i + n - 1) % n, after = (i + 1) % n, beyond = (i + 2) % n;
+        from = k[i].timeMs;
+        to = i + 1 < n ? k[i + 1].timeMs : k[0].timeMs + pb.periodMs;
+    } else {
+        while (i > 0 && t < (float)k[i].timeMs)
+            i--;
+        while (i + 2 < n && t > (float)k[i + 1].timeMs)
+            i++;
+        before = i == 0 ? 0 : i - 1, after = i + 1, beyond = std::min(i + 2, n - 1);
+        from = k[i].timeMs, to = k[i + 1].timeMs;
+    }
+    pb.segment = i;
+    const T *p0 = frameOf(a, k[before].frame), *p1 = frameOf(a, k[i].frame), *p2 = frameOf(a, k[after].frame),
+            *p3 = frameOf(a, k[beyond].frame);
+    if (!p0 || !p1 || !p2 || !p3)
+        return false;
+    const float u = (local - (float)from) / (float)std::max(1, to - from);
+    T value = bezier(*p0, *p1, *p2, *p3, k[i].smoothness, k[after].smoothness, u);
+    a.value = std::move(value);
+    pb.applied = -1;
+    return true;
+}
+
+// §6.5 starting one attribute: false when it has no keyed sequence of that name.
+template <class T> bool start(Attribute<T> &a, const std::string &name, int32_t periodMs) {
     const Sequence *s = a.sequence(name);
     if (!s || s->keys.empty())
-        return;
-    const auto at = [&](size_t k) -> const T * {
-        const int32_t f = s->keys[k].frame;
-        return f >= 0 && f < (int32_t)a.frames.size() ? &a.frames[(size_t)f] : nullptr;
-    };
-    const size_t n = s->keys.size();
-    size_t i = 0;
-    if (n == 1 || t <= (float)s->keys[0].timeMs)
-        i = 0;
-    else if (t >= (float)s->keys[n - 1].timeMs)
-        i = n - 1;
-    else
-        while (i + 1 < n && (float)s->keys[i + 1].timeMs < t)
-            i++;
-    if (n == 1 || i + 1 >= n || t <= (float)s->keys[i].timeMs) {
-        if (const T *v = at(i))
-            a.value = *v;
-        return;
+        return false;
+    Playback &pb = a.playback;
+    pb.keys = s->keys;
+    std::stable_sort(pb.keys.begin(), pb.keys.end(), [](const Key &x, const Key &y) { return x.timeMs < y.timeMs; });
+    if (periodMs >= 1)
+        std::erase_if(pb.keys, [&](const Key &key) { return key.timeMs >= periodMs; });
+    if (!pb.keys.empty() && pb.keys[0].timeMs != 0) {
+        // From whatever the value is now, towards the first key: snapshot into frame 1.
+        if (a.frames.size() < 2)
+            a.frames.resize(2);
+        a.frames[1] = a.value;
+        pb.keys.insert(pb.keys.begin(), Key{1, 0, pb.keys[0].smoothness});
     }
-    const Key &k1 = s->keys[i], &k2 = s->keys[i + 1];
-    const T *p0 = at(i == 0 ? 0 : i - 1), *p1 = at(i), *p2 = at(i + 1), *p3 = at(i + 2 < n ? i + 2 : i + 1);
-    if (!p0 || !p1 || !p2 || !p3)
+    pb.elapsedMs = 0;
+    pb.periodMs = periodMs;
+    pb.segment = 0;
+    pb.applied = -1;
+    return true;
+}
+
+// One update of one attribute: evaluated at its elapsed time, then the time advances.
+template <class T> bool step(Attribute<T> &a, float stepMs) {
+    Playback &pb = a.playback;
+    if (pb.keys.empty())
+        return false;
+    const bool running = evaluate(a, pb.elapsedMs);
+    pb.elapsedMs += stepMs;
+    if (!running)
+        pb.keys.clear();
+    return running;
+}
+
+// Calls `f` with every animatable attribute of a shape, transformation or display.
+template <class O, class F> void eachAttribute(O &o, F &&f) {
+    using Object = std::remove_const_t<O>;
+    if constexpr (std::is_same_v<Object, Shape>) {
+        auto &m = o.mesh;
+        auto &t = o.text;
+        f(m.positions), f(m.texCoords), f(m.colors), f(m.strokeColors), f(m.strokeWidths), f(m.texture);
+        f(m.textureTranslation), f(m.texturePivot), f(m.textureRotation), f(m.textureOpacity);
+        f(t.text), f(t.color), f(t.strokeColor);
+    } else if constexpr (std::is_same_v<Object, Transformation>) {
+        f(o.translation), f(o.pivot), f(o.rotation), f(o.deformation);
+    } else {
+        static_assert(std::is_same_v<Object, Display>);
+        f(o.visibility), f(o.clipping), f(o.fillColor), f(o.strokeColor), f(o.blurRadius);
+    }
+}
+
+// Calls `f` with a node's shape, transformation and display, those it has.
+template <class D, class F> void eachObject(D &doc, const Node &n, F &&f) {
+    if (n.shape >= 0)
+        f(doc.shapes[(size_t)n.shape]);
+    if (n.transformation >= 0)
+        f(doc.transformations[(size_t)n.transformation]);
+    if (n.display >= 0)
+        f(doc.displays[(size_t)n.display]);
+}
+
+bool validNode(const Document &doc, int32_t node) { return node >= 0 && node < (int32_t)doc.nodes.size(); }
+
+void advanceNode(Document &doc, int32_t node, float stepMs, bool updateHidden, int depth) {
+    if (!validNode(doc, node) || depth > 64)
         return;
-    const float u = (t - (float)k1.timeMs) / (float)std::max(1, k2.timeMs - k1.timeMs);
-    a.value = bezier(*p0, *p1, *p2, *p3, k1.smoothness, k2.smoothness, u);
+    const Node &n = doc.nodes[(size_t)node];
+    updateHidden = updateHidden || (n.flags & UPDATE_HIDDEN);
+    if (!updateHidden && n.display >= 0 && doc.displays[(size_t)n.display].visibility.value == 0)
+        return;
+    const uint32_t update = doc.updates;
+    eachObject(doc, n, [&](auto &o) {
+        if (o.animated.advancedIn == update)
+            return;
+        o.animated.advancedIn = update;
+        if (!o.animated.playing)
+            return;
+        bool running = false;
+        eachAttribute(o, [&](auto &a) { running = step(a, stepMs) || running; });
+        o.animated.playing = running;
+    });
+    for (int32_t child : n.children)
+        advanceNode(doc, child, stepMs, updateHidden, depth + 1);
 }
 
-} // namespace
-
-namespace {
-template <class T> float lastKey(const Attribute<T> &a, const std::string &name) {
-    float last = 0;
-    for (const Sequence &s : a.sequences)
-        if (s.name == name)
-            for (const Key &k : s.keys)
-                last = std::max(last, (float)k.timeMs);
-    return last;
-}
 } // namespace
 
 float length(const Document &doc, int32_t node, const std::string &name) {
-    if (node < 0 || node >= (int32_t)doc.nodes.size())
+    if (!validNode(doc, node))
         return 0;
     const Node &n = doc.nodes[(size_t)node];
     float last = 0;
-    if (n.shape >= 0) {
-        const Shape &s = doc.shapes[(size_t)n.shape];
-        for (float k : {lastKey(s.mesh.positions, name), lastKey(s.mesh.texCoords, name), lastKey(s.mesh.colors, name),
-                        lastKey(s.mesh.strokeColors, name), lastKey(s.mesh.strokeWidths, name), lastKey(s.mesh.texture, name),
-                        lastKey(s.mesh.textureTranslation, name), lastKey(s.mesh.texturePivot, name),
-                        lastKey(s.mesh.textureRotation, name), lastKey(s.mesh.textureOpacity, name), lastKey(s.text.text, name),
-                        lastKey(s.text.color, name), lastKey(s.text.strokeColor, name)})
-            last = std::max(last, k);
-    }
-    if (n.transformation >= 0) {
-        const Transformation &tr = doc.transformations[(size_t)n.transformation];
-        for (float k : {lastKey(tr.translation, name), lastKey(tr.pivot, name), lastKey(tr.rotation, name),
-                        lastKey(tr.deformation, name)})
-            last = std::max(last, k);
-    }
-    if (n.display >= 0) {
-        const Display &d = doc.displays[(size_t)n.display];
-        for (float k : {lastKey(d.visibility, name), lastKey(d.clipping, name), lastKey(d.fillColor, name),
-                        lastKey(d.strokeColor, name), lastKey(d.blurRadius, name)})
-            last = std::max(last, k);
-    }
+    eachObject(doc, n, [&](const auto &o) {
+        eachAttribute(o, [&](const auto &a) {
+            if (const Sequence *s = a.sequence(name))
+                for (const Key &k : s->keys)
+                    last = std::max(last, (float)k.timeMs);
+        });
+    });
     for (int32_t child : n.children)
         last = std::max(last, length(doc, child, name));
     return last;
 }
 
-void play(Document &doc, int32_t node, const std::string &name, float t) {
-    if (node < 0 || node >= (int32_t)doc.nodes.size())
+void play(Document &doc, int32_t node, const std::string &name, int32_t periodMs) {
+    if (!validNode(doc, node))
         return;
     const Node &n = doc.nodes[(size_t)node];
-    if (n.shape >= 0) {
-        Shape &s = doc.shapes[(size_t)n.shape];
-        evaluate(s.mesh.positions, name, t), evaluate(s.mesh.texCoords, name, t);
-        evaluate(s.mesh.colors, name, t), evaluate(s.mesh.strokeColors, name, t);
-        evaluate(s.mesh.strokeWidths, name, t), evaluate(s.mesh.texture, name, t);
-        evaluate(s.mesh.textureTranslation, name, t), evaluate(s.mesh.texturePivot, name, t);
-        evaluate(s.mesh.textureRotation, name, t), evaluate(s.mesh.textureOpacity, name, t);
-        evaluate(s.text.text, name, t), evaluate(s.text.color, name, t), evaluate(s.text.strokeColor, name, t);
-    }
-    if (n.transformation >= 0) {
-        Transformation &tr = doc.transformations[(size_t)n.transformation];
-        evaluate(tr.translation, name, t), evaluate(tr.pivot, name, t);
-        evaluate(tr.rotation, name, t), evaluate(tr.deformation, name, t);
-    }
-    if (n.display >= 0) {
-        Display &d = doc.displays[(size_t)n.display];
-        evaluate(d.visibility, name, t), evaluate(d.clipping, name, t);
-        evaluate(d.fillColor, name, t), evaluate(d.strokeColor, name, t), evaluate(d.blurRadius, name, t);
-    }
+    eachObject(doc, n, [&](auto &o) {
+        bool started = false;
+        eachAttribute(o, [&](auto &a) { started = start(a, name, periodMs) || started; });
+        if (started)
+            o.animated.playing = true;
+    });
     for (int32_t child : n.children)
-        play(doc, child, name, t);
+        play(doc, child, name, periodMs);
+}
+
+bool playing(const Document &doc, int32_t node) {
+    if (!validNode(doc, node))
+        return false;
+    const Node &n = doc.nodes[(size_t)node];
+    bool any = false;
+    eachObject(doc, n, [&](const auto &o) { any = any || o.animated.playing; });
+    if (any)
+        return true;
+    for (int32_t child : n.children)
+        if (playing(doc, child))
+            return true;
+    return false;
+}
+
+void advance(Document &doc, int32_t node, float stepMs, bool updateHidden) {
+    if (++doc.updates == 0) // (0 is the stamp of objects never advanced)
+        doc.updates = 1;
+    advanceNode(doc, node, stepMs, updateHidden, 0);
 }
 
 } // namespace ui::plasma

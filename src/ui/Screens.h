@@ -87,6 +87,11 @@ std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, b
 FloatingText levelUpText(glm::dvec3 player);
 FloatingText experienceText(int32_t gain, glm::dvec3 player);
 
+// Rulings manacubebar §3 on a `manacubebar` document (its node 0): the bar is shown and its
+// children, in file order, are shown while k > 0, k falling by one per child, where
+// k = `cubes` mod 4 (C's signed remainder), or 4 while a sequence plays in the bar. Returns k.
+int32_t showManaCubeIcons(plasma::Document &bar, int32_t cubes);
+
 // Skills §5.3: a word is punctuation-like only when it is exactly one of . - , ; ! ? : / ).
 bool skillTooltipPunctuation(std::u16string_view word);
 // Skills §5.4: the skill tooltip's variables V(i, n) at level `n` for the player's class, the
@@ -154,6 +159,9 @@ class Interface {
     // Alpha-open-points-1 §2: the big "QUEST COMPLETE!" banner at (W/2, H - 300) plays its
     // `shine` sequence from the start, with `objective` as its text.
     void questComplete(const std::u16string &objective);
+    // Rulings manacubebar §1 step 4.6: a mana-cube pickup made `manaCubes` a multiple of 4, so
+    // `manacubes` plays once (period 0) on `manacubebar`; all four icons show while it runs (§3).
+    void playManaCubes();
     // Quests (docs/design/quests.md): the Steam-style icons over quest givers' heads and on the
     // world map: an orange "!" (a quest to offer), a grey "?" (under way) and an orange "?"
     // (done: hand it in). Map marks are window pixels, the icon's foot.
@@ -579,8 +587,11 @@ class Interface {
     void drawQuestBanner(Painter &painter, glm::vec2 window, float dtMs);
     int32_t questBarFill = -1;
     glm::mat4 questBarRest{1};
-    float questShowMs = 1e9f; // time since the tag's `show` sequence started
-    void drawQuestTag(Painter &painter, glm::vec2 window, float dtMs);
+    void drawQuestTag(Painter &painter, glm::vec2 window);
+    // Screens §5.3: `manacubebar`, its icons chosen (showManaCubeIcons) in the HUD block before
+    // the interface update (`advanceSequences`) of the same frame (rulings manacubebar §2).
+    std::optional<plasma::Document> manaCubeBar;
+    void advanceSequences(float dtMs);
     std::string landNameShown, landDetailShown;
     float landNameMs = 0;
     double lastSeconds = -1;

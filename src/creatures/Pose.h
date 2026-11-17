@@ -27,6 +27,10 @@ struct Motion {
     // the engine's creature matrix turns about z only.
     float headPitch = 0;
     float height = 0;       // displayed z in blocks (weapon trails stay at the heights they were made)
+    // Trails §1.1: (camera - displayed position) in x and y, blocks. Each pose call shifts point
+    // 0 of the four histories by it; a hand with no model drawn keeps its point 0, which so
+    // drifts by this much per call (as read). Zero outside the world frame.
+    glm::vec2 cameraOffset{0};
     float dodgeMs = 0;      // record field 15
     bool knockedDown = false; // record field 16 > 0
     // The creature's action, equipment and class; without one the creature only stands and
@@ -87,11 +91,14 @@ bool stepWalk(PoseState &state, const Appearance &a, const Motion &m, float dtMs
 // §7.3: the block a footstep probes, from the creature position (1/65536 blocks) lowered by half
 // the box height and half a block, each converted to fixed point by truncation.
 glm::ivec3 footstepCell(const int64_t position[3], float boxZ);
-// §7.4–§7.9: the parts of this frame. `voxels(model)` gives a model's size in voxels.
+// §7.4–§7.9: the parts of this frame. `voxels(model)` gives a model's size in voxels. Every call
+// is one pose call of trails §1.2: it rewrites point 0 and applies the trail rule of the pose;
+// only the chain needs dtMs > 0.
 std::vector<PartDraw> poseParts(PoseState &state, const Appearance &a, const Motion &m, float dtMs,
                                 const std::function<glm::vec3(uint16_t)> &voxels);
 // Trails §1.3: the creature's trail strips as triangles (three corners each), standing at
-// `position`. Drawn from the history before this frame's poseParts ages it, as Alpha does.
+// `position`, from the histories as the latest pose call left them (CreatureView::draw calls it
+// at the native point in the creature's pose calls).
 void trailTriangles(const PoseState &state, const Combatant &c, glm::vec3 position, std::vector<TrailCorner> &out);
 
 } // namespace creatures

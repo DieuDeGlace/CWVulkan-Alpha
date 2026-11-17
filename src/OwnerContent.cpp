@@ -19,11 +19,61 @@
 #include <stb_image.h>
 
 namespace owner {
+const std::vector<ReferenceFile> &referenceFiles() {
+    static const std::vector<ReferenceFile> files{
+        {"Cube.exe", 3885568, ALPHA_IMAGE_SHA256},
+        {"data1.db", 20941824, "0e482f6d628414db017d983f62843e5dbdc52c5b54fd478f6f0e06c786639b9d"},
+        {"data2.db", 39565312, "e2231a7478d882d6382a4146ee70f1dae67662b58c8a9188fbcc294061b550fb"},
+        {"data3.db", 100352, "e41dbde87bd58142d73bc22e0d3e9fd61fdb340e80f1e1e84b674edc63430438"},
+        {"data4.db", 172032, "d859dd14eb855aa8b08dc5fae2062d7b722060b9204682ac5cabbc4af971599e"},
+        {"gui.plx", 822138, "615106d59e5ef3af43157f3c019f7a8bdb35d407aee73e51fe1a4f9c3caa0695"},
+        {"start.plx", 1534507, "be1efe6b5a1cb6b6984495994b10eb830a7f187583eaf44b7d0eae6504059c53"},
+        {"help.plx", 258161, "1af05e8d119d6a268b71bfbf19b6ab428936e959727fa7a1332b0aa03295f5a5"},
+        {"quest-tag.plx", 75421, "79923577ef8f6d90413ab7dbb0fb97f6c94df132a8a076b9ce1b74caa3a31161"},
+        {"cursor.plx", 11609, "a82d79abd362a0b0c2117dfa75f92ab37dc133e96ba7915041ecd090ebc429b9"},
+        {"resource1.dat", 19388, "f2d473a996288f7d3d0f4a4540bbb71608593bfe40965efa7b02e8c18cc45785"},
+        {"resource2.dat", 15864, "1fb8573f8a39590ecc39725b365ef9c29a3f81b839e70df1e9e6d6cd6db7f173"},
+        {"db.dat", 32, "c4dfd81a97b4b53fd287222cf0610c4f262dc70550b9ec2461eb2b8863ac413e"},
+    };
+    return files;
+}
+
 const std::vector<std::string> &requiredFiles() {
-    static const std::vector<std::string> names{
-        "Cube.exe", "data1.db", "data2.db", "data3.db", "data4.db", "resource1.dat", "resource2.dat",
-        "gui.plx", "start.plx", "help.plx", "quest-tag.plx", "cursor.plx"};
+    static const std::vector<std::string> names = [] {
+        std::vector<std::string> out;
+        for (const auto &file : referenceFiles())
+            out.push_back(file.name);
+        return out;
+    }();
     return names;
+}
+
+bool hasIdentifyingHeader(const std::string &name, const fs::path &file) {
+    // *.plx: u32 0, 0x16, 1, 14 (little-endian), then the 14 bytes "PlasmaGraphics".
+    static constexpr uint8_t PLX[30] = {0, 0, 0, 0, 0x16, 0, 0, 0, 1, 0, 0, 0, 14, 0, 0, 0,
+                                        'P', 'l', 'a', 's', 'm', 'a', 'G', 'r', 'a', 'p', 'h', 'i', 'c', 's'};
+    // resource*.dat: a TrueType font, sfnt version 0x00010000 (big-endian).
+    static constexpr uint8_t SFNT[4] = {0, 1, 0, 0};
+    const auto matches = [&](const uint8_t *expected, size_t length) {
+        uint8_t head[30] = {};
+        std::ifstream in(file, std::ios::binary);
+        return in.read((char *)head, (std::streamsize)length) && std::memcmp(head, expected, length) == 0;
+    };
+    if (name.ends_with(".db"))
+        return hasSqliteHeader(file);
+    if (name.ends_with(".plx"))
+        return matches(PLX, sizeof PLX);
+    if (name.starts_with("resource") && name.ends_with(".dat"))
+        return matches(SFNT, sizeof SFNT);
+    std::error_code ec;
+    return fs::file_size(file, ec) > 0 && !ec;
+}
+
+namespace {
+// §A3: the key extension of each store's role, data1.db .. data4.db.
+constexpr const char *STORE_ROLE[Content::COUNT] = {".cub", ".wav", ".png", ".xml"};
+// §A5.4: the dictionary the client fetches from data4.db.
+constexpr const char *DICTIONARY_KEY = "dict_en.xml";
 }
 
 ContentReport inspect(const fs::path &installation, bool fullCheck) {
@@ -33,6 +83,8 @@ ContentReport inspect(const fs::path &installation, bool fullCheck) {
         const auto path = installation / pathOfUtf8(name);
         if (!fs::is_regular_file(path, ec) || fs::file_size(path, ec) == 0 || ec)
             result.problems.push_back("Missing or empty required file: " + name);
+        else if (!hasIdentifyingHeader(name, path))
+            result.problems.push_back("Unrecognised file header: " + name);
     }
     if (const auto hash = fileSha256(installation / "Cube.exe")) {
         result.executableHash = *hash;
@@ -40,29 +92,53 @@ ContentReport inspect(const fs::path &installation, bool fullCheck) {
             result.problems.push_back("Cube.exe is not the supported Alpha image.");
     } else
         result.problems.push_back("Cannot read and identify Cube.exe.");
+    if (!result.ready())
+        return result;
+    // §A7: the original client quits right after start-up when either font fails to load.
+    std::string error;
+    for (const char *name : {"resource1.dat", "resource2.dat"}) {
+        ui::Font font;
+        if (!font.load(installation / name, &error))
+            result.problems.push_back(std::string(name) + ": " + error);
+    }
     if (!result.ready() || !fullCheck)
         return result;
 
+    for (const auto &reference : referenceFiles()) {
+        std::error_code ec;
+        const auto path = installation / pathOfUtf8(reference.name);
+        const auto size = fs::file_size(path, ec);
+        const auto hash = fileSha256(path);
+        if (ec || size != reference.size || !hash || *hash != reference.sha256)
+            result.notes.push_back(std::string(reference.name) + " differs from the reference installation.");
+    }
+
     Content content;
-    std::string error;
     if (!content.open(installation, &error)) {
         result.problems.push_back(error);
         return result;
     }
     std::set<std::string> unique;
     for (int index = 0; index < Content::COUNT; index++) {
+        const std::string store = "data" + std::to_string(index + 1) + ".db";
         const auto keys = content.store(index).keys();
         result.storeEntries[index] = keys.size();
         if (keys.empty())
-            result.problems.push_back("Empty content store: data" + std::to_string(index + 1) + ".db");
+            result.problems.push_back("Empty content store: " + store);
+        else if (keys.size() != REFERENCE_STORE_ENTRIES[index])
+            result.notes.push_back(store + " holds " + std::to_string(keys.size()) + " records; the reference holds " +
+                                   std::to_string(REFERENCE_STORE_ENTRIES[index]) + ".");
         for (const auto &key : keys) {
             if (!unique.insert(key).second)
                 result.problems.push_back("Duplicate content key: " + key);
+            // The original client looks each kind up in its own store only.
+            if (!key.ends_with(STORE_ROLE[index]))
+                result.problems.push_back(store + " holds a record outside its role: " + key);
             const auto bytes = content.store(index).read(key);
             bool valid = bytes && !bytes->empty();
             if (valid && key.ends_with(".cub")) {
                 CubModel model;
-                valid = model.load(bytes->data(), bytes->size());
+                valid = model.load(bytes->data(), bytes->size()) && model.complete;
             } else if (valid && key.ends_with(".wav")) {
                 valid = bytes->size() >= 12 && std::memcmp(bytes->data(), "RIFF", 4) == 0 &&
                         std::memcmp(bytes->data() + 8, "WAVE", 4) == 0;
@@ -85,14 +161,11 @@ ContentReport inspect(const fs::path &installation, bool fullCheck) {
                 return result;
         }
     }
+    if (!content.store(3).raw(DICTIONARY_KEY))
+        result.problems.push_back(std::string("data4.db has no ") + DICTIONARY_KEY);
     for (const char *name : {"gui.plx", "start.plx", "help.plx", "quest-tag.plx", "cursor.plx"})
         if (!ui::plasma::load(installation / name, &error))
             result.problems.push_back(std::string(name) + ": " + error);
-    for (const char *name : {"resource1.dat", "resource2.dat"}) {
-        ui::Font font;
-        if (!font.load(installation / name, &error))
-            result.problems.push_back(std::string(name) + ": " + error);
-    }
     return result;
 }
 

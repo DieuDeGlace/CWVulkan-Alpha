@@ -1,7 +1,9 @@
 #pragma once
-// Cube World .cub voxel model (docs/specs/alpha-data-stores.md §3): int32 size x, y, z, then
-// x*y*z RGB triples with x varying fastest, then y, then z. Black (0,0,0) is empty.
+// Cube World .cub voxel model (docs/specs/alpha-extractor.md §A5.1): int32 size x, y, z, then
+// x*y*z RGB cells with x varying fastest, then y, then z. Black (0,0,0) is treated as empty by
+// the engine's mesher (the native empty-cell rule is open question A-2).
 #include <glm/glm.hpp>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -21,8 +23,18 @@ struct ModelMesh {
 struct CubModel {
     int sx = 0, sy = 0, sz = 0;
     std::vector<uint8_t> rgb; // 3 bytes per voxel
+    // §A5.1 marker points: the cells of exactly pure red, green and blue, in cell order.
+    enum Marker { RED, GREEN, BLUE };
+    std::array<std::vector<glm::ivec3>, 3> markers;
+    // False when the value held fewer whole cells than its sizes promise (the rest are zero).
+    bool complete = true;
 
-    bool load(const uint8_t *data, size_t size, std::string *error = nullptr);
+    // §A5.1: reads the three sizes, then every whole 3-byte cell present; missing cells stay
+    // zero, bytes past the last cell are ignored. A size field the value is too short to hold
+    // takes `fallback`'s value. The model is accepted only when all three sizes are positive
+    // (and, as an engine resource guard, at most MAX_CELLS cells in all).
+    bool load(const uint8_t *data, size_t size, std::string *error = nullptr, glm::ivec3 fallback = glm::ivec3(0));
+    static constexpr size_t MAX_CELLS = size_t(1) << 24;
     bool solid(int x, int y, int z) const;
     glm::u8vec3 colour(int x, int y, int z) const;
     // One quad per exposed face. Each corner's colour fades towards `shade` by how closed in

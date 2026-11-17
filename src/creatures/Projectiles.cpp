@@ -3,6 +3,7 @@
 #include "creatures/Npcs.h"
 #include "creatures/Strike.h"
 #include "creatures/Visibility.h"
+#include "SoundRules.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -256,56 +257,78 @@ void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const st
     // (Using, sitting, riding and sailing are skipped here: ours, the spec's filter is not given.)
     if (action == 0 || (action >= 80 && action <= 84) || action == 106 || action == 107)
         return;
-    const auto u = [&] { return (float)draw() / 32767.f; };
+    // Audio §0: every pitch here is float(r) · k / 32767 + a in single precision, drawn when its
+    // record is made, in the rows' order.
+    const auto pitch = [&](float k, float a) { return sound::randomPitch(draw(), k, a); };
+    // Audio §6.2: P1 crossings are τ <= X < τ + dt; the half-P2 crossings use the late form
+    // τ < X <= τ + dt.
     const auto crosses = [&](float x) { return t <= x && x < t + dt; };
+    const auto crossesLate = [&](float x) { return t < x && x <= t + dt; };
     const Phases P = phases(c, action);
     const float P1 = (float)P.windUp, P2 = (float)P.active;
     const Item &m = c.mainHand();
     const int s = m.subtype;
     const bool twoHanded = m.type == 3 && ((s >= 5 && s <= 8) || s == 10 || s == 11 || (s >= 15 && s <= 18));
-    if (t <= 0 && twoHanded && action != 91 && !(action >= 30 && action <= 33) && action != 87 && action != 88)
-        out.push_back({at, 17, 1 + 0.1f * u(), 1}); // the heavy weapon is lifted
+    const bool staff = action >= 30 && action <= 33, explosion = action == 87 || action == 88;
+    if (t == 0 && twoHanded && action != 91 && !staff && !explosion)
+        out.push_back({at, 17, pitch(0.1f, 1.f), 1}); // the heavy weapon is lifted
+    // Ruling channel2-explosion-window §1 (particles' D is P1): while τ < P1, the staff's and
+    // the fire explosion's channel hum (36) on each 200-ms boundary of the absolute action time
+    // in (τ, τ + dt], one draw; then, without draws, the staff release sound (41 water / 38) on
+    // the step τ < P1 <= τ + dt, or the explosion (81) on the step τ - dt < P1 <= τ. The bursts
+    // stay with launch(); the camera shake comes with playing 81.
+    if (staff || explosion) {
+        const int32_t before = int32_t(t), after = int32_t(t + dt), first = P.windUp;
+        if (before < first && after / 200 != before / 200)
+            out.push_back({at, 36, pitch(0.25f, 1.f), 1});
+        if (staff && t < P1 && P1 <= t + dt)
+            out.push_back({at, c.specialization == 1 ? 41 : 38, 1, 1});
+        if (explosion && t - dt < P1 && P1 <= t)
+            out.push_back({at, 81, 1, 1});
+    }
     if (crosses(P1)) {
         if (action == 10)
-            out.push_back({at, 16, 0.9f + 0.2f * u(), 1});
+            out.push_back({at, 16, pitch(0.2f, 0.9f), 1});
         else if (action == 11)
-            out.push_back({at, 48, 0.9f + 0.2f * u(), 1});
+            out.push_back({at, 48, pitch(0.2f, 0.9f), 1});
         else if (action == 54)
-            out.push_back({at, 14, 0.9f + 0.2f * u(), 1});
+            out.push_back({at, 14, pitch(0.2f, 0.9f), 1});
         else if (action != 91) {
-            float pitch = (0.9f + 0.2f * u()) * 1.5f;
+            float swing = pitch(0.2f, 0.9f) * 1.5f;
             if (twoHanded || action == 68 || action == 69 || action == 93)
-                pitch *= 0.5f;
-            out.push_back({at, 15, pitch, 1});
+                swing *= 0.5f;
+            out.push_back({at, 15, swing, 1});
         }
         if (action == 94)
-            out.push_back({at, 40, 1 + 0.1f * u(), 1});
-        // (Action 104 is served by the default handler: its beam-block sounds 5/16 never play,
-        // open points 3 §2.2.)
+            out.push_back({at, 40, pitch(0.1f, 1.f), 1});
+        // (Ruling channel2-explosion-window §2: action 104 is served by the default handler;
+        // the beam block's 5/16 never play, so 104 has only the generic 17 and 15.)
     }
-    // Open points 3 §2.1: multi-hit actions swing again at every hit interval inside P2 (91 with
-    // a punch too; 5 is silent).
-    float interval = 0;
+    // Audio §6.2 (re-certification item 6): multi-hit actions swing again at every hit interval
+    // I inside P2, the first step in P2 included (91 with a punch too; 5 is silent). I is an
+    // integer, truncated.
+    int32_t interval = 0;
     switch (action) {
     case 72: case 86: interval = 250; break;
     case 91: interval = 1000; break;
-    case 11: interval = std::floor(P2 / 3); break;
-    case 30: case 32: interval = std::floor(P2 / 6); break;
-    case 31: case 33: interval = std::floor(P2 / 12); break;
+    case 11: interval = P.active / 3; break;
+    case 30: case 32: interval = P.active / 6; break;
+    case 31: case 33: interval = P.active / 12; break;
     default: break;
     }
     if (interval > 0 && P1 <= t && t < P1 + P2) {
-        const auto k = [&](float x) { return std::trunc((x - P1) / interval); };
+        const auto k = [&](float x) { return std::trunc((x - P1) / (float)interval); };
         if (t - dt < P1 || k(t + dt) != k(t)) {
-            out.push_back({at, 15, 1 + 0.25f * u(), 1});
+            out.push_back({at, 15, pitch(0.25f, 1.f), 1});
             if (action == 91)
-                out.push_back({at, 82, 0.5f + 0.1f * u(), 1});
+                out.push_back({at, 82, pitch(0.1f, 0.5f), 1});
         }
     }
-    if ((action == 57 || action == 58 || action == 60 || action == 74) && crosses(P1 + P2 / 2)) {
-        out.push_back({at, 12, 1 + 0.25f * u(), 1});
+    // P1 + P2/2, P2/2 truncated toward zero.
+    if ((action == 57 || action == 58 || action == 60 || action == 74) && crossesLate(P1 + (float)(P.active / 2))) {
+        out.push_back({at, 12, pitch(0.25f, 1.f), 1});
         if (action == 74)
-            out.push_back({at, 82, 0.5f + 0.1f * u(), 1});
+            out.push_back({at, 82, pitch(0.1f, 0.5f), 1});
     }
 }
 
@@ -322,20 +345,18 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
     std::memcpy(p.position, body.position, sizeof p.position);
     const int32_t action = c.action;
 
-    // Particles §5.3, §5.4: a staff's channelling (actions 30-33) and a fire explosion's charge
-    // (87, 88) hum every 200 ms and end, as the action's time passes its duration, in a burst:
-    // at the aim point for a staff (water or fire), around the creature for the explosion.
+    // Particles §5.3, §5.4 with ruling channel2-explosion-window §1 (their D is P1): a staff's
+    // channelling (actions 30-33) and a fire explosion's charge (87, 88) end, as the action's
+    // time passes P1, in a burst (no draws here): at the aim point for a staff (water or fire),
+    // around the creature for the explosion. Their hum, release and explosion sounds are
+    // world-step records made with the swings (actionSounds).
     const bool staff = action >= 30 && action <= 33, explosion = action == 87 || action == 88;
     if (staff || explosion) {
-        const float D = (float)duration(c, action);
-        if (t < D && std::floor(t / 200) != std::floor((t + dt) / 200))
-            out.sounds.push_back({at, 36, 1 + 0.25f * u(), 1});
-        if (explosion && t - dt < D && D <= t) { // §5.4's own window, one step behind the staff's
+        if (explosion && t - dt < P1 && P1 <= t) { // §5.4's late window, one step behind the staff's
             Burst b = Burst::at(at, {0, 0, 2}, glm::vec4(0), 0.25f, 80, FIRE);
             b.spread = 20;
             out.bursts.push_back(b);
-            out.sounds.push_back({at, 81, 1, 1});
-        } else if (staff && t < D && D <= t + dt) {
+        } else if (staff && t < P1 && P1 <= t + dt) {
             // §5.3: at the creature plus the float vector at +0x160 (x 65536, truncated), spread 8.
             const bool water = c.specialization == 1;
             Burst b = Burst::at(glm::dvec3(0), {0, 0, 2}, water ? glm::vec4(0, 0.2f, 1, 1) : glm::vec4(0), 0.25f, 20,
@@ -344,7 +365,6 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
                 b.position[k] = body.position[k] + (int64_t)(c.aim[k] * 65536.f);
             b.spread = 8;
             out.bursts.push_back(b);
-            out.sounds.push_back({at, water ? 41 : 38, 1, 1});
         }
     }
 

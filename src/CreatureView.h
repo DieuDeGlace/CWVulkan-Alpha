@@ -7,6 +7,7 @@
 #include "creatures/Particles.h"
 #include "creatures/Pose.h"
 #include <map>
+#include <optional>
 #include <tuple>
 
 // How one creature is shaded this frame (rendering §11.2; CreatureShading.h).
@@ -17,6 +18,9 @@ struct CreatureLook {
     bool trail = false;            // the five motion-trail ghosts
     float stealth = 0;             // +0x1190: positive defers the body until after the water
     glm::vec3 velocity{0};         // +0x34, blocks per second: the ghosts' displacement
+    // The frame's camera in render space, for the trail histories' per-call shift (trails §1.1);
+    // none outside the world frame.
+    std::optional<glm::vec3> camera;
 };
 
 class CreatureView {

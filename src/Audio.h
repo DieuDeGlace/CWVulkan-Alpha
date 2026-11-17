@@ -28,19 +28,28 @@ class Audio {
     Audio(const Audio &) = delete;
     Audio &operator=(const Audio &) = delete;
 
-    // Opens the default playback device. Without one the engine runs silent.
+    // Opens the default playback device. Without one the engine runs silent. (Engine adapter:
+    // Alpha shuts down when XAudio2 cannot start, audio §1.1; the engine's own backend failing
+    // must not make it unusable.)
     bool init(const Content &content, std::string *error = nullptr);
     bool active() const;
-    // Starts `key` (e.g. "menu-select.wav") at `volume` (1 = as stored), its speed and pitch
-    // scaled by `pitch`. False if unknown.
+    // Audio §1.2 step 6, §1.1: starts `key` (e.g. "menu-select.wav") as a new voice at the
+    // voice volume (soundVolume · `volume`) · 0.01, `volume` being the distance-attenuated
+    // volume a (1 for an interface sound at the listener). Nothing plays at a voice volume
+    // <= 0. Its speed and pitch are scaled by `pitch`, clamped to [1/1024, 2]. Never panned.
+    // False if nothing plays.
     bool play(const std::string &key, float volume = 1, float pitch = 1);
     // True while any sound is still playing.
     bool busy();
-    void setMasterVolume(float volume);
+    // The integer `soundVolume` option (0 ... 100), read at every play.
+    void setSoundVolume(int32_t volume) { soundVolume = volume; }
 
   private:
     struct State; // miniaudio objects, kept out of this header
     std::unique_ptr<State> state;
     const Content *content = nullptr;
+    int32_t soundVolume = 100;
+    // Sounds load on first play and stay cached by name; a name the stores lack (audio §6.4:
+    // cry.wav, fireball.wav, bird3.wav) caches nothing and is looked up again next time.
     std::map<std::string, std::shared_ptr<SoundClip>> clips;
 };

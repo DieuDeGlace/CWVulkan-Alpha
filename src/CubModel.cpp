@@ -1,27 +1,46 @@
 #include "CubModel.h"
+#include <algorithm>
 #include <cstring>
 
-bool CubModel::load(const uint8_t *data, size_t size, std::string *error) {
+bool CubModel::load(const uint8_t *data, size_t size, std::string *error, glm::ivec3 fallback) {
     auto fail = [&](const char *why) {
         if (error)
             *error = why;
         return false;
     };
-    if (size < 12)
-        return fail("file shorter than its header");
-    int32_t dims[3];
-    std::memcpy(dims, data, 12);
-    // The largest Alpha model is a few hundred voxels per side.
+    int32_t dims[3] = {fallback.x, fallback.y, fallback.z};
+    for (size_t i = 0; i < 3 && 4 * (i + 1) <= size; i++)
+        std::memcpy(&dims[i], data + 4 * i, 4);
     for (int32_t d : dims)
-        if (d <= 0 || d > 1024)
-            return fail("implausible dimensions");
-    const size_t count = (size_t)dims[0] * dims[1] * dims[2];
-    if (size != 12 + count * 3)
-        return fail("size does not match dimensions");
+        if (d <= 0)
+            return fail("a model size is not positive");
+    // Engine guard against absurd sizes in malformed data; Alpha's models are far smaller.
+    const size_t count = (size_t)dims[0] * (size_t)dims[1] * (size_t)dims[2];
+    if ((size_t)dims[0] * dims[1] > MAX_CELLS || count > MAX_CELLS)
+        return fail("model too large");
     sx = dims[0];
     sy = dims[1];
     sz = dims[2];
-    rgb.assign(data + 12, data + size);
+    const size_t present = size > 12 ? std::min((size - 12) / 3, count) : 0;
+    complete = present == count;
+    rgb.assign(count * 3, 0);
+    if (present)
+        std::memcpy(rgb.data(), data + 12, present * 3);
+
+    for (auto &list : markers)
+        list.clear();
+    for (size_t cell = 0; cell < present; cell++) {
+        const uint8_t *p = &rgb[cell * 3];
+        int which = -1;
+        if (p[0] == 255 && p[1] == 0 && p[2] == 0)
+            which = RED;
+        else if (p[0] == 0 && p[1] == 255 && p[2] == 0)
+            which = GREEN;
+        else if (p[0] == 0 && p[1] == 0 && p[2] == 255)
+            which = BLUE;
+        if (which >= 0)
+            markers[which].push_back({(int)(cell % sx), (int)(cell / sx % sy), (int)(cell / ((size_t)sx * sy))});
+    }
     return true;
 }
 

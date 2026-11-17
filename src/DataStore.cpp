@@ -7,15 +7,18 @@
 #include <set>
 #include <utility>
 
-// The swap table (spec §2).
+// The 44-entry key table (alpha-extractor.md §A4).
 static constexpr uint32_t SWAPS[44] = {
     4242, 9551, 840, 84800, 9242, 9846, 127, 9, 9483, 394, 123,
     4834, 32444, 24355, 2433, 17, 34234, 42342, 4243, 14, 184934, 1987,
     3094, 1901, 89409, 4813, 37, 143, 3490, 19483, 1343, 432, 84732,
     9184, 9612, 1233, 3434, 1839, 2984, 1993, 2984, 4895, 816583, 13};
 
+// The exchange partner of byte i: (table[i mod 44] + i) as unsigned 32 bits, modulo n.
 static size_t partner(size_t i, size_t n) { return (uint32_t)(SWAPS[i % 44] + (uint32_t)i) % n; }
 
+// Decoding: from the last byte down to the first, exchange byte i with its partner; then
+// complement every byte. Encoding is the exact inverse.
 void unscramble(std::vector<uint8_t> &bytes) {
     const size_t n = bytes.size();
     for (size_t i = n; i-- > 0;)
@@ -49,27 +52,41 @@ class Query {
 
 DataStore::~DataStore() { sqlite3_close(db); }
 
+bool hasSqliteHeader(const std::filesystem::path &file) {
+    char header[sizeof SQLITE_HEADER] = {};
+    std::ifstream in(file, std::ios::binary);
+    return in.read(header, sizeof header) && std::equal(header, header + sizeof header, SQLITE_HEADER);
+}
+
 bool DataStore::open(const std::filesystem::path &file, std::string *error) {
     sqlite3_close(db);
     db = nullptr;
-    // Read-only and immutable: the owner's files are never written, not even a journal.
+    const auto fail = [&](const std::string &why) {
+        if (error)
+            *error = utf8(file) + ": " + why;
+        sqlite3_close(db);
+        db = nullptr;
+        return false;
+    };
+    // The original client's open creates a missing store as an empty database (§A2), so a
+    // successful open would prove nothing. Here a store must already be an SQLite 3 file, and
+    // it is opened read-only and immutable without SQLITE_OPEN_CREATE: nothing in the owner's
+    // installation is ever created or written, not even a journal.
+    if (!hasSqliteHeader(file))
+        return fail("missing, or not an SQLite 3 database");
     const std::string uri = sqliteReadOnlyUri(file);
-    if (sqlite3_open_v2(uri.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nullptr) != SQLITE_OK) {
-        if (error)
-            *error = utf8(file) + ": " + (db ? sqlite3_errmsg(db) : "cannot open");
-        sqlite3_close(db);
-        db = nullptr;
-        return false;
-    }
-    Query check(db, "SELECT count(*) FROM blobs");
-    if (!check.step()) {
-        if (error)
-            *error = utf8(file) + ": no blobs table";
-        sqlite3_close(db);
-        db = nullptr;
-        return false;
-    }
+    if (sqlite3_open_v2(uri.c_str(), &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nullptr) != SQLITE_OK)
+        return fail(db ? sqlite3_errmsg(db) : "cannot open");
+    // The blob table, blobs(key TEXT PRIMARY KEY, value BLOB), with both columns readable.
+    Query check(db, "SELECT key, value FROM blobs LIMIT 0");
+    if (!check.get())
+        return fail("no blobs(key, value) table");
     return true;
+}
+
+bool DataStore::empty() const {
+    Query q(db, "SELECT 1 FROM blobs LIMIT 1");
+    return !q.step();
 }
 
 std::vector<std::string> DataStore::keys() const {
@@ -100,9 +117,18 @@ std::optional<std::vector<uint8_t>> DataStore::read(const std::string &key) cons
 }
 
 bool Content::open(const std::filesystem::path &gameDir, std::string *error) {
-    for (int i = 0; i < COUNT; i++)
-        if (!stores[i].open(gameDir / ("data" + std::to_string(i + 1) + ".db"), error))
+    for (int i = 0; i < COUNT; i++) {
+        const auto file = gameDir / ("data" + std::to_string(i + 1) + ".db");
+        if (!stores[i].open(file, error))
             return false;
+        // An empty store is what the original client leaves behind for a missing file; every
+        // lookup in it would fail later, so it is refused here instead.
+        if (stores[i].empty()) {
+            if (error)
+                *error = utf8(file) + ": the content store holds no records";
+            return false;
+        }
+    }
     return true;
 }
 

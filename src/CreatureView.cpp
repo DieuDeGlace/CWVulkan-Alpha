@@ -139,26 +139,48 @@ std::vector<std::pair<MeshId, glm::mat4>> CreatureView::parts(const creatures::A
 bool CreatureView::draw(std::vector<DrawItem> &items, const creatures::Appearance &a, creatures::PoseState &state,
                         const creatures::Motion &motion, glm::vec3 position, float dtMs,
                         std::vector<EffectVertex> *effects, const CreatureLook *look) {
-    // Trails §1.3: the trail drawn this frame is the one aged in the last.
-    if (effects && motion.fighter) {
+    const CreatureLook plain;
+    const CreatureLook &l = look ? *look : plain;
+    creatures::Motion at = motion;
+    at.height = position.z;
+    if (l.camera) // trails §1.1: the per-call shift of the histories' point 0
+        at.cameraOffset = glm::vec2(*l.camera) - glm::vec2(position);
+    const bool footstep = creatures::stepWalk(state, a, at, dtMs);
+    // Trails §1.2, rulings rendering §16: each draw of the creature is a pose call. The motion
+    // ghosts and a translucent body's colour draw pass dt 0; the opaque body and a translucent
+    // body's depth-only draw pass the frame's dt.
+    const auto poseCall = [&](float dt) {
+        return creatures::poseParts(state, a, at, dt, [&](uint16_t slot) { return voxels(slot); });
+    };
+    // Trails §1.3: the trail pass (before the water) shows the histories as the pose calls so far
+    // left them: aged this frame for an opaque creature, a frame late for a translucent one.
+    const auto drawTrails = [&] {
+        if (!effects || !motion.fighter)
+            return;
         std::vector<creatures::TrailCorner> corners;
         creatures::trailTriangles(state, *motion.fighter, position, corners);
         for (const creatures::TrailCorner &k : corners)
             effects->push_back({k.position, 0x00ffffffu | (uint32_t)k.alpha << 24});
-    }
-    creatures::Motion at = motion;
-    at.height = position.z;
-    const bool footstep = creatures::stepWalk(state, a, at, dtMs);
-    const auto parts = creatures::poseParts(state, a, at, dtMs, [&](uint16_t slot) { return voxels(slot); });
+    };
     const uint32_t hair = (uint32_t)a.hairColour[0] << 16 | (uint32_t)a.hairColour[1] << 8 | a.hairColour[2];
-    const CreatureLook plain;
-    const CreatureLook &l = look ? *look : plain;
-    // Rendering §11.2: the ghosts first (the pose of this frame, without a new ageing step),
-    // then the body, opaque or queued until after the water.
+    // Rendering §11.2: the ghosts first, then the body, opaque or queued until after the water.
     uint32_t group = 0;
     for (const creature_shading::Draw &d : creature_shading::drawSequence(l.trail, l.stealth)) {
         const bool ghost = d.kind == creature_shading::Draw::Ghost;
         const bool deferred = d.kind == creature_shading::Draw::DeferredBody;
+        std::vector<creatures::PartDraw> parts;
+        if (ghost) {
+            parts = poseCall(0);
+        } else if (!deferred) {
+            parts = poseCall(dtMs);
+            drawTrails();
+        } else {
+            drawTrails();
+            poseCall(dtMs); // the depth-only draw
+            // The colour draw; with dt 0 after the depth-only call it poses the same parts, which
+            // the renderer's deferred item uses for both.
+            parts = poseCall(0);
+        }
         if (deferred) {
             if (++translucentGroups == 0) // 0 means "no group"
                 ++translucentGroups;

@@ -413,7 +413,187 @@ static void checkInteractionTargets() {
     check(freePetClaim(free) == 2, "nearest free pet within squared 25, first on ties");
 }
 
+// Synthetic Plasma documents (no owner content): nodes with a transformation, a display and,
+// where asked, a mesh shape.
+static plasma::Document plasmaDoc(size_t nodes, bool shapes = false) {
+    plasma::Document doc;
+    for (size_t i = 0; i < nodes; i++) {
+        plasma::Node n;
+        n.transformation = (int32_t)i;
+        n.display = (int32_t)i;
+        doc.transformations.emplace_back().deformation.value = glm::mat4(1);
+        plasma::Display &d = doc.displays.emplace_back();
+        d.visibility.value = 1;
+        if (shapes) {
+            n.shape = (int32_t)i;
+            doc.shapes.emplace_back();
+        }
+        doc.nodes.push_back(n);
+    }
+    return doc;
+}
+template <class T>
+static void keyed(plasma::Attribute<T> &a, const std::string &name, std::vector<T> frames,
+                  std::vector<plasma::Key> keys) {
+    a.frames = std::move(frames);
+    a.value = a.frames[0];
+    a.sequences.push_back({name, std::move(keys)});
+}
+static bool near2(glm::vec2 a, glm::vec2 b, float e = 1e-4f) { return glm::length(a - b) < e; }
+static glm::vec2 through(const Transform &t, glm::vec2 p) { return glm::vec2(t * glm::vec3(p, 1)); }
+
+// alpha-ui-plasma.md re-certification (2026-11-16) corrections 1-5 and rulings manacubebar §2, §3.
+static void checkPlasmaRuntime() {
+    using plasma::Key;
+    // Correction 1: x' = t + p + R·D·(x − p), D in full before the rotations, z then y then x.
+    {
+        plasma::Document doc = plasmaDoc(1);
+        plasma::Transformation &tr = doc.transformations[0];
+        tr.translation.value = {100, 50};
+        tr.pivot.value = {7, 3};
+        const auto at = [&](glm::vec2 x) { return through(Painter::nodeTransform(doc, doc.nodes[0]), x); };
+        check(near2(at({8, 3}), {108, 53}), "identity R and D move a point by t; the pivot is no offset");
+        tr.rotation.value = {0, 0, 90};
+        check(near2(at({8, 3}), {107, 54}), "a positive z angle turns +x towards +y (clockwise on screen) about the pivot");
+        tr.deformation.value[0][0] = 2;
+        check(near2(at({8, 3}), {107, 55}), "the deformation scales before the rotation");
+        tr.deformation.value[3] = glm::vec4(5, 0, 0, 1);
+        check(near2(at({8, 3}), {107, 60}), "the deformation's translation row applies before the rotation");
+        tr.deformation.value = glm::mat4(1);
+        tr.rotation.value = {180, 0, 0};
+        check(near2(at({8, 5}), {108, 51}), "an x rotation mirrors y about the pivot");
+        // The full 4x4: x feeding z in D, brought back into x by a y rotation.
+        tr.translation.value = tr.pivot.value = glm::vec2(0);
+        tr.rotation.value = {0, 90, 0};
+        const glm::vec2 plain = at({1, 0});
+        tr.deformation.value[0][2] = 1;
+        check(near2(plain, {0, 0}) && near2(at({1, 0}), {1, 0}), "D's z terms take part before the y rotation");
+        // Correction 2: own matrix first, then the parent's.
+        plasma::Document tree = plasmaDoc(2);
+        tree.transformations[0].rotation.value = {0, 0, 90};
+        tree.transformations[1].translation.value = {10, 0};
+        const Transform world = Painter::nodeTransform(tree, tree.nodes[0]) * Painter::nodeTransform(tree, tree.nodes[1]);
+        check(near2(through(world, {0, 0}), {0, 10}), "a child's offset turns with its parent");
+    }
+    // Corrections 3-4: frame 0 is the current value; sorted keys; implicit start from frame 1.
+    {
+        plasma::Document doc = plasmaDoc(1);
+        plasma::Attribute<glm::vec2> &a = doc.transformations[0].translation;
+        keyed(a, "show", {{1, 1}, {99, 99}, {0, 0}, {10, 10}}, {{3, 200, 0}, {2, 100, 0}});
+        a.value = {4, 4}; // a game write replaces frame 0
+        plasma::play(doc, 0, "show");
+        const auto &keys = a.playback.keys;
+        check(keys.size() == 3 && keys[0].frame == 1 && keys[0].timeMs == 0 && keys[1].timeMs == 100 &&
+                  keys[2].timeMs == 200 && a.frames[1] == glm::vec2(4, 4),
+              "start sorts the keys and snapshots the current value into frame 1 as a key at 0");
+        check(plasma::playing(doc, 0), "a node plays from the play call on");
+        plasma::advance(doc, 0, 100);
+        check(a.value == glm::vec2(4, 4), "evaluation starts from the snapshot at elapsed 0");
+        plasma::advance(doc, 0, 100);
+        check(a.value == glm::vec2(0, 0), "the first file key is reached at its time");
+        plasma::Attribute<glm::vec2> &b = doc.transformations[0].pivot;
+        keyed(b, "loop", {{0, 0}, {0, 0}, {5, 5}, {6, 6}}, {{2, 0, 0}, {3, 400, 0}});
+        plasma::play(doc, 0, "loop", 300);
+        check(b.playback.keys.size() == 1 && b.playback.periodMs == 300, "a period keeps only earlier keys");
+        plasma::play(doc, 0, "nothing");
+        keyed(doc.transformations[0].rotation, "empty", {glm::vec3(0), glm::vec3(0)}, {});
+        plasma::play(doc, 0, "empty");
+        check(doc.transformations[0].rotation.playback.keys.empty(), "a sequence without keys does not start");
+    }
+    // Correction 5: Bezier segments with clamped (once) or wrapped (looping) neighbours.
+    {
+        plasma::Document doc = plasmaDoc(1);
+        plasma::Attribute<float> &r = doc.displays[0].blurRadius;
+        const std::vector<float> values{0, 0, 0, 10, 30};
+        keyed(r, "s1", values, {{2, 0, 1}, {3, 100, 1}, {4, 200, 1}});
+        r.sequences.push_back({"s0", {{2, 0, 0}, {3, 100, 0}, {4, 200, 0}}});
+        plasma::play(doc, 0, "s1");
+        plasma::advance(doc, 0, 50);
+        plasma::advance(doc, 0, 50);
+        check(std::fabs(r.value - 3.125f) < 1e-5f, "smoothness 1 with the first neighbour clamped");
+        plasma::play(doc, 0, "s0");
+        plasma::advance(doc, 0, 50);
+        plasma::advance(doc, 0, 50);
+        check(std::fabs(r.value - 5) < 1e-5f, "smoothness 0 is linear");
+        plasma::play(doc, 0, "s0", 300);
+        plasma::advance(doc, 0, 250);
+        plasma::advance(doc, 0, 100);
+        const bool wrapped = std::fabs(r.value - 15) < 1e-4f;
+        plasma::advance(doc, 0, 100);
+        check(wrapped && std::fabs(r.value - 5) < 1e-4f, "looping: the last segment runs to key 0 a period on, neighbours wrap");
+        for (int i = 0; i < 20; i++)
+            plasma::advance(doc, 0, 100);
+        check(plasma::playing(doc, 0), "a looping sequence keeps running");
+        // Integers step: key i while u < 1, key i + 1 at u = 1.
+        plasma::Attribute<int32_t> &v = doc.displays[0].clipping;
+        keyed(v, "blink", {0, 0, 0, 1, 0}, {{2, 0, 0}, {3, 100, 0}, {4, 200, 0}});
+        plasma::play(doc, 0, "blink");
+        plasma::advance(doc, 0, 50);
+        plasma::advance(doc, 0, 50);
+        const bool before = v.value == 0;
+        plasma::advance(doc, 0, 50);
+        check(before && v.value == 1, "integer attributes step to the next key at u = 1");
+        // A key on a missing frame ends the sequence without a change.
+        plasma::Document bad = plasmaDoc(1);
+        keyed(bad.displays[0].fillColor, "x", {glm::vec4(1), glm::vec4(0)}, {{9, 0, 0}, {9, 100, 0}});
+        plasma::play(bad, 0, "x");
+        plasma::advance(bad, 0, 16);
+        check(!plasma::playing(bad, 0) && bad.displays[0].fillColor.value == glm::vec4(1),
+              "a missing key frame stops the sequence");
+    }
+    // Rulings manacubebar §2: running until the second evaluation at or after the last key.
+    {
+        plasma::Document bar = plasmaDoc(5, true);
+        for (int32_t c = 1; c <= 4; c++)
+            bar.nodes[0].children.push_back(c);
+        const std::vector<glm::vec4> blue{glm::vec4(0, 0, 1, 1)}, white{glm::vec4(1)}, grey{glm::vec4(.5f)};
+        keyed(bar.shapes[0].mesh.colors, "manacubes", {blue, blue, white, grey, blue}, {{2, 0, 1}, {3, 600, 1}, {4, 1300, 1}});
+        int32_t cubes = 3;
+        check(showManaCubeIcons(bar, cubes) == 3, "icons show count mod 4");
+        // Pickup frame: the count reaches 4, `manacubes` plays; the HUD then the update run.
+        cubes++;
+        plasma::play(bar, 0, "manacubes");
+        int frames = 0, shown = 0;
+        bool allLit = true;
+        for (; frames < 200; frames++) {
+            const int32_t k = showManaCubeIcons(bar, cubes);
+            if (k != 4)
+                break;
+            for (int32_t c = 1; c <= 4; c++)
+                allLit = allLit && bar.displays[c].visibility.value == 1;
+            shown++;
+            plasma::advance(bar, 0, 16);
+        }
+        check(shown == 84 && allLit, "four icons for ceil(1300/16) + 2 = 84 frames at 16 ms, got " + std::to_string(shown));
+        check(showManaCubeIcons(bar, cubes) == 0 && bar.displays[1].visibility.value == 0 &&
+                  bar.shapes[0].mesh.colors.value == blue,
+              "then count mod 4, the last key's value held");
+        cubes = 8; // a bulk copy plays nothing
+        check(showManaCubeIcons(bar, cubes) == 0 && showManaCubeIcons(bar, -5) == -1, "plain C remainder otherwise");
+        // One advance per object per update, even when nodes share a shape.
+        plasma::Document shared = plasmaDoc(2, true);
+        shared.nodes[0].children.push_back(1);
+        shared.nodes[1].shape = 0;
+        keyed(shared.shapes[0].mesh.colors, "manacubes", {blue, blue, white, grey, blue}, {{2, 0, 1}, {3, 600, 1}, {4, 1300, 1}});
+        plasma::play(shared, 0, "manacubes");
+        plasma::advance(shared, 0, 16);
+        check(shared.shapes[0].mesh.colors.playback.elapsedMs == 16, "a shared shape advances once per update");
+        // The walk skips hidden nodes unless UPDATE_HIDDEN reaches them.
+        plasma::Document hidden = plasmaDoc(2);
+        hidden.nodes[0].children.push_back(1);
+        hidden.displays[1].visibility.value = 0;
+        keyed(hidden.transformations[1].translation, "show", {glm::vec2(0), glm::vec2(0), glm::vec2(1)}, {{2, 0, 0}});
+        plasma::play(hidden, 0, "show");
+        plasma::advance(hidden, 0, 16);
+        const bool skipped = hidden.transformations[1].translation.value == glm::vec2(0);
+        plasma::advance(hidden, 0, 16, true);
+        const bool entered = hidden.transformations[1].translation.value == glm::vec2(1);
+        check(skipped && entered && plasma::playing(hidden, 0), "hidden nodes advance only under UPDATE_HIDDEN");
+    }
+}
+
 int main(int argc, char **argv) {
+    checkPlasmaRuntime();
     checkInteractionTargets();
     checkPlatinumAdaption();
     checkMenuRequests();

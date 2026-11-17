@@ -60,8 +60,10 @@ void stepCharge(Combatant &c, int32_t beforeMs, int32_t dtMs, glm::dvec3 at, Sho
 void chargeSound(const Combatant &c, int32_t beforeMs, int32_t dtMs, glm::dvec3 at, ShotEffects &out);
 void advanceCharge(Combatant &c, float dtMs);
 
-// Audio §6.2: the swing sounds of a creature's action this step (`beforeMs` as above), at `at`.
-// With open points 3 §2.1-§2.2: the multi-hit swings; action 104 has only the default handler's.
+// Audio §6.2: the swing sounds of a creature's action this step (`beforeMs` as above), at `at`,
+// in record order: the two-hander lift, the staff/explosion hum and the explosion (36, 81), the
+// P1 sounds, the multi-hit swings, the half-P2 slam. With open points 3 §2.1-§2.2: action 104
+// has only the default handler's.
 void actionSounds(const Combatant &c, float beforeMs, float dtMs, glm::dvec3 at, const std::function<int()> &draw,
                   std::vector<SoundEvent> &out);
 

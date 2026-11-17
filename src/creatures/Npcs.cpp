@@ -252,10 +252,10 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     }
     for (const worldgen::ScheduleStop &stop : s.schedule)
         npc.schedule.push_back({glm::dvec3((double)stop.x, (double)stop.y, (double)stop.z) / 65536.0, stop.timeMs});
-    for (const auto &point : s.route)
-        npc.route.push_back(glm::dvec3(point[0], point[1], point[2]));
-    if (s.behaviour == 5 || s.behaviour == 6)
-        npc.routeRadius = 2; // (location spec §4.3.2, §4.4: WalkPath radius 2)
+    for (const auto &point : s.route) // 1/65536 blocks
+        npc.route.push_back(glm::dvec3((double)point[0], (double)point[1], (double)point[2]) / 65536.0);
+    if (s.behaviour == 5 || s.behaviour == 6 || s.behaviour == worldgen::MISSION_BEHAVIOUR)
+        npc.routeRadius = 2; // (location spec §4.3.2, §4.4, ruin-routes ruling §2: WalkPath radius 2)
     if (s.leader >= 0) {
         npc.follows = spawnId(key.first, key.second, s.leader + (index >= base ? base : 0));
     }
@@ -748,6 +748,14 @@ int32_t currentStop(const std::vector<std::pair<glm::dvec3, int32_t>> &schedule,
     return current;
 }
 
+// Schedules §3.3 step 3.2 (and RandomInteraction §4.3 step 5): the path start, the position
+// (the box centre) raised by 0.5 - h/2 blocks, h the box height; the offset times 65536 is
+// converted to a 64-bit integer (believed truncating) before it is added.
+static glm::dvec3 feetPlusHalf(const Body &b) {
+    const int64_t offset = (int64_t)((0.5f - b.size.z * 0.5f) * 65536.f);
+    return glm::dvec3((double)b.position[0], (double)b.position[1], (double)(b.position[2] + offset)) / 65536.0;
+}
+
 bool Npcs::spawnLocation(Npc &n, const BlockType &block) {
     if (n.schedule.empty())
         return false;
@@ -758,13 +766,21 @@ bool Npcs::spawnLocation(Npc &n, const BlockType &block) {
         n.scheduleStop = current;
         glm::dvec3 G = n.schedule[(size_t)current].first;
         const int32_t x = (int32_t)std::floor(G.x), y = (int32_t)std::floor(G.y);
-        int k = 0;
-        while (k < 11 && solid(x, y, (int32_t)std::floor(G.z)))
-            G.z += 1, k++;
-        if (solid(x, y, (int32_t)std::floor(G.z)))
+        // Rulings spawn-rounds §1: at most 11 tests of the block at G, raising after each solid
+        // one (11 solid tests: not handled); then at most 11 tests of the block below, lowering
+        // after each non-solid one (no solid block: not handled). The index is already updated
+        // and the search state dropped, so the next update records arrival.
+        bool clear = false;
+        for (int k = 0; k < 11 && !clear; k++) {
+            if (solid(x, y, (int32_t)std::floor(G.z)))
+                G.z += 1;
+            else
+                clear = true;
+        }
+        if (!clear)
             return false;
         bool ground = false;
-        for (k = 0; k < 11 && !ground; k++) {
+        for (int k = 0; k < 11 && !ground; k++) {
             if (solid(x, y, (int32_t)std::floor(G.z) - 1))
                 ground = true;
             else
@@ -772,11 +788,11 @@ bool Npcs::spawnLocation(Npc &n, const BlockType &block) {
         }
         if (!ground)
             return false;
-        n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), G, 4, n.body.size);
-        // alpha-path-search.md §4.6: one round right after the start, then the
-        // usual loop in the same update (up to 11 expansions).
+        // Trails §3.3 step 3.4 (rulings spawn-rounds §1, over path-search §4.6): the start,
+        // radius 4, exactly one round and one rebuild, intent 0, handled; the loop of up to 10
+        // rounds waits for the next update.
+        n.path.start(feetPlusHalf(n.body), G, 4, n.body.size);
         n.path.round(n.body.size, block);
-        n.path.rounds(n.body.size, 4, block);
         n.body.intent = glm::vec3(0);
         return true;
     }
@@ -817,7 +833,11 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
     // Steps 4-5 (outdoors, §4.4): keep a free target still among the seats round the
     // creature, else draw one in sight while the timer is out.
     const glm::dvec3 centre = n.body.blocks();
-    const Seats near = seats(glm::ivec3(glm::floor(centre)), clockMs);
+    // §4.4: the creature's block, its position divided by 65536 with signed 64-bit division
+    // (truncating toward zero).
+    const glm::ivec3 standing((int32_t)(n.body.position[0] / 65536), (int32_t)(n.body.position[1] / 65536),
+                              (int32_t)(n.body.position[2] / 65536));
+    const Seats near = seats(standing, clockMs);
     const auto same = [&](const Seat &s) { return s.zx == n.seat.zx && s.zy == n.seat.zy && s.index == n.seat.index; };
     const bool keep = n.seat.index >= 0 && std::any_of(near.keep.begin(), near.keep.end(), same) && seatFree(n.seat);
     if (!keep) {
@@ -846,7 +866,7 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
             goal.z += 1;
         for (int k = 0; !near.house && k < 64 && !solid(goal - glm::dvec3(0, 0, 1)); k++)
             goal.z -= 1;
-        n.path.start(centre + glm::dvec3(0, 0, 0.5 - n.body.size.z * 0.5), goal, 2, n.body.size);
+        n.path.start(feetPlusHalf(n.body), goal, 2, n.body.size);
     }
     // Steps 6-7: walk, and take the seat within 3 blocks of the creature's centre.
     if (n.path.searching())
@@ -983,6 +1003,11 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     if (npc.behaviour == 6) { // a location's group leader: Combat, WalkPath, RandomWalk
         if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block, map))
             randomWalk(npc, dtMs);
+        return;
+    }
+    if (npc.behaviour == worldgen::MISSION_BEHAVIOUR) { // trails spec §3.6: Combat, WalkPath (r = 2)
+        if (!combat(npc, dtMs, players, block, frame, map))
+            walkPath(npc, dtMs, block, map);
         return;
     }
     if (npc.behaviour == 4) { // a shopkeeper: Combat, LookAtPlayer, WalkPath to its counter

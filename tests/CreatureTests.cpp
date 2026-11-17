@@ -5,6 +5,7 @@
 #include "Loot.h"
 #include "Quests.h"
 #include "NewCharacter.h"
+#include "SoundRules.h"
 #include "StaticStates.h"
 #include "WorldItems.h"
 #include "creatures/Strike.h"
@@ -27,6 +28,7 @@
 #include "creatures/Physics.h"
 #include "creatures/Pose.h"
 #include "creatures/Projectiles.h"
+#include "worldgen/Builders.h"
 #include "worldgen/Items.h"
 #include <bit>
 #include <cmath>
@@ -44,6 +46,15 @@ static void same(double got, double want, const std::string &what, double tolera
         failures++;
         std::printf("FAIL %s: got %.9g, want %.9g\n", what.c_str(), got, want);
     }
+}
+
+// Runs a group of checks in its own stack frame (main's own frame is already large).
+template <class Checks>
+#ifdef _MSC_VER
+__declspec(noinline)
+#endif
+static void audioCheck(Checks checks) {
+    checks();
 }
 
 int main() {
@@ -732,6 +743,99 @@ int main() {
         same(arc.trail[0][8].y, 10, "the ring 10 blocks in front", 1e-4);
         same(arc.trail[1][8].y, 5, "its inner edge 5 blocks in front", 1e-4);
         same(arc.trail[0][0].x, -10, "starting 10 blocks to the left", 1e-4);
+        // Rulings pose-69-arc: the binary32 angle of binary64 constants, the binary32 cosine and
+        // sine of the widened angle (so point 0 has a tiny negative y), an open arc to +78.75
+        // degrees, the butt ring at f / 2; every call builds it, at dt 0 too, and the off-hand
+        // histories are left alone.
+        {
+            const float angle0 = (float)(0.0 * 3.141592653589793 * 0.0625 - 3.141592653589793 / 2);
+            same(std::bit_cast<uint32_t>(angle0), 0xBFC90FDBu, "arc angle 0 bits");
+            same(arc.trail[0][0].y, 10.f * (float)std::cos((double)angle0), "tip point 0: f times the binary32 cosine");
+            same(arc.trail[0][0].y < 0, 1, "a tiny negative y at -90 degrees");
+            same(arc.trail[0][15].x, 10 * 0.980785251, "tip point 15 at +78.75 degrees", 1e-5);
+            same(arc.trail[1][15].y, 5 * 0.195090353, "butt point 15 at half the radius", 1e-6);
+            PoseState held = arc;
+            held.trail[2][3] = held.trail[3][7] = glm::vec3(7, 8, 9);
+            c.actionMs = 200;
+            poseParts(held, a, m, 0, voxels);
+            same(held.trail[2][3].x + held.trail[3][7].z, 16, "the arc leaves the off-hand histories");
+            same(held.trail[0][8].y, (200.f * 20.f) / 300.f, "and grows with t in a dt-0 call", 1e-4);
+            c.actionMs = 300; // t < P1 + P2 is strict: collapsed from P1 + P2
+            poseParts(held, a, m, 0, voxels);
+            same(held.trail[0][15] == held.trail[0][0] && held.trail[1][15] == held.trail[1][0], 1,
+                 "the arc collapses at t = P1 + P2");
+        }
+
+        // Trails §1.2: every pose call applies its rule; with dt 0 only the chain is inert. Rule
+        // 4 halves the blade (butt point 0 := midpoint) at dt 0 as well.
+        {
+            c.action = 1;
+            c.actionMs = 400;
+            PoseState z;
+            poseParts(z, a, m, 16, voxels);
+            const glm::vec3 p5 = z.trail[0][5];
+            m.yawDegrees = 40;
+            poseParts(z, a, m, 0, voxels);
+            same(z.trail[0][5] == p5, 1, "dt 0: the chain leaves point 5");
+            const float halved = glm::length(z.trail[0][0] - z.trail[1][0]);
+            c.action = 0;
+            c.actionMs = 0;
+            poseParts(z, a, m, 0, voxels);
+            same(z.trail[0][7] == z.trail[0][0], 1, "dt 0: the collapse still applies");
+            same(glm::length(z.trail[0][0] - z.trail[1][0]), 2 * halved, "dt 0: rule 4 used the blade's outer half", 1e-4);
+            m.yawDegrees = 0;
+        }
+
+        // Trails §1.1: a hand with no model keeps its point 0, which still receives the per-call
+        // shift (camera - displayed position) in x and y, so it drifts; an armed hand's point 0
+        // is rewritten each call.
+        {
+            Combatant bare;
+            Motion bm;
+            bm.fighter = &bare;
+            bm.cameraOffset = {3, -4};
+            PoseState d;
+            poseParts(d, a, bm, 16, voxels);
+            poseParts(d, a, bm, 0, voxels);
+            same(d.trail[0][0].x + d.trail[1][0].x + d.trail[2][0].x + d.trail[3][0].x, 24, "x drifts 3 per call");
+            same(d.trail[0][0].y, -8, "y drifts -4 per call");
+            same(d.trail[0][0].z, 0, "z is not shifted");
+            c.action = 0;
+            Motion armed = m;
+            armed.cameraOffset = {3, -4};
+            PoseState w, still;
+            poseParts(w, a, armed, 16, voxels);
+            poseParts(w, a, armed, 16, voxels);
+            poseParts(still, a, m, 16, voxels);
+            poseParts(still, a, m, 16, voxels);
+            same(w.trail[0][0] == still.trail[0][0] && w.trail[3][0] != still.trail[3][0], 1,
+                 "only the hand without a model drifts");
+        }
+
+        // Trails §1.3: the alpha bytes of both strips, k_i in single precision, truncated.
+        {
+            Combatant two = c;
+            two.action = 1;
+            two.actionMs = 400;
+            two.equipment[OFF_HAND] = {3, 0, 1, 0, 1, 0};
+            PoseState open;
+            for (size_t h = 0; h < 4; h++)
+                for (size_t i = 0; i < 16; i++)
+                    open.trail[h][i] = glm::vec3((float)i, (float)h, 0);
+            std::vector<TrailCorner> k;
+            trailTriangles(open, two, glm::vec3(0), k);
+            static const int BUTT[16] = {0, 3, 10, 20, 30, 39, 46, 49, 49, 46, 39, 30, 20, 10, 3, 0};
+            static const int MAIN_TIP_ALPHA[16] = {0, 12, 42, 81, 122, 158, 184, 198, 198, 184, 158, 122, 81, 42, 12, 0};
+            static const int OFF_TIP_ALPHA[16] = {0, 15, 54, 104, 156, 201, 235, 252, 252, 235, 201, 156, 104, 54, 15, 0};
+            same(k.size(), 180, "a main and an off-hand strip");
+            int wrong = 0;
+            for (size_t i = 0; k.size() == 180 && i < 16; i++) {
+                const size_t butt = i < 15 ? 6 * i : 6 * 14 + 2, tip = i < 15 ? 6 * i + 1 : 6 * 14 + 4;
+                wrong += k[butt].alpha != BUTT[i] || k[tip].alpha != MAIN_TIP_ALPHA[i];
+                wrong += k[90 + butt].alpha != BUTT[i] || k[90 + tip].alpha != OFF_TIP_ALPHA[i];
+            }
+            same(wrong, 0, "every alpha byte of the table");
+        }
 
         // Weapon pose contract §8: a carried weapon is centred and turned -135 about y, so
         // its tip points down; a carried staff is turned -45, so its tip points up.
@@ -796,7 +900,8 @@ int main() {
         {
             Combatant mage;
             mage.action = 87;
-            const float D = (float)duration(mage, 87);
+            // Ruling channel2-explosion-window §1: the particles' D is P1.
+            const float D = (float)phases(mage, 87).windUp;
             Body body;
             ShotEffects fx;
             std::vector<Projectile> shots;
@@ -807,7 +912,13 @@ int main() {
             same(fx.bursts.size(), 1, "one explosion burst");
             same(fx.bursts.empty() ? 0 : fx.bursts[0].count, 80, "80 particles");
             same(fx.bursts.empty() ? 0 : fx.bursts[0].spread, 20, "spread 20");
-            same(std::any_of(fx.sounds.begin(), fx.sounds.end(), [](const SoundEvent &e) { return e.sound == 81; }), 1,
+            // Audio §6.2 row 81: the sound is a world-step record made with the swings.
+            std::vector<SoundEvent> sounds;
+            actionSounds(mage, D - 10, 16, glm::dvec3(0), [] { return 0; }, sounds);
+            same(std::any_of(sounds.begin(), sounds.end(), [](const SoundEvent &e) { return e.sound == 81; }), 0,
+                 "no sound 81 while T < D");
+            actionSounds(mage, D + 6, 16, glm::dvec3(0), [] { return 0; }, sounds);
+            same(std::any_of(sounds.begin(), sounds.end(), [](const SoundEvent &e) { return e.sound == 81; }), 1,
                  "sound 81");
         }
         // §5.3: a staff's release, spread 8, at the creature plus the float vector x 65536.
@@ -815,7 +926,7 @@ int main() {
             Combatant mage;
             mage.action = 30;
             mage.aim = {1.5f, -2.25f, 0.1f};
-            const float D = (float)duration(mage, 30);
+            const float D = (float)phases(mage, 30).windUp;
             Body body;
             body.place({10, 20, 30});
             ShotEffects fx;
@@ -902,7 +1013,199 @@ int main() {
         sounds.clear();
         actionSounds(c, 0, 16, glm::dvec3(0), [] { return 16383; }, sounds);
         same(sounds.size() == 1 && sounds[0].sound == 17, 1, "a two-hander is lifted");
+        same(sounds.empty() ? 0 : sounds[0].pitch, sound::randomPitch(16383, 0.1f, 1.f), "lift pitch float(r)·0.1/32767 + 1");
+        sounds.clear();
+        actionSounds(c, -5, 16, glm::dvec3(0), [] { return 16383; }, sounds);
+        same(sounds.empty(), 1, "the lift is at τ = 0 only");
+        // Re-certification item 5: the half-P2 slam uses the late form τ < X <= τ + dt.
+        const Phases slam = phases(c, 57);
+        const float X = (float)(slam.windUp + slam.active / 2);
+        sounds.clear();
+        actionSounds(c, X - 16, 16, glm::dvec3(0), [] { return 16383; }, sounds);
+        same(sounds.size() == 1 && sounds[0].sound == 12, 1, "slam when τ + dt reaches P1 + P2/2");
+        sounds.clear();
+        actionSounds(c, X, 16, glm::dvec3(0), [] { return 16383; }, sounds);
+        same(sounds.empty(), 1, "no slam when τ is already P1 + P2/2");
+        // Item 6: action 11's interval P2/3 includes the first step in P2, after its P1 swirl.
+        c.equipment[MAIN_HAND] = {3, 0, 1, 0, 1, 0};
+        c.multipliers[1] = 1 / attackSpeed(c);
+        c.action = 11;
+        sounds.clear();
+        int draws = 0;
+        actionSounds(c, 0, 16, glm::dvec3(0), [&] { draws++; return 16383; }, sounds);
+        same(sounds.size() == 2 && sounds[0].sound == 48 && sounds[1].sound == 15 && draws == 2, 1,
+             "swirl at P1, then the multi-hit swing on the first step in P2");
+        sounds.clear();
+        const int32_t third = phases(c, 11).active / 3;
+        actionSounds(c, (float)third - 8, 16, glm::dvec3(0), [] { return 16383; }, sounds);
+        same(sounds.size() == 1 && sounds[0].sound == 15, 1, "the next swing one interval on");
+        // Item 8: a staff's 200-ms hum (36) is made before its P1 swing (15), each with its own draw.
+        c.action = 30;
+        const float P1 = (float)phases(c, 30).windUp;
+        sounds.clear();
+        std::vector<int32_t> given = {100, 200};
+        size_t next = 0;
+        actionSounds(c, P1 - 10, 16, glm::dvec3(0), [&] { return given[next++ % given.size()]; }, sounds);
+        // Ruling channel2-explosion-window §1: tick, release (no draw), then the at-P1 swing.
+        same(sounds.size() == 3 && sounds[0].sound == 36 && sounds[1].sound == 38 && sounds[2].sound == 15, 1,
+             "hum, release, then swing");
+        same(sounds.size() == 3 ? sounds[0].pitch : 0, sound::randomPitch(100, 0.25f, 1.f), "hum pitch, first draw");
+        same(sounds.size() == 3 ? sounds[1].pitch : 0, 1, "release pitch 1, no draw");
+        same(sounds.size() == 3 ? sounds[2].pitch : 0, sound::randomPitch(200, 0.2f, 0.9f) * 1.5f, "swing pitch, second draw");
+        c.specialization = 1;
+        sounds.clear();
+        actionSounds(c, P1 - 10, 16, glm::dvec3(0), [] { return 0; }, sounds);
+        same(sounds.size() == 3 && sounds[1].sound == 41, 1, "a water staff releases with 41");
+        c.specialization = 0;
     }
+
+    // Ruling channel2-explosion-window §1: the 200-ms tick window and the explosion's late form.
+    // (The audio checks run in their own frames: main's stack is already large.)
+    audioCheck([] {
+        Combatant c;
+        c.multipliers[1] = 1 / attackSpeed(c);
+        const auto run = [&](int32_t action, float t, float dt, int &draws) {
+            c.action = action;
+            std::vector<SoundEvent> sounds;
+            draws = 0;
+            actionSounds(c, t, dt, glm::dvec3(0), [&] { draws++; return 0; }, sounds);
+            std::vector<int32_t> ids;
+            for (const SoundEvent &s : sounds)
+                ids.push_back(s.sound);
+            return ids;
+        };
+        int draws = 0;
+        const int32_t P1 = phases(c, 31).windUp; // 1600 at unit speed
+        same(run(31, 184, 16, draws) == std::vector<int32_t>{36} && draws == 1, 1, "a boundary at τ + dt ticks");
+        same(run(31, 200, 16, draws).empty() && draws == 0, 1, "a boundary at τ does not");
+        same(run(31, 0, 16, draws).empty(), 1, "0 never ticks");
+        same(run(31, 100, 500, draws) == std::vector<int32_t>{36} && draws == 1, 1, "at most one tick per step");
+        const auto has = [](const std::vector<int32_t> &ids, int32_t id) {
+            return std::find(ids.begin(), ids.end(), id) != ids.end();
+        };
+        same(run(31, (float)P1, 16, draws) == std::vector<int32_t>{15, 15} && draws == 2, 1,
+             "τ = P1: no tick, no release; the at-P1 swing, then the first multi-hit swing");
+        same(run(31, (float)P1 - 1, 201, draws) == std::vector<int32_t>{36, 38, 15}, 1,
+             "the step crossing P1 still ticks (absolute grid), then releases and swings");
+        const auto lateRelease = run(31, (float)P1 - 16, 16, draws);
+        same(has(lateRelease, 38) && !has(lateRelease, 15), 1, "P1 = τ + dt: release now (late form), swing a step later");
+        const int32_t E = phases(c, 87).windUp;
+        const auto beforeExplosion = run(87, (float)E - 10, 16, draws);
+        same(has(beforeExplosion, 15) && !has(beforeExplosion, 81), 1, "explosion: the swing comes the step before");
+        same(run(87, (float)E + 6, 16, draws) == std::vector<int32_t>{81} && draws == 0, 1,
+             "explosion on τ - dt < P1 <= τ, with no tick and no draw");
+        same(run(87, (float)E, 16, draws) == std::vector<int32_t>{81, 15}, 1, "τ = P1: explosion, then swing");
+        same(run(87, (float)E + 16, 16, draws).empty(), 1, "only once");
+        // A two-hander's swing-slow is skipped for these actions.
+        c.equipment[MAIN_HAND] = {3, GREATSWORD, 1, 0, 1, 0};
+        c.multipliers[1] = 1 / attackSpeed(c);
+        same(run(88, 0, 16, draws).empty() && draws == 0, 1, "no swing-slow for 87, 88");
+        same(run(32, 0, 16, draws).empty() && draws == 0, 1, "nor for 30-33");
+        // Ruling §2: action 104 has only the generic sounds (17 at τ = 0, the at-P1 swing 15).
+        same(run(104, 0, 16, draws) == std::vector<int32_t>{17, 15}, 1, "action 104: swing-slow, then the swing");
+    });
+
+    // Audio §1.2 (re-certified): the play routine's distance, falloff and voice volume.
+    audioCheck([] {
+        const sound::Fixed L{1000ll * 65536, 2000ll * 65536, 50ll * 65536};
+        const auto from = [&](double dx, double dy, double dz) {
+            return sound::Fixed{L[0] + int64_t(dx * 65536), L[1] + int64_t(dy * 65536), L[2] + int64_t(dz * 65536)};
+        };
+        same(sound::attenuation(L, L, 0.75f).value_or(-1), 0.75, "at the listener: full volume");
+        same(sound::attenuation(from(30, 0, 0), L, 1).value_or(-1), 0.7, "30 blocks: 0.7", 1e-6);
+        same(sound::attenuation(from(0, 100, 0), L, 1).value_or(-1), 0, "d² = 10 000 exactly plays at volume 0");
+        same(sound::attenuation(from(0, 0, 100.001), L, 1).has_value(), 0, "past 100 blocks nothing plays");
+        same(sound::attenuation(from(-60, 0, 80), L, 1).value_or(-1), 0, "a 3-4-5 triangle to 100", 1e-6);
+        same(sound::voiceVolume(60, 0.7f), (60.f * 0.7f) * 0.01f, "(soundVolume · a) · 0.01");
+        same(sound::voiceVolume(100, 0.705f), 0.705, "selling 6 blocks away", 1e-6);
+        same(sound::playedPitch(3.f), 2, "pitch above 2 plays as 2");
+        same(sound::playedPitch(0.f), 1. / 1024, "and at least 1/1024");
+        same(sound::randomPitch(12345, 0.2f, 0.9f), float(12345) * 0.2f / 32767.f + 0.9f, "pitch order");
+        same(sound::recordPosition(glm::dvec3(16777215.3, 0.5, -2.25))[0], double(int64_t(16777215.3f * 65536.f)),
+             "a record carries float blocks");
+        same(sound::recordPosition(glm::dvec3(16777215.3, 0.5, -2.25))[2], -2.25 * 65536, "truncation toward zero");
+    });
+
+    // Audio §3 (re-certified) and zone-fields ruling 1: ambience ticks, draws and the chunk gate.
+    audioCheck([] {
+        using sound::AmbientRecord;
+        same(sound::ambienceTicks(0, 0, 1000, 666, 1), 1, "phase 333 + 666 crosses 1000 with dt 1");
+        same(sound::ambienceTicks(0, 0, 1000, 666, 0), 0, "no step, no tick");
+        same(sound::ambienceTicks(-5 * 65536, 0, 1000, 667, 1), 0, "C remainders: -5 + 333 + 667 does not cross");
+        same(sound::ambienceTicks(-5 * 65536, 0, 1000, 671, 1), 1, "... -5 + 333 + 671 does");
+        const AmbientRecord crown{61, {0, 0, 7 * 65536}};
+        const double ten = 36000000, night = 3600000, afternoon = 46800000;
+        std::vector<int32_t> given;
+        size_t next = 0;
+        int draws = 0;
+        const auto draw = [&] {
+            draws++;
+            return given[next++];
+        };
+        std::vector<sound::Request> out;
+        const auto run = [&](const AmbientRecord &r, double t, int32_t clock, std::vector<int32_t> values) {
+            given = std::move(values), next = 0, draws = 0;
+            out.clear();
+            sound::ambientRecord(r, t, clock, 1, draw, out);
+        };
+        run(crown, ten, 666, {20, 16383});
+        same(out.size() == 1 && out[0].id == 94 && out[0].volume == 0.1f && draws == 2, 1, "a bird: chance, pitch");
+        same(out.empty() ? 0 : out[0].pitch, sound::randomPitch(16383, 0.2f, 0.9f), "bird pitch");
+        run(crown, ten, 666, {21});
+        same(out.empty() && draws == 1, 1, "a failed chance draws nothing more");
+        run(crown, ten, 0, {});
+        same(out.empty() && draws == 0, 1, "no tick, no draw");
+        run(crown, night, 666, {30, 100, 7});
+        same(out.size() == 1 && out[0].id == 100 && draws == 3, 1, "an owl: chance, pitch, then its file");
+        same(out.empty() ? 0 : out[0].pitch, sound::randomPitch(100, 0.2f, 0.5f), "owl pitch from the second draw");
+        run(crown, afternoon, 666, {0, 0});
+        same(out.size() == 1 && out[0].id == 94, 1, "kind 61 takes the bird row in the afternoon");
+        run({62, crown.position}, night, 666, {});
+        same(out.empty() && draws == 0, 1, "kind 62 by night falls through to nothing");
+        const AmbientRecord grass{3, {0, 0, 0}};
+        run(grass, afternoon, 4666, {140, 0});
+        same(out.size() == 1 && out[0].id == 97 && out[0].volume == 0.05f, 1, "a grass chirp, 1/70");
+        run(grass, ten, 4666, {});
+        same(out.empty() && draws == 0, 1, "no chirps in the morning");
+        run({1, {0, 0, 0}}, afternoon, 4666, {70, 0});
+        same(out.size() == 1 && out[0].id == 98, 1, "a flower chirp");
+
+        // Ruling 1 §1.3-§1.4: the squared distance and the strict 4096 gate (64 blocks).
+        const sound::Fixed L{0, 0, 0};
+        same(sound::chunkSquaredDistance({64ll * 65536, 0, 0}, L), 4096, "squared, in blocks²");
+        same(sound::withinAmbience(sound::chunkSquaredDistance({64ll * 65536, 0, 0}, L)), 0, "64 blocks is out");
+        same(sound::withinAmbience(sound::chunkSquaredDistance({60ll * 65536, 0, 16ll * 65536}, L)), 1, "60, 16 is in");
+        same(sound::withinAmbience(sound::chunkSquaredDistance({63ll * 65536, 0, 16ll * 65536}, L)), 0,
+             "63, 16 is out: the gate is three-dimensional");
+        same(sound::withinAmbience(std::numeric_limits<float>::quiet_NaN()), 0, "NaN skips");
+        const sound::ChunkShape shape = sound::chunkShape({1, 2}, {32ll * 65536, 64ll * 65536, 10ll * 65536},
+                                                          {64ll * 65536, 96ll * 65536, 30ll * 65536});
+        same(shape.midpoint[0] == 48ll * 65536 && shape.midpoint[1] == 80ll * 65536 && shape.midpoint[2] == 20ll * 65536, 1,
+             "the bounds midpoint");
+        same(shape.radius, 1.5 * std::sqrt(16. * 16 + 16 * 16 + 10 * 10), "bounding radius", 1e-4);
+
+        // The slot walk: refreshed only when visible, stale otherwise, walked for every in-range slot.
+        sound::AmbienceGrid grid;
+        bool visible = true;
+        int walked = 0;
+        sound::AmbienceGrid::Source source;
+        source.built = [](int32_t x, int32_t y) { return x == 0 && y == 0; };
+        source.shape = [](int32_t x, int32_t y) {
+            return sound::chunkShape({x, y}, {0, 0, 0}, {32ll * 65536, 32ll * 65536, 0});
+        };
+        source.visible = [&](const sound::ChunkShape &) { return visible; };
+        source.records = [&](glm::ivec2 c) { walked += c == glm::ivec2(0) ? 1 : 100; };
+        grid.walk({-1, -1}, 2, {16ll * 65536, 16ll * 65536, 0}, source);
+        same(walked, 1, "a near, visible built chunk is walked; out-of-range and empty slots are not");
+        visible = false;
+        walked = 0;
+        grid.walk({-1, -1}, 2, {5000ll * 65536, 0, 0}, source);
+        same(walked, 1, "out of view the slot keeps its stale distance");
+        visible = true;
+        walked = 0;
+        grid.walk({-1, -1}, 2, {5000ll * 65536, 0, 0}, source);
+        same(walked, 0, "back in view it is refreshed and gated out");
+    });
 
     // Quests (docs/design/quests.md): the board is the same for everyone; a battle's allies
     // and enemies fight; a prisoner is freed once its guards are gone; the book saves.
@@ -2385,7 +2688,7 @@ int main() {
         s.type = 2;
         s.controller = 3;
         s.behaviour = 2;
-        s.route = {{336, 20, 10}};
+        s.route = {{336ll << 16, 20ll << 16, 10ll << 16}};
         zone->spawns.push_back(s);
         worldgen::WorldMap map;
         map.add(zone);
@@ -2413,7 +2716,7 @@ int main() {
         s.type = 2;
         s.controller = 3;
         s.behaviour = 2;
-        s.route = {{600, 20, 10}}; // zone (2, 0), absent from the map
+        s.route = {{600ll << 16, 20ll << 16, 10ll << 16}}; // zone (2, 0), absent from the map
         zone->spawns.push_back(s);
         worldgen::WorldMap map;
         map.add(zone);
@@ -2509,6 +2812,179 @@ int main() {
         same(satDown, 1, "the resident sat on the bench");
         same(stoodUp, 1, "and stood up after its 20 s");
         same(sat, 1, "it sat once (20 s of rest after standing)");
+    }
+
+    // Trails spec §3.6: a town builder's mission creature runs Combat, then WalkPath (r = 2)
+    // over its own spawn point; unlike a plain creature it does not look at a player beside it.
+    {
+        const auto aims = [](uint8_t behaviour, bool &route) {
+            auto zone = std::make_shared<worldgen::Zone>(1, 0);
+            worldgen::Spawn s;
+            s.x = 276ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
+            s.type = 2;
+            s.controller = 3;
+            s.behaviour = behaviour;
+            if (behaviour == worldgen::MISSION_BEHAVIOUR)
+                s.route = {{s.x, s.y, s.z}};
+            zone->spawns.push_back(s);
+            worldgen::WorldMap map;
+            map.add(zone);
+            auto flat = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 10 ? 1 : 0; };
+            Combatant me;
+            me.id = 1;
+            me.health = maxHealth(me);
+            Body body;
+            body.place({279.5, 20.5, 10 + 1.08 + 0.01}); // 3 blocks away
+            Npcs npcs;
+            bool aiming = false;
+            for (int i = 0; i < 20; i++) {
+                npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, flat);
+                if (!npcs.all().empty())
+                    aiming = aiming || (npcs.all()[0].body.mode & AIMING) != 0;
+            }
+            route = !npcs.all().empty() && npcs.all()[0].route.size() == 1 && npcs.all()[0].routeRadius == 2 &&
+                    npcs.all()[0].route[0] == glm::dvec3(276, 20, 10);
+            return aiming;
+        };
+        bool route = false, unused = false;
+        same(aims(worldgen::MISSION_BEHAVIOUR, route), 0, "a mission creature has no LookAtPlayer");
+        same(route, 1, "its route is its own spawn point, radius 2");
+        same(aims(0, unused), 1, "a plain creature looks at the player");
+    }
+
+    // Rulings spawn-rounds-ruin-routes §3(a): a ring creature's route point is its position
+    // exactly, sub-block x and y included.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = (276ll << 16) + 12345, s.y = (20ll << 16) - 54321, s.z = 10ll << 16;
+        s.type = 2;
+        s.controller = 3;
+        s.behaviour = 5;
+        s.route = {{s.x, s.y, s.z}};
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({300.5, 120.5, 10 + 1.08 + 0.01});
+        Npcs npcs;
+        npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0,
+                  [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 10 ? 1 : 0; });
+        const bool exact = !npcs.all().empty() && npcs.all()[0].route.size() == 1 &&
+                           npcs.all()[0].route[0] == glm::dvec3((double)s.x, (double)s.y, (double)s.z) / 65536.0;
+        same(exact, 1, "the ring creature's own point, not truncated to whole blocks");
+    }
+
+    // Rulings spawn-rounds §1: in the update in which the schedule entry changes, SpawnLocation
+    // starts the search and runs exactly one round (one expansion); the loop of up to 10 rounds
+    // runs from the next update.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 276ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
+        s.type = 2;
+        s.controller = 3;
+        s.characterClass = 0x88;
+        s.schedule = {{276ll << 16, 20ll << 16, 10ll << 16, 0}, {316ll << 16, 20ll << 16, 10ll << 16, 10 * 3600000}};
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto flat = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 10 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({276.5, 150.5, 10 + 1.08 + 0.01});
+        Npcs npcs;
+        for (int i = 0; i < 5; i++)
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 9 * 3600000.0, 0, flat);
+        // (Behaviour updates do not run on every world step, so watch the node map change.)
+        const auto records = [&] { return npcs.all().empty() ? size_t(0) : npcs.all()[0].path.state.records.size(); };
+        size_t first = 0, second = 0;
+        for (int i = 0; i < 20 && first == 0; i++) {
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 10 * 3600000.0, 0, flat);
+            first = records();
+        }
+        for (int i = 0; i < 20 && second <= first; i++) {
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 10 * 3600000.0, 0, flat);
+            second = records();
+        }
+        same(first > 0 && first <= 27, 1, "one expansion in the new-entry update");
+        same(second > first + 26, 1, "the up-to-10-round loop from the next update");
+    }
+
+    // Rulings spawn-rounds-ruin-routes §2: one ruin group iteration draws the point, the group,
+    // the facing, the kind, a house, a point of that house (only when it has any) and the item
+    // count; its route is [own position, the drawn house point (whole blocks, not raised)].
+    {
+        worldgen::Location L;
+        L.type = 5, L.level = 7, L.subLevel = 2;
+        const std::vector<std::vector<int32_t>> groups = {{}, {41, 17}};
+        const std::vector<glm::ivec3> here = {{10, 20, 30}, {11, 21, 31}}, empty, there = {{50, 60, 70}, {51, 61, 71}};
+        const std::vector<const std::vector<glm::ivec3> *> houses = {&here, &empty, &there};
+        const auto run = [&](std::vector<int32_t> draws, std::vector<glm::ivec3> &P, size_t &used) {
+            used = 0;
+            return worldgen::ruinGroupCreature(P, groups, houses, L, [&] { return draws[used++]; });
+        };
+        size_t used = 0;
+        std::vector<glm::ivec3> P = here;
+        // point 1 of P, group 1, facing 16383, kind 1 (17), house 2, its point 1, e = 1
+        const auto two = run({1, 1, 16383, 1, 2, 1, 1}, P, used);
+        same(used, 7, "seven draws with a second point");
+        same(P.size() == 1 && P[0] == glm::ivec3(10, 20, 30), 1, "the drawn point leaves P");
+        same(two && two->type == 17 && two->behaviour == worldgen::MISSION_BEHAVIOUR, 1, "kind from list a, Combat + WalkPath");
+        same(two && two->z == (31 + 1) * 65536ll && two->yaw == (float)(16383.f * 360.f) / 32767.f, 1,
+             "one block above its point, facing from the third draw");
+        const bool route = two && two->route.size() == 2 && two->route[0] == std::array<int64_t, 3>{two->x, two->y, two->z} &&
+                           two->route[1] == std::array<int64_t, 3>{51ll << 16, 61ll << 16, 71ll << 16};
+        same(route, 1, "route: own position, then the drawn house point unraised");
+        same(two && two->inventory.size() == 1, 1, "the item count from the last draw");
+        P = here;
+        const auto one = run({0, 1, 0, 0, 1, 0}, P, used);
+        same(used, 6, "an empty house list at the drawn house: its draw consumed, no point draw");
+        same(one && one->route.size() == 1 && one->inventory.empty(), 1, "route: own position only");
+        P = here;
+        same(run({0, 0}, P, used).has_value() || used != 2 || P.size() != 1, 0,
+             "an empty group list ends the iteration after two draws");
+    }
+
+    // Trails spec §4.4: the house a block is in is the first in list order with a storey cell
+    // covering it (13a ... 13a + 13, 13b ... 13b + 13, 7k ... 7k + 6, both ends included): its
+    // seats by day, its beds by night, both kept. Outdoors the stools, benches and towels of the
+    // 3 x 3 cells of 8 x 8 blocks, x outer.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        const auto object = [](int32_t kind, double x, double y, double z) {
+            worldgen::StaticObject o;
+            o.kind = kind;
+            o.x = (int64_t)(x * 65536), o.y = (int64_t)(y * 65536), o.z = (int64_t)(z * 65536);
+            return o;
+        };
+        zone->statics = {object(16, 318, 15, 27), object(19, 320, 15, 27), object(68, 306.5, 30.5, 10),
+                         object(18, 290.5, 30.5, 10), object(15, 298.5, 30.5, 10)};
+        worldgen::House house;
+        house.ox = 300, house.oy = 10, house.oz = 20;
+        house.storeys = {{1, 0, 1}}; // x 313 ... 326, y 10 ... 23, z 27 ... 33
+        house.seats = {0};
+        house.beds = {1};
+        zone->houses = {house};
+        worldgen::WorldMap map;
+        map.add(zone);
+        StaticStates statics;
+        const double noon = 12 * 3600000.0, night = 23.5 * 3600000.0;
+        const auto day = statics.seats(map, {313, 23, 27}, noon);
+        same(day.house && day.keep.size() == 2 && day.pick.size() == 1 && day.pick[0].index == 0, 1,
+             "in the house by day: its seats, both lists kept");
+        const auto late = statics.seats(map, {326, 10, 33}, night);
+        same(late.house && late.pick.size() == 1 && late.pick[0].index == 1, 1, "the far corner by night: its beds");
+        same(statics.seats(map, {327, 10, 33}, noon).house || statics.seats(map, {320, 15, 34}, noon).house, 0,
+             "one block past the cell is outdoors");
+        const auto out = statics.seats(map, {300, 30, 10}, noon);
+        same(!out.house && out.pick.size() == 2 && out.pick[0].index == 3 && out.pick[1].index == 2, 1,
+             "outdoors: the bench's cell before the towel's, no stone stool, nothing beyond the 3 x 3 cells");
     }
 
     // Materials §1.1, §1.6 example 4: ordinary cube colours, and fire and ice average to a pale lilac.

@@ -22,19 +22,37 @@ struct Sequence {
     std::vector<Key> keys;
 };
 
-// §2.3, §2.4: an animatable value. Frame 0 is the authored value, frame 1 the library's live
-// slot (not trusted from the file), frames 2.. are keyframes. `value` is the live value,
-// starting from frame 0 (open question P-1).
+// §6.5: an attribute's running sequence. The working key list is empty when none runs.
+struct Playback {
+    std::vector<Key> keys; // sorted by time, period-filtered, with the implicit start key
+    float elapsedMs = 0;   // time evaluated by the next advance
+    int32_t periodMs = 0;  // 0 plays once; ≥ 1 loops
+    size_t segment = 0;    // where the next segment search starts
+    int32_t applied = -1;  // the last key's frame once applied at or after the last key
+};
+
+// §2.3, §2.4: an animatable value. `value` is frame 0, the current value: drawing reads it, the
+// game and sequence evaluation write it (`frames[0]` keeps the authored copy). Frame 1 is the
+// snapshot a sequence takes when its first key is later than 0; frames 2.. are keyframes.
 template <class T> struct Attribute {
     std::vector<T> frames;
     std::vector<Sequence> sequences;
     T value{};
+    Playback playback;
     const Sequence *sequence(const std::string &name) const {
         for (const Sequence &s : sequences)
             if (s.name == name)
                 return &s;
         return nullptr;
     }
+};
+
+// §6.5: per-object sequence state (shapes, transformations, displays). `playing` is set when a
+// sequence starts on one of its attributes and cleared by the first advance in which none of
+// them still runs; `advancedIn` keeps an object to one advance per interface update.
+struct Animated {
+    bool playing = false;
+    uint32_t advancedIn = 0;
 };
 
 // §3.1
@@ -76,13 +94,15 @@ struct Shape {
     std::string name;
     MeshShape mesh;
     TextShape text;
+    Animated animated;
 };
 
 // §3.4
 struct Transformation {
     Attribute<glm::vec2> translation, pivot;
-    Attribute<glm::vec3> rotation; // degrees, z used
+    Attribute<glm::vec3> rotation; // degrees about x, y, z
     Attribute<glm::mat4> deformation;
+    Animated animated;
 };
 
 // §3.5
@@ -91,6 +111,7 @@ struct Display {
     Attribute<glm::vec4> fillColor, strokeColor;
     Attribute<float> blurRadius;
     int32_t flags = 0;
+    Animated animated;
 };
 
 // §3.6
@@ -112,6 +133,8 @@ struct Node {
     std::vector<int32_t> children;
     int32_t flags = 0;
 };
+// §3.7, rulings manacubebar §3: an update walk enters a hidden node only under this flag.
+constexpr int32_t UPDATE_HIDDEN = 0x2000;
 
 struct Document {
     std::vector<Texture> textures;
@@ -121,6 +144,7 @@ struct Document {
     std::vector<Widget> widgets;
     std::vector<Node> nodes; // node 0 is the document root (§3.7)
     size_t nameCount = 0;    // names defined in the file (for checks, §8)
+    uint32_t updates = 0;    // interface updates run by `advance` (the per-update guard)
 
     const Texture *textureById(int32_t id) const;
     // §6.3: the first node named `name` in a depth-first walk from `from`, or -1.
@@ -131,9 +155,19 @@ struct Document {
 std::optional<Document> read(const std::vector<uint8_t> &bytes, std::string *error = nullptr);
 std::optional<Document> load(const std::filesystem::path &file, std::string *error = nullptr);
 
-// §6.5: sets every attribute of the subtree at `node` that has a sequence called `name` to its
-// value `timeMs` after the sequence's start (no looping).
-void play(Document &doc, int32_t node, const std::string &name, float timeMs);
+// §6.5 starting: starts the sequence `name` on every attribute of the subtree at `node` that has
+// one with at least one key, marking those objects as playing. `periodMs` 0 plays once (every
+// call the game makes); ≥ 1 loops with that period.
+void play(Document &doc, int32_t node, const std::string &name, int32_t periodMs = 0);
+// §6.5, rulings manacubebar §2: whether a sequence plays in the subtree at `node` (its own
+// shape, transformation or display, or any descendant's). True from the play call on.
+bool playing(const Document &doc, int32_t node);
+// Rulings manacubebar §2: one interface update of the subtree at `node`. Each playing object is
+// advanced at most once: each attribute is evaluated at its elapsed time, then its time grows
+// by `stepMs`; one that stops running drops its keys, and an object none of whose attributes
+// ran stops playing. The walk skips a hidden node unless it, or an ancestor, has
+// UPDATE_HIDDEN; `updateHidden` passes that flag down from the container holding the subtree.
+void advance(Document &doc, int32_t node, float stepMs, bool updateHidden = false);
 // The time of the last key of the sequences called `name` in the subtree at `node` (ms; 0 when
 // there are none).
 float length(const Document &doc, int32_t node, const std::string &name);

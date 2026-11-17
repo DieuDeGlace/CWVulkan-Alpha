@@ -307,58 +307,67 @@ int32_t poseOf(const Combatant &c) {
     return pose;
 }
 
-// Trails §1.2: ages the histories once per pose call, by the rule of the pose.
-static void ageTrail(PoseState &s, int32_t pose, float t, const Phases &P, float dt, const glm::mat4 &base,
-              const glm::mat4 &centre, float yawDegrees) {
+// Trails §1.2: ages the histories once per pose call, by the rule of the pose. Every call applies
+// its rule whatever dt is: only the chain weight depends on dt (none at dt 0), while the arc, the
+// point-0 adjustments, the fills and the collapse take effect on every call. `clock` is the
+// copied action time t (rules 3 and 4 read the record's own copy, the same value).
+static void ageTrail(PoseState &s, int32_t pose, int32_t clock, const Phases &P, float dt, const glm::mat4 &base,
+                     const glm::mat4 &centre, float yawDegrees) {
     auto &h = s.trail;
     enum { MAIN_TIP, MAIN_BUTT, OFF_TIP, OFF_BUTT };
-    const float P1 = (float)P.windUp, P2 = (float)P.active, P3 = (float)P.recovery, D = (float)P.total();
-    // Each point moves towards the (already moved) point before it.
-    const auto chain = [&](int history, float rate) {
-        const float w = 1 - std::pow(1 - rate, dt);
+    const int32_t P1 = P.windUp, P2 = P.active, P3 = P.recovery;
+    const int32_t D = add32(add32(P1, P2), P3);
+    // Each point moves towards the (already moved) point before it, with w = Relax(-> 1, rate,
+    // dt) = 1 - (1 - rate)^dt. The point index is the outer loop, butt before tip.
+    const auto chain = [&](std::initializer_list<int> histories, float rate) {
+        const float w = relax(0.f, 1.f, rate, (int32_t)dt);
         for (size_t i = 1; i < 16; i++)
-            h[(size_t)history][i] += (h[(size_t)history][i - 1] - h[(size_t)history][i]) * w;
+            for (const int k : histories)
+                h[(size_t)k][i] += (h[(size_t)k][i - 1] - h[(size_t)k][i]) * w;
     };
     const auto fill = [&](int history, glm::vec3 p) { h[(size_t)history].fill(p); };
-    // Rule 1, pose 69: half a ring in front of the creature, growing to 20 blocks.
-    if (pose == 69 && t > P1 && t < P1 + P2) {
-        const float f = 20 * (t - P1) / (P1 + P2);
+    // Rule 1, pose 69 (rulings pose-69-arc): an open arc of 16 points from -90 to +78.75 degrees
+    // in front of the creature, the tip ring at f blocks and the butt ring at f / 2. It overwrites
+    // all of both main-hand histories (point 0 too), leaves the off hand, and ends the call.
+    if (pose == 69 && clock > P1 && clock < add32(P1, P2)) {
+        const float f = ((float)sub32(clock, P1) * 20.f) / (float)add32(P1, P2); // multiply, then divide
+        const float half = f * 0.5f;
         const glm::mat4 M = Rz(centre, yawDegrees);
         for (size_t i = 0; i < 16; i++) {
-            const double angle = (double)i * PI / 16 - PI / 2;
-            const glm::vec3 u((float)std::sin(angle), (float)std::cos(angle), 0);
+            // The angle in binary64 from the binary64 constants, rounded to binary32; then the
+            // cosine and the sine of the widened angle, each rounded to binary32.
+            const float angle = (float)((double)i * PI * 0.0625 - PI / 2);
+            const float cosine = cosw(angle), sine = sinw(angle);
+            const glm::vec3 u(sine, cosine, 0);
+            h[MAIN_BUTT][i] = glm::vec3(M * glm::vec4(half * u, 1));
             h[MAIN_TIP][i] = glm::vec3(M * glm::vec4(f * u, 1));
-            h[MAIN_BUTT][i] = glm::vec3(M * glm::vec4(0.5f * f * u, 1));
         }
         return;
     }
     // Rule 2: the swings that trail with both hands.
     static const int32_t BOTH[] = {1, 2, 3, 8, 10, 12, 14, 28, 29, 30, 31, 32, 35, 48, 49};
-    if (std::find(std::begin(BOTH), std::end(BOTH), pose) != std::end(BOTH) && t > P1 && t < D) {
-        for (int k = MAIN_TIP; k <= OFF_BUTT; k++)
-            chain(k, 0.05f);
+    if (std::find(std::begin(BOTH), std::end(BOTH), pose) != std::end(BOTH) && clock > P1 && clock < D) {
+        chain({MAIN_BUTT, MAIN_TIP, OFF_BUTT, OFF_TIP}, 0.05f);
         return;
     }
     // Rule 3: off-hand strikes; the main hand's trail stays shut.
-    if ((pose == 15 || pose == 17 || pose == 19) && t > P1) {
-        chain(OFF_TIP, 0.05f);
-        chain(OFF_BUTT, 0.05f);
+    if ((pose == 15 || pose == 17 || pose == 19) && clock > P1) {
+        chain({OFF_BUTT, OFF_TIP}, 0.05f);
         const glm::vec3 butt = h[MAIN_BUTT][0];
         fill(MAIN_TIP, butt);
         fill(MAIN_BUTT, butt);
         return;
     }
     // Rule 4: main-hand strikes, the outer half of the blade (pose 50: two points by the right
-    // foot or fist).
-    if ((pose == 16 || pose == 18 || pose == 20 || pose == 50) && t > P1 && t < P1 + P2 + P3 / 2) {
+    // foot or fist). P3 / 2 is halved with truncation toward zero.
+    if ((pose == 16 || pose == 18 || pose == 20 || pose == 50) && clock > P1 && clock < add32(add32(P1, P2), P3 / 2)) {
         if (pose == 50) {
             h[MAIN_TIP][0] = glm::vec3(base * glm::vec4(20, 0, -12, 1));
             h[MAIN_BUTT][0] = glm::vec3(base * glm::vec4(8, 0, -12, 1));
         } else {
             h[MAIN_BUTT][0] = 0.5f * (h[MAIN_BUTT][0] + h[MAIN_TIP][0]);
         }
-        chain(MAIN_TIP, 0.075f);
-        chain(MAIN_BUTT, 0.075f);
+        chain({MAIN_BUTT, MAIN_TIP}, 0.075f);
         const glm::vec3 butt = h[OFF_BUTT][0];
         fill(OFF_TIP, butt);
         fill(OFF_BUTT, butt);
@@ -369,18 +378,26 @@ static void ageTrail(PoseState &s, int32_t pose, float t, const Phases &P, float
         history.fill(history[0]);
 }
 
+// §1.3: a vertex alpha byte, scale·k in single precision, truncated.
+static uint8_t trailAlpha(float scale, float k) { return (uint8_t)(scale * k); }
+
 void trailTriangles(const PoseState &s, const Combatant &c, glm::vec3 position, std::vector<TrailCorner> &out) {
     // §1.3: not for the dead, nor for those who fight from afar, nor past the action's end.
     if (c.health <= 0 || rangedUser(c) || c.actionMs > (float)duration(c, c.action))
         return;
-    // Alpha per point pair: k = (4x(1 - x))², x = i / 15; the butt edge at 50·k, the tip edge
-    // at 200·k (main hand) or 255·k (off hand).
-    std::array<double, 16> k;
-    for (size_t i = 0; i < 16; i++) {
-        const double x = (double)i / 15;
-        k[i] = std::pow(4 * x * (1 - x), 2);
-    }
-    const auto strip = [&](const std::array<glm::vec3, 16> &tip, const std::array<glm::vec3, 16> &butt, double tipAlpha) {
+    // Alpha per point pair, in single precision: k = (1 - ((1 - x - 0.5)·2)²)², x = i / 15; the
+    // butt edge at 50·k, the tip edge at 200·k (main hand) or 255·k (off hand), truncated.
+    static const std::array<float, 16> k = [] {
+        std::array<float, 16> out{};
+        for (size_t i = 0; i < 16; i++) {
+            const float x = (float)i / 15.f;
+            const float e = ((1.f - x) - 0.5f) * 2.f;
+            const float g = 1.f - e * e;
+            out[i] = g * g;
+        }
+        return out;
+    }();
+    const auto strip = [&](const std::array<glm::vec3, 16> &tip, const std::array<glm::vec3, 16> &butt, float tipAlpha) {
         bool open = false; // a collapsed strip has no area; skip it
         for (size_t i = 1; i < 16 && !open; i++)
             open = tip[i] != tip[0] || butt[i] != butt[0];
@@ -388,15 +405,15 @@ void trailTriangles(const PoseState &s, const Combatant &c, glm::vec3 position, 
             return;
         const auto at = [&](glm::vec3 p) { return glm::vec3(position.x + p.x, position.y + p.y, s.trailHeight + p.z); };
         for (size_t i = 0; i + 1 < 16; i++) {
-            const TrailCorner b0{at(butt[i]), (uint8_t)(50 * k[i])}, t0{at(tip[i]), (uint8_t)(tipAlpha * k[i])};
-            const TrailCorner b1{at(butt[i + 1]), (uint8_t)(50 * k[i + 1])},
-                t1{at(tip[i + 1]), (uint8_t)(tipAlpha * k[i + 1])};
+            const TrailCorner b0{at(butt[i]), trailAlpha(50.f, k[i])}, t0{at(tip[i]), trailAlpha(tipAlpha, k[i])};
+            const TrailCorner b1{at(butt[i + 1]), trailAlpha(50.f, k[i + 1])},
+                t1{at(tip[i + 1]), trailAlpha(tipAlpha, k[i + 1])};
             out.insert(out.end(), {b0, t0, b1, t0, t1, b1});
         }
     };
-    strip(s.trail[0], s.trail[1], 200);
-    if (c.offHand().type == 3)
-        strip(s.trail[2], s.trail[3], 255);
+    strip(s.trail[0], s.trail[1], 200.f);
+    if (c.offHand().type == 3) // the off-hand slot holds a weapon, drawn or not
+        strip(s.trail[2], s.trail[3], 255.f);
 }
 
 bool stepWalk(PoseState &s, const Appearance &a, const Motion &m, float dt) {
@@ -1877,7 +1894,8 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
 
     // §7.4 step 7: the base frame (dodge roll, displayed rotation, pivot height, lean, tilt). The
     // lean's z joins the 1/65536-block position, truncated.
-    glm::mat4 base = T(glm::mat4(1), {0, 0, (float)(int64_t)(s.lean.z * 65536.f) / 65536.f});
+    const glm::mat4 baseLift = T(glm::mat4(1), {0, 0, (float)(int64_t)(s.lean.z * 65536.f) / 65536.f});
+    glm::mat4 base = baseLift;
     // Weapon pose contract §6 steps 3-4: dodging (unless a class 4, specialisation 1 creature is
     // within action 17, 5 or 20) and gliding each raise both composed hands by 5 box z / box x,
     // whether or not the roll itself turns.
@@ -2044,10 +2062,15 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     };
     const float bracelet = main == BRACELET ? 0.6f : 1.f;
     // Trails §1.1: after a weapon is drawn, its butt (voxel z = 0) and tip (z = size) become
-    // point 0 of that hand's histories.
+    // point 0 of that hand's histories, relative to the displayed position in x and y. A hand
+    // with no model drawn keeps its point 0, which still receives the per-call shift (camera -
+    // displayed position) in x and y and so drifts (as read).
     const auto newest = [&](size_t before, int history) {
-        if (out.size() == before)
+        if (out.size() == before) {
+            for (const int k : {history + 1, history})
+                s.trail[(size_t)k][0] += glm::vec3(m.cameraOffset, 0);
             return;
+        }
         const PartDraw &weapon = out.back();
         const float length = voxels(weapon.model).z;
         s.trail[(size_t)history][0] = glm::vec3(weapon.matrix * glm::vec4(0, 0, length, 1));
@@ -2121,7 +2144,9 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         }
     }
     newest(beforeOff, 2);
-    ageTrail(s, pose, t, P, dt, base, T(glm::mat4(1), {0, 0, s.lean.z}), m.yawDegrees);
+    // The arc's frame is the base translation turned by the displayed rotation, with no scale
+    // (trails §1.2.1).
+    ageTrail(s, pose, clock, P, dt, base, baseLift, m.yawDegrees);
     // The slot-6 quiver on the back (§6.5).
     if (c && (off == QUIVER))
         part(839, Rz(Ry(T(Rz(T(body, {0.65f, -0.5f, 0.3f}), sDeg / 4), {0, -6.2f, 0}), -45), 90), glm::vec3(wscale),

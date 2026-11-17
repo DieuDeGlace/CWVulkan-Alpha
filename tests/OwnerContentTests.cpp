@@ -5,6 +5,7 @@
 #include "Install.h"
 #include "OwnerContent.h"
 #include <windows.h>
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -37,6 +38,44 @@ int wmain(int argc, wchar_t **argv) {
     for (const auto &name : owner::requiredFiles())
         std::ofstream(fake / name, std::ios::binary) << "not original content";
     check(!owner::inspect(fake, false).ready(), "file presence alone does not identify supported image");
+
+    // Extractor §A1: identifying headers and the reference inventory, on synthetic files.
+    {
+        const auto headers = scratch / "headers";
+        fs::create_directory(headers);
+        const auto write = [&](const char *name, const std::string &bytes) {
+            std::ofstream(headers / name, std::ios::binary) << bytes;
+            return headers / name;
+        };
+        const std::string plx = std::string("\0\0\0\0\x16\0\0\0\x01\0\0\0\x0e\0\0\0", 16) + "PlasmaGraphics" + "rest";
+        check(owner::hasIdentifyingHeader("gui.plx", write("gui.plx", plx)), "PlasmaGraphics header recognised");
+        check(!owner::hasIdentifyingHeader("gui.plx", write("bad.plx", "PlasmaGraphics")), "other .plx bytes rejected");
+        check(owner::hasIdentifyingHeader("data1.db", write("data1.db", std::string("SQLite format 3\0more", 20))),
+              "SQLite 3 header recognised");
+        check(!owner::hasIdentifyingHeader("data1.db", write("data2.db", "SQLite format 2")), "other .db bytes rejected");
+        check(owner::hasIdentifyingHeader("resource1.dat", write("resource1.dat", std::string("\0\x01\0\0\0\x0d", 6))),
+              "TrueType sfnt version recognised");
+        check(!owner::hasIdentifyingHeader("resource2.dat", write("resource2.dat", "OTTO")), "other font bytes rejected");
+        check(owner::hasIdentifyingHeader("db.dat", write("db.dat", "PLACEHOLDER")) &&
+                  !owner::hasIdentifyingHeader("db.dat", write("empty.dat", "")), "db.dat needs only content");
+        const auto &required = owner::requiredFiles();
+        check(std::find(required.begin(), required.end(), "db.dat") != required.end() &&
+                  required.size() == owner::referenceFiles().size(), "db.dat is a required start-up file");
+        bool sized = true;
+        for (const auto &file : owner::referenceFiles())
+            sized = sized && file.size > 0 && std::string(file.sha256).size() == 64;
+        check(sized && owner::referenceFiles().back().size == 32, "every reference file records a size and SHA-256");
+
+        // Missing stores are reported and never created by the check.
+        const auto partial = scratch / "partial";
+        fs::create_directory(partial);
+        for (const auto &name : required)
+            if (!name.ends_with(".db"))
+                std::ofstream(partial / name, std::ios::binary) << "not original content";
+        const auto report = owner::inspect(partial, true);
+        check(!report.ready() && !fs::exists(partial / "data1.db") && !fs::exists(partial / "data4.db"),
+              "missing stores rejected without creating them");
+    }
 
     const auto configuration = scratch / "settings.ini";
     std::ofstream(configuration, std::ios::binary) << "\xEF\xBB\xBF; [Game] mentioned in a comment\r\n  [Game] ; real section\r\n  Path = old\r\n[Video]\r\nWidth=1234\r\n";
@@ -86,7 +125,9 @@ int wmain(int argc, wchar_t **argv) {
         size_t records = 0;
         for (size_t count : report.storeEntries)
             records += count;
-        check(entries == records + 8, "every store asset plus seven loose files and manifest extracted");
+        check(entries == records + 9, "every store asset plus eight loose files and manifest extracted");
+        for (const auto &note : report.notes)
+            std::printf("  note: %s\n", note.c_str());
         check(!owner::extract(installation, cache, error), "existing private output never overwritten");
         check(!owner::extract(installation, installation / "should-not-exist", error), "output inside original rejected");
         for (const auto &[name, hash] : before)

@@ -401,9 +401,19 @@ void WorldView::update() {
     });
     for (const Key &k : wanted)
         requestZone(k);
+    // Extractor §B5.2: clean-up passes run when more than 1000 ms have passed, and keep the
+    // disc of squared zone distance < 16 round the interest point (here the camera's zone).
+    // Engine adapter: zones inside the render-distance window are kept as well, so a render
+    // distance beyond the native disc does not drop and request the same zones again. A world
+    // change makes a new WorldView, which unloads every zone.
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastZoneCleanup <= std::chrono::milliseconds(ZONE_CLEANUP_INTERVAL_MS))
+        return;
+    lastZoneCleanup = now;
     std::vector<Key> far;
     for (const auto &[key, zone] : map.zones())
-        if (std::abs(key.first - here.first) > radius + 1 || std::abs(key.second - here.second) > radius + 1)
+        if (!zoneKeptNear(key.first, key.second, here.first, here.second) &&
+            (std::abs(key.first - here.first) > radius + 1 || std::abs(key.second - here.second) > radius + 1))
             far.push_back(key);
     for (const Key &k : far)
         dropZone(k);

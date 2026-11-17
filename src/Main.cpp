@@ -13,6 +13,7 @@
 // Viewer keys: Left/Right previous/next model, Up/Down an hour later/earlier, S sway the model
 // as Alpha sways its plants, drag to orbit, wheel to zoom, Esc to quit.
 #include "Audio.h"
+#include "SoundRules.h"
 #include "Config.h"
 #include "Frame.h"
 #include "SimulationFrame.h"
@@ -704,23 +705,36 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     creatures::Particles particles;
     std::vector<creatures::Burst> bursts;
     double leafClockMs = -1; // the world clock the falling leaves last looked at (§7.1)
+    // Audio §3, zone-fields ruling 1: the ambience's chunk slots and the zones' sounding records.
+    sound::AmbienceGrid ambienceGrid;
+    sound::ZoneAmbience zoneAmbience;
     mods.hooks().getQuests = [&] { // mod SDK v8
         std::vector<AvQuest> out;
         for (const quests::Quest &q : questBook.quests)
             out.push_back({q.id, q.kind, q.state, q.giver, q.level, q.count, q.required, q.site.x, q.site.y, q.site.z});
         return out;
     };
-    // Audio §1.2, §2: a sound at a place, heard from the camera: fading linearly to silence at
-    // 100 blocks, no panning.
+    // Audio §2: the listener L is the camera position, the follow camera's fixed eye once it is
+    // placed; without one, the free camera's position (engine adapter).
+    const auto listener = [&]() -> sound::Fixed {
+        if (player && player->followCamera().placed())
+            return player->followCamera().eyeFixed();
+        return sound::fixedOf(view.worldPosition());
+    };
+    // Audio §1.2: the play routine, a sound at a fixed position heard from L: nothing past
+    // 100 blocks, fading linearly to silence there; the pan is computed natively and discarded,
+    // so none is applied (ruling audio-ui-sounds 1).
+    const auto playFixed = [&](int32_t id, const sound::Fixed &at, float volume, float pitch) {
+        if (const auto a = sound::attenuation(at, listener(), volume))
+            if (const char *key = creatures::soundKey(id))
+                audio.play(key, *a, pitch);
+    };
+    // §1.3: a sound record, its position carried as float blocks. Right after a record with id
+    // 81 or 82 the camera shakes, at any distance.
     const auto playAt = [&](int32_t id, glm::dvec3 at, float volume, float pitch) {
-        if ((id == 81 || id == 82) && player) // explosions and punches shake the camera, at any distance
+        playFixed(id, sound::recordPosition(at), volume, pitch);
+        if ((id == 81 || id == 82) && player)
             player->followCamera().shake = 1;
-        const glm::dvec3 d = at - view.worldPosition();
-        const double d2 = glm::dot(d, d);
-        if (d2 > 10000)
-            return;
-        if (const char *key = creatures::soundKey(id))
-            audio.play(key, (float)(1 - std::sqrt(d2) / 100) * volume, pitch);
     };
     const auto sendBuff = [&](const creatures::BuffEvent &event) {
         if (!client.connected() || event.source != client.id())
@@ -967,13 +981,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const uint8_t type = creatures::itemType(got);
         mods.itemReceived(type, creatures::itemSubtype(got), creatures::itemLevel(got));
         if (type == 25) {
-            // §8.1.9: a mana cube; every fourth is a skill point (skills §3.1).
+            // Rulings manacubebar §1 step 4 (type 0x19): the count rises, the message and sound
+            // 0x1e follow; on a multiple of 4 `manacubes` plays once on the bar and the skill
+            // point is announced (skills §3.1).
             manaCubes++;
-            interface.chatAdd("You receive a mana cube.\n", {255, 255, 255});
+            interface.manaCubes = manaCubes;
+            interface.chatAdd("You receive a mana cube.\n", {100, 150, 255});
+            if (const char *key = creatures::soundKey(0x1e))
+                audio.play(key);
             if (manaCubes % 4 == 0) {
-                interface.chatAdd("You gain one skill point.\n", {255, 255, 255});
-                if (const char *key = creatures::soundKey(0x1e))
-                    audio.play(key);
+                interface.playManaCubes();
+                interface.chatAdd("You gain one skill point.\n", {150, 128, 255});
             }
             return;
         }
@@ -1083,7 +1101,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     }
     interface.setOptions(game);
     auto applyOptions = [&](bool first) {
-        audio.setMasterVolume((float)game[GameOptions::SOUND_VOLUME] * 0.01f);
+        // Audio §1.2 step 6: soundVolume scales every play. §5: the (never heard) music volumes
+        // are not modelled; the engine has no music streamer.
+        audio.setSoundVolume(game[GameOptions::SOUND_VOLUME]);
         if (player) {
             creatures::CameraOptions &look = player->cameraOptions();
             look.speed = game[GameOptions::CAMERA_SPEED];
@@ -1897,14 +1917,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     sheet.weaponRating = creatures::weaponRating(c);
                     sheet.armorRating = creatures::armorRating(c);
                     sheet.canAct = c.hitStun < 1;
-                    // Talk §3.4: the sale's coin sound plays at volume 0.75.
-                    for (const int32_t sound : interface.inventorySounds)
-                        if (const char *key = creatures::soundKey(sound))
-                            audio.play(key, sound == 0x3a ? 0.75f : 1.f);
+                    // Audio §4 "P": direct calls at the player's fixed position.
+                    const int64_t *const playerFixed = player->body().position;
+                    const sound::Fixed atPlayer{playerFixed[0], playerFixed[1], playerFixed[2]};
+                    // Ruling audio-ui-sounds 3: buying (0x39, volume 1) and selling (0x3a, volume
+                    // 0.75) sound at the player, as do disenchanting and adapting into the bag
+                    // (0x2e, audio §4); the other interface sounds play at the listener.
+                    for (const int32_t id : interface.inventorySounds)
+                        if (id == 0x39 || id == 0x3a || id == 0x2e)
+                            playFixed(id, atPlayer, id == 0x3a ? 0.75f : 1.f, 1);
+                        else if (const char *key = creatures::soundKey(id))
+                            audio.play(key);
                     interface.inventorySounds.clear();
-                    // Talk §1.7: the voice blips at the player's position (not the speaker's).
+                    // Talk §1.7, audio §4: the voice blips at the player's position (not the speaker's).
                     for (const float pitch : interface.voiceBlips)
-                        playAt(0x32, player->body().blocks(), 1, pitch);
+                        playFixed(0x32, atPlayer, 1, pitch);
                     interface.voiceBlips.clear();
                     // Skills §1.3, ui-screens §7 (correction 88): the toggles play nothing; once
                     // per update, when the window-open test becomes true 0x53 (menu-open2.wav)
@@ -1953,9 +1980,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             if (client.connected()) {
                                 client.sendItemRequest(itemRequest(*item, {0, 0, 0}, 6));
                             } else {
+                                // Ruling audio-ui-sounds 3: dropping plays no sound directly; the
+                                // world item's countdown record (0x3a / 0x3b) sounds later.
                                 worldItems.drop(*item, player->body().blocks() - glm::dvec3(0, 0, player->body().size.z / 2),
                                                 1, scene.day, block, [&] { return worldRandom.draw(); });
-                                playAt(57, player->body().blocks(), 1, 1);
                             }
                         }
                     }
@@ -2802,6 +2830,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             look.trail = creature_shading::hasMotionTrail(c);
             look.stealth = c.stealth;
             look.velocity = velocity;
+            look.camera = view.toRender(view.worldPosition()); // trails §1.1 point-0 shift
             return look;
         };
         if (player) {
@@ -4528,47 +4557,62 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             // §7.1: as each world second passes, every kind-60 record of the zones in sight
             // lets one leaf in sixteen fall.
             const bool second = leafClockMs >= 0 && std::floor(leafClockMs / 1000) != std::floor(scene.timeOfDayMs / 1000);
-            // Audio §3: the clock's step this frame, for the ambience's ticks.
-            double clockStep = leafClockMs >= 0 ? scene.timeOfDayMs - leafClockMs : 0;
-            if (clockStep < 0)
-                clockStep += alpha::DAY_MS;
-            const double clockBefore = leafClockMs;
             leafClockMs = scene.timeOfDayMs;
-            // A record ticks when its own phase (from its position) plus the clock passes a
-            // multiple of the period.
-            const auto ticks = [&](int64_t x, int64_t y, int64_t period) {
-                if (clockBefore < 0 || clockStep <= 0)
-                    return false;
-                const int64_t xb = x / 65536, yb = (y + 333ll * 65536) / 65536;
-                const double phase = (double)(xb % period + yb % period) + clockBefore;
-                return std::trunc(phase / (double)period) != std::trunc((phase + clockStep) / (double)period);
-            };
-            const double t = scene.timeOfDayMs;
-            const bool day = t > 21600000 && t < 75600000, evening = t > 43200000 && t < 86400000;
+            // Audio §3 with zone-fields ruling 1: birds sing from the crowns by day and owls call
+            // at night; crickets chirp in the flowers and grass in the afternoon and evening. The
+            // walk visits the chunk slot grid; a slot's records are tested only while its (possibly
+            // stale) squared camera distance is below 4096 blocks². Engine adapters: the grid is
+            // the fog window round the camera's chunk, the world clock is the time of day as an
+            // integer, the view test is the shared admission with reach fog + 22.4 + 32 on the
+            // chunk's bounding sphere, and a chunk's bounds span its columns' stored blocks.
+            {
+                const auto sight = view.viewAdmission(scene.fogDistance + 22.4f + 32.f);
+                const int32_t clock = std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs));
+                std::vector<sound::AmbientRecord> records;
+                std::vector<sound::Request> calls;
+                sound::AmbienceGrid::Source source;
+                source.built = [&](int32_t x, int32_t y) { return view.chunkBuilt(x, y); };
+                source.shape = [&](int32_t x, int32_t y) {
+                    const int32_t x0 = x * 32, y0 = y * 32;
+                    int32_t bottom = 0, top = 0;
+                    if (const worldgen::Zone *zone = view.held().zoneAt(x0, y0)) {
+                        bottom = INT32_MAX, top = INT32_MIN;
+                        for (int32_t i = x0; i < x0 + 32; i++)
+                            for (int32_t j = y0; j < y0 + 32; j++) {
+                                const worldgen::Column &column = zone->column(i, j);
+                                bottom = std::min(bottom, column.bottom);
+                                top = std::max(top, column.top());
+                            }
+                    }
+                    const int64_t one = 65536;
+                    return sound::chunkShape({x, y}, {x0 * one, y0 * one, bottom * one},
+                                             {(x0 + 32) * one, (y0 + 32) * one, top * one});
+                };
+                source.visible = [&](const sound::ChunkShape &c) { return sight && sight->accepts(c.midpoint, c.radius); };
+                source.records = [&](glm::ivec2 c) {
+                    const worldgen::Zone *zone = view.held().zoneAt(c.x * 32, c.y * 32);
+                    if (!zone)
+                        return; // (engine adapter: the slot's copies went with the zone)
+                    records.clear();
+                    zoneAmbience.records(*zone, c, records);
+                    for (const sound::AmbientRecord &r : records)
+                        sound::ambientRecord(r, scene.timeOfDayMs, clock, frameElapsedMs,
+                                             [&] { return (int32_t)worldRandom.draw(); }, calls);
+                };
+                const glm::ivec2 cameraChunk(worldgen::floorDiv((int32_t)std::floor(eye.x), 32),
+                                             worldgen::floorDiv((int32_t)std::floor(eye.y), 32));
+                ambienceGrid.walk(cameraChunk - glm::ivec2(alpha::FOG_WINDOW_CHUNKS / 2), alpha::FOG_WINDOW_CHUNKS,
+                                  listener(), source);
+                for (const sound::Request &call : calls) // (playing draws nothing)
+                    playFixed(call.id, call.position, call.volume, call.pitch);
+                zoneAmbience.retain([&](int32_t zx, int32_t zy) { return view.held().zone(zx, zy) != nullptr; });
+            }
             const auto u = [&] { return (float)worldRandom.draw() / 32767.f; };
             for (const auto &[key, zone] : view.held().zones()) {
                 const glm::dvec2 centre = glm::dvec2(key.first + 0.5, key.second + 0.5) * (double)worldgen::ZONE;
                 const double away = glm::length(centre - glm::dvec2(eye));
                 if (away > reach)
                     continue;
-                // Audio §3: birds sing from the crowns by day and owls call at night; crickets chirp
-                // in the flowers and grass in the afternoon and evening.
-                for (const auto &post : zone->songPosts)
-                    if (ticks(post[0], post[1], 1000) && worldRandom.draw() % 10 == 0) {
-                        const glm::dvec3 at = glm::dvec3((double)post[0], (double)post[1], (double)post[2]) / 65536.0;
-                        if (day) {
-                            playAt(94, at, 0.1f, 0.9f + 0.2f * u());
-                        } else {
-                            const float pitch = 0.5f + 0.2f * u();
-                            playAt(99 + (worldRandom.draw() & 1), at, 0.1f, pitch);
-                        }
-                    }
-                if (evening)
-                    for (const worldgen::Plant &plant : zone->plants)
-                        if (plant.kind <= 4 && ticks((int64_t)plant.x * 65536, (int64_t)plant.y * 65536, 5000) &&
-                            worldRandom.draw() % 70 == 0)
-                            playAt(plant.kind <= 1 ? 98 : 97, glm::dvec3(plant.x, plant.y, plant.z), 0.05f,
-                                   0.9f + 0.2f * u());
                 // Per record and crossing: the mod-16 draw, then velocity y, x, then spin z, y, x.
                 for (const worldgen::LeafSource &s : zone->leafSources) {
                     if (!second || away > leafReach || worldRandom.draw() % 16 != 0)

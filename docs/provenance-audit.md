@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-16 (after batches 1-25 and the rulings; 228 tracked contracts, local ignored variants excluded): 158 A, 61 B, 4 C (2506 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-16 (after batches 1-26 and the rulings; 234 tracked contracts, local ignored variants excluded): 168 A, 61 B, 0 C (0 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -71,7 +71,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 `alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`); `alpha-net-packets.md` and `alpha-skills.md`
 (plus the ruling `alpha-rulings-knockback-snap.md`); `alpha-travel.md`, `alpha-particles.md`,
 `alpha-crafting.md`, `alpha-open-points-3.md` (plus the ruling `alpha-rulings-walk-flag-pitch.md`); `alpha-path-search.md`, `alpha-worldgen-locations.md`,
-`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`; `alpha-creatures-behaviour.md` (plus the ruling `alpha-rulings-beam-flag-strike-origin.md`); `alpha-worldgen-structures.md`; `alpha-ui-screens.md` (plus the rulings `alpha-rulings-knockback-taming-charge.md` and `alpha-rulings-corridor-third-line.md`); `alpha-creatures-models.md`, `alpha-missions.md` and `alpha-rendering.md` (plus the rulings `alpha-rulings-mission-rewards.md`, `alpha-rulings-pose-49-50-mount.md`, `alpha-rulings-rendering-clouds-lights.md` and `alpha-rulings-shimmer-phase.md`); `alpha-pets-bombs.md` and `alpha-character-screens.md`.
+`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`; `alpha-creatures-behaviour.md` (plus the ruling `alpha-rulings-beam-flag-strike-origin.md`); `alpha-worldgen-structures.md`; `alpha-ui-screens.md` (plus the rulings `alpha-rulings-knockback-taming-charge.md` and `alpha-rulings-corridor-third-line.md`); `alpha-creatures-models.md`, `alpha-missions.md` and `alpha-rendering.md` (plus the rulings `alpha-rulings-mission-rewards.md`, `alpha-rulings-pose-49-50-mount.md`, `alpha-rulings-rendering-clouds-lights.md` and `alpha-rulings-shimmer-phase.md`); `alpha-pets-bombs.md` and `alpha-character-screens.md`; `alpha-materials-wildlife-routes.md` (plus the ruling `alpha-rulings-held-light-factor.md`); `alpha-trails-poses-schedules.md`, `alpha-ui-plasma.md`, `alpha-audio.md` and `alpha-extractor.md` (plus the rulings `alpha-rulings-pose-69-arc.md`, `alpha-rulings-manacubebar-sequence.md`, `alpha-rulings-audio-ui-sounds.md`, `alpha-rulings-zone-fields.md`, `alpha-rulings-spawn-rounds-ruin-routes.md` and `alpha-rulings-channel2-explosion-window.md`).
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -81,7 +81,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-airship-pilot-behaviour.md` | A | 236 | 0 |
 | `alpha-airship-steering.md` | A | 240 | 0 |
 | `alpha-attack-routine.md` | A | 418 | 1 |
-| `alpha-audio.md` | C | 396 | 5 |
+| `alpha-audio.md` | A | 520 | 5 |
 | `alpha-backing-reference-producers.md` | A | 127 | 0 |
 | `alpha-beam-height-leftovers.md` | A | 228 | 0 |
 | `alpha-behavior-target-selection.md` | B | 78 | 0 |
@@ -135,7 +135,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
 | `alpha-descriptor-equipment-setup.md` | A | 133 | 1 |
 | `alpha-descriptor-inventory-transfer.md` | A | 85 | 1 |
-| `alpha-extractor.md` | C | 432 | 2 |
+| `alpha-extractor.md` | A | 683 | 0 |
 | `alpha-fatal-branch-order.md` | A | 202 | 0 |
 | `alpha-fatal-context-field-producers.md` | A | 84 | 0 |
 | `alpha-fatal-credit-level-consumer.md` | B | 108 | 2 |
@@ -227,19 +227,25 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | A | 1108 | 3 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-rulings-audio-ui-sounds.md` | A | 131 | 3 |
 | `alpha-rulings-beam-flag-strike-origin.md` | A | 117 | 1 |
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
+| `alpha-rulings-channel2-explosion-window.md` | A | 192 | 1 |
 | `alpha-rulings-corridor-third-line.md` | A | 120 | 0 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-held-light-factor.md` | A | 88 | 0 |
 | `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
 | `alpha-rulings-knockback-taming-charge.md` | A | 199 | 1 |
+| `alpha-rulings-manacubebar-sequence.md` | A | 186 | 0 |
 | `alpha-rulings-melee-reach.md` | A | 71 | 0 |
 | `alpha-rulings-mission-rewards.md` | A | 172 | 0 |
 | `alpha-rulings-pose-49-50-mount.md` | A | 216 | 0 |
+| `alpha-rulings-pose-69-arc.md` | A | 179 | 0 |
 | `alpha-rulings-rendering-clouds-lights.md` | A | 487 | 1 |
 | `alpha-rulings-shimmer-phase.md` | A | 107 | 0 |
+| `alpha-rulings-spawn-rounds-ruin-routes.md` | A | 204 | 0 |
 | `alpha-rulings-walk-flag-pitch.md` | A | 163 | 0 |
+| `alpha-rulings-zone-fields.md` | A | 211 | 0 |
 | `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
@@ -266,10 +272,10 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
-| `alpha-trails-poses-schedules.md` | C | 900 | 2 |
+| `alpha-trails-poses-schedules.md` | A | 900 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
 | `alpha-travel.md` | A | 641 | 0 |
-| `alpha-ui-plasma.md` | C | 778 | 2 |
+| `alpha-ui-plasma.md` | A | 778 | 2 |
 | `alpha-ui-screens.md` | A | 3719 | 2 |
 | `alpha-vendor-stock-generation.md` | A | 113 | 1 |
 | `alpha-vendor-widget-transactions.md` | A | 82 | 3 |

@@ -233,7 +233,7 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
                 s.yaw = (float)((double)(float)(theta * 180.f) / PI + 90.0);
                 s.type = set.ring[(size_t)random.draw() % set.ring.size()];
                 s.behaviour = 5;
-                s.route = {blocksOf(x, y, centre[2])};
+                s.route = {{x, y, centre[2]}}; // its own position, exactly (rulings ruin-routes §3(a))
                 if ((int)i == marked && c == 0) {
                     s.appearanceFlags |= 0x200;
                     s.bossLoot = true;
@@ -253,12 +253,12 @@ void Terrain::locationCreatures(Zone &zone, Random &random, const Location &L,
         leader.yaw = (float)(random.draw() % 360);
         leader.type = group.leaders[(size_t)random.draw() % group.leaders.size()];
         leader.behaviour = 6;
-        leader.route = {blocksOf(X, Y, Z)};
+        leader.route = {blockRoutePoint(blocksOf(X, Y, Z))};
         if (!near.empty())
             for (int n = 0; n < 3; n++) {
                 const auto &P = near[(uint32_t)random.draw() % (uint32_t)near.size()];
                 if (const auto point = locationWaypoint(zone, P))
-                    leader.route.push_back(*point);
+                    leader.route.push_back(blockRoutePoint(*point));
             }
         zone.spawns.push_back(leader);
         // The followers stand on the leader. They copy its id before it has one (as read,

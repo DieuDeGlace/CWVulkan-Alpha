@@ -387,8 +387,11 @@ void StaticStates::step(int32_t dt, const Occupant &where, const std::map<Key, c
 
 creatures::Npcs::Seats StaticStates::seats(const worldgen::WorldMap &map, glm::ivec3 block, double timeOfDayMs) const {
     creatures::Npcs::Seats out;
-    // The house the block is in: the first with a storey cell covering it (both ends included).
-    const int32_t hzx = worldgen::floorDiv(block.x, worldgen::ZONE), hzy = worldgen::floorDiv(block.y, worldgen::ZONE);
+    // The house the block is in: in the zone of block / 256 (truncating), the first house in list
+    // order with a storey cell covering it (both ends included). The engine's houses are 3 x 3
+    // cells, so the native swap of the x/y cell counts for an odd orientation changes nothing;
+    // their storey cells were listed through the oriented cell view, a outer, b, then level.
+    const int32_t hzx = block.x / worldgen::ZONE, hzy = block.y / worldgen::ZONE;
     if (const worldgen::Zone *zone = map.zone(hzx, hzy))
         for (const worldgen::House &h : zone->houses) {
             const bool inside = std::any_of(h.storeys.begin(), h.storeys.end(), [&](const std::array<int32_t, 3> &c) {
@@ -411,7 +414,10 @@ creatures::Npcs::Seats StaticStates::seats(const worldgen::WorldMap &map, glm::i
                 out.pick.push_back(seat(k));
             return out;
         }
-    const int32_t cx = worldgen::floorDiv(block.x, 8), cy = worldgen::floorDiv(block.y, 8);
+    // Outdoors: the 3 x 3 cells of 8 x 8 blocks round the block (cell = block / 8, zone = cell /
+    // 32, both truncating; cells outside 0 ... 2^21 - 1 skipped).
+    const int32_t cx = block.x / 8, cy = block.y / 8;
+    constexpr int32_t CELLS = 1 << 21;
     struct Found {
         int32_t cellX, cellY;
         creatures::Seat seat;
@@ -420,7 +426,9 @@ creatures::Npcs::Seats StaticStates::seats(const worldgen::WorldMap &map, glm::i
     std::set<std::pair<int32_t, int32_t>> zonesSeen;
     for (int32_t i = -1; i <= 1; i++)
         for (int32_t j = -1; j <= 1; j++) {
-            const int32_t zx = worldgen::floorDiv((cx + i) * 8, worldgen::ZONE), zy = worldgen::floorDiv((cy + j) * 8, worldgen::ZONE);
+            if (cx + i < 0 || cy + j < 0 || cx + i >= CELLS || cy + j >= CELLS)
+                continue;
+            const int32_t zx = (cx + i) / 32, zy = (cy + j) / 32;
             if (!zonesSeen.insert({zx, zy}).second)
                 continue;
             const worldgen::Zone *zone = map.zone(zx, zy);

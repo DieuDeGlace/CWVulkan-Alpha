@@ -408,7 +408,7 @@ std::vector<Spawn> Missions::zonePass(const World &world, const Zone &zone, cons
     // The leader's 20-point route (§3.2 step 3).
     leader.behaviour = 2;
     for (int k = 0; k < 20; k++)
-        leader.route.push_back(wanderingRoutePoint(zone, random));
+        leader.route.push_back(blockRoutePoint(wanderingRoutePoint(zone, random)));
     potions(leader);
     const int32_t n = wanderingGroupSize(random.draw());
     std::vector<Spawn> members;

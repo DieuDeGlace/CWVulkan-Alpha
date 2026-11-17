@@ -48,4 +48,21 @@ bool settle(StaticObject &o, const Zone &zone);
 // B is lower (PB.x < PA.x). The odd-draw gate is separate and is drawn first in every case.
 bool corridorThirdLine(int32_t u, int32_t m, glm::ivec3 PA, glm::ivec3 SA, glm::ivec3 PB, glm::ivec3 SB);
 
+// §5.5.9 Ruins: a hostile creature of location L at (x, y, z) in 1/65536 blocks (controller 1,
+// flag 0x1000, the location's level and sub-level), with a facing draw, then a kind draw from
+// `kinds`.
+Spawn ruinCreature(int64_t x, int64_t y, int64_t z, const std::vector<int32_t> &kinds, const Location &L,
+                   const std::function<int32_t()> &draw);
+// §5.5.9 Ruins step 3, second bullet, with alpha-rulings-spawn-rounds-ruin-routes.md §2: one
+// group iteration of a ruin house. `P` holds the house's remaining spawn points (not empty; one
+// is drawn and removed), `groupKinds` the lists a of the location's groups and `houseSpawns`
+// the original spawn lists of the zone's houses in list order. The creature stands one block
+// above its point and runs Combat 20, WalkPath 2 over [its own position] or [its own position,
+// a spawn point of a drawn house (whole blocks, not raised)]. Draws: point, group (an empty list
+// a ends the iteration with no creature), facing, kind, house, a point of that house (only if
+// it has any), the item count e = d & 1.
+std::optional<Spawn> ruinGroupCreature(std::vector<glm::ivec3> &P, const std::vector<std::vector<int32_t>> &groupKinds,
+                                       const std::vector<const std::vector<glm::ivec3> *> &houseSpawns,
+                                       const Location &L, const std::function<int32_t()> &draw);
+
 } // namespace worldgen

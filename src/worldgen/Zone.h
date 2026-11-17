@@ -141,6 +141,17 @@ struct ScheduleStop {
     int32_t timeMs = 0;
 };
 
+// Trails spec §3.6, rulings spawn-rounds-ruin-routes §2: the town builder's ruin mission
+// creatures (the kind-20 plot, ring and group sites) run Combat, then WalkPath with radius 2
+// over their spawn's route (its own position first; a group creature may add a second point);
+// no LookAtPlayer, SpawnLocation or RandomInteraction.
+inline constexpr uint8_t MISSION_BEHAVIOUR = 9;
+
+// A whole-block route point in 1/65536 blocks.
+inline std::array<int64_t, 3> blockRoutePoint(const std::array<int32_t, 3> &block) {
+    return {(int64_t)block[0] * 65536, (int64_t)block[1] * 65536, (int64_t)block[2] * 65536};
+}
+
 // Behaviour spec §2.1, §9.1: a spawn object, which the world step turns into a creature near
 // the player. Positions in 1/65536 blocks.
 struct Spawn {
@@ -179,10 +190,11 @@ struct Spawn {
     // RandomWalk; 3 a member's Combat, LookAtPlayer, Companion of `leader`, WalkPath, RandomWalk;
     // location creatures: 5 a ring creature's Combat, WalkPath, RandomInteraction, RandomWalk;
     // 6 a group leader's Combat, WalkPath, RandomWalk; 8 an airship pilot's LookAtPlayer alone,
-    // airship pilot behaviour §5), the route walked (blocks) and the leader's index in the same
+    // airship pilot behaviour §5; 9 MISSION_BEHAVIOUR), the route walked (WalkPath points in
+    // 1/65536 blocks, kept exactly as the builder wrote them) and the leader's index in the same
     // spawn list.
     uint8_t behaviour = 0;
-    std::vector<std::array<int32_t, 3>> route;
+    std::vector<std::array<int64_t, 3>> route;
     int32_t leader = -1;
     // AlphaVulkan's quests (docs/design/quests.md): the quest a creature belongs to (0: none)
     // and what it is to it (quests::Role).

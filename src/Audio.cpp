@@ -1,6 +1,7 @@
 #include "Audio.h"
 #include <algorithm>
 #include "DataStore.h"
+#include "SoundRules.h"
 #include <miniaudio.h>
 #include <list>
 
@@ -71,7 +72,8 @@ bool Audio::init(const Content &store, std::string *error) {
 bool Audio::active() const { return state->running; }
 
 bool Audio::play(const std::string &key, float volume, float pitch) {
-    if (!state->running || !content)
+    const float voice = sound::voiceVolume(soundVolume, volume);
+    if (!state->running || !content || voice <= 0)
         return false;
     state->reapFinished();
     auto &clip = clips[key];
@@ -99,8 +101,8 @@ bool Audio::play(const std::string &key, float volume, float pitch) {
         state->voices.pop_back();
         return false;
     }
-    ma_sound_set_volume(&v.sound, volume);
-    ma_sound_set_pitch(&v.sound, std::min(pitch, 2.f)); // audio §1.1: the rate ratio stops at 2
+    ma_sound_set_volume(&v.sound, voice);
+    ma_sound_set_pitch(&v.sound, sound::playedPitch(pitch));
     ma_sound_start(&v.sound);
     return true;
 }
@@ -110,9 +112,4 @@ bool Audio::busy() {
         return false;
     state->reapFinished();
     return !state->voices.empty();
-}
-
-void Audio::setMasterVolume(float volume) {
-    if (state->running)
-        ma_engine_set_volume(&state->engine, volume);
 }

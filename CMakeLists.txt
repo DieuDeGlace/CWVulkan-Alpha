@@ -115,6 +115,7 @@ add_library(engine STATIC
     src/CachedLights.cpp
     src/CreatureShading.cpp
     src/Audio.cpp
+    src/SoundRules.cpp
     src/Dictionary.cpp
     src/ItemNames.cpp
     src/WorldItems.cpp
@@ -435,6 +436,7 @@ if(MSVC)
         src/AlphaLook.cpp
         src/worldgen/Regions.cpp src/worldgen/Random.cpp
         src/TerrainLights.cpp
+        src/SoundRules.cpp
         src/SectorLights.cpp
         src/CreatureLights.cpp
         src/CachedLights.cpp
