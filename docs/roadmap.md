@@ -708,8 +708,13 @@ Differences from the Steam engine that shape the plan:
   following; T calls it back (packet 6 kind 8 on the server); R rides an own rideable pet with
   the pet glued under the rider; /namepet. CreatureTests: taming by five bites, the cap and
   multiplier, following (with path search round obstacles), T, return, removal. The pet's life, experience and riding bars (screens
-  §5.3); riding energy refilling on wet lake-bed ground; online, the server sends the owner
+  §5.3); online, the server sends the owner
   (field 35) and the bitten client makes the pet item. `--pet` for captures.
+- [x] Resident riding and pet attachment (`alpha-riding-actor-step.md`).
+  A live pet link gates speed. The resident pet's water or type-3 ground
+  probe refills the owner's meter in actor order. The two attachment
+  passes recheck the owner before copying the pet's physical pose.
+  Connected remote attachment, ride rendering and native acceptance remain open.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

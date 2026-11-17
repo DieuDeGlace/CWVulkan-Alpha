@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 35 and the rulings. The 242 tracked contracts
-comprise 183 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 36 and the rulings. The 243 tracked contracts
+comprise 184 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -87,6 +87,7 @@ Batch 32 covers `alpha-packet6-placement-producers.md`.
 Batch 33 covers `alpha-packet6-quick-wheel.md`.
 Batch 34 covers `alpha-timed-consumables.md`.
 Batch 35 covers `alpha-blueprint-zone-delivery.md`.
+Batch 36 covers `alpha-riding-actor-step.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -246,6 +247,7 @@ Batch 35 covers `alpha-blueprint-zone-delivery.md`.
 | `alpha-remote-creature-interpolation.md` | A | 223 | 0 |
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | A | 1108 | 3 |
+| `alpha-riding-actor-step.md` | A | 203 | 1 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
 | `alpha-rulings-action-99-lens.md` | A | 141 | 0 |
 | `alpha-rulings-audio-ui-sounds.md` | A | 131 | 3 |

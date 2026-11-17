@@ -3276,3 +3276,32 @@ map is open. Exact native packet-12 production remains open. The current
 client connects before loading zones and has no hosted mode or in-place
 rebind. Stock blueprint activation and selection, offline placement,
 native lighting footprints and original-client timing remain open.
+
+## Pet riding in actor order (2026-11-17)
+
+The isolated source author finalized [the riding actor contract](specs/alpha-riding-actor-step.md).
+The implementer read all 202 lines and verified SHA-256
+`758a29cbd9bfde54bb32d8bf2a939e9dcda9e7e3c672d8eed3e9c149c84909c0`.
+The existing Ride prompt starts action 106 on a rising R sample.
+At the controlled actor's turn, the current linked actor's type and ordered,
+nonnegative health determine admission to the riding speed multiplier.
+After entering the speed branch, the piece's drain, meter clamp and climb
+test still run if validation clears the action. Cancellation at this stage
+retains the action clock. The engine resolves a link once under its actor
+protection for the native lookups with no intervening mutations.
+
+Resident role-five actors refill the resolved owner's meter during physics.
+One refill can follow either a water mark or a visited type-3 ground cell.
+The dry probe completes the Y span and stops at its first solid X column.
+Each increment uses the piece's binary32 seconds. The actor sweep preserves
+the refill's order relative to the owner's drain. The shared resident
+implementation covers the offline and dedicated worlds.
+
+The two resident attachment passes use live owner state at the displayed
+position boundary and again after the actor loop. They copy record position,
+follow position, body orientation and landing bob, and clear velocity and
+intent. The latter pass rechecks the owner action and reaches nonliving
+pets still present in the actor map. Display-rotation smoothing and the
+walk phase and amplitude caches remain rendering differences. Connected
+remote refill and attachment, the dormant mount-ID path and native
+interactive acceptance remain open.

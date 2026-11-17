@@ -1902,3 +1902,22 @@ its 64 records.
 
 The Windows x64 build, seven focused suites and all 60 CTest suites passed.
 Original-client interoperation and the stock blueprint controls remain open.
+
+## Riding terrain and attachment order (2026-11-17)
+
+ActorOrderTests puts the pet before its rider in signed actor order. The
+fixture checks two different piece durations, the full Y span of the first
+solid X column, one increment in water, the cap, and zero random draws for
+the dry refill. It observes the previous rider position at the first
+attachment and the updated position, orientation and landing bob at the
+second. A later dismount prevents the second copy.
+
+CreatureTests checks the riding tail after a missing pet, the speed
+available after a zero-factor cancellation, and the stationary meter clamp
+to positive zero. The first revision refreshed a caller-supplied cast
+point before its consumer. The follow-point refresh now occurs after the
+caller-advanced actor sweep. The cast-point tests passed on the rerun.
+
+The Windows x64 build, six focused suites and all 60 CTest suites passed,
+including network loopback, live Vulkan water and owner-content zone
+comparison. Connected pet rendering and native hardware acceptance remain open.

@@ -185,9 +185,11 @@ using ObjectTest =
     std::function<bool(glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const IgnoredStatics *ignored)>;
 
 // §1: runs the world step for a frame of `dtMs`, in pieces of at most 20 ms.
-void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {});
-// §2: one piece.
-void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {});
+void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
+               float *riderEnergy = nullptr);
+// §2: one piece. A role-five actor can refill its resolved owner's meter during terrain contact.
+void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
+          float *riderEnergy = nullptr);
 
 // §1 test helper: the pieces a frame is cut into.
 std::vector<int32_t> stepPieces(int32_t dtMs);

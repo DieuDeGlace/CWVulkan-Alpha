@@ -291,9 +291,10 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
         abilityEffects.sounds.push_back(31);
     }
     // Physics §2, §3.2: the step ends or changes the action (the ride, the voyage, sitting on any
-    // intent, eating into sitting, a dodge). Ending the ride or the voyage also clears its clock.
+    // intent, eating into sitting, a dodge). The ride's speed stage changes
+    // only the action byte (riding actor step §2).
     if (state.action != fighter.action) {
-        if (state.action == 0 && (fighter.action == 106 || fighter.action == 107))
+        if (state.action == 0 && fighter.action == 107)
             fighter.actionMs = 0;
         fighter.action = state.action;
     }
@@ -332,7 +333,7 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
         // (toward the drawn aim while facing it, else along a walk that follows the intent).
         faceAfterStep(yaw, headPitch, drawnLook, state, fighter, actionMsBefore, dt);
     }
-
+    state.yaw = yaw;
 }
 
 void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,

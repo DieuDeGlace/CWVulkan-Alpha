@@ -2598,6 +2598,27 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     actorPassActive = true;
     // Physics §4.2, §2 item 18.5: game +0xb8, whether a local player exists (sound gates).
     const bool localPlayer = std::any_of(players.begin(), players.end(), [](const PlayerView &p) { return p.local; });
+    const auto carryRidingPet = [&](Npc &pet) {
+        if (pet.fighter.controller != 5)
+            return false;
+        const ActorEntry owner = lookupActor(pet.fighter.ownerId, players);
+        if (!owner.combat() || owner.combat()->action != 106)
+            return false;
+        const Body &rider = *owner.body();
+        const float z = (pet.body.size.z * 0.5f - rider.size.z * 0.5f) + 0.01f;
+        const uint64_t lift = uint64_t(int64_t(z * 65536.f));
+        for (int k = 0; k < 3; k++) {
+            const uint64_t add = k == 2 ? lift : 0;
+            pet.body.follow[k] = std::bit_cast<int64_t>(uint64_t(rider.follow[k]) + add);
+            pet.body.position[k] = std::bit_cast<int64_t>(uint64_t(rider.position[k]) + add);
+        }
+        pet.body.yaw = pet.yaw = owner.npc ? owner.npc->yaw : owner.player->yaw;
+        pet.body.bank = rider.bank;
+        pet.body.swimPitch = rider.swimPitch;
+        pet.body.bob = rider.bob;
+        pet.body.velocity = pet.body.intent = glm::vec3(0);
+        return true;
+    };
     for (auto entry = actors.begin(); entry != actors.end(); ++entry) {
         const ActorEntry actor = entry->second;
         if (actor.player) {
@@ -2608,8 +2629,16 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
                     periodicHit(player.fighter, player.body, buff, players, frame);
                 });
-            if (player.local && advanceControlled)
+            if (player.local && advanceControlled) {
+                if (player.fighter.action == 106) {
+                    const Combatant *pet = lookupActor(player.fighter.linkedId, players).combat();
+                    player.body.mountValid = pet && pet->health >= 0 && rideable(pet->type);
+                }
                 advanceControlled(milliseconds);
+                player.yaw = player.body.yaw;
+                if (player.fighter.health > 0)
+                    setFollowPoint(player.body);
+            }
             // Library players dispatch at their own key; the actual client
             // dispatches inside its common update and supplies strikes=false.
             dispatchPlayerActions(std::span(actor.player, 1), milliseconds, block, frame);
@@ -2762,7 +2791,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.pathActive = !npc.path.empty();
         npc.body.obstacles = obstacles, npc.body.key = c.id; // world objects §3
         const int32_t actionSent = npc.body.action;
-        worldStep(npc.body, (int32_t)dtMs, block, objects);
+        Body *ownerBody = c.controller == 5 ? lookupActor(c.ownerId, players).body() : nullptr;
+        worldStep(npc.body, (int32_t)dtMs, block, objects, ownerBody ? &ownerBody->ridingEnergy : nullptr);
         // Physics §2 item 4, §3.2: the step's own action changes (intent ends 83/84, 81 becomes
         // 83, the dodge cancel) reach the creature; the spin (action 72) turns it (§3.3). The
         // lunge's conversion above already wrote the fighter, so only a change made by the step
@@ -2790,53 +2820,28 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             frame.sounds.push_back({npc.body.blocks(), 26, 1, 1});
         // Aim-triplet contract §3.7 facing, then §3.8 drawn aim, after movement.
         faceAfterStep(npc.yaw, npc.headPitch, npc.drawnLook, npc.body, c, before, milliseconds);
-        // Travel §5.4: a pet under its riding owner stands where the owner stands, 0.01 higher
-        // than their shared floor, turned as the owner.
-        // Cast-point contract §2.2 step 3: the follow point is the position after the step,
-        // or for the carried pet the owner's follow point plus the same fixed offset.
-        bool carried = false;
-        if (c.controller == 5)
-            for (const PlayerView &p : players)
-                if (p.fighter.id == npc.fighter.ownerId && p.fighter.action == 106) {
-                    const float z = (npc.body.size.z * 0.5f - p.body.size.z * 0.5f) + std::bit_cast<float>(0x3C23D70Au);
-                    const uint64_t lift = uint64_t((int64_t)(z * 65536.f));
-                    for (int k = 0; k < 3; k++) {
-                        const uint64_t add = k == 2 ? lift : 0;
-                        npc.body.position[k] = std::bit_cast<int64_t>(uint64_t(p.body.position[k]) + add);
-                        npc.body.follow[k] = std::bit_cast<int64_t>(uint64_t(p.body.follow[k]) + add);
-                    }
-                    npc.body.velocity = npc.body.intent = glm::vec3(0);
-                    // The whole orientation (+0x28) is the owner's.
-                    npc.yaw = p.yaw, npc.body.bank = p.body.bank, npc.body.swimPitch = p.body.swimPitch;
-                    carried = true;
-                }
-        if (!carried)
+        // Riding actor step §4: attach at the displayed-position boundary.
+        if (!carryRidingPet(npc))
             setFollowPoint(npc.body);
     }
-
-    // Cast-point contract §2.2 step 3 for players, whose own steps run outside this pass
-    // (engine adapter for their place in the actor order): the position after this update.
-    for (const PlayerView &p : players)
-        if (p.fighter.health > 0)
-            setFollowPoint(p.body);
+    // Players advanced by a caller supply their prior follow point to the
+    // actor pass. Refresh it before the late attachment pass.
+    for (const PlayerView &player : players)
+        if (player.fighter.health > 0)
+            setFollowPoint(player.body);
     actorPassActive = false;
 
-    // Server simulation §3 step 14: a creature whose target (+0x11d0) names a creature with
-    // health <= 0 forgets it.
-    std::set<uint64_t> dead;
-    for (const Npc &n : list)
-        if (n.fighter.health <= 0)
-            dead.insert(n.fighter.id);
-    for (const PlayerView &p : players)
-        if (p.fighter.health <= 0)
-            dead.insert(p.fighter.id);
-    if (!dead.empty()) {
-        for (Npc &n : list)
-            if (dead.count(n.fighter.relations.contact))
-                n.fighter.relations.contact = 0;
-        for (PlayerView &p : players)
-            if (dead.count(p.fighter.relations.contact))
-                p.fighter.relations.contact = 0;
+    // Riding actor step §4: resolve the target and owner again after all
+    // living turns. The second attachment can also reach an admitted corpse.
+    for (const auto &[key, actor] : actors) {
+        Combatant *fighter = actor.combat();
+        if (!fighter)
+            continue;
+        if (const uint64_t targetKey = fighter->relations.contact)
+            if (const auto *target = lookupActor(targetKey, players).combat(); target && target->health <= 0)
+                fighter->relations.contact = 0;
+        if (actor.npc)
+            carryRidingPet(*actor.npc);
     }
 }
 

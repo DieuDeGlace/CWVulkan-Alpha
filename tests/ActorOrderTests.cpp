@@ -77,10 +77,77 @@ void checkOverlappingStrikes() {
               frame.sounds.front().position.x == 20.25 && random.count() == 1,
           "only the first strike spends the removal sound draw");
 }
+
+void checkRidingRefillOrder() {
+    worldgen::WorldMap world;
+    worldgen::Random random{82};
+    Npcs npcs(random);
+    Combatant rider;
+    rider.id = 8;
+    rider.linkedId = UINT64_MAX;
+    rider.action = 106;
+    rider.skills[1] = 1;
+    Body body;
+    body.place({10.9, 10.9, 2.09});
+    body.ridingEnergy = 0.5f;
+    body.bob = 0.125f;
+    Npc &pet = npcs.npcs().emplace_back();
+    pet.fighter.controller = 5;
+    pet.fighter.type = 19;
+    pet.fighter.id = rider.linkedId;
+    pet.fighter.ownerId = rider.id;
+    pet.fighter.health = 100.f;
+    pet.body.place(body.blocks());
+    pet.body.size = pet.looks.box = body.size;
+    pet.home = pet.body.blocks();
+    const BlockType dryLakeBed = [](int32_t, int32_t y, int32_t z) {
+        return uint8_t(z > 0 ? 0 : y < 11 ? 1 : 3);
+    };
+    const PlayerView player{rider, body, 0, 0, false, false, true};
+    NpcFrame frame;
+    std::vector<float> sampled;
+    bool attachedBeforeRider = true;
+    for (const int32_t ms : {13, 7})
+        npcs.stepInto(float(ms), world, {player}, 1000, 12, dryLakeBed, frame, {}, {}, [&](int32_t) {
+            sampled.push_back(body.ridingEnergy);
+            attachedBeforeRider &= pet.body.position[0] == body.position[0] && pet.body.bob == body.bob;
+            body.position[0] += 1024;
+            body.yaw += 15.f;
+            body.bob += 0.125f;
+        });
+    const float first = 0.5f + 0.05f * (13.f * 0.001f);
+    const float second = first + 0.05f * (7.f * 0.001f);
+    check(sampled == std::vector<float>{first, second},
+          "a lower-key pet finds type 3 later in the same ground column and refills once before its rider");
+    check(random.count() == 0, "the riding refill spends no world random draws");
+    check(attachedBeforeRider && pet.body.position[0] == body.position[0] && pet.body.follow[0] == body.follow[0] &&
+              pet.body.position[2] == body.position[2] + 655 && pet.body.bob == body.bob && pet.yaw == body.yaw,
+          "the early attachment sees the prior rider pose and the late attachment sees the updated pose");
+    const BlockType unvisitedLakeBed = [](int32_t x, int32_t, int32_t z) {
+        return uint8_t(z > 0 ? 0 : x < 11 ? 1 : 3);
+    };
+    npcs.stepInto(1.f, world, {player}, 1000, 12, unvisitedLakeBed, frame);
+    check(body.ridingEnergy == second, "the first solid ground column stops the scan before subsequent X values");
+    const BlockType submerged = [](int32_t, int32_t, int32_t z) {
+        return uint8_t(z > 0 ? 2 : 1);
+    };
+    npcs.stepInto(1.f, world, {player}, 1000, 12, submerged, frame);
+    check(body.ridingEnergy == second + 0.05f * 0.001f, "water supplies the same one-shot refill mark");
+    body.ridingEnergy = 0.99999f;
+    npcs.stepInto(1.f, world, {player}, 1000, 12, dryLakeBed, frame);
+    check(body.ridingEnergy == 1.f, "the ground refill caps the owner's meter at one");
+    const int64_t lastPetX = pet.body.position[0];
+    npcs.stepInto(1.f, world, {player}, 1000, 12, dryLakeBed, frame, {}, {}, [&](int32_t) {
+        rider.action = 0;
+        body.position[0] += 8192;
+    });
+    check(pet.body.position[0] == lastPetX, "the late attachment rechecks the rider action after a dismount");
+}
 }
 
 int main() {
     checkOverlappingStrikes();
+    checkRidingRefillOrder();
     {
         const std::array<uint64_t, 9> expected{
             minimum, 0xffffffff00000000ull, UINT64_MAX, 0, 0x7fffffffull,

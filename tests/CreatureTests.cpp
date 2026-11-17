@@ -1941,8 +1941,19 @@ int main() {
             step(b, 16, floor);
             same(b.action, 0, "Ctrl dismounts");
             b.action = 106, b.mode = RUN, b.mountValid = false;
+            const float beforeInvalidRide = b.ridingEnergy;
             step(b, 16, floor);
             same(b.action, 0, "no pet, no ride");
+            same(b.ridingEnergy == beforeInvalidRide - 0.002f * (16.f * 0.001f), 1,
+                 "losing the link still executes the entered riding drain");
+            b.action = 106, b.mountValid = true, b.skills[1] = 0;
+            b.velocity = {0, 3, 0};
+            step(b, 16, floor);
+            same(b.action == 0 && b.velocity.y > 0, 1, "no riding skill clears the action with normal speed still available");
+            b.action = 106, b.skills[1] = 1, b.intent = glm::vec3(0);
+            b.ridingEnergy = -0.0f;
+            step(b, 16, floor);
+            same(b.action == 0 && !std::signbit(b.ridingEnergy), 1, "an empty meter ends a stationary ride and stores positive zero");
         }
         // Travel §6.5: climbing holding W reaches 0.246 after a frame, 6.27 steady.
         {

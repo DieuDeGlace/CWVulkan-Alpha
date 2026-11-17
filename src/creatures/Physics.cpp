@@ -176,10 +176,10 @@ std::vector<int32_t> stepPieces(int32_t dt) {
     return out;
 }
 
-void worldStep(Body &body, int32_t dt, const BlockType &block, const ObjectTest &objects) {
+void worldStep(Body &body, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy) {
     for (int32_t piece : stepPieces(dt))
         if (piece > 0) {
-            step(body, piece, block, objects);
+            step(body, piece, block, objects, riderEnergy);
             body.separate = glm::vec3(0); // (worked out for one step: the first piece only)
         }
 }
@@ -204,7 +204,7 @@ glm::vec3 separationPush(glm::vec3 size, const int64_t self[3], glm::vec3 other,
     return push(size, self, box, other.x, them, stunned);
 }
 
-void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects) {
+void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy) {
     const float dts = (float)dt * 0.001f;
     auto blocks = [&](int32_t x, int32_t y, int32_t z) {
         const uint8_t t = block(x, y, z);
@@ -270,21 +270,16 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         S *= b.skills[4] >= 1 ? 0.5f + 0.5f * skillFactor(b.skills[4]) : 0.5f; // swimming
     if (b.local && b.action == 107 && onGround && !inWater)
         b.action = 0; // travel §4.1: a beached boat is left
-    if (b.local && b.action == 106) { // travel §5.3: riding
-        if (!b.mountValid) {
+    if (b.local && b.action == 106) { // riding actor step §2
+        if (b.mountValid && b.skills[1] >= 1)
+            S *= 1.f + skillFactor(b.skills[1]);
+        else
             b.action = 0;
-        } else {
-            const float k = b.skills[1] >= 1 ? 1 + skillFactor(b.skills[1]) : 0.f;
-            S *= k;
-            if (k == 0)
-                b.action = 0;
-        }
-        if (b.action == 106 && intending) {
+        if (intending)
             b.ridingEnergy -= 0.002f * dts;
-            if (b.ridingEnergy <= 0)
-                b.ridingEnergy = 0, b.action = 0;
-        }
-        if (b.action == 106 && (b.mode & CLIMB))
+        if (b.ridingEnergy <= 0)
+            b.ridingEnergy = 0, b.action = 0;
+        if (b.mode & CLIMB)
             b.action = 0; // Ctrl dismounts
     }
     if (b.mode & GLIDER) {
@@ -590,13 +585,24 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         const float lift = r <= 0 ? 0.f : (r < 1 || b.action == 107) ? r + 1 : 1.f; // a boat has no cap
         b.velocity.z += 30.f * dts * lift;
     }
-    // §5.4: ground, then the step-down snap.
+    // Riding actor step §3: liquid and visited type-3 ground cells share one
+    // refill mark. A dry probe visits the full Y span of its first solid column.
+    bool refill = wet;
     if (!wet) {
-        Cells g = box;
-        g.lo[2] = g.hi[2] = (int32_t)snapLayer(b.position[2] - halfHeight - fixedT(0.2f));
-        if (any(g, [&](int32_t x, int32_t y, int32_t zc) { return solid(block(x, y, zc)); }))
-            b.contact |= ON_GROUND;
+        const int32_t z = (int32_t)snapLayer(b.position[2] - halfHeight - fixedT(0.2f));
+        for (int32_t x = box.lo[0]; x <= box.hi[0]; x++) {
+            for (int32_t y = box.lo[1]; y <= box.hi[1]; y++) {
+                const uint8_t type = block(x, y, z);
+                if (solid(type))
+                    b.contact |= ON_GROUND;
+                refill |= type == 3;
+            }
+            if (b.contact & ON_GROUND)
+                break;
+        }
     }
+    if (refill && b.controller == 5 && riderEnergy && *riderEnergy < 1.f)
+        *riderEnergy = std::min(1.f, *riderEnergy + 0.05f * dts);
     const glm::vec2 dh(d);
     // Height §1.3: on the terrain grid only, at most once an update, and not after a static hit.
     if ((before & ON_GROUND) && stepAllowed && glm::dot(dh, dh) > 0 && !(b.contact & (ON_GROUND | IN_WATER)) &&

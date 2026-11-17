@@ -2306,6 +2306,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             [&] {
                                 for (const auto &target : client.pendingStaticRequests())
                                     useStaticRequest(target, false, aggregate);
+                                if (player->combat().action == 106) {
+                                    const auto *pet = frameActor(player->combat().linkedId);
+                                    player->body().mountValid = pet && pet->health >= 0 && creatures::rideable(pet->type);
+                                }
                                 advancePlayer(elapsed);
                             }, [&](net::RemoteFighter &remote) {
                                 if (remote.fighter.health > 0)
@@ -2526,14 +2530,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 showMission({done->first, done->second, missions.cell(done->first, done->second)->mission,
                                              death.credited, death.fighter.controller});
                             }
-                        }
-                        // Travel §5.5: a pet standing on wet lake-bed ground (type 3) refills its
-                        // owner's riding energy by 0.05 a second.
-                        if (const creatures::Npc *pet = npcs.petOf(c); pet && !(pet->body.contact & creatures::IN_WATER)) {
-                            const glm::dvec3 feet = pet->body.blocks() - glm::dvec3(0, 0, pet->body.size.z / 2 + 0.2);
-                            if (view.held().read((int32_t)std::floor(feet.x), (int32_t)std::floor(feet.y), (int32_t)std::floor(feet.z)).type() ==
-                                worldgen::LAKE_BED)
-                                player->body().ridingEnergy = std::min(1.f, player->body().ridingEnergy + 0.05f * seconds);
                         }
                         for (const creatures::HitEmission &emission : happened.playerHits) {
                             if (!emission.applyLocally)
@@ -4064,13 +4060,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (rPressed && hud.prompt == u"[R] Ride") {
                     player->combat().action = 106;
                     player->combat().actionMs = 0;
-                }
-                // Travel §5.3: riding needs the pet alive and rideable (online the server's
-                // pet is trusted).
-                {
-                    const creatures::Npc *pet = npcs.petOf(c);
-                    player->body().mountValid = client.connected() ||
-                                                (pet && pet->fighter.health >= 0 && creatures::rideable(pet->fighter.type));
                 }
                 // §5.2 b): the object effects of an R press, run below after the talk record and
                 // the creature effects of the same press, whenever the object target resolves.
