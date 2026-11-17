@@ -216,17 +216,6 @@ bool WorldItems::drop(const creatures::ItemRecord &item, const int64_t at[3], fl
     return settle(w, item, block, [&] { return (float)draw() * 360.f / 32767.f; });
 }
 
-bool WorldItems::dropAt(const creatures::ItemRecord &item, glm::dvec3 at, float angle, int32_t day,
-                        const creatures::BlockType &block) {
-    WorldItem w;
-    w.position[0] = (int64_t)(at.x * 65536.0), w.position[1] = (int64_t)(at.y * 65536.0);
-    w.position[2] = (int64_t)(at.z * 65536.0);
-    w.scale = std::bit_cast<float>(0x3d924925u);
-    w.landingMs = 0; // (engine choice: the chest contract names no landing timer or draw)
-    w.day = day;
-    return settle(w, item, block, [&] { return angle; });
-}
-
 bool WorldItems::settle(WorldItem w, const creatures::ItemRecord &item, const creatures::BlockType &block,
                         const std::function<float()> &angle) {
     const int64_t at[3] = {w.position[0], w.position[1], w.position[2]};
@@ -273,17 +262,25 @@ bool manaCubeFor(const creatures::ItemRecord &item, int32_t counter) {
 
 std::optional<creatures::ItemRecord> WorldItems::pickUp(int32_t zx, int32_t zy, int32_t index, glm::dvec3 from,
                                                         std::optional<int32_t> manaCounter) {
+    const int64_t fixed[3] = {(int64_t)(from.x * 65536.0), (int64_t)(from.y * 65536.0), (int64_t)(from.z * 65536.0)};
+    return pickUpFixed(zx, zy, index, fixed, manaCounter);
+}
+
+std::optional<creatures::ItemRecord> WorldItems::pickUpFixed(int32_t zx, int32_t zy, int32_t index,
+        const int64_t from[3], std::optional<int32_t> manaCounter,
+        const std::function<void(const creatures::ItemRecord &)> &beforeErase) {
     const auto it = lists.find({zx, zy});
     if (it == lists.end() || index < 0 || index >= (int32_t)it->second.size())
         return std::nullopt;
     const WorldItem &w = it->second[index];
     if (manaCounter && !manaCubeFor(w.item, *manaCounter))
         return std::nullopt;
-    const glm::dvec3 d = w.blocks() - from;
-    if (glm::dot(d, d) > 16)
+    if (creatures::fixedDistanceSquared(w.position, from) > 16.f)
         return std::nullopt;
     const creatures::ItemRecord item = w.item;
-    it->second.erase(it->second.begin() + index);
     changed.insert({zx, zy});
+    if (beforeErase)
+        beforeErase(item);
+    it->second.erase(it->second.begin() + index);
     return item;
 }

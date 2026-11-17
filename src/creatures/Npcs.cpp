@@ -403,8 +403,8 @@ void Npcs::setQuestCreatures(uint32_t quest, std::vector<worldgen::Spawn> creatu
 
 void Npcs::removeQuest(uint32_t quest) {
     questSpawns.erase(quest);
-    list.erase(std::remove_if(list.begin(), list.end(), [&](const Npc &n) { return n.quest == quest && n.leaveMs < 0; }),
-               list.end());
+    if (std::erase_if(list, [&](const Npc &n) { return n.quest == quest && n.leaveMs < 0; }))
+        rebindNpcEntries();
 }
 
 uint32_t Npcs::free(uint64_t id, glm::dvec3 home) {
@@ -506,15 +506,40 @@ bool Npcs::spawnPresent(const worldgen::WorldMap &map, int32_t zx, int32_t zy, s
     return index < count;
 }
 
+bool Npcs::innRestAvailable(const std::array<int32_t, 3> &home) const {
+    assert(actorLookupActive);
+    if (clockMs > 6 * 3600000.0 && clockMs < 18 * 3600000.0)
+        return false;
+    for (const auto &[id, actor] : actors) {
+        const Combatant *fighter = actor.combat();
+        if (!fighter)
+            continue;
+        std::array<int32_t, 3> actorHome{-1, -1, 0};
+        if (actor.player)
+            actorHome = actor.player->home;
+        else if (actor.npc->spawn != Npc::NO_SPAWN)
+            actorHome = {actor.npc->zone.first, actor.npc->zone.second, (int32_t)actor.npc->spawn};
+        if (actorHome != home)
+            continue;
+        if (fighter->characterClass == 132)
+            return true;
+        if (fighter->appearanceFlags & 0x80)
+            return false;
+    }
+    return false;
+}
+
 void Npcs::restAll(const worldgen::WorldMap &map) {
-    std::erase_if(list, [&](const Npc &n) {
-        if (n.fighter.controller == 5 || n.spawn == Npc::NO_SPAWN ||
+    clockMs = 7 * 3600000.0;
+    const size_t removed = std::erase_if(list, [&](const Npc &n) {
+        if (n.fighter.controller == 0 || n.fighter.controller == 5 || n.spawn == Npc::NO_SPAWN ||
             !spawnPresent(map, n.zone.first, n.zone.second, n.spawn))
             return false;
         spawns[{n.zone.first, n.zone.second, n.spawn}].countdownMs = 0;
         return true;
     });
-    actors.clear(); // (rebuilt by the next step)
+    if (removed)
+        rebindNpcEntries();
 }
 
 void Npcs::forgetZone(int32_t zx, int32_t zy) {
@@ -541,7 +566,15 @@ void Npcs::forgetCreatures(const std::set<uint64_t> &gone, std::span<PlayerView>
 }
 
 uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
+    Body origin;
+    origin.place(at);
+    return placeBombFixed(origin.position, level);
+}
+
+uint64_t Npcs::placeBombFixed(const int64_t (&position)[3], int32_t level) {
     Npc npc;
+    std::copy_n(position, 3, npc.body.position);
+    const glm::dvec3 at = npc.body.blocks();
     npc.spawn = Npc::NO_SPAWN;
     npc.zone = {worldgen::floorDiv((int32_t)std::floor(at.x), worldgen::ZONE),
                 worldgen::floorDiv((int32_t)std::floor(at.y), worldgen::ZONE)};
@@ -551,13 +584,12 @@ uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
     c.type = 144;
     c.characterClass = 0; // (no class: the plain NPC health 100 P(L))
     c.controller = 6;
-    c.level = std::max(level, 1);
+    c.level = level;
     int32_t type = 144;
     generate(type, npc.looks, nullptr, [&] { return draw(); });
     c.appearanceFlags = npc.looks.flags;
     c.health = 500; // the new-creature default; the fuse holds it to the maximum
     npc.body.size = npc.looks.box;
-    npc.body.place(at);
     npc.body.fallStart = (float)at.z;
     const uint64_t id = c.id;
     appendNpc(std::move(npc));
@@ -568,6 +600,21 @@ void Npcs::appendNpc(Npc npc) {
     list.push_back(std::move(npc));
     Npc &added = list.back();
     actors[added.fighter.id] = {&added, nullptr};
+}
+
+void Npcs::rebindNpcEntries() {
+    if (!actorLookupActive)
+        return; // The next step builds the index from the resident actors.
+    // Keep the current player and the map's live successor valid across a
+    // deque erase. Player entries still take precedence on a duplicate key.
+    for (auto &[key, actor] : actors)
+        actor.npc = nullptr;
+    for (Npc &npc : list) {
+        ActorEntry &entry = actors[npc.fighter.id];
+        if (!entry.player)
+            entry.npc = &npc;
+    }
+    std::erase_if(actors, [](const auto &entry) { return !entry.second.combat(); });
 }
 
 void Npcs::createActor(const ActorEntry &current, int32_t step) {
@@ -2444,7 +2491,9 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
 void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                     int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming,
                     const std::vector<BuffEvent> &buffInput,
-                    const std::function<void(int32_t)> &advanceControlled) {
+                    const std::function<void(int32_t)> &advanceControlled,
+                    const std::function<void(PlayerView &)> &consumeItemRequests,
+                    const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState) {
     leftoverMs += dtMs;
     const int32_t milliseconds = (int32_t)leftoverMs;
     leftoverMs -= (float)milliseconds;
@@ -2487,11 +2536,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                     break;
                 }
     }
-    for (PlayerView &player : players)
-        if (player.advanceBuffs && player.fighter.health > 0)
-            tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
-                periodicHit(player.fighter, player.body, buff, players, frame);
-            });
+    if (advanceZoneState)
+        advanceZoneState(milliseconds, players); // stages 5 and 6
     advanceSpawnTimers(active, timeOfDayMs, dtMs); // stage 7
     // Creatures whose zone is let go go with it (inferred); pets stay with their owners.
     const size_t beforeRemovals = list.size();
@@ -2547,7 +2593,14 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     for (auto entry = actors.begin(); entry != actors.end(); ++entry) {
         const ActorEntry actor = entry->second;
         if (actor.player) {
-            if (actor.player->local && advanceControlled)
+            PlayerView &player = *actor.player;
+            if (consumeItemRequests)
+                consumeItemRequests(player);
+            if (player.advanceBuffs && admitCreatureUpdate(player.fighter))
+                tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
+                    periodicHit(player.fighter, player.body, buff, players, frame);
+                });
+            if (player.local && advanceControlled)
                 advanceControlled(milliseconds);
             // Library players dispatch at their own key; the actual client
             // dispatches inside its common update and supplies strikes=false.

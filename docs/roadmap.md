@@ -832,6 +832,14 @@ Differences from the Steam engine that shape the plan:
   in section 9 (NetTests: drop, list, pick up, gift). Items are lit by their block's light;
   shimmer mushrooms and candles glow and light their surroundings (rendering §10.1); every item's
   attached sub-cubes are drawn, shining with iron, gold, silver or ice.
+- [x] Dedicated packet-6 sender turns (`alpha-packet6-sender-turn.md`).
+  Each sender drains the complete mixed FIFO at its signed actor key. Chest
+  attempts share the drop helper and its conditional draw. Pickup pitch follows
+  the gift append and precedes item erasure. Bombs copy fixed position and
+  signed level and keep the constructor's 500 health until their first turn.
+- [ ] Client packet-6 sender turns.
+  Move offline producers onto the shared actor-turn boundary and preserve the
+  connected sender's one-record pacing. Reconcile the input and result phases.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

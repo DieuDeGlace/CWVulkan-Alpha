@@ -1788,3 +1788,16 @@ The Windows x64 build, all 60 test suites, the player/controller diagnostic and
 five actual-client smoke flows pass. The initial network and zone comparisons
 missed time limits. Both passed in standard isolated reruns, with NetTests at
 17.61 seconds. Physical controller and original-client acceptance remain open.
+
+## Dedicated packet-6 sender turns (2026-11-17)
+
+ActorOrderTests reverses player storage order and verifies signed visitation,
+admission after requests, deletion of a future NPC, and the next surviving
+actor's turn. It checks fixed-point bomb placement, exact signed item level,
+initial bomb health and the two exact NPC pitches around the bomb's five
+appearance draws. CreatureTests checks per-unit chest draw order, stored
+timer and angle and the two lever snapshots. The network loopback tests
+ordered effects for interleaved heals, a rejected pickup and a drop.
+
+The Windows x64 build, five focused suites and the full 60-suite CTest
+run passed. Original-client runtime order and visual acceptance remain open.

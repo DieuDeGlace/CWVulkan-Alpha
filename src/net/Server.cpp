@@ -1,6 +1,7 @@
 #include "net/Server.h"
 #include "net/CreaturePublication.h"
 #include "GenerationProfile.h"
+#include "ItemRequest.h"
 #include "Loot.h"
 #include "Bytes.h"
 #include "Saves.h"
@@ -29,7 +30,7 @@ struct Server::Connection {
     Clock::time_point joined = Clock::now();
     std::deque<std::pair<uint64_t, std::vector<uint16_t>>> chat;
     WorldUpdate outgoing;
-    std::deque<std::array<uint8_t, 300>> itemRequests;     // packet 6, for the next step
+    std::deque<ItemRequest::Packet> itemRequests; // packet 6, consumed in the sender's turn
     // Packets 11 and 12 in arrival order; duplicates are kept and each copy is answered (§4.4).
     std::vector<std::pair<int32_t, int32_t>> wantedZones;   // answered in sections 1, 6 and 7
     std::vector<std::pair<int32_t, int32_t>> wantedRegions; // answered in section 13
@@ -114,13 +115,7 @@ CreatureRecord newPlayerRecord(int32_t spawnX, int32_t spawnY) {
 }
 
 float creatureDistanceSquared(const std::array<int64_t, 3> &a, const std::array<int64_t, 3> &b) {
-    constexpr float SCALE = 1.f / 65536.f;
-    float sum = 0;
-    for (int axis = 0; axis < 3; axis++) {
-        const float d = (float)(a[axis] - b[axis]) * SCALE;
-        sum += d * d;
-    }
-    return sum;
+    return creatures::fixedDistanceSquared(a.data(), b.data());
 }
 
 std::optional<std::pair<int32_t, int32_t>>
@@ -176,8 +171,7 @@ void Server::tell(uint64_t player, const std::string &line) {
 // Quests (docs/design/quests.md), under the lock: talking to a giver takes its quest of the day
 // or hands in a done one (the reward comes as gifts); the words come as chat lines, which
 // original Alpha clients show too.
-void Server::questTalk(uint64_t player, uint64_t giver, glm::dvec3 at, std::vector<std::array<uint8_t, 288>> &gifts,
-                       std::vector<creatures::SoundEvent> &sounds) {
+void Server::questTalk(uint64_t player, uint64_t giver, glm::dvec3 at, creatures::NpcFrame &frame) {
     const auto who = connections.find(player);
     const creatures::Npc *n = nullptr;
     for (const creatures::Npc &k : npcs.all())
@@ -190,14 +184,9 @@ void Server::questTalk(uint64_t player, uint64_t giver, glm::dvec3 at, std::vect
         if (q->state == quests::DONE) {
             const quests::Quest done = *q;
             tell(player, quests::thanksText(done));
-            for (const worldgen::ItemRecord &item : quests::rewards(done, who->second->creature.fighter().characterClass, worldRandom)) {
-                const creatures::ItemRecord record = creatures::toRecord(item);
-                std::array<uint8_t, 288> gift{};
-                std::memcpy(gift.data(), &player, 8);
-                std::memcpy(gift.data() + 8, record.data(), 280);
-                gifts.push_back(gift);
-            }
-            sounds.push_back({at, 30, 1, 1}); // missioncomplete.wav
+            for (const worldgen::ItemRecord &item : quests::rewards(done, who->second->creature.fighter().characterClass, questRandom))
+                frame.grants.push_back({player, creatures::toRecord(item)});
+            frame.sounds.push_back({at, 30, 1, 1}); // missioncomplete.wav
             npcs.removeQuest(done.id);
             book.handedIn.push_back(done.id);
             std::erase_if(book.quests, [&](const quests::Quest &k) { return k.id == done.id; });
@@ -499,11 +488,13 @@ void Server::receiveLoop(Connection &c) {
             ok = plain && publishCreatureUpdate(c.id, *plain, publication);
             break;
         }
-        case ITEM_RECORD: { // server simulation §8: handled by the next step
-            std::array<uint8_t, 300> record;
+        case ITEM_RECORD: {
+            ItemRequest::Packet record;
             ok = readArray(record);
-            std::lock_guard guard(lock);
-            c.itemRequests.push_back(record);
+            if (ok) {
+                std::lock_guard guard(lock);
+                c.itemRequests.push_back(record);
+            }
             break;
         }
         case HIT: {
@@ -813,6 +804,169 @@ void Server::unloadDistantZones(const std::vector<std::pair<int32_t, int32_t>> &
     }
 }
 
+void Server::advanceZoneState(int32_t elapsed, std::span<creatures::PlayerView> players, creatures::NpcFrame &frame,
+                              const creatures::BlockType &block) {
+    const auto draw = [this] { return worldRandom.draw(); };
+    std::set<WorldItems::Key> activeZones;
+    for (const auto &player : players) {
+        const auto [zx, zy] = serverZoneOf(player.body.position[0], player.body.position[1]);
+        for (int32_t x = zx - 1; x <= zx + 1; ++x)
+            for (int32_t y = zy - 1; y <= zy + 1; ++y)
+                if (zones.zone(x, y))
+                    activeZones.insert({x, y});
+    }
+    items.step(elapsed, true, block, draw, frame.sounds, &activeZones);
+
+    std::map<StaticStates::Key, const worldgen::Zone *> held;
+    for (const auto &[key, zone] : zones.zones())
+        held[key] = zone.get();
+    const auto playerWithId = [&](uint64_t id) {
+        return std::find_if(players.begin(), players.end(), [id](const auto &player) { return player.fighter.id == id; });
+    };
+    const auto npcWithId = [&](uint64_t id) {
+        return std::find_if(npcs.npcs().begin(), npcs.npcs().end(), [id](const auto &npc) { return npc.fighter.id == id; });
+    };
+    statics.step(elapsed, [&](uint64_t id, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
+        if (const auto player = playerWithId(id); player != players.end()) {
+            at = player->body.blocks();
+            intent = glm::vec3(0); // Client-controlled records supply their own reported action.
+            action = player->fighter.action;
+            stun = player->fighter.hitStun;
+            return true;
+        }
+        const auto npc = npcWithId(id);
+        if (npc == npcs.npcs().end() || npc->fighter.health <= 0)
+            return false;
+        at = npc->body.blocks();
+        intent = npc->body.intent;
+        action = npc->fighter.action;
+        stun = npc->fighter.hitStun;
+        return true;
+    }, held, true, [&](uint64_t id, glm::dvec3 top, float yaw, int32_t action) -> std::optional<glm::dvec3> {
+        const auto npc = npcWithId(id);
+        if (npc == npcs.npcs().end() || npc->fighter.health <= 0)
+            return std::nullopt;
+        npc->body.place(top + glm::dvec3(0, 0, npc->body.size.z / 2));
+        npc->body.velocity = glm::vec3(0);
+        npc->yaw = yaw;
+        npc->fighter.action = action;
+        return npc->body.blocks();
+    });
+
+    std::vector<StaticStates::Creature> here;
+    here.reserve(players.size() + npcs.all().size());
+    for (const auto &player : players)
+        here.push_back({player.fighter.id, player.body.blocks(), 0});
+    for (const auto &npc : npcs.all())
+        if (npc.fighter.health > 0)
+            here.push_back({npc.fighter.id, npc.body.blocks(), npc.fighter.controller});
+    std::sort(here.begin(), here.end(), [](const auto &a, const auto &b) { return creatures::ActorKeyLess{}(a.id, b.id); });
+    const auto trapStrike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push, bool resistance) {
+        const auto strike = [&](creatures::Combatant &target, bool relay) {
+            glm::vec3 velocity(0);
+            const auto out = creatures::resolveHit(target, velocity, nullptr,
+                creatures::trapHitInput(c.at, damage, push, resistance), draw);
+            for (const auto &hit : out.records)
+                if (relay)
+                    frame.emittedHits.push_back(hit);
+                else {
+                    npcs.applyWorldHit(hit, players, frame);
+                    frame.seen.push_back({hit, c.at});
+                }
+        };
+        if (const auto player = playerWithId(c.id); player != players.end()) {
+            if (player->fighter.health > 0) {
+                auto snapshot = player->fighter;
+                strike(snapshot, true);
+            }
+        } else if (const auto npc = npcWithId(c.id); npc != npcs.npcs().end() && npc->fighter.health > 0) {
+            strike(npc->fighter, false);
+        }
+    };
+    statics.traps(elapsed, here, held,
+                  [this](glm::dvec3 at) { return world->levelAtFx((int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0)); },
+                  trapStrike, frame.sounds);
+}
+
+void Server::consumeItemRequests(Connection &sender, creatures::PlayerView &actor, creatures::NpcFrame &frame,
+                                 const creatures::BlockType &block) {
+    const auto draw = [this] { return worldRandom.draw(); };
+    auto &fighter = actor.fighter;
+    auto &body = actor.body;
+    const uint64_t id = fighter.id;
+    for (const auto &packet : sender.itemRequests) {
+        const ItemRequest request = ItemRequest::parse(packet);
+        const auto [x, y, index] = request.target;
+        const glm::dvec3 at = body.blocks();
+        switch (request.kind) {
+        case ItemRequest::UseItem:
+            if (creatures::itemType(request.item) == 1 && creatures::itemSubtype(request.item) == 7) {
+                npcs.placeBombFixed(body.position, creatures::itemLevel(request.item));
+            } else {
+                const float heal = creatures::itemHeal(creatures::Item::parse(request.item.data()));
+                fighter.health += heal;
+                frame.sounds.push_back({at, 44, 1, 1});
+                creatures::HitRecord hit;
+                hit.target = id;
+                hit.amount = -heal;
+                std::copy_n(body.position, 3, hit.position.begin());
+                frame.emittedHits.push_back(hit);
+            }
+            break;
+        case ItemRequest::Talk: {
+            if (x == -2) { // Engine quest prisoner interaction.
+                questFree(id, (uint32_t)y, (size_t)index);
+                break;
+            }
+            if (options.extendedQuests)
+                questTalk(id, creatures::Npcs::spawnId(x, y, (uint32_t)index), at, frame);
+            if (npcs.innRestAvailable(request.target)) {
+                ++clockDay;
+                clockMs = 7 * 3600000u;
+                frame.sounds.push_back({at, 29, 1, 0.75f});
+                npcs.restAll(zones);
+                missions.clearGenerated();
+            }
+            break;
+        }
+        case ItemRequest::UseStatic:
+            if (fighter.action == 79)
+                fighter.action = 0, fighter.stealth = 0;
+            if (const auto *zone = zones.zone(x, y))
+                statics.use(*zone, index, fighter, body, actor.yaw, items, (int32_t)clockDay, block, draw, frame.sounds,
+                            &frame.staticStates);
+            for (int axis = 0; axis < 3; ++axis)
+                sender.creature.setPosition(axis, body.position[axis]);
+            sender.creature.setMotion(body.velocity, actor.yaw, body.push, body.intent);
+            put(sender.creature, 0x058, (uint8_t)fighter.action);
+            put(sender.creature, 0x05c, fighter.actionMs);
+            break;
+        case ItemRequest::PickUp: {
+            int32_t manaCounter;
+            std::memcpy(&manaCounter, &sender.creature.bytes[0x1154], sizeof manaCounter);
+            items.pickUpFixed(x, y, index, body.position, manaCounter, [&](const creatures::ItemRecord &item) {
+                frame.grants.push_back({id, item});
+                frame.sounds.push_back({at, 45, (float)draw() * 0.1f / 32767.f + 1.f, 1});
+            });
+            break;
+        }
+        case ItemRequest::Drop:
+            items.drop(request.item, body.position, 1, (int32_t)clockDay, block, draw);
+            frame.sounds.push_back({at, 57, 1, 1});
+            break;
+        case ItemRequest::PlaceObject:
+            placeObject(sender.creature, body);
+            break;
+        case ItemRequest::CallPet:
+            npcs.callPetFixed(fighter, body.position);
+            break;
+        default:
+            break;
+        }
+    }
+    sender.itemRequests.clear();
+}
+
 // Simulation §3, the parts the engine has: incoming hits, the creature step (activation,
 // despawn, behaviour, hits, deaths), and what it produced into each player's world update.
 void Server::stepWorld(float dtMs) {
@@ -833,7 +987,8 @@ void Server::stepWorld(float dtMs) {
         f.linkedId = c->linkedId;
         f.linkedItem.retained = c->linkedItemSnapshot;
         creatures::Body b;
-        b.place(glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0);
+        for (int axis = 0; axis < 3; ++axis)
+            b.position[axis] = c->creature.position(axis);
         b.velocity = c->creature.velocity();
         b.intent = c->creature.intent();
         b.push = c->creature.response();
@@ -844,8 +999,10 @@ void Server::stepWorld(float dtMs) {
         who.push_back(c);
     }
     std::vector<creatures::PlayerView> players;
-    for (size_t i = 0; i < fighters.size(); i++)
+    for (size_t i = 0; i < fighters.size(); i++) {
         players.push_back({fighters[i], bodies[i], who[i]->creature.yaw(), fighters[i].actionMs, false, true});
+        std::memcpy(players.back().home.data(), &who[i]->creature.bytes[0x1a0], sizeof(int32_t) * 3);
+    }
 
     // §6.1: a hit on a player is relayed for that player's client to apply; one on an NPC is
     // applied here and not relayed.
@@ -888,215 +1045,7 @@ void Server::stepWorld(float dtMs) {
     const auto block = [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z).type(); };
     const auto draw = [this] { return worldRandom.draw(); };
 
-    // §8: the players' packet-6 requests. Picking up (kind 5) gives the item back in section 9;
-    // dropping (kind 6) puts it in the world at the player's feet.
-    std::vector<creatures::SoundEvent> itemSounds;
-    std::vector<std::array<uint8_t, 288>> gifts;
-    std::vector<Hit> healHits; // §8 kind 1: a negative hit on the drinker heals its client
-    for (auto &[id, c] : connections) {
-        const glm::dvec3 at = glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0;
-        for (const auto &r : c->itemRequests) {
-            creatures::ItemRecord item;
-            std::memcpy(item.data(), r.data(), 280);
-            int32_t target[3];
-            std::memcpy(target, &r[0x118], 12);
-            switch (r[0x128]) {
-            case 5:
-                if (const auto got = items.pickUp(target[0], target[1], target[2], at)) {
-                    std::array<uint8_t, 288> gift{};
-                    std::memcpy(gift.data(), &id, 8);
-                    std::memcpy(gift.data() + 8, got->data(), 280);
-                    gifts.push_back(gift);
-                    itemSounds.push_back({at, 45, 1 + 0.1f * (float)draw() / 32767.f, 1}); // pickup.wav
-                }
-                break;
-            case 6: {
-                const glm::dvec3 feet = at - glm::dvec3(0, 0, c->creature.appearance().box.z / 2);
-                if (items.drop(item, feet, 1, (int32_t)clockDay, block, draw))
-                    itemSounds.push_back({at, 57, 1, 1}); // drop.wav
-                break;
-            }
-            case 3: // interaction §6: the player's own record moves on its client
-                if (const worldgen::Zone *zone = zones.zone(target[0], target[1])) {
-                    creatures::Combatant who = c->creature.fighter();
-                    who.id = id;
-                    creatures::Body body;
-                    body.place(at);
-                    body.size = c->creature.appearance().box;
-                    float yaw = c->creature.yaw();
-                    statics.use(*zone, target[2], who, body, yaw, items, (int32_t)clockDay, block, draw, itemSounds);
-                }
-                break;
-            case 1: // §8 kind 1: a bomb is placed at the player; anything else heals
-                if (creatures::itemType(item) == 1 && creatures::itemSubtype(item) == 7) {
-                    npcs.placeBomb(at, creatures::itemLevel(item));
-                } else {
-                    // The server's copy of the player's health rises by the healing value, with no
-                    // clamp here (pets and bombs §6, correction 8); the client is told by a hit
-                    // from id 0. Sound 44 plays at pitch 1.
-                    const float heal = creatures::itemHeal(creatures::Item::parse(item.data()));
-                    const float healed = c->creature.health() + heal;
-                    c->creature.setHealth(healed);
-                    for (size_t k = 0; k < who.size(); k++)
-                        if (who[k] == c)
-                            fighters[k].health = healed;
-                    itemSounds.push_back({at, 44, 1, 1}); // drink2.wav
-                    creatures::HitRecord record;
-                    record.attacker = 0;
-                    record.target = id;
-                    record.amount = -heal;
-                    record.position = recordPosition(c->creature);
-                    healHits.push_back(Hit::from(record));
-                }
-                break;
-            case 2: { // §8 kind 2: talking to an innkeeper at night rests the world to 7:00
-                if (target[0] == -2) { // (AlphaVulkan's own: freeing quest `target[1]`'s prisoner `target[2]`)
-                    questFree(id, (uint32_t)target[1], (size_t)target[2]);
-                    break;
-                }
-                const uint64_t npcId = creatures::Npcs::spawnId(target[0], target[1], (size_t)target[2]);
-                if (options.extendedQuests)
-                    questTalk(id, npcId, at, gifts, itemSounds);
-                // Simulation §8 kind 2: the creatures whose home (zone, spawn index) is the target,
-                // in creature-table order. One with appearance flag 0x80 ends the search; an
-                // innkeeper (class 132) between 18:00 and 6:00 rests the world.
-                std::vector<const creatures::Npc *> homed;
-                for (const creatures::Npc &n : npcs.all())
-                    if (n.spawn != creatures::Npc::NO_SPAWN && n.zone == std::pair(target[0], target[1]) &&
-                        n.spawn == (size_t)(uint32_t)target[2])
-                        homed.push_back(&n);
-                std::sort(homed.begin(), homed.end(), [](const creatures::Npc *a, const creatures::Npc *b) {
-                    return creatures::ActorKeyLess{}(a->fighter.id, b->fighter.id);
-                });
-                const uint32_t ms = clockMs;
-                bool inn = false;
-                for (const creatures::Npc *n : homed) {
-                    if (n->looks.flags & 0x80)
-                        break;
-                    if (n->fighter.characterClass == 132 && (ms >= 18 * 3600000u || ms <= 6 * 3600000u)) {
-                        inn = true;
-                        break;
-                    }
-                }
-                if (inn) {
-                    clockDay = clockDay + 1;
-                    clockMs = 7 * 3600000u;
-                    itemSounds.push_back({at, 29, 1, 0.75f}); // levelup2.wav, at the requesting player
-                    npcs.restAll(zones);
-                    missions.clearGenerated(); // missions §2.1: a new day's missions
-                }
-                break;
-            }
-            case 8: // pets §13: the T key calls the pet back
-                for (auto &player : players)
-                    if (player.fighter.id == id) {
-                        npcs.callPet(player.fighter, at);
-                        break;
-                    }
-                break;
-            case 7: // block edits §6: a voxel object, by the sender's record
-                placeObject(c->creature);
-                break;
-            default:
-                break;
-            }
-        }
-        c->itemRequests.clear();
-    }
-    // Simulation §3 step 2, step 5: only items in the active zones (the loaded zones of the 3 x 3
-    // round each player's current zone) count down and land.
-    std::set<WorldItems::Key> activeZones;
-    for (const auto &c : who) {
-        const auto [zx, zy] = serverZoneOf(c->creature.position(0), c->creature.position(1));
-        for (int32_t i = -1; i <= 1; i++)
-            for (int32_t j = -1; j <= 1; j++)
-                if (zones.zone(zx + i, zy + j))
-                    activeZones.insert({zx + i, zy + j});
-    }
-    items.step((int32_t)dtMs, true, block, draw, itemSounds, &activeZones);
-    // Interaction §6.3, §6.4: the statics' timers; a seat is freed when its player leaves it.
-    std::map<StaticStates::Key, const worldgen::Zone *> held;
-    for (const auto &[key, zone] : zones.zones())
-        held[key] = zone.get();
-    statics.step((int32_t)dtMs,
-                 [this](uint64_t who, glm::dvec3 &at, glm::vec3 &intent, int32_t &action, int32_t &stun) {
-                     const auto it = connections.find(who);
-                     if (it == connections.end() || !it->second->alive) {
-                         for (const creatures::Npc &n : npcs.npcs()) // seated residents
-                             if (n.fighter.id == who && n.fighter.health > 0) {
-                                 at = n.body.blocks();
-                                 intent = n.body.intent;
-                                 action = n.fighter.action;
-                                 stun = n.fighter.hitStun;
-                                 return true;
-                             }
-                         return false;
-                     }
-                     const CreatureRecord &r = it->second->creature;
-                     const creatures::Combatant fighter = r.fighter();
-                     at = glm::dvec3(r.position(0), r.position(1), r.position(2)) / 65536.0;
-                     intent = glm::vec3(0); // (only the action tells the server the player got up)
-                     action = fighter.action;
-                     stun = fighter.hitStun;
-                     return true;
-                 },
-                 held, true,
-                 // §6.4: resident occupants are placed back each step (players' records are
-                 // their clients', so they keep the reported action test).
-                 [this](uint64_t who, glm::dvec3 top, float yaw, int32_t action) -> std::optional<glm::dvec3> {
-                     if (connections.count(who))
-                         return std::nullopt;
-                     for (creatures::Npc &n : npcs.npcs())
-                         if (n.fighter.id == who && n.fighter.health > 0) {
-                             n.body.place(top + glm::dvec3(0, 0, n.body.size.z / 2));
-                             n.body.velocity = glm::vec3(0);
-                             n.yaw = yaw;
-                             n.fighter.action = action;
-                             return n.body.blocks();
-                         }
-                     return std::nullopt;
-                 });
-    // Traps (alpha-open-points-1.md §1): their cycle and hits; NPCs take theirs in this step,
-    // players through section 2.
-    std::vector<creatures::HitRecord> trapHits;
-    {
-        std::vector<StaticStates::Creature> here;
-        for (const auto &[pid, c] : connections)
-            if (c->alive)
-                here.push_back({pid, glm::dvec3(c->creature.position(0), c->creature.position(1), c->creature.position(2)) / 65536.0, 0});
-        for (const creatures::Npc &n : npcs.all())
-            if (n.fighter.health > 0)
-                here.push_back({n.fighter.id, n.body.blocks(), n.fighter.controller});
-        // Attack-routine site 1: the attack routine with no attacker on each target as it is
-        // reached. A player is resolved on its record's snapshot (its client applies the hit).
-        const auto trapStrike = [&](const StaticStates::Creature &c, float damage, glm::vec3 push, bool resistance) {
-            creatures::Combatant snapshot;
-            creatures::Combatant *target = nullptr;
-            if (const auto player = connections.find(c.id); player != connections.end()) {
-                snapshot = player->second->creature.fighter();
-                snapshot.id = c.id;
-                snapshot.buffs = player->second->buffs;
-                target = &snapshot;
-            } else {
-                for (creatures::Npc &n : npcs.npcs())
-                    if (n.fighter.id == c.id)
-                        target = &n.fighter;
-            }
-            if (!target)
-                return;
-            glm::vec3 velocity(0);
-            const auto out = creatures::resolveHit(*target, velocity, nullptr,
-                                                   creatures::trapHitInput(c.at, damage, push, resistance),
-                                                   [this] { return worldRandom.draw(); });
-            trapHits.insert(trapHits.end(), out.records.begin(), out.records.end());
-        };
-        statics.traps((int32_t)dtMs, here, held,
-                      [this](glm::dvec3 at) { return world->levelAtFx((int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0)); },
-                      trapStrike, itemSounds);
-        for (const creatures::HitRecord &h : trapHits)
-            if (!connections.count(h.target))
-                onNpcs.push_back(h);
-    }
+    creatures::NpcFrame frame;
 
     if (!npcs.objects) { // physics §4.5: the creatures collide with the zones' statics
         npcs.objects = [this](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *ignored) {
@@ -1260,8 +1209,14 @@ void Server::stepWorld(float dtMs) {
             shipPlayers.push_back({c->creature.position(0), c->creature.position(1), c->creature.position(2)});
         airships.refresh(shipPlayers, zones);
     }
-    const creatures::NpcFrame frame = npcs.step(dtMs, zones, std::move(players), clockMs, (int32_t)clockDay,
-                                               block, onNpcs, {}, buffInput);
+    npcs.stepInto(dtMs, zones, std::move(players), clockMs, (int32_t)clockDay, block, frame, onNpcs, buffInput, {},
+        [&](creatures::PlayerView &actor) {
+            Connection &sender = *connections.at(actor.fighter.id);
+            if (!sender.itemRequests.empty())
+                consumeItemRequests(sender, actor, frame, block);
+        }, [&](int32_t elapsed, std::span<creatures::PlayerView> views) {
+            advanceZoneState(elapsed, views, frame, block);
+        });
     airships.step((int32_t)dtMs, true, zones, [this](int64_t key, creatures::Airships::Carried &out) {
         for (creatures::Npc &n : npcs.npcs())
             if (std::bit_cast<int64_t>(n.fighter.id) == key) {
@@ -1270,8 +1225,6 @@ void Server::stepWorld(float dtMs) {
             }
         return false; // (players' bodies are their clients'; see CLEANROOM.md)
     });
-    for (const auto &grant : frame.grants)
-        gifts.push_back(grant.serialize());
     for (const creatures::NpcFrame::Death &death : frame.deaths) // mod SDK v6
         tellMods([this, id = death.fighter.id, type = death.fighter.type, level = death.fighter.level,
                   credited = death.credited] {
@@ -1311,13 +1264,8 @@ void Server::stepWorld(float dtMs) {
         for (const auto &[player, who] : connections) {
             if (!who->alive)
                 continue;
-            for (const auto &item : missionRewards(progress.mission, who->creature.fighter().characterClass, worldRandom)) {
-                const auto record = creatures::toRecord(item);
-                std::array<uint8_t, 288> gift{};
-                std::memcpy(gift.data(), &player, 8);
-                std::memcpy(gift.data() + 8, record.data(), 280);
-                gifts.push_back(gift);
-            }
+            for (const auto &item : missionRewards(progress.mission, who->creature.fighter().characterClass, worldRandom))
+                frame.grants.push_back({player, creatures::toRecord(item)});
         }
     };
     for (const auto &progress : frame.missions)
@@ -1351,7 +1299,7 @@ void Server::stepWorld(float dtMs) {
     // the sound at the striker kept the pitch drawn at the strike.
     for (const auto &impact : frame.craters)
         if (breakAround(rawBlocks(impact.centre), impact.radius, CellRounding::Truncate, bursts) && impact.removes)
-            itemSounds.push_back({impact.striker, 2, impact.pitch, 1});
+            frame.sounds.push_back({impact.striker, 2, impact.pitch, 1});
 
     // Server §6.4: what the dead leave behind, sent in section 7 with their zones.
     for (const creatures::NpcFrame::Death &death : frame.deaths)
@@ -1389,15 +1337,13 @@ void Server::stepWorld(float dtMs) {
         if (!connections.count(record.target) && emission.applyLocally)
             shotHits.push_back(record);
     }
-    for (const creatures::HitRecord &h : trapHits)
-        if (connections.count(h.target))
-            outgoingHits.push_back(h);
     for (size_t index = 0; index < fighters.size(); index++) {
         who[index]->buffs = std::move(fighters[index].buffs);
         who[index]->relations = std::move(fighters[index].relations);
         who[index]->linkedId = fighters[index].linkedId;
         who[index]->linkedItemSnapshot = fighters[index].linkedItem.retained;
         who[index]->creature.setLinkedItem(fighters[index].linkedItem.source);
+        who[index]->creature.setHealth(fighters[index].health);
     }
 
     // World items §3.5: changed zones are listed to everyone; interaction §4.5: changed statics
@@ -1410,6 +1356,11 @@ void Server::stepWorld(float dtMs) {
     for (const auto &key : edits.takeChanged()) // block edits §3 step 4
         modifiedZones.insert(key);
     const auto objectsChanged = std::exchange(placedChanged, {});
+    frame.sounds.insert(frame.sounds.end(), shot.sounds.begin(), shot.sounds.end());
+    std::vector<std::array<uint8_t, 288>> gifts;
+    gifts.reserve(frame.grants.size());
+    for (const auto &grant : frame.grants)
+        gifts.push_back(grant.serialize());
     for (auto &[id, c] : connections) {
         WorldUpdate &out = c->outgoing;
         for (const auto &event : frame.relationships) {
@@ -1432,11 +1383,6 @@ void Server::stepWorld(float dtMs) {
             const Hit h = Hit::from(r);
             out.sections[1].emplace_back(h.bytes.begin(), h.bytes.end());
         }
-        for (const Hit &h : healHits)
-            out.sections[1].emplace_back(h.bytes.begin(), h.bytes.end());
-        std::vector<creatures::SoundEvent> sounds = frame.sounds;
-        sounds.insert(sounds.end(), shot.sounds.begin(), shot.sounds.end());
-        sounds.insert(sounds.end(), itemSounds.begin(), itemSounds.end());
         for (const auto &g : gifts) // section 9: the gifts, for the named player's client
             out.sections[8].emplace_back(g.begin(), g.end());
         // Packets §4.4: every copy of a request is answered. The first copy of each goes through
@@ -1534,7 +1480,7 @@ void Server::stepWorld(float dtMs) {
         }
         const glm::vec3 meBlocks((float)me[0] * (1.f / 65536.f), (float)me[1] * (1.f / 65536.f),
                                  (float)me[2] * (1.f / 65536.f));
-        for (const creatures::SoundEvent &s : sounds) {
+        for (const creatures::SoundEvent &s : frame.sounds) {
             const glm::vec3 d = glm::vec3((float)s.position.x, (float)s.position.y, (float)s.position.z) - meBlocks;
             if (!(d.x * d.x + d.y * d.y + d.z * d.z < 40000.f))
                 continue;
@@ -1642,7 +1588,7 @@ void Server::writeBlocks(const std::vector<BlockEdit> &list, bool recorded) {
     }
 }
 
-void Server::placeObject(const CreatureRecord &sender) {
+void Server::placeObject(const CreatureRecord &sender, const creatures::Body &body) {
     const int32_t number = (int8_t)sender.bytes[0x17d];
     const char *key = blueprintKey(number);
     if (!key)
@@ -1657,8 +1603,7 @@ void Server::placeObject(const CreatureRecord &sender) {
         return; // (the install lacks the model)
     glm::vec3 aim;
     std::memcpy(&aim, &sender.bytes[0x150], 12);
-    const int64_t position[3] = {sender.position(0), sender.position(1), sender.position(2)};
-    const auto base = placementBase(position, aim);
+    const auto base = placementBase(body.position, aim);
     const auto blocks = placeBlueprint(model, base, (int8_t)sender.bytes[0x17c],
                                        [this](int32_t x, int32_t y, int32_t z) { return zones.read(x, y, z); });
     std::vector<BlockEdit> recorded, air;

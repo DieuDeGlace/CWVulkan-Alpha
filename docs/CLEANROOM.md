@@ -3081,3 +3081,35 @@ The engine retains an approximation for action 79's separate meter branch.
 Action 105's timing is present. Its physical input producer and position effect,
 pet-food transfers at action entry, full native device/UI admission, crosshair
 publication timing and hardware controller acceptance remain open.
+
+## Dedicated packet-6 sender turns (2026-11-17)
+
+An isolated source author finalized [the sender-turn contract](specs/alpha-packet6-sender-turn.md)
+(`3918a2529fcffa2972ade6b1245e89a3e81da2df20461b1768b481c3d33c05e5`).
+A fresh source-only author resolved the bomb constructor conflict in
+[the bomb-default ruling](specs/alpha-rulings-packet6-bomb-default.md)
+(`0ac4d4ecf8cad43c9d64e96048ec433635d57602e355033e1c9ede28f507570e`).
+The clean team verified both hashes and read both held documents in full.
+The ruling establishes 500 live health, the full signed item level and five
+appearance draws. It supersedes the sender-turn contract's initial health value.
+
+The dedicated world consumes each live player's whole mixed FIFO at its signed
+actor key, before the health clamp and resident buff countdown. NPC removal
+rebinds surviving actor entries in place. A freshly placed bomb retains the
+sender's raw position and first receives a fuse turn in a later sweep under
+ordinary ID allocation. Inn rest changes the current clock, day and surviving
+actors before subsequent requests. The always-on quest rewards use an
+extension-owned random stream initialized from the server seed.
+
+World-item timers and static state advance after incoming hits and buffs and
+before spawn timers and the actor walk. Pickup commits the gift and the pitch
+draw before erasing the indexed item. Chest units use Y, X and discarded angle
+draws followed by the shared drop helper's timer and conditional angle. Drops
+use the live actor centre and emit their attempt sound. Static requests capture
+ordered section-six snapshots. The server retains its supplemental changed-zone
+and requested-zone snapshots for its existing replication path.
+
+Active zones retain the engine's zone-key order. Trap target snapshots, remote
+player movement ownership and blueprint terrain finalization retain engine
+adapters. Inherited native-client playback and the new offline sender-turn path
+remain separate reconciliation and acceptance work.

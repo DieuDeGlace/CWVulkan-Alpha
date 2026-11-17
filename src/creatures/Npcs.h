@@ -120,6 +120,7 @@ struct PlayerView {
     bool local = false; // distinguished controlled creature; absent in a dedicated world
     const Appearance *appearance = nullptr;
     const creation::Configuration *creationConfig = nullptr;
+    std::array<int32_t, 3> home{-1, -1, 0};
 };
 
 // What a step of creatures did.
@@ -239,7 +240,9 @@ class Npcs {
     void stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                   int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming = {},
                   const std::vector<BuffEvent> &buffInput = {},
-                  const std::function<void(int32_t)> &advanceControlled = {});
+                  const std::function<void(int32_t)> &advanceControlled = {},
+                  const std::function<void(PlayerView &)> &consumeItemRequests = {},
+                  const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState = {});
     // Local player dispatch belongs between beginActionUpdate/endActionUpdate,
     // before movement. Carry its events into step and disable later strikes.
     void dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame);
@@ -287,6 +290,7 @@ class Npcs {
     // Server simulation §8 kind 2 (S 0xd7ae0), talk §2.7: a night at the inn deletes every NPC
     // that is not a pet and whose home spawn is loaded, setting that spawn's countdown to 0, so
     // it comes back from its spawn. Pets, bombs and creatures without a loaded spawn stay.
+    bool innRestAvailable(const std::array<int32_t, 3> &home) const; // during an actor turn
     void restAll(const worldgen::WorldMap &map);
     // Server simulation §2.1: a zone's spawn objects go with the zone (its countdowns, schedule
     // positions, mission adjustments and extra spawns); a regenerated zone starts afresh.
@@ -357,9 +361,11 @@ class Npcs {
     // 500. Each step its health is held to 100 P(L) and burns by 0.025 per millisecond; it
     // goes off on its first dead step (§4). Its id is one below the smallest in use. Returns it.
     uint64_t placeBomb(glm::dvec3 at, int32_t level);
+    uint64_t placeBombFixed(const int64_t (&position)[3], int32_t level);
     // Pets §13 (packet 6 kind 8, the T key): the owner's pet stops fighting and, more than
     // 200 blocks away, comes to `at`.
     void callPet(Combatant &owner, glm::dvec3 at);
+    void callPetFixed(Combatant &owner, const int64_t (&position)[3]);
     // The owner's pet, or null.
     const Npc *petOf(const Combatant &owner) const;
     const std::deque<Npc> &all() const { return list; }
@@ -457,8 +463,8 @@ class Npcs {
     int draw(); // rand(): 0..32767
     worldgen::Random &random() { return sharedRandom ? *sharedRandom : privateRandom; }
 
-    // Appending during the live pass preserves references to existing creatures.
-    // Bulk removals occur outside a live walk. Refresh after erasure before reusing the index.
+    // Appending preserves references to existing creatures. Erasing from the
+    // middle requires rebinding their entries before the actor walk continues.
     std::deque<Npc> list;
     struct ActorEntry {
         Npc *npc = nullptr;
@@ -474,6 +480,7 @@ class Npcs {
     bool actorLookupActive = false;
     bool namedWorld = false;
     void appendNpc(Npc npc);
+    void rebindNpcEntries();
     void refreshActors(std::span<PlayerView> players);
     ActorEntry lookupActor(uint64_t key, std::span<PlayerView> players);
     void propagateThreat(Combatant &source, const ActorEntry &target, NpcFrame &frame);

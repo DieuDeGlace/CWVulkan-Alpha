@@ -4315,21 +4315,25 @@ int main() {
         Body body;
         float yaw = 0;
         std::vector<SoundEvent> sounds;
-        const int values[] = {0, 32767, 16383, 32767, 0, 0};
+        const int values[] = {0, 32767, 16383, 12, 32767, 32767, 0, 32767, 299, 0};
         int drawn = 0;
-        statics.use(zone, 0, me, body, yaw, items, 0, ground, [&] { return values[drawn++ % 6]; }, sounds);
-        same(drawn, 6, "three draws per unit");
+        statics.use(zone, 0, me, body, yaw, items, 0, ground, [&] { return values[drawn++ % 10]; }, sounds);
+        same(drawn, 10, "five draws per unit in the loaded drop zone");
         const auto &list = *items.zone(0, 0);
         same(list.size(), 2, "one item per unit");
         same(list[0].blocks().y, 52, "first draw is the y offset (2 - 4 x 0)", 1e-3);
         same(list[0].blocks().x, 48, "second draw is the x offset (2 - 4 x 1)", 1e-3);
-        same(list[0].angle, 180, "third draw is the angle", 0.02);
+        same(list[0].landingMs, 512, "the fourth draw supplies the timer");
+        same(list[0].angle, 360, "the fifth draw replaces the caller's angle", 0.02);
         same(list[1].blocks().y, 48, "next unit: y", 1e-3);
         same(list[1].blocks().x, 52, "next unit: x", 1e-3);
-        same(list[1].angle, 0, "next unit: angle");
-        statics.use(zone, 1, me, body, yaw, items, 0, ground, [] { return 0; }, sounds);
+        same(list[1].landingMs, 799, "next unit: timer");
+        same(list[1].angle, 0, "next unit: final angle");
+        std::vector<std::array<uint8_t, 88>> snapshots;
+        statics.use(zone, 1, me, body, yaw, items, 0, ground, [] { return 0; }, sounds, &snapshots);
         same((*statics.zone(0, 0))[1].state, 0, "the lever opens");
         same((*statics.zone(0, 0))[2].state, 0, "its partner follows the lever's state");
+        same(snapshots.size() == 2 && snapshots[0] == snapshots[1], 1, "link snapshots both identify the lever");
     }
 
     // Loot rolls §1, §2 and §5: the rolls' vectors and the goblin's two worked streams.

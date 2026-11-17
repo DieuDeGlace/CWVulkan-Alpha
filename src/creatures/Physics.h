@@ -13,6 +13,7 @@
 // caller's ObjectTest scans zones), the debug speed (S = 20) and the dodge-cancel exception
 // bytes (§3.2, unresolved).
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <functional>
 #include <set>
@@ -65,6 +66,14 @@ struct VoxelObstacles {
     // voxels out along the nearest free horizontal axis (objects in key order).
     virtual void unstick(int64_t position[3], glm::vec3 size) = 0;
 };
+
+// The item and actor range tests convert the difference, not the coordinates.
+inline float fixedDistanceSquared(const int64_t *a, const int64_t *b) {
+    float d[3];
+    for (int axis = 0; axis < 3; ++axis)
+        d[axis] = (float)std::bit_cast<int64_t>(uint64_t(a[axis]) - uint64_t(b[axis])) * (1.f / 65536.f);
+    return (d[0] * d[0] + d[1] * d[1]) + d[2] * d[2];
+}
 
 struct Body {
     int64_t position[3] = {0, 0, 0}; // centre of the box, 1/65536 blocks

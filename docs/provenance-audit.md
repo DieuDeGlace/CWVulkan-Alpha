@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 29 and the rulings. The 235 tracked contracts
-comprise 176 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 30 and the rulings. The 237 tracked contracts
+comprise 178 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -80,6 +80,8 @@ Batch 28 covers `alpha-creature-update-phases.md`,
 `alpha-client-frame-world-step-order.md` and `alpha-world-random-stream-boundaries.md`.
 Batch 29 covers `alpha-client-action-input-phase.md`,
 `alpha-client-action-binding-producer.md` and `alpha-rulings-action-99-lens.md`.
+Batch 30 covers `alpha-packet6-sender-turn.md` and
+`alpha-rulings-packet6-bomb-default.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -205,6 +207,7 @@ Batch 29 covers `alpha-client-action-input-phase.md`,
 | `alpha-open-points-8.md` | A | 291 | 0 |
 | `alpha-open-points-9.md` | A | 114 | 0 |
 | `alpha-particles.md` | A | 607 | 0 |
+| `alpha-packet6-sender-turn.md` | A | 439 | 0 |
 | `alpha-path-expansion-order.md` | A | 124 | 1 |
 | `alpha-path-following-update.md` | A | 108 | 2 |
 | `alpha-path-reroot-reference.md` | A | 14 | 0 |
@@ -248,6 +251,7 @@ Batch 29 covers `alpha-client-action-input-phase.md`,
 | `alpha-rulings-manacubebar-sequence.md` | A | 186 | 0 |
 | `alpha-rulings-melee-reach.md` | A | 71 | 0 |
 | `alpha-rulings-mission-rewards.md` | A | 172 | 0 |
+| `alpha-rulings-packet6-bomb-default.md` | A | 112 | 0 |
 | `alpha-rulings-pose-49-50-mount.md` | A | 216 | 0 |
 | `alpha-rulings-pose-69-arc.md` | A | 179 | 0 |
 | `alpha-rulings-rendering-clouds-lights.md` | A | 487 | 1 |

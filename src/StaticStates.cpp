@@ -287,61 +287,72 @@ void StaticStates::set(const worldgen::StaticObject &o, StaticState &s, uint8_t 
 
 void StaticStates::use(const worldgen::Zone &zone, int32_t index, creatures::Combatant &c, creatures::Body &body,
                        float &yaw, WorldItems &items, int32_t day, const creatures::BlockType &block,
-                       const std::function<int()> &draw, std::vector<creatures::SoundEvent> &sounds) {
+                       const std::function<int()> &draw, std::vector<creatures::SoundEvent> &sounds,
+                       std::vector<std::array<uint8_t, 88>> *snapshots, bool authoritative) {
+    if (c.action == 79)
+        c.action = 0, c.stealth = 0;
     const auto it = zones.find({zone.zx, zone.zy});
     if (it == zones.end() || index < 0 || index >= (int32_t)it->second.size() || index >= (int32_t)zone.statics.size())
         return;
-    // Step 1: using anything ends sneaking.
-    if (c.action == 79)
-        c.action = 0, c.stealth = 0;
     const worldgen::StaticObject &o = zone.statics[index];
     StaticState &s = it->second[index];
     const Key key{zone.zx, zone.zy};
+    const auto publish = [&] {
+        changed.insert(key);
+        if (snapshots)
+            snapshots->push_back(record(zone, index));
+    };
     // Step 4: seats and beds.
     const bool seat = o.kind == 16 || o.kind == 18, bed = o.kind == 19 || o.kind == 68 || o.kind == 69;
     if (seat || bed) {
-        if (s.occupant == 0 && (c.action == 0 || c.action == 83 || c.action == 84)) {
+        if (s.occupant != 0 || (c.action != 0 && c.action != 83 && c.action != 84))
+            return;
+        if (authoritative) {
             s.occupant = c.id;
-            body.place(glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0 +
-                       glm::dvec3(0, 0, body.size.z / 2 + o.scale[2]));
+            const int64_t lift = (int64_t)((body.size.z * 0.5f + o.scale[2]) * 65536.f);
+            body.position[0] = o.x;
+            body.position[1] = o.y;
+            body.position[2] = std::bit_cast<int64_t>(uint64_t(o.z) + uint64_t(lift));
             body.velocity = glm::vec3(0);
-            yaw = 90.f * (float)(seat ? o.rotation + 2 : o.rotation);
+            yaw = (float)(90 * (seat ? o.rotation + 2 : o.rotation));
             c.action = seat ? 83 : 84;
-            c.actionMs = 0;
-            changed.insert(key);
+            publish();
         }
         body.intent = glm::vec3(0);
         return;
     }
-    // Step 5: chests drop their contents, then doors, windows, levers and chests toggle.
+    if (!authoritative)
+        return;
     if (o.kind == 10 && s.state == 2) {
-        // One world item per unit (each content record is one), with exactly three draws in
-        // the order y offset, x offset, angle.
-        const glm::dvec3 at = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
+        // Chest caller draws Y, X, then an angle the shared drop helper will
+        // replace. The helper draws the timer, then the angle if the zone exists.
         for (const creatures::ItemRecord &item : s.contents) {
-            const float ry = (float)draw() / 32767.f;
-            const float rx = (float)draw() / 32767.f;
-            const float angle = 360.f * ((float)draw() / 32767.f);
-            items.dropAt(item, at + glm::dvec3(2 - 4 * rx, 2 - 4 * ry, 0), angle, day, block);
+            const float y = 2.f - (float)draw() * 4.f / 32767.f;
+            const float x = 2.f - (float)draw() * 4.f / 32767.f;
+            (void)draw();
+            const int64_t at[3] = {std::bit_cast<int64_t>(uint64_t(o.x) + uint64_t((int64_t)(x * 65536.f))),
+                                   std::bit_cast<int64_t>(uint64_t(o.y) + uint64_t((int64_t)(y * 65536.f))), o.z};
+            items.drop(item, at, 1.f, day, block, draw);
         }
         s.contents.clear();
     }
     switch (o.kind) {
     case 1: case 2: case 3: case 9: case 10:
         set(o, s, s.state == 0 ? 1 : 0, sounds);
-        changed.insert(key);
+        publish();
         break;
     default:
         return;
     }
     // A lever then sets its partner, the link index +0x178 in the same zone, to closed while
-    // the lever is closed, else open. (Natively the second section-6 record repeats the
-    // lever's own triple and static, not the partner's; the engine publishes changed zones
-    // whole, U-2: no generator is known to set a link.)
+    // the lever is closed, else open. Both snapshots carry the lever's own triple and state.
     if (o.kind == 9 && o.descriptorIndex >= 0 && o.descriptorIndex < (int32_t)zone.statics.size() &&
-        o.descriptorIndex < (int32_t)it->second.size())
+        o.descriptorIndex < (int32_t)it->second.size()) {
         set(zone.statics[(size_t)o.descriptorIndex], it->second[(size_t)o.descriptorIndex], s.state != 0 ? 1 : 0,
             sounds);
+        if (snapshots)
+            snapshots->push_back(record(zone, index));
+    }
 }
 
 void StaticStates::step(int32_t dt, const Occupant &where, const std::map<Key, const worldgen::Zone *> &held,

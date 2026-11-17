@@ -1014,7 +1014,7 @@ int main() {
               }),
               "picking it up gives it back");
         check(!gifts.empty() && gifts[0][0] == 3 && gifts[0][0x0d] == 1, "the gift is the sword");
-        // Server simulation §8 kind 1: drinking a potion is answered by a heal hit from id 0.
+        // Mixed requests leave the sender FIFO intact across the connection.
         {
             creatures::ItemRecord potion{};
             potion[0] = 1, potion[1] = 1;
@@ -1023,16 +1023,36 @@ int main() {
             std::memcpy(drink.data(), potion.data(), potion.size());
             drink[0x128] = 1;
             a.takeHits();
+            a.takeSounds();
             a.sendItemRequest(drink);
-            std::optional<Hit> heal;
+            auto rejected = pick;
+            const int32_t invalidIndex = -1;
+            std::memcpy(&rejected[0x120], &invalidIndex, sizeof invalidIndex);
+            a.sendItemRequest(rejected);
+            auto secondDrop = drop;
+            secondDrop[0x0d] = 121;
+            a.sendItemRequest(secondDrop);
+            creatures::setItemLevel(potion, 9);
+            std::memcpy(drink.data(), potion.data(), potion.size());
+            a.sendItemRequest(drink);
+            std::vector<Hit> heals;
+            std::vector<int32_t> sounds;
+            const glm::vec3 senderPosition((float)ra.position(0) / 65536.f, (float)ra.position(1) / 65536.f,
+                                           (float)ra.position(2) / 65536.f);
             check(waitFor([&] {
                       for (const Hit &h : a.takeHits())
                           if (h.target() == a.id() && h.amount() < 0)
-                              heal = h;
-                      return heal.has_value();
+                              heals.push_back(h);
+                      for (const auto &sound : a.takeSounds())
+                          if (sound.position == senderPosition && (sound.id == 44 || sound.id == 45 || sound.id == 57))
+                              sounds.push_back(sound.id);
+                      return heals.size() >= 2 && sounds.size() >= 3;
                   }),
-                  "a potion's heal hit reaches the drinker");
-            check(heal && heal->attacker() == 0 && heal->kind() == 0, "the heal hit's attacker id is 0");
+                  "mixed requests deliver the heal hits and ordered sounds");
+            check(heals.size() == 2 && heals[0].attacker() == 0 && heals[1].attacker() == 0 &&
+                  heals[0].kind() == 0 && heals[1].kind() == 0 && heals[0].amount() > heals[1].amount(),
+                  "the two potions emit ordered negative heals with attacker id zero");
+            check(sounds == std::vector<int32_t>{44, 57, 44}, "rejected pickup makes no sound between two heals and a drop");
         }
         // Block edits §6: a kind-7 request stamps the slab in front of Alice; its records come
         // in section 1 as the step makes them, and again whole when her zone is asked for.

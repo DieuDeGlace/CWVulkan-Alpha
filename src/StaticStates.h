@@ -82,7 +82,8 @@ class StaticStates {
     // `sounds`; a chest's contents are dropped into `items`.
     void use(const worldgen::Zone &zone, int32_t index, creatures::Combatant &c, creatures::Body &body, float &yaw,
              WorldItems &items, int32_t day, const creatures::BlockType &block, const std::function<int()> &draw,
-             std::vector<creatures::SoundEvent> &sounds);
+             std::vector<creatures::SoundEvent> &sounds,
+             std::vector<std::array<uint8_t, 88>> *snapshots = nullptr, bool authoritative = true);
     // §6.3 timers and §6.4 occupants: a seat is freed when its occupant has gone or is stunned
     // (+0x12C > 0); otherwise a seat or bed occupant is placed back on it with action 83 or 84,
     // then freed when more than 4 blocks (squared 16) away, walking (+0x40 non-zero) or neither

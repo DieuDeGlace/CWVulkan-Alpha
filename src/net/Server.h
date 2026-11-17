@@ -150,6 +150,10 @@ class Server {
     void generationLoop(); // net server §2.2
     void unloadDistantZones(const std::vector<std::pair<int32_t, int32_t>> &requests); // under the lock
     void stepWorld(float dtMs); // §3, under the lock
+    void advanceZoneState(int32_t elapsed, std::span<creatures::PlayerView> players, creatures::NpcFrame &frame,
+                          const creatures::BlockType &block);
+    void consumeItemRequests(Connection &sender, creatures::PlayerView &actor, creatures::NpcFrame &frame,
+                             const creatures::BlockType &block);
     std::vector<std::pair<int32_t, int32_t>> playerZones() const; // under the lock
     void drop(Connection &c);
     void saveClock();
@@ -165,7 +169,7 @@ class Server {
     bool breakAround(const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
                      std::vector<creatures::Burst> &bursts);
     // §6: a placement from packet 6 kind 7, by the sender's record.
-    void placeObject(const CreatureRecord &sender);
+    void placeObject(const CreatureRecord &sender, const creatures::Body &body);
 
     // Net server §6: saves every held zone the step changed (or that holds block edits).
     void saveHeldZones(); // under the lock
@@ -197,6 +201,7 @@ class Server {
     // Dedicated-world engine policy: one stream, serialized by lock. This does
     // not certify original-server RNG/thread/startup behavior.
     worldgen::Random worldRandom{1};
+    worldgen::Random questRandom{options.seed}; // required engine extension has its own stream
     creatures::Npcs npcs{worldRandom};
     creatures::Airships airships; // world objects (alpha-world-objects.md)
     // Projectiles §2: the NPCs' projectiles (players' own are simulated by their clients), and
@@ -218,8 +223,7 @@ class Server {
     void questChanged(uint64_t player) { questBooksChanged.insert(player), questBooksUnsaved.insert(player); }
     // Each player's book lives in the world save as `av_quests_<character name>`: read when the
     // player's name is first known, written when it changes.
-    void questTalk(uint64_t player, uint64_t giver, glm::dvec3 at, std::vector<std::array<uint8_t, 288>> &gifts,
-                   std::vector<creatures::SoundEvent> &sounds);
+    void questTalk(uint64_t player, uint64_t giver, glm::dvec3 at, creatures::NpcFrame &frame);
     void questFree(uint64_t player, uint32_t quest, size_t index);
     void tell(uint64_t player, const std::string &line); // a chat line to one player
     std::set<std::pair<int32_t, int32_t>> missionRegionsRead, zonesForMissions;

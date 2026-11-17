@@ -121,6 +121,70 @@ int main() {
     {
         worldgen::WorldMap world;
         world.add(std::make_shared<worldgen::Zone>(0, 0));
+        worldgen::Random random{17};
+        Npcs npcs{random};
+        Npc quest = fixture(4);
+        quest.quest = 191;
+        const auto swingingNpc = [](uint64_t key) {
+            Npc npc = fixture(key);
+            npc.fighter.equipment[MAIN_HAND] = {3, GREATSWORD, 1, 0, 1, 0};
+            npc.fighter.action = 57;
+            return npc;
+        };
+        npcs.npcs().push_back(swingingNpc(UINT64_MAX));
+        npcs.npcs().push_back(std::move(quest));
+        npcs.npcs().push_back(swingingNpc(5));
+
+        Combatant first, second;
+        first.id = 1;
+        first.health = 0;
+        first.buffs = {{3, 0, 1000}};
+        second.id = 6;
+        Body firstBody, secondBody;
+        firstBody.place({10, 10, 3});
+        secondBody = firstBody;
+        firstBody.position[2] = (int64_t(1) << 53) + 1;
+        NpcFrame frame;
+        std::vector<uint64_t> visited;
+        uint64_t bomb = 0;
+        npcs.stepInto(20, world, {{second, secondBody, 0, 0, false, true},
+                                 {first, firstBody, 0, 0, false, true}},
+            1000, 0, floorBlock, frame, {}, {}, {}, [&](PlayerView &player) {
+                visited.push_back(player.fighter.id);
+                if (player.fighter.id == first.id) {
+                    check(first.health == 0 && first.buffs[0].timeMs == 1000 &&
+                          npcs.all()[0].fighter.buffs[0].timeMs == 980,
+                          "requests precede living admission at the sender key after earlier actors have advanced");
+                    check(random.count() == 1, "the preceding NPC's swing uses the first draw");
+                    first.health = maxHealth(first) + 1.f;
+                    bomb = npcs.placeBombFixed(player.body.position, -19);
+                    npcs.removeQuest(191);
+                } else {
+                    check(npcs.all().size() == 3 && npcs.all()[1].fighter.id == 5 &&
+                          npcs.all()[1].fighter.buffs[0].timeMs == 980,
+                          "erasing a future quest actor preserves the successor and rebinds moved survivors");
+                    check(first.health == maxHealth(first) && first.buffs[0].timeMs == 980,
+                          "the preceding sender already clamped and ran its resident countdown");
+                    check(random.count() == 7, "the bomb's five draws are between the two NPC swing draws");
+                }
+            });
+        check(visited == std::vector<uint64_t>{first.id, second.id} && npcs.all().back().fighter.id == bomb &&
+              bomb == uint64_t(-2) && npcs.all().back().fighter.health == 500.f &&
+              npcs.all().back().fighter.level == -19 && maxHealth(npcs.all().back().fighter) == 0.f &&
+              npcs.all().back().body.position[2] == firstBody.position[2],
+              "reverse player storage still consumes in signed order and defers a newly inserted earlier bomb");
+        worldgen::Random expected{17};
+        const float firstPitch = (float)expected.draw() * 0.1f / 32767.f + 1.f;
+        for (int draw = 0; draw < 5; ++draw)
+            (void)expected.draw();
+        const float secondPitch = (float)expected.draw() * 0.1f / 32767.f + 1.f;
+        check(frame.sounds.size() == 2 && frame.sounds[0].sound == 17 && frame.sounds[0].pitch == firstPitch &&
+              frame.sounds[1].sound == 17 && frame.sounds[1].pitch == secondPitch,
+              "swing pitches retain their exact positions in the shared random stream");
+    }
+    {
+        worldgen::WorldMap world;
+        world.add(std::make_shared<worldgen::Zone>(0, 0));
         Npcs npcs;
         Npc inert = fixture(2);
         inert.fighter.controller = 6;

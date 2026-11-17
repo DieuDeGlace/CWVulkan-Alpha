@@ -40,9 +40,8 @@ const Npc *Npcs::petOf(const Combatant &owner) const {
 uint64_t Npcs::freeId() const {
     uint64_t smallest = 0;
     if (actorLookupActive) {
-        for (const auto &[key, actor] : actors)
-            if ((actor.npc || actor.player) && ActorKeyLess{}(key, smallest))
-                smallest = key;
+        if (!actors.empty() && ActorKeyLess{}(actors.begin()->first, smallest))
+            smallest = actors.begin()->first;
     } else {
         for (const Npc &n : list)
             if (ActorKeyLess{}(n.fighter.id, smallest))
@@ -271,21 +270,22 @@ void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
 }
 
 void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
-    // §13 step 2, server simulation §8 kind 8: the player's hit-counter map and target are
-    // cleared, so the pet's Combat has nothing left to fight.
+    const int64_t fixed[3] = {(int64_t)(at.x * 65536.0), (int64_t)(at.y * 65536.0), (int64_t)(at.z * 65536.0)};
+    callPetFixed(owner, fixed);
+}
+
+void Npcs::callPetFixed(Combatant &owner, const int64_t (&position)[3]) {
+    const ActorEntry pet = lookupActor(owner.linkedId, {});
+    if (Combatant *fighter = pet.combat()) {
+        fighter->relations.threats.clear();
+        if (pet.npc)
+            pet.npc->target = 0; // cached engine view of the cleared threat state
+        Body &body = *pet.body();
+        if (fixedDistanceSquared(body.position, position) > 40000.f)
+            std::copy_n(position, 3, body.position);
+    }
     owner.relations.counts.clear();
     owner.relations.contact = 0;
-    if (Npc *pet = findNpc(owner.linkedId); pet && pet->fighter.controller == 5 && pet->fighter.ownerId == owner.id) {
-        pet->fighter.relations.threats.clear();
-        pet->target = 0;
-        // Correction 24: the 3-D squared distance in blocks, single precision, above 40,000.
-        float d[3];
-        for (int k = 0; k < 3; k++)
-            d[k] = float(std::bit_cast<int64_t>(uint64_t(pet->body.position[k]) - uint64_t(int64_t(at[k] * 65536.0)))) *
-                   (1.f / 65536.f);
-        if ((d[0] * d[0] + d[1] * d[1]) + d[2] * d[2] > 40000.f)
-            pet->body.place(at);
-    }
 }
 
 // §12: the owner's kill experience goes to a living pet, whose item follows.
