@@ -955,6 +955,13 @@ Differences from the Steam engine that shape the plan:
   dodgers) for 25 P(L), doubled on a critical, as a magic area hit with knock-back (10 u, 2.5).
   It glows warm while drawn; ids below zero. The server's kind 1 also heals with other items.
   CreatureTests check the fuse, one blast, the hit and its push; the bomb's burst is in the particles item.
+- [x] Death pass order (`alpha-pets-bombs.md` §4 and §11, `alpha-server-simulation.md` §3).
+  After incoming hits and pet maintenance, advance the published death timer using
+  the current step duration. Explode in signed actor order, return eligible pets
+  and remove expired corpses before activation and living turns. A fuse death waits
+  until the following step, and an incoming fatal hit can reach the current pass.
+- [ ] Bomb request and terrain timing. Place item-request bombs during the player's
+  actor turn and apply blast voxel removal before the next blast or actor visit.
 - [ ] Multiplayer, rest: testing against original Alpha clients. Against the original
   Server.exe (2026-11-02, a temp copy of the owner's install): AlphaVulkan clients join ("Client
   version: 3", "Player 0 joined"), take its seed and clock, see its creatures (10 near the
@@ -1019,16 +1026,17 @@ Differences from the Steam engine that shape the plan:
   the engine, server, AlphaSetup, examples, SDK, player docs and licences, with
   SHA-256 sums, into a new timestamped directory/archive under `dist/`. Existing
   packages are retained. Release acceptance/provenance gates remain open.
-- [ ] Specification provenance gate (`docs/provenance-audit.md`): 132 held and recorded, 61
-  held without a recorded hash, 20 inherited without a held status (65 re-certified so
-  far; 5 reclassified as non-contract documents). Each B/C document is re-certified by a fresh source-only author and re-read by the
-  implementer before release.
+- [ ] Specification provenance gate (`docs/provenance-audit.md`). The audit lists
+  the current remaining B/C documents. A fresh source-only author re-certifies each
+  against Alpha evidence, then the clean team reads the full held text and records its hash.
 - [x] Setup: when no Alpha install is found, a folder picker asks for it (checked for Cube.exe and
   the data files) and the choice is written to [Game] Path in AlphaVulkan.ini.
 - [x] Owner-content tool: AlphaSetup identifies the supported executable, checks
   required stores/fonts/interface files, validates all records, registers the
   install and optionally extracts a new private cache. OwnerContentTests checks
   Unicode paths, decoded output, overwrite rejection and unchanged original hashes.
+  Test copies go into a unique temporary directory that is cleaned up on normal
+  completion or a caught error.
 - [x] GitHub-safe check: `tools/check-tree.ps1` reports game content and binaries outside build
   and dist, decompiler-style names and own-machine paths. Publication retains these
   exclusions and is separate from beta acceptance.

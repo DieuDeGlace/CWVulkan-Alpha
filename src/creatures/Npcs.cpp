@@ -314,37 +314,24 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     appendNpc(std::move(npc));
 }
 
-void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs,
-                    int32_t day, float dtMs) {
-    // The production engine clock supplies an in-range integer millisecond
-    // value. Keep the native two-query caller relation explicit in the kernel.
-    const std::function<int32_t()> readClock = [&] { return int32_t(timeOfDayMs); };
-    std::set<std::pair<int32_t, int32_t>> active;
-    for (const PlayerView &p : players) {
-        const glm::dvec3 at = p.body.blocks();
-        const int32_t zx = worldgen::floorDiv((int32_t)std::floor(at.x), worldgen::ZONE);
-        const int32_t zy = worldgen::floorDiv((int32_t)std::floor(at.y), worldgen::ZONE);
-        for (int32_t i = -1; i <= 1; i++)
-            for (int32_t j = -1; j <= 1; j++)
-                if (map.zones().count({zx + i, zy + j}))
-                    active.insert({zx + i, zy + j});
+Npcs::SpawnState &Npcs::spawnState(const std::shared_ptr<const worldgen::Zone> &zone, size_t index) {
+    SpawnState &state = spawns[{zone->zx, zone->zy, index}];
+    if (state.sourceZone.lock() != zone) {
+        state.refreshed.reset();
+        state.sourceZone = zone;
     }
-    // Engine choice: native visits the active zones in their objects' memory-address order
-    // (server simulation §3 step 2, unresolved); the engine visits them in ascending (zx, zy),
-    // which fixes the cross-zone order of activation draws.
+    return state;
+}
+
+void Npcs::advanceSpawnTimers(const worldgen::WorldMap &map, const ActiveZones &active, double timeOfDayMs,
+                             float dtMs) {
     for (const auto &key : active) {
         const auto &zone = map.zones().at(key);
         const auto extra = extras.find(key);
         const size_t base = zone->spawns.size();
         const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
-        const auto context = descriptorContext ? descriptorContext(key.first, key.second) :
-                                                std::optional<activation::Context>{};
         for (size_t i = 0; i < total; i++) {
-            SpawnState &state = spawns[{key.first, key.second, i}];
-            if (state.sourceZone.lock() != zone) {
-                state.refreshed.reset();
-                state.sourceZone = zone;
-            }
+            SpawnState &state = spawnState(zone, i);
             const worldgen::Spawn &s = state.refreshed ? *state.refreshed :
                 i < base ? zone->spawns[i] : extra->second.second[i - base];
             // Server simulation §3 step 7: schedule entries whose threshold has come overwrite the
@@ -353,6 +340,24 @@ void Npcs::activate(const worldgen::WorldMap &map, const std::vector<PlayerView>
                 if (timeOfDayMs >= stop.timeMs)
                     state.scheduled = std::array<int64_t, 3>{stop.x, stop.y, stop.z};
             state.countdownMs -= dtMs;
+        }
+    }
+}
+
+void Npcs::activate(const worldgen::WorldMap &map, const ActiveZones &active, const std::vector<PlayerView> &players,
+                    double timeOfDayMs, int32_t day) {
+    const std::function<int32_t()> readClock = [&] { return int32_t(timeOfDayMs); };
+    for (const auto &key : active) {
+        const auto &zone = map.zones().at(key);
+        const auto extra = extras.find(key);
+        const size_t base = zone->spawns.size();
+        const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
+        const auto context = descriptorContext ? descriptorContext(key.first, key.second) :
+                                                std::optional<activation::Context>{};
+        for (size_t i = 0; i < total; i++) {
+            SpawnState &state = spawnState(zone, i);
+            const worldgen::Spawn &s = state.refreshed ? *state.refreshed :
+                i < base ? zone->spawns[i] : extra->second.second[i - base];
             if (!activation::inWindow(s.windowStart, s.windowEnd, readClock))
                 continue;
             const uint64_t id = spawnId(key.first, key.second, i);
@@ -486,7 +491,7 @@ void Npcs::killCompletedMissionTargets(const Missions &missions) {
         const Missions::Cell *cell = missions.cell(cx, cy);
         if (cell && cell->mission.kind != 0 && cell->mission.state == 2) {
             n.fighter.health = 0;
-            n.deadMs = 0;
+            n.fighter.actionMs = 0;
             n.silentDeath = true;
         }
     }
@@ -555,7 +560,6 @@ uint64_t Npcs::placeBomb(glm::dvec3 at, int32_t level) {
     generate(type, npc.looks, nullptr, [&] { return draw(); });
     c.appearanceFlags = npc.looks.flags;
     c.health = 500; // the new-creature default; the fuse holds it to the maximum
-    c.actionMs = 1000000;
     npc.body.size = npc.looks.box;
     npc.body.place(at);
     npc.body.fallStart = (float)at.z;
@@ -1792,8 +1796,10 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
             position[axis] = (float)recipient.body()->position[axis] * (1.f / 65536.f);
         frame.sounds.push_back({glm::dvec3(position), 27, 1, 1});
         target->actionMs = 0;
-        if (recipient.npc)
+        if (recipient.npc) {
+            recipient.npc->deathPassStarted = false;
             recipient.npc->fatalPresented = true;
+        }
         if (onFatalObject)
             onFatalObject(*target, frame);
         if (onFatalLoot) {
@@ -2335,6 +2341,104 @@ NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     return frame;
 }
 
+void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame) {
+    // Stage 10 precedes activation and living actors. Read health at each key
+    // so a blast can admit a bomb later in this walk. Erase only after the walk.
+    std::set<uint64_t> removed;
+    for (const auto &[key, actor] : actors) {
+        if (!actor.npc || actor.npc->fighter.controller == 0 || !(actor.npc->fighter.health <= 0))
+            continue;
+        Npc &n = *actor.npc;
+        // The published action clock is the death timer. Keep it intact during
+        // the first-pass effects, then add this step's elapsed milliseconds.
+        int32_t &timer = n.fighter.actionMs;
+        const bool firstPass = !std::exchange(n.deathPassStarted, true);
+        const auto advanceDeathClock = [&] { timer = std::bit_cast<int32_t>(uint32_t(timer) + uint32_t(milliseconds)); };
+        if (n.fighter.controller == 5) {
+            if (firstPass) {
+                n.fighter.health = 0;
+                if (!n.fatalPresented)
+                    frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
+                for (Npc &other : list)
+                    if (other.target == n.fighter.id)
+                        other.target = 0, other.threat = 0;
+            }
+            advanceDeathClock();
+            if (timer >= 20000) {
+                const ActorEntry owner = lookupActor(n.fighter.ownerId, players);
+                if (owner.combat() && owner.combat()->health >= 0) {
+                    n.fighter.health = maxHealth(n.fighter);
+                    std::copy_n(owner.body()->position, 3, n.body.position);
+                    n.target = 0;
+                    n.fighter.relations.contact = 0;
+                    n.fighter.relations.threats.clear();
+                    owner.combat()->relations.counts.clear();
+                    // The action clock retains the age. The next live turn
+                    // clears the separate engine death bookkeeping.
+                }
+            }
+            continue;
+        }
+        if (firstPass && !n.silentDeath) {
+            n.fighter.health = 0;
+            if (!n.fatalBackingApplied && n.spawn != Npc::NO_SPAWN) {
+                SpawnState &state = spawns[{n.zone.first, n.zone.second, n.spawn}];
+                state.countdownMs = 1200000;
+                state.deathDay = day;
+            }
+            if (timer == 0 && n.fighter.type == 144) { // §4: death timer zero and type 144
+                NpcFrame::Explosion explosion{n.body.blocks(), n.fighter.id, n.fighter.level};
+                // §4.2: the removal-sound draw comes before every victim's draws.
+                if (removesBlocks && removesBlocks(explosion.centre, 8)) {
+                    explosion.removes = true;
+                    explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
+                }
+                frame.explosions.push_back(explosion);
+                blast(n, players, frame);
+            }
+            if (!n.fatalPresented)
+                frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
+            NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory.entries(), n.zone, n.boss};
+            death.quest = n.quest, death.questRole = n.questRole;
+            death.lootApplied = n.fatalLootApplied;
+            death.regionApplied = n.fatalRegionApplied;
+            if (n.quest)
+                questGone.insert(n.fighter.id); // a quest creature is not made again
+            std::copy(n.body.position, n.body.position + 3, death.position);
+            for (const auto &[who, threat] : n.fighter.relations.threats)
+                if (threat > 0 && !death.credited)
+                    for (const PlayerView &p : players)
+                        if (p.fighter.id == who)
+                            death.credited = who;
+            if (n.fighter.controller != 6) // (a bomb leaves nothing)
+                frame.deaths.push_back(std::move(death));
+            if (!n.fatalRecipientsApplied && n.fighter.controller == 1) {
+                const int32_t xp = killExperience(n.fighter.level, n.fighter.powerTier, n.fighter.type,
+                                                 (n.looks.flags & 0x200) != 0, n.looks.flags);
+                for (size_t k = 0; k < players.size(); k++)
+                    if (n.fighter.relations.threats.count(players[k].fighter.id) || n.target == players[k].fighter.id) {
+                        frame.kills.push_back({players[k].fighter.id, n.fighter.id, n.fighter.type, xp});
+                        if (k == 0)
+                            frame.experience = std::bit_cast<int32_t>(uint32_t(frame.experience) + uint32_t(xp));
+                        sharePetExperience(players[k].fighter, xp, frame); // pets §12
+                    }
+            }
+            for (Npc &o : list) // creatures that targeted it forget it
+                if (o.target == n.fighter.id)
+                    o.target = 0, o.threat = 0;
+        }
+        advanceDeathClock();
+        if (timer >= 1000)
+            removed.insert(key);
+    }
+
+    if (!removed.empty()) {
+        std::erase_if(list, [&](const Npc &npc) { return removed.contains(npc.fighter.id); });
+        forgetCreatures(removed, players, true);
+        refreshActors(players);
+    }
+}
+
 void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                     int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming,
                     const std::vector<BuffEvent> &buffInput,
@@ -2346,6 +2450,17 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     clockMs = timeOfDayMs;
     refreshActors(players);
     FlagScope indexScope{actorLookupActive};
+    // Capture the active keys before hits. The engine orders zones by coordinates.
+    ActiveZones active;
+    for (const PlayerView &player : players) {
+        const auto at = player.body.blocks();
+        const int32_t zx = worldgen::floorDiv(int32_t(std::floor(at.x)), worldgen::ZONE);
+        const int32_t zy = worldgen::floorDiv(int32_t(std::floor(at.y)), worldgen::ZONE);
+        for (int32_t dx = -1; dx <= 1; ++dx)
+            for (int32_t dy = -1; dy <= 1; ++dy)
+                if (map.zone(zx + dx, zy + dy))
+                    active.emplace(zx + dx, zy + dy);
+    }
     // Server §3 step 3: hits sent by players' clients land on the NPCs they name.
     for (const HitRecord &hit : incoming) {
         const ActorEntry recipient = lookupActor(hit.target, players);
@@ -2372,12 +2487,10 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
                 periodicHit(player.fighter, player.body, buff, players, frame);
             });
-    petPass(players, frame); // retained link maintenance precedes descriptor activation
-    activate(map, players, timeOfDayMs, day, dtMs);
+    advanceSpawnTimers(map, active, timeOfDayMs, dtMs); // stage 7
     // Creatures whose zone is let go go with it (inferred); pets stay with their owners.
-    list.erase(std::remove_if(list.begin(), list.end(),
-                              [&](const Npc &n) { return !map.zones().count(n.zone) && n.fighter.controller != 5; }),
-               list.end());
+    const size_t beforeRemovals = list.size();
+    std::erase_if(list, [&](const Npc &n) { return !map.zones().count(n.zone) && n.fighter.controller != 5; });
 
     // Server §5.4: an NPC no player is fighting goes when every player is further than its
     // radius + 20 blocks; one a player has threat on stays while within 512 blocks of home.
@@ -2399,13 +2512,13 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     };
     // Listed NPCs leave every creature's threat map, then are deleted.
     std::set<uint64_t> despawned;
-    for (const Npc &n : list)
-        if (despawns(n))
-            despawned.insert(n.fighter.id);
-    if (!despawned.empty()) {
-        std::erase_if(list, despawns);
-        forgetCreatures(despawned, players, false);
-    }
+    std::erase_if(list, [&](const Npc &n) {
+        if (!despawns(n))
+            return false;
+        despawned.insert(n.fighter.id);
+        return true;
+    });
+    forgetCreatures(despawned, players, false);
     // Quests: a freed prisoner is gone after its minute.
     for (Npc &n : list)
         if (n.leaveMs >= 0 && (n.leaveMs -= dtMs) < 0)
@@ -2413,10 +2526,11 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     list.erase(std::remove_if(list.begin(), list.end(), [&](const Npc &n) { return n.quest && questGone.count(n.fighter.id); }),
                list.end());
 
-    // Engine producers currently use an actor's ID as its entry key. Refresh
-    // pointers after pre-pass removals while retaining nodes for surviving keys.
-    // The live walk below uses these keys, never a mutable actor ID or role.
-    refreshActors(players);
+    if (list.size() != beforeRemovals)
+        refreshActors(players);
+    petPass(players, frame); // stage 9 links and stage 10's pet-item/stale-pet prefix
+    processDeadCreatures(milliseconds, day, players, frame);
+    activate(map, active, players, timeOfDayMs, day); // stage 11
 
     struct ActorPassScope {
         bool &active;
@@ -2444,6 +2558,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         Combatant &c = npc.fighter;
         if (!admitCreatureUpdate(c))
             continue;
+        npc.deathPassStarted = false;
+        npc.silentDeath = false;
         // The body is a phase-local view of the full actor mode word. Refresh
         // before behavior so received/copied flags survive movement edits.
         npc.body.mode = c.mode;
@@ -2634,121 +2750,6 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         if (p.fighter.health > 0)
             setFollowPoint(p.body);
     actorPassActive = false;
-    actorLookupActive = false; // later corpse removal can move deque elements
-    // §9.4, §12.3, server §6.2: deaths. At the moment of death the spawn's countdown starts and
-    // every player in the threat map is credited (hostile creatures only); the body is
-    // removed 1000 ms later.
-    // Pets and bombs §4, §4.4 (correction 28): the walk visits the table in ascending signed id
-    // and bombs explode inside it, so a creature a blast kills further on in the walk (an older
-    // bomb, with a larger id) is handled in this same pass. Removal waits for the walk's end.
-    std::vector<size_t> walk(list.size());
-    for (size_t k = 0; k < walk.size(); k++)
-        walk[k] = k;
-    std::sort(walk.begin(), walk.end(),
-              [&](size_t a, size_t b) { return ActorKeyLess{}(list[a].fighter.id, list[b].fighter.id); });
-    std::vector<bool> gone(list.size(), false);
-    std::set<uint64_t> removed;
-    for (const size_t index : walk) {
-        Npc &n = list[index];
-        if (n.fighter.health > 0)
-            continue;
-        // Pets §11.1: a dead pet lies until 20 s have passed and its owner is here and not
-        // dying, then comes back to its owner, healed and calm.
-        if (n.fighter.controller == 5) {
-            if (n.deadMs == 0) {
-                n.fighter.health = 0;
-                if (!n.fatalPresented)
-                    frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
-                for (Npc &o : list)
-                    if (o.target == n.fighter.id)
-                        o.target = 0, o.threat = 0;
-            }
-            n.deadMs += std::max(dtMs, 0.001f);
-            for (const PlayerView &p : players)
-                if (p.fighter.id == n.fighter.ownerId && n.deadMs >= 20000 && p.fighter.health >= 0) {
-                    n.fighter.health = maxHealth(n.fighter);
-                    n.body.place(p.body.blocks());
-                    n.target = 0;
-                    n.fighter.relations.contact = 0; // server simulation §6.3: target cleared
-                    n.fighter.relations.threats.clear();
-                    p.fighter.relations.counts.clear();
-                    // The native death timer is the action time and is not reset, so the AI's
-                    // 10-second rule ends the old action; the engine's separate death timer
-                    // restarts for the next death.
-                    n.fighter.actionMs = int32_t(n.deadMs);
-                    n.deadMs = 0;
-                }
-            continue;
-        }
-        if (n.deadMs == 0 && !n.silentDeath) {
-            n.fighter.health = 0;
-            if (!n.fatalBackingApplied && n.spawn != Npc::NO_SPAWN) {
-                SpawnState &state = spawns[{n.zone.first, n.zone.second, n.spawn}];
-                state.countdownMs = 1200000;
-                state.deathDay = day;
-            }
-            if (n.fighter.type == 144) { // §4: the gate is the type alone (death timer 0, type 144)
-                NpcFrame::Explosion explosion{n.body.blocks(), n.fighter.id, n.fighter.level};
-                // §4.2: the removal-sound draw comes before every victim's draws.
-                if (removesBlocks && removesBlocks(explosion.centre, 8)) {
-                    explosion.removes = true;
-                    explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
-                }
-                frame.explosions.push_back(explosion);
-                blast(n, players, frame);
-            }
-            if (!n.fatalPresented)
-                frame.sounds.push_back({n.body.blocks(), 27, 1, 1}); // non-hit engine death adapter
-            NpcFrame::Death death{n.fighter, n.looks.flags, {}, n.inventory.entries(), n.zone, n.boss};
-            death.quest = n.quest, death.questRole = n.questRole;
-            death.lootApplied = n.fatalLootApplied;
-            death.regionApplied = n.fatalRegionApplied;
-            if (n.quest)
-                questGone.insert(n.fighter.id); // a quest creature is not made again
-            std::copy(n.body.position, n.body.position + 3, death.position);
-            for (const auto &[who, threat] : n.fighter.relations.threats)
-                if (threat > 0 && !death.credited)
-                    for (const PlayerView &p : players)
-                        if (p.fighter.id == who)
-                            death.credited = who;
-            if (n.fighter.controller != 6) // (a bomb leaves nothing)
-                frame.deaths.push_back(death);
-            if (!n.fatalRecipientsApplied && n.fighter.controller == 1) {
-                const int32_t xp = killExperience(n.fighter.level, n.fighter.powerTier, n.fighter.type,
-                                                 (n.looks.flags & 0x200) != 0, n.looks.flags);
-                for (size_t k = 0; k < players.size(); k++)
-                    if (n.fighter.relations.threats.count(players[k].fighter.id) || n.target == players[k].fighter.id) {
-                        frame.kills.push_back({players[k].fighter.id, n.fighter.id, n.fighter.type, xp});
-                        if (k == 0)
-                            frame.experience = std::bit_cast<int32_t>(uint32_t(frame.experience) + uint32_t(xp));
-                        sharePetExperience(players[k].fighter, xp, frame); // pets §12
-                    }
-            }
-            for (Npc &o : list) // creatures that targeted it forget it
-                if (o.target == n.fighter.id)
-                    o.target = 0, o.threat = 0;
-        }
-        n.deadMs += std::max(dtMs, 0.001f);
-        n.body.intent = glm::vec3(0);
-        n.body.obstacles = obstacles, n.body.key = n.fighter.id;
-        worldStep(n.body, (int32_t)dtMs, block, objects);
-        if (n.deadMs >= 1000) {
-            removed.insert(n.fighter.id);
-            gone[index] = true;
-        }
-    }
-    if (!removed.empty()) { // erase in storage order once the walk is over
-        size_t kept = 0;
-        for (size_t k = 0; k < list.size(); k++)
-            if (k >= gone.size() || !gone[k]) {
-                if (kept != k)
-                    list[kept] = std::move(list[k]);
-                kept++;
-            }
-        list.resize(kept);
-    }
-    // Server simulation §6.3: a removed corpse leaves every threat and hit-counter map.
-    forgetCreatures(removed, players, true);
 
     // Server simulation §3 step 14: a creature whose target (+0x11d0) names a creature with
     // health <= 0 forgets it.

@@ -81,11 +81,11 @@ int main() {
         map.add(std::make_shared<worldgen::Zone>(0, 0));
         world.step(10, map, {{source, body}}, 43200000, 0,
             [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); });
-        check(world.all().size() == 1 && world.all()[0].fighter.actionMs == 17 &&
+        check(world.all().size() == 1 && world.all()[0].fighter.action == 22 && world.all()[0].fighter.actionMs == 27 &&
               world.all()[0].fighter.actionLockMs == 9 && world.all()[0].fighter.hitStun == 100 &&
               world.all()[0].fighter.buffs[0].timeMs == 1000 && world.all()[0].thinkMs == 0 &&
               world.all()[0].fighter.buffs[1].timeMs == 44,
-              "actual NPC health rejection skips behavior, timers and resident countdown");
+              "the corpse pass advances only the death clock before NPC health rejection skips the living turn");
     }
     {
         Combatant source;

@@ -53,7 +53,7 @@ template <class Checks>
 #ifdef _MSC_VER
 __declspec(noinline)
 #endif
-static void audioCheck(Checks checks) {
+static void checkInSeparateFrame(Checks checks) {
     checks();
 }
 
@@ -1061,7 +1061,7 @@ int main() {
 
     // Ruling channel2-explosion-window §1: the 200-ms tick window and the explosion's late form.
     // (The audio checks run in their own frames: main's stack is already large.)
-    audioCheck([] {
+    checkInSeparateFrame([] {
         Combatant c;
         c.multipliers[1] = 1 / attackSpeed(c);
         const auto run = [&](int32_t action, float t, float dt, int &draws) {
@@ -1106,7 +1106,7 @@ int main() {
     });
 
     // Audio §1.2 (re-certified): the play routine's distance, falloff and voice volume.
-    audioCheck([] {
+    checkInSeparateFrame([] {
         const sound::Fixed L{1000ll * 65536, 2000ll * 65536, 50ll * 65536};
         const auto from = [&](double dx, double dy, double dz) {
             return sound::Fixed{L[0] + int64_t(dx * 65536), L[1] + int64_t(dy * 65536), L[2] + int64_t(dz * 65536)};
@@ -1127,7 +1127,7 @@ int main() {
     });
 
     // Audio §3 (re-certified) and zone-fields ruling 1: ambience ticks, draws and the chunk gate.
-    audioCheck([] {
+    checkInSeparateFrame([] {
         using sound::AmbientRecord;
         same(sound::ambienceTicks(0, 0, 1000, 666, 1), 1, "phase 333 + 666 crosses 1000 with dt 1");
         same(sound::ambienceTicks(0, 0, 1000, 666, 0), 0, "no step, no tick");
@@ -2390,7 +2390,7 @@ int main() {
             for (const auto &e : f.explosions)
                 if (e.bomb == bomb) {
                     blasts++;
-                    same(t, fuse, "it goes off when its health runs out", 16);
+                    same(t - 16, fuse, "the death pass follows the fuse running out", 16);
                     same(e.level, 3, "the blast keeps the bomb's level");
                 }
         }
@@ -2449,6 +2449,105 @@ int main() {
         npcs.placeBomb({10.5, 10.5, 1.5}, 2);
         same(random.count() - before, 5, "a bomb placement spends five draws");
     }
+
+    // Pets and bombs §3.1 and §4: the fuse burns after stage 10. The next call's
+    // duration ages the corpse, and the explosion precedes spawn activation.
+    checkInSeparateFrame([] {
+        auto zone = std::make_shared<worldgen::Zone>(0, 0);
+        worldgen::WorldMap map;
+        map.add(zone);
+        const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z < 1 ? 1 : 0); };
+        Combatant player;
+        player.id = 1;
+        player.health = maxHealth(player);
+        Body body;
+        body.place({60, 10, 3});
+        const PlayerView local{player, body, 0, 0, false, false, true};
+        Npcs world;
+        const uint64_t bomb = world.placeBomb({10, 10, 2}, 1);
+        world.npcs().front().fighter.health = 0.125f;
+        const auto burnout = world.step(5, map, {local}, 1000, 0, floor);
+        same(burnout.explosions.empty() && !world.all().empty() && world.all().front().fighter.health == 0 &&
+                 world.all().front().fighter.actionMs == 0,
+             1, "fuse reaches zero after stage 10, without exploding or aging the corpse");
+        if (world.all().empty())
+            return;
+        const auto position = world.all().front().body.blocks();
+
+        auto neighbour = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn descriptor;
+        descriptor.x = 260 * 65536;
+        descriptor.y = 10 * 65536;
+        descriptor.z = 2 * 65536;
+        descriptor.type = 19;
+        descriptor.radius = 256;
+        neighbour->spawns.push_back(descriptor);
+        map.add(neighbour);
+        NpcFrame frame;
+        bool beforeActivation = false;
+        world.onActivate = [&](Npc &) {
+            beforeActivation = frame.explosions.size() == 1 && frame.explosions.front().bomb == bomb;
+        };
+        world.stepInto(7, map, {local}, 1007, 0, floor, frame);
+        same(!world.all().empty() && world.all().front().fighter.id == bomb, 1, "the new corpse remains resident");
+        if (world.all().empty())
+            return;
+        const auto &corpse = world.all().front();
+        same(beforeActivation && corpse.fighter.actionMs == 7 && corpse.body.blocks() == position,
+             1, "next-step explosion precedes activation, publishes that step's timer and leaves the corpse still");
+    });
+    checkInSeparateFrame([] {
+        worldgen::WorldMap map;
+        map.add(std::make_shared<worldgen::Zone>(0, 0));
+        const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z < 1 ? 1 : 0); };
+        Npcs world;
+        const uint64_t bomb = world.placeBomb({10, 10, 2}, 1);
+        HitRecord incoming;
+        incoming.target = bomb;
+        incoming.amount = 1000;
+        const auto first = world.step(0, map, {}, 1000, 0, floor, {incoming});
+        same(first.explosions.size() == 1 && !world.all().empty() && world.all().front().fighter.actionMs == 0,
+             1, "an incoming fatal hit reaches stage 10 on the same step, even at zero elapsed time");
+        auto later = world.step(999, map, {}, 1999, 0, floor);
+        same(later.explosions.empty() && !world.all().empty() && world.all().front().fighter.actionMs == 999,
+             1, "a zero-duration pass leaves the timer exact and does not replay the explosion");
+        world.step(1, map, {}, 2000, 0, floor);
+        same(world.all().empty(), 1, "the corpse is removed at exactly one thousand milliseconds");
+    });
+    checkInSeparateFrame([] {
+        worldgen::WorldMap map;
+        map.add(std::make_shared<worldgen::Zone>(0, 0));
+        const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z < 1 ? 1 : 0); };
+        Npcs world;
+        Npc pet;
+        pet.fighter.id = 42;
+        pet.fighter.controller = 5;
+        pet.fighter.ownerId = 1;
+        pet.fighter.health = 0;
+        pet.fighter.actionMs = 19999;
+        pet.deathPassStarted = true;
+        pet.body.place({30, 30, 4});
+        pet.fighter.relations.threats[2] = 3;
+        world.npcs().push_back(std::move(pet));
+        Combatant owner;
+        owner.id = 1;
+        owner.linkedId = 42;
+        owner.health = 0;
+        owner.relations.counts[2] = 1;
+        Body body;
+        body.place({70, 70, 5});
+        bool returned = false;
+        NpcFrame frame;
+        world.stepInto(1, map, {{owner, body, 0, 0, false, false, true}}, 1000, 0, floor, frame, {}, {},
+            [&](int32_t) {
+                if (world.all().empty())
+                    return;
+                const auto &pet = world.all().front();
+                returned = pet.fighter.health > 0 && pet.fighter.actionMs == 20000 && pet.body.blocks() == body.blocks() &&
+                           pet.fighter.relations.threats.empty() && owner.relations.counts.empty();
+            });
+        same(returned, 1, "the pet returns at timer equality before either actor's living turn");
+    });
 
     // Pets and bombs §4.4 (correction 28): the dead-creature walk runs in ascending signed id
     // and explodes inside the walk. An older bomb (larger id) killed by a blast explodes later
@@ -3699,6 +3798,7 @@ int main() {
         // §3 step 14: a player whose target names a dead creature forgets it.
         me.relations.contact = id;
         npcs.npcs()[0].fighter.health = 0;
+        npcs.npcs()[0].fighter.actionMs = 0;
         step(night);
         same(me.relations.contact, 0, "the target naming a dead creature is cleared");
         // §6.3: the removed corpse leaves the player's threat and hit-counter maps.

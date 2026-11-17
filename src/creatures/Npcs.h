@@ -54,7 +54,7 @@ struct Npc {
     static constexpr size_t NO_SPAWN = (size_t)-1;
     size_t spawn = 0; // index in the zone's spawn list (NO_SPAWN for bombs and pets)
     float despawnRadius = 200; // the spawn's radius (server §5.4)
-    float deadMs = 0;          // time since death; the body goes after 1000 ms (server §6.2)
+    bool deathPassStarted = false; // keep engine notifications once per death even on a zero-duration call
     bool fatalPresented = false; // engine bookkeeping: the world applier already emitted the death sound
     bool fatalLootApplied = false; // the synchronous world loot service already ran
     bool fatalRegionApplied = false; // regional service already admitted or rejected this invocation
@@ -231,8 +231,8 @@ class Npcs {
   public:
     Npcs() = default; // standalone tools retain their explicit private generator
     explicit Npcs(worldgen::Random &random) : sharedRandom(&random) {}
-    // One step: incoming hits (server §3 step 3), activation and respawn (§9.2), despawn
-    // (server §5.4), behaviour (§13), actions, physics, hits, deaths.
+    // One step: incoming hits, spawn timers, despawn, pets and deaths, then
+    // activation, behaviour, actions and physics (server simulation §3).
     NpcFrame step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                   int32_t day, const BlockType &block, const std::vector<HitRecord> &incoming = {}, NpcFrame frame = {},
                   const std::vector<BuffEvent> &buffInput = {});
@@ -385,8 +385,12 @@ class Npcs {
     // spawns) at `p`, added to the list.
     void spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base, uint64_t id,
                        const std::array<int64_t, 3> &position, bool descriptorBacked = true);
-    void activate(const worldgen::WorldMap &map, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day,
-                  float dtMs);
+    using ActiveZones = std::set<std::pair<int32_t, int32_t>>;
+    SpawnState &spawnState(const std::shared_ptr<const worldgen::Zone> &zone, size_t index);
+    void advanceSpawnTimers(const worldgen::WorldMap &map, const ActiveZones &active, double timeOfDayMs, float dtMs);
+    void activate(const worldgen::WorldMap &map, const ActiveZones &active, const std::vector<PlayerView> &players,
+                  double timeOfDayMs, int32_t day);
+    void processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame);
     void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block,
                NpcFrame &frame, const worldgen::WorldMap &map);
     // Companion (client 0x03ACE0, held alpha-created-companion-navigation.md): follow the actor
@@ -454,7 +458,7 @@ class Npcs {
     worldgen::Random &random() { return sharedRandom ? *sharedRandom : privateRandom; }
 
     // Appending during the live pass preserves references to existing creatures.
-    // Bulk removals occur before/after it, followed by an index refresh next call.
+    // Bulk removals occur outside a live walk. Refresh after erasure before reusing the index.
     std::deque<Npc> list;
     struct ActorEntry {
         Npc *npc = nullptr;

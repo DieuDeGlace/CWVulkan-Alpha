@@ -1727,3 +1727,20 @@ Creature models, missions and rendering with four rulings (2026-11-16). Creature
 Pets and bombs, character screens (2026-11-16). CreatureTests: five placement draws, chain order both directions, id-0 mount filter, kind-7 bite records summing to 1.0, pet return action time, controller-5 pet health, rebuild empties buffs. UiTests: easing share, pick skipped while held, Delete confirmation and withdrawal, release-only and press/release on different buttons, last character Create, widened names, online length 7, world index selection, signed seed, drag re-anchor, yaw rule. SaveTests: in-memory world deletion. All 60 CTests pass; the player diagnostic and five live runs pass.
 Materials, wildlife and routes, held-light factor ruling (2026-11-16). CreatureLightTests: off hand 0.5, worked example 2 hands, infinite/NaN ratio gates, critical flash weapon selection and order. TerrainLightTests: averaged colour alpha, material colour for ordinary, gold, copper, fire and wind. CreatureTests: averaged alpha, unloaded route zone. WorldgenTests: companion ring bits including truncation. All 60 CTests pass; the player diagnostic and five live runs pass.
 Trails/poses/schedules, Plasma, audio, extractor and six rulings (2026-11-16). CreatureTests: pose-69 arc bits, dt-0 trail rules, unarmed drift, alpha table, mission creatures, seats, ruin group draws and two-point route, exact ring point, SpawnLocation single round, swing crossings, attenuation, ambience draws and chunk gate, channel2 tick, staff release and explosion windows, action 104. UiTests: Plasma matrix, sequence start/evaluation/loop/stop, manacubebar 84 frames. StoreTests and OwnerContentTests: decode, synthetic .cub, store schema and empty stores, headers, reference entries. WorldgenTests: kept-zone disc and implicit blocks. All 60 CTests pass; the player diagnostic and five live runs pass.
+
+## Death-pass timing (2026-11-17)
+
+CreatureTests cover a 5 ms fuse followed by a 7 ms death pass before activation,
+an incoming fatal hit at 0 ms, exact 1,000 ms expiry, signed-ID chain order, and pet
+return at 20,000 ms before the owner's living turn. HitApplicationTests confirms
+the published death clock advances while living action, stun and buff updates
+stay inactive. FatalLootTests covers the linked actor's non-hit notification.
+OwnerContentTests passes with the actual owned installation, extracts into OS
+temporary storage, and checks the original file hashes.
+
+The Windows x64 build and all 60 CTests pass. The player/controller diagnostic
+and actual-client reward, injured-health cadence, network, save/reload and town
+render flows pass. Town captures cover the same camera and player position across
+the two engine checkpoints, with different simulation elapsed times and pixel
+output. The town run establishes render completion. Native acceptance and pixel
+parity remain open.

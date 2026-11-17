@@ -79,7 +79,7 @@ void Npcs::resetCreature(Npc &n) {
     n.spawn = Npc::NO_SPAWN;
     n.target = 0; // legacy continuation cache of the cleared target
     n.threat = 0;
-    n.deadMs = 0; // the action time is the death timer natively, and the reset zeroes it
+    n.deathPassStarted = false;
     n.fatalPresented = false;
     n.fatalLootApplied = false;
     n.fatalRegionApplied = false;
@@ -222,7 +222,7 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
                 current->actionMs = 5000; // "Later pass over all creatures": +0x6C before the reverse clear
                 current->ownerId = 0;
                 if (actor.npc)
-                    actor.npc->deadMs = 5000; // retained engine corpse-disposal adapter
+                    actor.npc->deathPassStarted = true; // dispose of the stale pet without death notifications
             }
         }
     }

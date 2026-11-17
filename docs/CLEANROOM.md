@@ -2973,3 +2973,23 @@ blur layers; music; a few refusal and pickup sounds still play at the listener; 
 the .plx internals and spawn save words. Engine adapters: silent audio when the backend fails (native exits); hidden interface
 nodes advance (root update flag inferred); unloaded zones keep the engine's own block type (native reads grey type 0x01 and
 would lift creatures there); the dedicated server keeps its own zone unload distance.
+
+## World-step death pass (2026-11-16)
+
+The clean team read the complete held `alpha-pets-bombs.md`
+(`31cc42112587c8aa9fdb65461d3b3b5968b9ffe211165bd0418ddcf2cf4d2aac`) and
+`alpha-server-simulation.md` (`e11970558b2e7500f0d3f6adfc334be3d7ad3ca0d828539d2dbb9e0662587389`).
+This resolves the stage placement gap recorded in the earlier pets and bombs entry.
+Spawn schedules and countdowns advance before despawn. The signed-ID death pass
+follows pet maintenance and precedes both activation and the living turns. An
+incoming fatal hit can enter the current pass. A bomb that runs out of fuse time
+during its turn enters the following pass. The pass reads the published action
+clock for explosion admission, advances it with that step's integer duration and
+removes eligible corpses after the walk. Returning pets copy the owner's fixed
+position and clear their threat state and the owner's hit counters before living turns.
+
+The engine suppresses duplicate presentation, loot and credit on repeated
+zero-duration calls. Its non-hit death notifications remain an adapter for deaths
+outside the synchronous fatal-hit path. Client and server still batch explosion
+voxel edits after the creature walk. Bomb item requests still enter the outer
+client and server paths ahead of the requesting player's turn.

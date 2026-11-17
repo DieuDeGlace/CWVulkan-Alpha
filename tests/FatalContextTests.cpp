@@ -263,7 +263,8 @@ int main() {
         zero.fighter.health = 0;
         zero.fighter.level = 0x18001;
         zero.fighter.experience = -17;
-        zero.deadMs = 100;
+        zero.fighter.actionMs = 100;
+        zero.deathPassStarted = true;
         Npcs world;
         world.npcs().push_back(zero);
         Combatant owner;

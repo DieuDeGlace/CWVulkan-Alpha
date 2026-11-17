@@ -265,7 +265,6 @@ static void actualFatalBoundary() {
     check(frame.kills.size() == 1 && frame.experience == 0 && player.experience == 12 && items == 2 && backingCalls == 1,
           "the later corpse adapter cannot repeat synchronous credit, linked XP, grants or backing work");
     npcs.npcs()[0].fighter.health = 20;
-    npcs.npcs()[0].deadMs = 0;
     npcs.stepInto(0, map, {view}, 1000, 9, block, frame);
     check(!npcs.all()[0].fatalRecipientsApplied && !npcs.all()[0].fatalBackingApplied,
           "the next admitted live update clears prior-fatal bookkeeping for the next life");

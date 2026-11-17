@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 
 namespace {
 int failures = 0;
@@ -19,14 +20,31 @@ void check(bool value, const char *description) {
         failures++;
     }
 }
+
+class ScratchDirectory {
+  public:
+    ScratchDirectory()
+        : path(fs::canonical(fs::temp_directory_path()) /
+              (L"OwnerContentTests-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+               std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count()))) {
+        if (!fs::create_directory(path))
+            throw std::runtime_error("Could not create a unique owner-content test directory");
+    }
+
+    ~ScratchDirectory() {
+        std::error_code error;
+        fs::remove_all(path, error);
+    }
+
+    const fs::path path;
+};
 }
 
 int wmain(int argc, wchar_t **argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     try {
-    const auto scratch = fs::current_path() / (L"OwnerContentTests-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
-        std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count()));
-    fs::create_directory(scratch);
+    const ScratchDirectory directory;
+    const auto &scratch = directory.path;
     const auto known = scratch / "abc.txt";
     std::ofstream(known, std::ios::binary) << "abc";
     check(fileSha256(known) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
