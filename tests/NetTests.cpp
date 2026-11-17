@@ -598,7 +598,12 @@ static void checkCombatTransport() {
     auto outboundHit = inboundHit;
     outboundHit.attacker = 1;
     outboundHit.target = 19;
-    const auto expectedHit = outboundHit.serialize();
+    auto laterHit = outboundHit;
+    laterHit.target = 0x10000000aull; // frame queue does not require a resolved target
+    laterHit.kind = creatures::HIT_COUNTER;
+    auto foreignHit = outboundHit;
+    foreignHit.attacker |= uint64_t(1) << 32;
+    const std::array expectedHits{outboundHit.serialize(), laterHit.serialize()};
     std::atomic<bool> finish{false}, received{false}, receivedHit{false};
     std::atomic<bool> frameHeld{false}, worldSent{false}, coherentHit{false}, packetOrder{false};
     std::atomic<bool> repeatClock{false};
@@ -659,6 +664,8 @@ static void checkCombatTransport() {
         if (!socket.send(response.data())) return;
         worldSent = true;
         CreatureRecord latestOwn;
+        size_t hitCount = 0, buffCount = 0;
+        bool validHits = true;
         while (!finish && socket.readU32(packet)) {
             if (packet == CREATURE) {
                 uint32_t size = 0;
@@ -671,13 +678,16 @@ static void checkCombatTransport() {
                 std::array<uint8_t, 40> bytes{};
                 if (!socket.readExact(bytes.data(), bytes.size())) return;
                 received = bytes == expectedSend;
-                packetOrder = received && receivedHit;
+                packetOrder = received && receivedHit && buffCount == 0;
+                buffCount++;
                 if (received && receivedHit) break;
             } else if (packet == HIT) {
                 std::array<uint8_t, 72> bytes{};
                 if (!socket.readExact(bytes.data(), bytes.size())) return;
-                receivedHit = bytes == expectedHit;
-                coherentHit = receivedHit && latestOwn.health() == 137.5f;
+                validHits &= hitCount < expectedHits.size() && bytes == expectedHits[hitCount] && latestOwn.health() == 137.5f;
+                hitCount++;
+                receivedHit = hitCount >= expectedHits.size();
+                coherentHit = validHits && hitCount == expectedHits.size();
                 if (received && receivedHit) break;
             } else return;
         }
@@ -716,8 +726,12 @@ static void checkCombatTransport() {
     if (connected) {
         auto frame = client.lockFrame();
         frameHeld = true;
-        client.sendEvent40(expectedSend);
-        client.sendHit(Hit::from(outboundHit));
+        auto localBuff = creatures::BuffEvent::parse(expectedSend.data());
+        auto foreignBuff = localBuff;
+        foreignBuff.source |= uint64_t(1) << 32;
+        const std::array frameHits{foreignHit, outboundHit, laterHit};
+        const std::array frameBuffs{foreignBuff, localBuff};
+        client.queueCombatFrame(frameHits, frameBuffs);
         check(waitFor([&] { return worldSent.load(); }), "peer supplies input while the frame gate is held");
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
         check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
@@ -754,7 +768,7 @@ static void checkCombatTransport() {
                    !hits.empty() && received && receivedHit;
         }), "actual client exchanges packet-8 and section-12 buff records");
         check(coherentHit && packetOrder,
-              "sender captures completed frame state before hit records and sends hits before buff events");
+              "sender queues exact local-source IDs, snapshots completed state, preserves hit order and sends buffs afterward");
         check(events.size() == 2 && events[0].serialize() == first.serialize() && events[1].serialize() == second.serialize(),
               "incoming buff order, nonlocal target, embedded sources and opaque bytes survive transport");
         check(client.takeBuffs().empty(), "received buff queue drains exactly once");

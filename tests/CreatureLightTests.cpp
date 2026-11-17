@@ -253,6 +253,21 @@ static void criticalFlashes() {
     attacker.equipment[OFF_HAND].subtype = 12;
     colours = criticalFlashColours(attacker);
     check(colours[0] == fire && colours[1] == ice, "the default list adds a subtype-12 off hand second");
+    FadingSources flashes;
+    HitRecord hit;
+    hit.position = {(int64_t(1) << 54) + 1, -17, 33};
+    hit.critical = 1;
+    appendConnectedHitLights(attacker, hit, flashes);
+    check(flashes.entries().empty(), "connected critical text alone supplies no fading lights");
+    hit.critical = 0;
+    hit.area = 1;
+    hit.beam = 1;
+    appendConnectedHitLights(attacker, hit, flashes);
+    const auto frame = flashes.entries();
+    check(frame.size() == 3 && frame[0].colour == fire && frame[1].colour == ice &&
+              frame[2].colour == glm::vec3(.3f, .3f, .5f) && frame[0].radius == 20 && frame[2].radius == 16 &&
+              frame[2].durationMs == 400 && frame[0].position == hit.position && frame[2].position == hit.position,
+          "resource lights follow weapon order and precede the independent auxiliary light at the full fixed position");
     attacker.action = 2;
     colours = criticalFlashColours(attacker);
     check(colours[0] == ice && !colours[1], "off-hand actions list the off hand alone");

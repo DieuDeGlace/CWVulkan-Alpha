@@ -4,7 +4,7 @@
 // freshness remain separate dependencies.
 #include "TerrainLights.h"
 
-namespace creatures { struct Combatant; struct PoseState; }
+namespace creatures { struct Combatant; struct HitRecord; struct PoseState; }
 
 namespace terrain_lights {
 
@@ -41,5 +41,9 @@ std::array<std::optional<Candidate>, 4> equipmentSources(
 // Materials §1.5 critical-hit flash: one colour A.rgb per item of the attacker's action
 // weapon list (behaviour §5.11), in list order, for items whose A.a > 0.
 std::array<std::optional<glm::vec3>, 2> criticalFlashColours(const creatures::Combatant &attacker);
+
+// Connected presentation after both the target and the source resolve.
+void appendConnectedHitLights(const creatures::Combatant &source, const creatures::HitRecord &hit,
+                              FadingSources &lights);
 
 } // namespace terrain_lights

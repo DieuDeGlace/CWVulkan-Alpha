@@ -1,5 +1,6 @@
 #include "creatures/Combat.h"
 #include "creatures/Physics.h"
+#include "net/Client.h"
 #include <bit>
 #include <cstdio>
 #include <limits>
@@ -10,9 +11,55 @@ int failures = 0;
 void check(bool okay, const char *message) {
     if (!okay) { std::printf("FAIL %s\n", message); failures++; }
 }
+
+void checkFrameMerge() {
+    Combatant actor;
+    actor.id = 0x8000000100000003ull;
+    actor.health = 40.f;
+    actor.buffs = {{ABSORB, 6.f, 100, 42}};
+    Body body;
+    HitRecord produced;
+    produced.attacker = actor.id;
+    produced.target = 41;
+    HitRecord localDamage = produced;
+    localDamage.target = actor.id;
+    localDamage.amount = 5;
+    HitRecord remoteWard = localDamage;
+    remoteWard.attacker = 3; // same low word, distinct complete key
+    remoteWard.amount = 2;
+    remoteWard.kind = HIT_ABSORBED;
+    remoteWard.trailingPadding = 13;
+    HitRecord distant = produced;
+    distant.attacker = 17;
+    distant.position = {13, INT64_MIN + 5, INT64_MAX - 2};
+    HitRecord capture = remoteWard;
+    capture.kind = 6;
+
+    std::array pending{net::Hit::from(localDamage), net::Hit::from(distant), net::Hit::from(remoteWard),
+                       net::Hit::from(produced), net::Hit::from(capture)};
+    std::vector frame{produced};
+    std::vector<BuffEvent> notices;
+    int applied = 0;
+    net::mergeReceivedHits(pending, actor.id, frame, [&](HitRecord &hit) {
+        check(frame.size() == 1, "the received local-target pass finishes before the receive tail is merged");
+        ++applied;
+        if (hit.kind == HIT_ABSORBED)
+            hit.amount = 3.f; // the engine's local damage hook can adjust this record
+        if (hit.kind != 6)
+            receiveHit(actor, body, hit, &notices);
+    });
+    check(applied == 3 && actor.health == 35.f && actor.buffs[0].value == 3.f && notices.size() == 1 &&
+              notices[0].source == actor.id && notices[0].target == actor.id && notices[0].record.source == 42,
+          "local echoes apply once, and the received ward emits a local self notice");
+    remoteWard.amount = 3.f;
+    check(frame.size() == 3 && frame[0].serialize() == produced.serialize() &&
+              frame[1].serialize() == distant.serialize() && frame[2].serialize() == remoteWard.serialize(),
+          "foreign-source payloads follow produced records in wire order with local echoes and capture removed");
+}
 }
 
 int main() {
+    checkFrameMerge();
     // Packets §5.1: every kind but 1 and 5 takes the default path (0, 2, 3, 4, ...).
     for (uint8_t kind : {uint8_t(0), uint8_t(2), uint8_t(3), uint8_t(4), uint8_t(7)}) {
         Combatant actor;

@@ -106,6 +106,19 @@ void Client::sendHit(const Hit &hit) {
     outgoingHits.push_back(hit);
 }
 
+void Client::queueCombatFrame(std::span<const ::creatures::HitRecord> frameHits,
+                              std::span<const ::creatures::BuffEvent> buffs) {
+    std::lock_guard guard(lock);
+    if (!online)
+        return;
+    for (const auto &hit : frameHits)
+        if (hit.attacker == ownId)
+            outgoingHits.push_back(Hit::from(hit));
+    for (const auto &buff : buffs)
+        if (buff.source == ownId)
+            outgoingEvents.push_back(buff.serialize());
+}
+
 void Client::sendShoot(const std::array<uint8_t, 112> &record) {
     std::lock_guard guard(lock);
     outgoingShoots.push_back(record);
@@ -233,6 +246,20 @@ void Client::setReceivedHealth(uint64_t key, float health) {
 std::vector<Hit> Client::takeHits() {
     std::lock_guard guard(lock);
     return std::exchange(hits, {});
+}
+
+void mergeReceivedHits(std::span<Hit> pending, uint64_t local, std::vector<::creatures::HitRecord> &frame,
+                       const std::function<void(::creatures::HitRecord &)> &applyLocal) {
+    for (auto &wire : pending) {
+        if (wire.target() != local)
+            continue;
+        auto hit = wire.record();
+        applyLocal(hit);
+        wire = Hit::from(hit);
+    }
+    for (const auto &wire : pending)
+        if (wire.attacker() != local && wire.kind() != 6) // pet-capture signals have their own consumer
+            frame.push_back(wire.record());
 }
 
 std::vector<::creatures::BuffEvent> Client::takeBuffs() {

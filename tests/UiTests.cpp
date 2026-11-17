@@ -660,6 +660,17 @@ int main(int argc, char **argv) {
                   heal->anchor == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
                   heal->size == 20 && heal->lifeMs == 1000 && heal->rise == 100 && heal->flags == 1,
               "timed heal uses the fixed recipient-size offset and local display fields");
+        auto connected = timed;
+        connected.amount = 12.9f;
+        connected.critical = connected.area = 1;
+        const auto local = hitText(connected, true, 2.25f);
+        const auto other = hitText(connected, false, 2.25f);
+        check(local && other && local->text == u"12" && local->rise == 100 && local->size == 60 &&
+                  local->colour == glm::vec4(1, .3f, .3f, 1) &&
+                  other->rise == -200 && other->colour == glm::vec4(1, 1, .25f, 1) &&
+                  local->anchor == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
+                  other->anchor == glm::dvec3(65537, -65537, 32769 + 131072 - 8192) / 65536.0,
+              "connected hit labels retain fixed position bits, live size, and the local-target anchor step");
         timed.amount = -0.09f;
         check(!timedHealText(timed, 2.25f), "timed heal display respects the magnitude threshold");
         check(levelUpText(glm::dvec3(0)).lifeMs == 3000 && experienceText(12, glm::dvec3(0)).text == u"XP +12", "level and XP");

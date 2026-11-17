@@ -470,14 +470,22 @@ std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, b
     return t;
 }
 
-std::optional<FloatingText> timedHealText(const creatures::HitRecord &hit, float recipientHeight) {
+std::optional<FloatingText> hitText(const creatures::HitRecord &hit, bool toPlayer, float recipientHeight) {
     const glm::dvec3 at = glm::dvec3(hit.position[0], hit.position[1], hit.position[2]) / 65536.0;
-    auto text = hitText(hit.amount, hit.kind, false, false, true, at);
+    auto text = hitText(hit.amount, hit.kind, hit.critical, hit.area, toPlayer, at);
     if (text) {
-        const int64_t heightOffset = int64_t((1.f - 0.5f * recipientHeight) * 65536.f);
-        text->anchor.z = at.z + 1.0 + double(heightOffset) / 65536.0;
+        const float offset = (1.f - 0.5f * recipientHeight) * 65536.f;
+        const int64_t heightOffset = offset >= -0x1p63f && offset < 0x1p63f ? int64_t(offset) : 0;
+        const uint64_t anchorZ = uint64_t(hit.position[2]) + uint64_t(heightOffset) + (toPlayer ? 65536u : 131072u);
+        text->anchor.z = double(std::bit_cast<int64_t>(anchorZ)) / 65536.0;
     }
     return text;
+}
+
+std::optional<FloatingText> timedHealText(const creatures::HitRecord &hit, float recipientHeight) {
+    auto record = hit;
+    record.critical = record.area = 0;
+    return hitText(record, true, recipientHeight);
 }
 
 FloatingText levelUpText(glm::dvec3 player) {

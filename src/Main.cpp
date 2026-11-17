@@ -739,11 +739,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if ((id == 81 || id == 82) && player)
             player->followCamera().shake = 1;
     };
-    const auto sendBuff = [&](const creatures::BuffEvent &event) {
-        if (!client.connected() || event.source != client.id())
-            return;
-        client.sendEvent40(event.serialize());
-    };
     mods.hooks().spawnParticles = [&](double x, double y, double z, const float velocity[3], const float rgb[3],
                                       float size, int32_t count, int32_t style, float spread) {
         creatures::Burst b = creatures::Burst::at({x, y, z}, {velocity[0], velocity[1], velocity[2]},
@@ -1612,20 +1607,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); }, playerActionFrame);
             } else {
                 auto &c = actor;
+                auto &frame = playerActionFrame;
+                frame.sounds.insert(frame.sounds.end(), playerShot.sounds.begin(), playerShot.sounds.end());
+                frame.bursts.insert(frame.bursts.end(), playerShot.bursts.begin(), playerShot.bursts.end());
+                frame.buffs.insert(frame.buffs.end(), playerShot.buffs.begin(), playerShot.buffs.end());
+                playerShot.sounds.clear();
+                playerShot.bursts.clear();
+                playerShot.buffs.clear();
                 // Server simulation §1, §6.1: online the player's own client decides its hits on
                 // the creatures the server lists and sends them as packet 7.
                 const bool melee = c.health > 0 && creatures::meleeAction(c.action);
                 const creatures::StrikeWindow window =
                     melee ? creatures::strikeWindow(c, beforeMs, (float)dtMs) : creatures::StrikeWindow{};
-                // Strike-call-sites S7/S9 online: the counter is the target owner's (its
-                // type-4 record application), so only the damage-0 record is sent.
+                // Append local melee output to the same collector as received turns.
                 for (const uint64_t key : std::exchange(c.counterPending, {}))
                     if (const auto other = receivedActors.find(key); other != receivedActors.end()) {
                         creatures::HitRecord counter;
-                        counter.attacker = c.id, counter.target = key, counter.kind = 4;
+                        counter.attacker = c.id, counter.target = key, counter.kind = creatures::HIT_COUNTER;
                         for (int axis = 0; axis < 3; axis++)
                             counter.position[axis] = other->second.position(axis);
-                        client.sendHit(net::Hit::from(counter));
+                        frame.emittedHits.push_back(counter);
                     }
                 bool hitAny = false;
                 if (melee && window) {
@@ -1633,7 +1634,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         creatures::strikeGeometry(c, player->body(), player->facing());
                     if (c.action == 0x1F)
                         if (auto consumed = creatures::consumeBuff(c, 9))
-                            sendBuff(*consumed);
+                            frame.buffs.push_back(*consumed);
                     const auto rolls = [&] { return worldRandom.draw(); };
                     const creatures::visibility::Scene sightScene{
                         [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
@@ -1680,10 +1681,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             std::array<int64_t, 3> at;
                             std::copy_n(body.position, 3, at.begin());
                             const creatures::HitRecord heal = creatures::areaHealRecord(c, id, at, rolls);
-                            client.sendHit(net::Hit::from(heal));
-                            playAt(42, player->body().blocks(), 1, 1);
-                            if (auto text = ui::hitText(heal.amount, heal.kind, heal.critical, heal.area, false, body.blocks()))
-                                interface.floating.push_back(*text);
+                            frame.emittedHits.push_back(heal);
+                            frame.sounds.push_back({player->body().blocks(), 42, 1, 1});
                         };
                         if (!hostile) { // K5 step 5
                             healCheck();
@@ -1700,28 +1699,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         const creatures::HitInput in = creatures::strikeInput(c, player->body(), body, rolls);
                         const creatures::HitOutcome out = creatures::resolveHit(target, body.velocity, &c, in, rolls);
                         for (const auto &event : out.buffs) {
-                            sendBuff(event);
+                            frame.buffs.push_back(event);
                             auto [resident, created] = otherFighters.try_emplace(event.target);
                             if (created)
                                 resident->second.receive(id, other);
                             creatures::applyBuff(resident->second.fighter, event.record);
                         }
-                        for (const creatures::HitRecord &r : out.records) {
-                            client.sendHit(net::Hit::from(r));
-                            const glm::dvec3 at = glm::dvec3(r.position[0], r.position[1], r.position[2]) / 65536.0;
-                            if (auto text = ui::hitText(r.amount, r.kind, r.critical, r.area, r.target == c.id, at))
-                                interface.floating.push_back(*text);
-                            mods.hitSeen(r.attacker, r.target, r.kind, r.amount);
-                        }
-                        for (const creatures::SoundEvent &e : out.sounds)
-                            playAt(e.sound, e.position, e.volume, e.pitch);
-                        bursts.insert(bursts.end(), out.bursts.begin(), out.bursts.end());
+                        frame.emittedHits.insert(frame.emittedHits.end(), out.records.begin(), out.records.end());
+                        frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
+                        frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
                         if (out.hitAccepted) {
                             const creatures::StrikeAftermath after = creatures::afterStrike(c, first, hitAny, rolls);
                             if (after.buff)
-                                sendBuff(*after.buff);
+                                frame.buffs.push_back(*after.buff);
                             if (after.upgradeSound)
-                                playAt(47, player->body().blocks(), 1, 1);
+                                frame.sounds.push_back({player->body().blocks(), 47, 1, 1});
                         }
                         healCheck(); // re-evaluated: never heals a hostile target
                     }
@@ -1760,6 +1752,68 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (npc.fighter.id == key)
                     return &npc.fighter;
         return nullptr;
+    };
+    const auto applyReceivedBuffs = [&] {
+        for (const auto &event : client.takeBuffs())
+            if (auto *target = frameActor(event.target))
+                creatures::applyBuff(*target, event.record);
+    };
+    const auto mergeConnectedHits = [&](creatures::NpcFrame &frame) {
+        auto pending = client.takeHits();
+        auto &local = player->combat();
+        net::mergeReceivedHits(pending, local.id, frame.emittedHits, [&](creatures::HitRecord &hit) {
+            if (hit.kind != 6) {
+                mods.playerHit(hit.attacker, hit.kind, hit.amount);
+                player->receiveHit(hit, &frame.buffs);
+                return;
+            }
+            // Pets §7.4: a capture signal can turn the item in the pet slot into the pet.
+            const auto other = receivedActors.find(hit.attacker);
+            if (creatures::itemType(inventory.equipment[12]) != 20 || other == receivedActors.end() ||
+                other->second.controller() != 5)
+                return;
+            const auto tamed = other->second.fighter();
+            if (tamed.ownerId != local.id)
+                return;
+            creatures::ItemRecord pet{};
+            pet[0] = 19;
+            pet[1] = uint8_t(tamed.type);
+            const uint32_t experience = uint32_t(tamed.experience);
+            std::memcpy(pet.data() + 4, &experience, sizeof experience);
+            creatures::setItemLevel(pet, int16_t(tamed.level));
+            inventory.equipment[12] = pet;
+            local.action = 0;
+            local.linkedId = hit.attacker;
+            wearInventory();
+        });
+    };
+    const auto presentConnectedHits = [&](const std::vector<creatures::HitRecord> &hits, size_t produced) {
+        const auto *local = &player->combat();
+        for (size_t index = 0; index < hits.size(); index++) {
+            const auto &hit = hits[index];
+            const auto *target = frameActor(hit.target);
+            const auto *source = frameActor(hit.attacker);
+            const bool toLocal = target == local;
+            const bool fromLocal = source == local;
+            const bool timedHeal = hit.attacker == creatures::TIMED_CONSUMABLE_SOURCE &&
+                                   hit.kind == creatures::HIT_DAMAGE && hit.amount < 0;
+            if (target) {
+                if (source)
+                    terrain_lights::appendConnectedHitLights(*source, hit, flashes);
+                if (timedHeal) {
+                    presentTimedHeal(hit);
+                } else if (toLocal || fromLocal) {
+                    const auto *remote = toLocal ? nullptr : remotes.find(hit.target);
+                    if (toLocal || remote) {
+                        const float height = toLocal ? player->body().size.z : remote->live.size.z;
+                        if (auto text = ui::hitText(hit, toLocal, height))
+                            interface.floating.push_back(*text);
+                    }
+                }
+            }
+            if (index >= produced || toLocal || fromLocal || timedHeal)
+                mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
+        }
     };
     const auto applyReceivedRelationships = [&] {
         const auto received = client.takeRelationships();
@@ -2109,8 +2163,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 for (const int32_t sound : effects.sounds) // at the player (audio §4 "P")
                     playAt(sound, player->body().blocks(), 1, 1);
                 // §16.6: each buff's 40-byte record goes to the server as packet 8.
-                for (const creatures::BuffEvent &b : effects.buffs)
-                    sendBuff(b);
+                if (client.connected())
+                    playerActionFrame.buffs.insert(playerActionFrame.buffs.end(), effects.buffs.begin(), effects.buffs.end());
             };
             // Sample the combined interface state before early or late wheel closure.
             const bool holding = interface.quickWheel.open || interface.inventoryOpen || interface.craftingOpen ||
@@ -2179,8 +2233,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         creatures::Combatant &c = player->combat();
                         auto shot = std::exchange(playerShot, {});
                         auto launched = std::exchange(playerLaunched, {});
-                        for (const auto &buff : shot.buffs)
-                            sendBuff(buff);
                         for (creatures::Projectile &p : launched) {
                             if (p.kind == creatures::BOOMERANG_SHOT) // §2.3: the thrower's weapon scale
                                 p.scale = player->appearance().weaponScale;
@@ -2485,8 +2537,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         stepAirships(elapsed); // world objects §6: after the creature loop
                         const auto happened = aggregate.addedSince(npcEvents);
                         projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
-                        for (const auto &event : happened.buffs)
-                            sendBuff(event);
                         // Server §6.4, loot rolls §3: what the dead leave behind.
                         for (const creatures::NpcFrame::Death &death : happened.deaths)
                             if (!death.lootApplied) // retained non-hit death adapter
@@ -2648,19 +2698,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             creatures::ShotEffects flight;
                             projectiles.step(dt, targets, source, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
                                              [&] { return worldRandom.draw(); }, flight, {client.connected(), &c});
-                            for (const auto &event : flight.buffs)
-                                sendBuff(event);
+                            const bool connected = client.connected();
+                            if (connected) {
+                                aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());
+                                aggregate.sounds.insert(aggregate.sounds.end(), flight.sounds.begin(), flight.sounds.end());
+                            }
                             for (const creatures::HitEmission &emission : flight.hits) {
                                 const creatures::HitRecord &h = emission.record;
+                                if (connected) {
+                                    aggregate.emittedHits.push_back(h);
+                                    continue;
+                                }
                                 glm::dvec3 at = player->body().blocks();
                                 for (const creatures::ShotTarget &t : targets)
                                     if (t.fighter->id == h.target)
                                         at = t.body->blocks();
-                                if (client.connected()) {
-                                    if (h.attacker != c.id)
-                                        continue;
-                                    client.sendHit(net::Hit::from(h));
-                                } else if (emission.applyLocally && h.target == c.id) {
+                                if (emission.applyLocally && h.target == c.id) {
                                     player->takeHit(h);
                                 } else if (emission.applyLocally) {
                                     shotHitsOnNpcs.push_back(h);
@@ -2669,12 +2722,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     interface.floating.push_back(*text);
                                 mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
                             }
-                            for (const creatures::SoundEvent &s : flight.sounds)
-                                playAt(s.sound, s.position, s.volume, s.pitch);
-                            bursts.insert(bursts.end(), flight.bursts.begin(), flight.bursts.end());
+                            if (!connected)
+                                for (const auto &sound : flight.sounds)
+                                    playAt(sound.sound, sound.position, sound.volume, sound.pitch);
+                            auto &effects = connected ? aggregate.bursts : bursts;
+                            effects.insert(effects.end(), flight.bursts.begin(), flight.bursts.end());
                             for (const auto &s : flight.struck) { // particles §5.7
                                 const worldgen::Block b = view.held().read(s.cell.x, s.cell.y, s.cell.z);
-                                bursts.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
+                                effects.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
                             }
                         }
                     }
@@ -2682,6 +2737,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     firstWorldCall = false;
                 },
                 [&](creatures::NpcFrame &aggregate) {
+                    if (client.connected()) {
+                        const size_t produced = aggregate.emittedHits.size();
+                        mergeConnectedHits(aggregate);
+                        applyReceivedBuffs();
+                        presentConnectedHits(aggregate.emittedHits, produced);
+                    }
                     applyReceivedZoneContents();
                     if (client.connected())
                         for (const auto &gift : client.takeGifts())
@@ -2736,22 +2797,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (const glm::vec3 intent = player->body().intent; glm::dot(intent, intent) > 0)
                         interface.inventoryOpen = interface.craftingOpen = interface.skillsOpen = false;
                     updatePlayerInterface();
-                    for (const auto &hit : aggregate.emittedHits)
-                        if (hit.attacker == creatures::TIMED_CONSUMABLE_SOURCE) {
-                            presentTimedHeal(hit);
-                            mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
-                        }
+                    if (!client.connected())
+                        for (const auto &hit : aggregate.emittedHits)
+                            if (hit.attacker == creatures::TIMED_CONSUMABLE_SOURCE) {
+                                presentTimedHeal(hit);
+                                mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
+                            }
                     for (const auto &sound : aggregate.sounds)
                         playAt(sound.sound, sound.position, sound.volume, sound.pitch);
-                    if (client.connected()) {
-                        for (const auto &buff : aggregate.buffs)
-                            sendBuff(buff);
+                    if (client.connected())
                         bursts.insert(bursts.end(), aggregate.bursts.begin(), aggregate.bursts.end());
-                    }
                     if (std::exchange(input.dropOne, false))
                         if (const auto item = inventory.dropOne())
                             queueItemRequest({ItemRequest::Drop, *item});
                     publishPlayerEffects();
+                    if (client.connected())
+                        client.queueCombatFrame(aggregate.emittedHits, aggregate.buffs);
                     // Held initial-state contract: the front-end rotation assigns
                     // its targets before the same update's camera smoothing.
                     if (frontEndRotation()) {
@@ -2793,6 +2854,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         remotes.finishStep(otherFighters);
                 },
                 [&](creatures::NpcFrame &aggregate) {
+                    if (client.connected())
+                        applyReceivedBuffs();
                     applyReceivedZoneContents();
                     applyReceivedRelationships();
                     simulationInputFrames++;
@@ -3286,50 +3349,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // Core fields are current and resident buffs stay on the actor.
                 creatureLights(f.fighter, {drawn[0], drawn[1], drawn[2]}, centre, other.appearance().box.z, drawnYaw);
             }
-            if (player) {
-                creatures::Combatant &c = player->combat();
-                std::vector<creatures::BuffEvent> incomingHitUpdates;
-                for (const net::Hit &h : client.takeHits()) {
-                    // Pets §7.4: a bite (kind-6 hit) from a creature the server has made this
-                    // player's pet turns the food in the Pet slot into its pet item.
-                    if (h.target() == c.id && h.kind() == 6 && creatures::itemType(inventory.equipment[12]) == 20)
-                        for (const auto &[id, other] : receivedActors) {
-                            uint64_t owner = 0;
-                            std::memcpy(&owner, &other.bytes[0x188], 8);
-                            if (id != h.attacker() || other.controller() != 5 || owner != c.id)
-                                continue;
-                            const creatures::Combatant tamed = other.fighter();
-                            creatures::ItemRecord pet{};
-                            pet[0x00] = 19, pet[0x01] = (uint8_t)tamed.type;
-                            const uint32_t experience = (uint32_t)tamed.experience;
-                            std::memcpy(pet.data() + 0x04, &experience, 4);
-                            creatures::setItemLevel(pet, (int16_t)tamed.level);
-                            inventory.equipment[12] = pet;
-                            c.action = 0;
-                            c.linkedId = id; // the source's ID becomes the forward link (frame assignment)
-                            wearInventory();
-                        }
-                    if (h.kind() == 6)
-                        continue; // (a signal, not damage)
-                    creatures::HitRecord hit = h.record();
-                    if (hit.target == c.id) {
-                        mods.playerHit(hit.attacker, hit.kind, hit.amount);
-                        player->receiveHit(hit, &incomingHitUpdates);
-                    }
-                    if (hit.attacker != c.id) {
-                        if (hit.attacker == creatures::TIMED_CONSUMABLE_SOURCE && hit.kind == 0 && hit.amount < 0) {
-                            presentTimedHeal(hit);
-                        } else {
-                            const glm::dvec3 at = glm::dvec3(hit.position[0], hit.position[1], hit.position[2]) / 65536.0;
-                            if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.area, hit.target == c.id, at))
-                                interface.floating.push_back(*text);
-                        }
-                        mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
-                    }
-                }
-                for (const auto &event : incomingHitUpdates)
-                    sendBuff(event);
-            }
             // Incoming credits retain their later caller phase, after hits.
             // Mode one is this engine's online-world adapter; the independent
             // mode-zero consumer is also used by supplied-state checks.
@@ -3353,20 +3372,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 for (int64_t level = int64_t(previousLevel) + 1; level <= c.level; level++)
                     mods.levelUp(int32_t(level)); // (the notice and sound follow in the level-change step)
-            }
-            const auto receivedBuffs = client.takeBuffs();
-            if (!receivedBuffs.empty()) {
-                const auto &currentRecords = receivedActors;
-                for (const creatures::BuffEvent &event : receivedBuffs) {
-                    if (player && event.target == player->combat().id) {
-                        creatures::applyBuff(player->combat(), event.record);
-                    } else if (const auto target = currentRecords.find(event.target); target != currentRecords.end()) {
-                        auto [entry, created] = otherFighters.try_emplace(event.target);
-                        if (created)
-                            entry->second.receive(event.target, target->second);
-                        creatures::applyBuff(entry->second.fighter, event.record);
-                    }
-                }
             }
             for (const auto &record : client.takeBursts())
                 bursts.push_back(creatures::Burst::parse(record.data()));

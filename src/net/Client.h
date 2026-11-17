@@ -11,6 +11,7 @@
 #include <atomic>
 #include <array>
 #include <deque>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <span>
@@ -20,6 +21,11 @@ namespace net {
 
 class RemoteCreatures;
 struct RemoteFighter;
+
+// Complete the local-target pass before appending the received tail. A local
+// handler may adjust a payload through the engine's hit hook.
+void mergeReceivedHits(std::span<Hit> pending, uint64_t local, std::vector<creatures::HitRecord> &frame,
+                       const std::function<void(creatures::HitRecord &)> &applyLocal);
 
 class Client {
   public:
@@ -49,6 +55,9 @@ class Client {
     // Queues a hit the local player dealt, sent as packet 7: the server applies it to an NPC or
     // relays it to the player hit (server simulation §6.1).
     void sendHit(const Hit &hit);
+    // Promote only local-source frame outputs, in collector order.
+    void queueCombatFrame(std::span<const ::creatures::HitRecord> hits,
+                          std::span<const ::creatures::BuffEvent> buffs);
     // Queues a projectile the local player launched, sent as packet 9 (projectiles §1).
     void sendShoot(const std::array<uint8_t, 112> &record);
     // Queues an interaction request, sent as packet 6, one per tick (server simulation §8).

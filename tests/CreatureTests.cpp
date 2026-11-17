@@ -58,6 +58,107 @@ static void checkInSeparateFrame(Checks checks) {
     checks();
 }
 
+static void checkOrderedBombsAndMeleeEdits() {
+    // Pets and bombs §4.4 (correction 28): the dead-creature walk runs in ascending signed id
+    // and explodes inside the walk. An older bomb (larger id) killed by a blast explodes later
+    // in the same pass; a newer one (smaller id) has been passed and waits for the next step.
+    for (const bool olderVictim : {true, false}) {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({60.5, 10.5, 1 + 1.08 + 0.01}); // out of reach of both blasts
+        Npcs npcs;
+        const uint64_t older = npcs.placeBomb({10.5, 10.5, 1.5}, 1); // -1
+        const uint64_t newer = npcs.placeBomb({12.5, 10.5, 1.5}, 1); // -2
+        Npc *olderBomb = nullptr, *newerBomb = nullptr;
+        for (Npc &n : npcs.npcs())
+            (n.fighter.id == older ? olderBomb : newerBomb) = &n;
+        const uint64_t first = olderVictim ? newer : older, second = olderVictim ? older : newer;
+        (olderVictim ? newerBomb : olderBomb)->fighter.health = 0; // goes off this step
+        (olderVictim ? olderBomb : newerBomb)->fighter.health = 1; // any blast kills it
+        std::vector<uint64_t> thisStep, nextStep;
+        for (const auto &e : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).explosions)
+            thisStep.push_back(e.bomb);
+        for (const auto &e : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).explosions)
+            nextStep.push_back(e.bomb);
+        if (olderVictim) {
+            same(thisStep == std::vector<uint64_t>{first, second}, 1, "the older bomb goes off later in the same pass");
+            same(nextStep.empty(), 1, "nothing is left for the next step");
+        } else {
+            same(thisStep == std::vector<uint64_t>{first}, 1, "the newer bomb was passed before the blast");
+            same(nextStep == std::vector<uint64_t>{second}, 1, "it goes off in the next step's walk");
+        }
+    }
+
+    // Pets and bombs §4.2 step 1 (correction 5): a bomb's mount id is never set, so a creature
+    // with id 0 is spared; every other creature in reach is hit.
+    for (const uint64_t id : {uint64_t(0), uint64_t(1)}) {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = id;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({15.5, 10.5, 1 + 1.08 + 0.01});
+        Npcs npcs;
+        const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 1);
+        npcs.npcs().front().fighter.health = 0;
+        int hits = 0;
+        for (const HitEmission &h : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).playerHits)
+            hits += h.record.attacker == bomb;
+        same(hits, id == 0 ? 0 : 1, "the bomb's mount-id comparison spares only id 0");
+    }
+
+    // Strike-call-sites K3: a striker wider than 4 asks once per strike frame for the cells
+    // within min(trunc(R), 8) of the strike centre; when any go, the sound pitch is the draw
+    // right after the edit (before any target).
+    for (const bool removes : {true, false}) {
+        Combatant big;
+        big.id = 41;
+        big.action = 17;
+        const Phases timing = phases(big, 17);
+        big.actionMs = timing.windUp + timing.active / 2;
+        Body body;
+        body.size = {5.6f, 5.6f, 5.6f};
+        body.place({0, 0, 3});
+        worldgen::Random random{7};
+        Npcs npcs{random};
+        int asked = 0;
+        std::array<int64_t, 3> at{};
+        int32_t radius = 0;
+        std::optional<worldgen::Random> beforeEdit;
+        npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t r, CellRounding rounding,
+                               std::vector<Burst> &) {
+            asked++, at = centre, radius = r;
+            beforeEdit = random;
+            same(rounding == CellRounding::Truncate, 1, "melee removal uses truncating record coordinates");
+            return removes;
+        };
+        NpcFrame frame;
+        PlayerView view{big, body, 0, big.actionMs};
+        npcs.dispatchPlayerActions({&view, 1}, 16, [](int32_t, int32_t, int32_t) { return uint8_t(0); }, frame);
+        same(asked, 1, "one terrain call per strike frame");
+        same(radius, 8, "R = 1.5 x 5.6 truncated and capped at 8");
+        same(double(at[1]) / 65536.0, 1.5 * 5.6, "the strike centre, forward by the reach", 1e-4);
+        const auto sound = std::find_if(frame.sounds.begin(), frame.sounds.end(), [](const SoundEvent &s) {
+            return s.sound == 2;
+        });
+        same(sound != frame.sounds.end(), removes, "the removal sound requires an admitted cell");
+        if (removes && sound != frame.sounds.end()) {
+            const float expected = (float)beforeEdit->draw() * 0.4f / 32767.f + 0.5f;
+            same(sound->pitch, expected, "the pitch is the draw right after the edit");
+            same(sound->position.y, 0, "the sound is at the striker", 1e-9);
+        }
+    }
+}
+
 int main() {
     // Models §2: the table's first and duplicated slots.
     same(std::string(MODEL_KEYS[0]) == "body2", 1, "slot 0 is body2");
@@ -2630,104 +2731,7 @@ int main() {
         same(returned, 1, "the pet returns at timer equality before either actor's living turn");
     });
 
-    // Pets and bombs §4.4 (correction 28): the dead-creature walk runs in ascending signed id
-    // and explodes inside the walk. An older bomb (larger id) killed by a blast explodes later
-    // in the same pass; a newer one (smaller id) has been passed and waits for the next step.
-    for (const bool olderVictim : {true, false}) {
-        auto zone = std::make_shared<worldgen::Zone>();
-        worldgen::WorldMap map;
-        map.add(zone);
-        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
-        Combatant me;
-        me.id = 1;
-        me.health = maxHealth(me);
-        Body body;
-        body.place({60.5, 10.5, 1 + 1.08 + 0.01}); // out of reach of both blasts
-        Npcs npcs;
-        const uint64_t older = npcs.placeBomb({10.5, 10.5, 1.5}, 1); // -1
-        const uint64_t newer = npcs.placeBomb({12.5, 10.5, 1.5}, 1); // -2
-        Npc *olderBomb = nullptr, *newerBomb = nullptr;
-        for (Npc &n : npcs.npcs())
-            (n.fighter.id == older ? olderBomb : newerBomb) = &n;
-        const uint64_t first = olderVictim ? newer : older, second = olderVictim ? older : newer;
-        (olderVictim ? newerBomb : olderBomb)->fighter.health = 0; // goes off this step
-        (olderVictim ? olderBomb : newerBomb)->fighter.health = 1; // any blast kills it
-        std::vector<uint64_t> thisStep, nextStep;
-        for (const auto &e : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).explosions)
-            thisStep.push_back(e.bomb);
-        for (const auto &e : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).explosions)
-            nextStep.push_back(e.bomb);
-        if (olderVictim) {
-            same(thisStep == std::vector<uint64_t>{first, second}, 1, "the older bomb goes off later in the same pass");
-            same(nextStep.empty(), 1, "nothing is left for the next step");
-        } else {
-            same(thisStep == std::vector<uint64_t>{first}, 1, "the newer bomb was passed before the blast");
-            same(nextStep == std::vector<uint64_t>{second}, 1, "it goes off in the next step's walk");
-        }
-    }
-
-    // Pets and bombs §4.2 step 1 (correction 5): a bomb's mount id is never set, so a creature
-    // with id 0 is spared; every other creature in reach is hit.
-    for (const uint64_t id : {uint64_t(0), uint64_t(1)}) {
-        auto zone = std::make_shared<worldgen::Zone>();
-        worldgen::WorldMap map;
-        map.add(zone);
-        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
-        Combatant me;
-        me.id = id;
-        me.health = maxHealth(me);
-        Body body;
-        body.place({15.5, 10.5, 1 + 1.08 + 0.01});
-        Npcs npcs;
-        const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 1);
-        npcs.npcs().front().fighter.health = 0;
-        int hits = 0;
-        for (const HitEmission &h : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).playerHits)
-            hits += h.record.attacker == bomb;
-        same(hits, id == 0 ? 0 : 1, "the bomb's mount-id comparison spares only id 0");
-    }
-
-    // Strike-call-sites K3: a striker wider than 4 asks once per strike frame for the cells
-    // within min(trunc(R), 8) of the strike centre; when any go, the sound pitch is the draw
-    // right after the edit (before any target).
-    for (const bool removes : {true, false}) {
-        Combatant big;
-        big.id = 41;
-        big.action = 17;
-        const Phases timing = phases(big, 17);
-        big.actionMs = timing.windUp + timing.active / 2;
-        Body body;
-        body.size = {5.6f, 5.6f, 5.6f};
-        body.place({0, 0, 3});
-        worldgen::Random random{7};
-        Npcs npcs{random};
-        int asked = 0;
-        std::array<int64_t, 3> at{};
-        int32_t radius = 0;
-        std::optional<worldgen::Random> beforeEdit;
-        npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t r, CellRounding rounding,
-                               std::vector<Burst> &) {
-            asked++, at = centre, radius = r;
-            beforeEdit = random;
-            same(rounding == CellRounding::Truncate, 1, "melee removal uses truncating record coordinates");
-            return removes;
-        };
-        NpcFrame frame;
-        PlayerView view{big, body, 0, big.actionMs};
-        npcs.dispatchPlayerActions({&view, 1}, 16, [](int32_t, int32_t, int32_t) { return uint8_t(0); }, frame);
-        same(asked, 1, "one terrain call per strike frame");
-        same(radius, 8, "R = 1.5 x 5.6 truncated and capped at 8");
-        same(double(at[1]) / 65536.0, 1.5 * 5.6, "the strike centre, forward by the reach", 1e-4);
-        const auto sound = std::find_if(frame.sounds.begin(), frame.sounds.end(), [](const SoundEvent &s) {
-            return s.sound == 2;
-        });
-        same(sound != frame.sounds.end(), removes, "the removal sound requires an admitted cell");
-        if (removes && sound != frame.sounds.end()) {
-            const float expected = (float)beforeEdit->draw() * 0.4f / 32767.f + 0.5f;
-            same(sound->pitch, expected, "the pitch is the draw right after the edit");
-            same(sound->position.y, 0, "the sound is at the striker", 1e-9);
-        }
-    }
+    checkInSeparateFrame(checkOrderedBombsAndMeleeEdits);
 
     // Physics §4.5: a crate (a static 2 x 2 x 1 at x 5..7) stops a walker, which may stand on it;
     // §4.4: overlapping creatures are pushed apart.

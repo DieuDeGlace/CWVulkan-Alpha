@@ -178,4 +178,14 @@ std::array<std::optional<glm::vec3>, 2> criticalFlashColours(const creatures::Co
     return colours;
 }
 
+void appendConnectedHitLights(const creatures::Combatant &source, const creatures::HitRecord &hit,
+                              FadingSources &lights) {
+    if (hit.area)
+        for (const auto &colour : criticalFlashColours(source))
+            if (colour)
+                lights.append({hit.position, *colour, 20, 0, 400});
+    if (hit.beam)
+        lights.append({hit.position, {.3f, .3f, .5f}, 16, 0, 400});
+}
+
 } // namespace terrain_lights

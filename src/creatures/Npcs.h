@@ -128,7 +128,7 @@ struct PlayerView {
 
 // What a step of creatures did.
 struct NpcFrame {
-    std::vector<HitRecord> emittedHits; // producer output; received NPC hits are not automatically echoed
+    std::vector<HitRecord> emittedHits; // producer output, followed by the connected frame's received tail
     std::vector<HitEmission> playerHits; // local policy is not sent over the wire
     std::vector<SoundEvent> sounds;
     std::vector<BuffEvent> buffs;

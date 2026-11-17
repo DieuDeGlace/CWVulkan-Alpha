@@ -759,9 +759,13 @@ Differences from the Steam engine that shape the plan:
   and current positions, process defensive and ordinary results without applying
   damage, and keep caller and helper draws in target order. Publish simulated
   combo fields. Apply common anticipation and action-zero deferred feedback.
-- [ ] Complete connected hit presentation and transport admission, the other
-  action-specific hit and timer branches, the ordinary creature link, and
-  original-client acceptance.
+- [x] Connected hit receipt, visual gates and socket promotion
+  (`alpha-connected-hit-consumption.md`). Run the received local-target pass,
+  append the foreign-source tail, produce local labels and resource and
+  auxiliary lights, and queue local-source hits and buffs in collector order.
+- [ ] Complete connected presentation bookkeeping, the other action-specific
+  hit and timer branches, the ordinary creature link, and original-client
+  acceptance.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

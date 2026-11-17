@@ -2080,3 +2080,27 @@ suites and all 60 CTest suites passed. Revision 10 parsed and all 33 links
 resolved. The held candidate and cleanup contracts matched their recorded
 hashes. Connected output presentation, action-specific candidates beyond
 action 1, and original-client combat comparisons remain open.
+
+## Connected hit receipt and presentation (2026-11-17)
+
+IncomingHitTests verifies the full local-target pass runs before the
+foreign-source tail is appended. Self echoes affect local state without a
+second presentation record. Ward events retain the embedded source, and
+foreign record order and opaque bytes survive the merge. The production
+Client transport fixture checks exact 64-bit filtering, two hit packets in
+frame order, the earlier local-state packet, and the later buff packet.
+
+UiTests checks the label's raw fixed position, live height, local-target
+offset, colour and motion. CreatureLightTests checks weapon order, the
+resource and auxiliary bytes, exact positions and the 400 ms light. A
+separate isolated loopback run sent the Vulkan client a nonlocal record,
+a local echo for 49 damage, a missing-source heal of 7, another 4 damage,
+and a counter. The local save ended at exactly 4 HP from 50. Processing the
+two damage amounts before the heal would leave zero health.
+
+The Windows x64 build, nine focused suites and all 60 CTests passed.
+The initial full run exposed a `CreatureTests` stack overflow. The three
+ordered bomb and melee-edit fixtures now run in a separate stack frame
+and the test passed 30 consecutive runs. Revision 11 parsed and all 34
+links resolved. Native hit counters, capture-signal details and matched
+original hit presentation remain open.

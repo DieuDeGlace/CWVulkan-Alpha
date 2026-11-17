@@ -3519,3 +3519,25 @@ visibility adapter reads received static type, position, rotation, dimensions
 and state when present. Geometry outside the engine's fixed conversion range
 is skipped. Other action-specific candidates, output consumers and native
 client acceptance remain open.
+
+## Connected hit receipt and presentation (2026-11-17)
+
+The isolated author finalized [the hit consumption contract](specs/alpha-connected-hit-consumption.md).
+The implementer read all 303 physical lines and verified SHA-256
+`d70901d54aebc7cfe7e41a04a4d577e01bb6d0a5a78deaaf1761a636449c16f1`.
+The frame collects controlled melee and projectile hits alongside received
+actors' generated hit records. After the world pieces, the local-target pass
+applies all relevant receipts in order, including self-source echoes. A second
+pass appends foreign-source receipts after produced records. It preserves the
+engine's existing pet-capture handling and permits the SDK's local damage hook
+to update the amount used for state and presentation.
+
+Floating text requires a resolved target and a local endpoint. Position uses
+the raw record and live target height, including the fixed local Z adjustment.
+Lights use the resolved source's current striking weapons for the nonzero
+resource byte and append the independent auxiliary light when its byte is set.
+The sender receives only complete-ID local-source hits and buff events from
+the frame, with serial order within each collection. Connected incoming buffs
+apply after hit state processing and before presentation. Native hit totals and
+the transient aim pointer are not modeled here. Original-client combat and
+light comparisons, the embedded host and the capture-signal details stay open.
