@@ -2404,6 +2404,34 @@ int main() {
         }
         same(closest < 10, 1, "the leader reaches within 10 blocks of its route point");
     }
+    // Wildlife §4.6 step 6: a route point whose zone is not loaded starts no search; WalkPath
+    // is not handled and RandomWalk keeps the leader near home.
+    {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        worldgen::Spawn s;
+        s.x = 276ll << 16, s.y = 20ll << 16, s.z = 10ll << 16;
+        s.type = 2;
+        s.controller = 3;
+        s.behaviour = 2;
+        s.route = {{600, 20, 10}}; // zone (2, 0), absent from the map
+        zone->spawns.push_back(s);
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto flat = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 10 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({276.5, 150.5, 10 + 1.08 + 0.01});
+        Npcs npcs;
+        double farthest = 0;
+        for (int i = 0; i < 1500; i++) {
+            npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, flat);
+            if (!npcs.all().empty())
+                farthest = std::max(farthest, npcs.all()[0].body.blocks().x);
+        }
+        same(farthest > 0 && farthest < 320, 1, "an unloaded goal zone keeps the leader from heading for it");
+    }
 
     // Schedules §3: a resident appears at its current stop and walks to the next when its time
     // comes, arriving within 4 blocks.
@@ -2491,8 +2519,8 @@ int main() {
         sword.type = 3;
         sword.cubes = {{0, 0, 0, 128}, {0, 0, 1, 130}, {0, 0, 2, 1}};
         sword.spirits = 3;
-        glm::vec3 a(0);
-        same(averageSpiritColour(sword, a), 1, "a sword with spirits");
+        const glm::vec4 a = averageSpiritColour(sword);
+        same(a.w, 3, "a sword with spirits: A.a = 3");
         same(a.x, 0.975, "average r", 1e-5);
         same(a.y, 0.75, "average g", 1e-5);
         same(a.z, 0.825, "average b", 1e-5);

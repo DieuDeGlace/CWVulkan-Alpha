@@ -2918,3 +2918,21 @@ fields; world-panel model placement (C-8); the "Please wait..." state; separate 
 caption highlight. Engine choices for open points: delivery uses press-time visibility (C-9, keeps controller clicks working),
 seed overflow wraps (C-6), wide units of 0x80 and above narrow to '?' (C-2). The controller drives the same press/release
 path; price fixes, quests, water and reeds are unchanged.
+## Materials, wildlife and routes; held-light factor ruling (2026-11-16)
+
+A fresh source-only author re-certified `alpha-materials-wildlife-routes.md` (0784812E...A63F); a ruling
+author settled its conflict with the terrain light-source lifecycle contract in `alpha-rulings-held-light-factor.md`
+(8D26C2DF...A56F) (held-spirit lights in slot order 7, 6, 5, 2 with factors 0.3, 0.5, 0.1, 0.1;
+ratio product first; all skipped only when the ratio is exactly zero; each block needs a positive averaged alpha; the
+lifecycle contract's off-hand 0.3 is overruled). A fresh implementer read both whole.
+Engine changes: the off-hand held light uses 0.5; the zero-ratio and alpha gates follow the ruling (negative and NaN ratios
+pass); the averaged spirit colour carries alpha through a material colour routine (s·0.5 + 1, gold red copied); lying items of
+type 0 draw no attached cubes and each cube takes the item's lit colour; the critical-hit flash walks the action weapon list;
+wildlife camp distance in single precision; Lc from the creature's own position and the tier gate needs v and v squared
+positive; the companion ring uses double trig of the widened angle, one rounding and truncation toward zero; WalkPath
+advances its index modulo the point count, tests arrival by single-precision squared distance and clears a path whose goal
+zone is not loaded.
+Not modelled: equipped-item cubes still use the spirit colour times glow and only type-3 items; the WalkPath box fit stays on
+the engine block adapter (MW-8); ring trig uses platform double functions; the native Lc lookup equivalence is unconfirmed;
+held-light hand positions use the engine weapon-point fallback (MW-1). Engine policy: a non-finite held-light colour (zero
+divisor) omits that source.

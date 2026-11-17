@@ -146,6 +146,15 @@ void Terrain::locationGrid(Zone &zone, Random &random) const {
     locationCreatures(zone, random, *Lz, candidates);
 }
 
+std::array<int64_t, 2> companionOffset(int32_t c, int32_t k) {
+    // θ in binary64, narrowed once; sine feeds y and cosine x, each evaluated in binary64
+    // from the widened θ and narrowed, scaled in binary32 and truncated toward zero.
+    const float theta = (float)((double)c * 2.0 * 3.141592653589793 / (double)k);
+    const float sine = (float)std::sin((double)theta);
+    const float cosine = (float)std::cos((double)theta);
+    return {(int64_t)(cosine * 8.f * 65536.f), (int64_t)(sine * 8.f * 65536.f)};
+}
+
 int32_t Terrain::wildlifeSpecies(int32_t x, int32_t y, int32_t h, int32_t mode, Random &random) const {
     const std::vector<int32_t> list = wildlifeList(w.warmth(x, y), w.moisture(x, y), w.fireShare(x, y), mountains(x, y), h, mode);
     return list[(size_t)random.draw() % list.size()];
@@ -188,12 +197,14 @@ void Terrain::wildlifePass(Zone &zone, Random &random) const {
                 continue;
             if (moist < 0.2f && random.draw() % 4 == 0)
                 continue;
-            bool nearObject = false;
-            for (const ObjectMark &p : zone.objectList) {
-                const float dx = (float)x - (float)((double)p.x / 65536.0), dy = (float)y - (float)((double)p.y / 65536.0);
-                nearObject = nearObject || dx * dx + dy * dy < 400.f;
-            }
-            if (nearObject)
+            // §3.1 step 7: each fx difference narrowed to binary32, then scaled by 1/65536;
+            // the squares are summed in binary32. The first near point skips.
+            const auto nearObject = [&](const ObjectMark &p) {
+                const float dx = float(((int64_t)x << 16) - p.x) * (1.f / 65536.f);
+                const float dy = float(((int64_t)y << 16) - p.y) * (1.f / 65536.f);
+                return dx * dx + dy * dy < 400.f;
+            };
+            if (std::any_of(zone.objectList.begin(), zone.objectList.end(), nearObject))
                 continue;
             int32_t z = column.belowSurface;
             while (true) {
@@ -242,10 +253,17 @@ void Terrain::wildlifePass(Zone &zone, Random &random) const {
             s.controller = 1;
             if (random.draw() % 100 == 0)
                 s.appearanceFlags |= 0x200;
+            // Lc: the location record of the creature's map cell, its fx position divided by
+            // 65536, 256 and 8, each toward zero (one truncation by 2048 of the block value
+            // is the same quotient). Believed, not established, to be Lz.
+            const Location *Lc = w.location((int32_t)(s.x / 65536), (int32_t)(s.y / 65536));
             const auto [lo, hi] = levelRange(s.type);
             s.level = lo + random.draw() % (hi - lo + 1);
-            if (Lz && lo <= Lz->level && Lz->level <= hi && inside(*Lz, x, y) > 0)
-                s.powerTier = (uint8_t)Lz->subLevel;
+            if (Lc && lo <= Lc->level && Lc->level <= hi) {
+                const float v = 1.f - w.locationDistanceFx(*Lc, s.x, s.y);
+                if (v > 0 && v * v > 0)
+                    s.powerTier = (uint8_t)Lc->subLevel;
+            }
             s.windowStart = 21600000, s.windowEnd = 86400000;
             zone.spawns.push_back(s);
             const auto [glo, ghi] = groupRange(s.type);
@@ -253,9 +271,9 @@ void Terrain::wildlifePass(Zone &zone, Random &random) const {
             for (int32_t c = 0; c < k; c++) {
                 Spawn m;
                 m.controller = 1;
-                const float theta = (float)(c * 2 * 3.141592653589793 / k);
-                m.x = s.x + (int64_t)(std::cos(theta) * 8 * 65536.0f);
-                m.y = s.y + (int64_t)(std::sin(theta) * 8 * 65536.0f);
+                const std::array<int64_t, 2> ring = companionOffset(c, k);
+                m.x = s.x + ring[0];
+                m.y = s.y + ring[1];
                 m.z = s.z;
                 m.type = variant(s.type, random);
                 const auto [mlo, mhi] = levelRange(m.type);

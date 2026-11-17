@@ -445,8 +445,9 @@ class Npcs {
     // when not handled.
     bool spawnLocation(Npc &n, const BlockType &block);
     double clockMs = 0; // the time of day of this step
-    // Wildlife §4.6: walk the route point to point; false when not handled.
-    bool walkPath(Npc &n, float dtMs, const BlockType &block);
+    // Wildlife §4.6: walk the route point to point; false when not handled (including a
+    // goal whose zone is not in `map`).
+    bool walkPath(Npc &n, float dtMs, const BlockType &block, const worldgen::WorldMap &map);
     void bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame);
     void sharePetExperience(Combatant &owner, int32_t experience, NpcFrame &frame);
     int draw(); // rand(): 0..32767

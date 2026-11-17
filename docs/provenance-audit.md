@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-16 (after batches 1-24 and the rulings; 227 tracked contracts, local ignored variants excluded): 156 A, 61 B, 5 C (3026 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-16 (after batches 1-25 and the rulings; 228 tracked contracts, local ignored variants excluded): 158 A, 61 B, 4 C (2506 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -173,7 +173,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
 | `alpha-location-creatures.md` | A | 519 | 0 |
 | `alpha-loot-rolls.md` | A | 503 | 0 |
-| `alpha-materials-wildlife-routes.md` | C | 905 | 0 |
+| `alpha-materials-wildlife-routes.md` | A | 905 | 0 |
 | `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
 | `alpha-missions.md` | A | 1062 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
@@ -231,6 +231,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
 | `alpha-rulings-corridor-third-line.md` | A | 120 | 0 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
+| `alpha-rulings-held-light-factor.md` | A | 88 | 0 |
 | `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
 | `alpha-rulings-knockback-taming-charge.md` | A | 199 | 1 |
 | `alpha-rulings-melee-reach.md` | A | 71 | 0 |
@@ -265,10 +266,10 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | B | 192 | 1 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
-| `alpha-trails-poses-schedules.md` | C | 690 | 2 |
+| `alpha-trails-poses-schedules.md` | C | 900 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
 | `alpha-travel.md` | A | 641 | 0 |
-| `alpha-ui-plasma.md` | C | 603 | 4 |
+| `alpha-ui-plasma.md` | C | 778 | 2 |
 | `alpha-ui-screens.md` | A | 3719 | 2 |
 | `alpha-vendor-stock-generation.md` | A | 113 | 1 |
 | `alpha-vendor-widget-transactions.md` | A | 82 | 3 |

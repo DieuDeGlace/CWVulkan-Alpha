@@ -1015,6 +1015,20 @@ int main() {
         same(pick(0.5f, 0.5f, 0.3f, 0, 40, 32767), 73, "fire: devourer");
         same(pick(0.5f, 0.5f, 0, 0, -5, 100), 152, "water: lantern-fish");
     }
+    // Wildlife §3.3 step 5: the companion ring, cosine to x, sine to y, truncated toward zero.
+    {
+        const auto ring = [](int32_t c, int32_t k, int64_t x, int64_t y) {
+            const auto offset = companionOffset(c, k);
+            return offset[0] == x && offset[1] == y;
+        };
+        same(ring(0, 1, 524288, 0), 1, "the first companion is due east, eight blocks out");
+        same(ring(1, 4, 0, 524288), 1, "a quarter turn puts the sine on y; the tiny cosine truncates to zero");
+        same(ring(1, 2, -524288, 0), 1, "a half turn's tiny negative sine truncates toward zero, not down");
+        same(ring(3, 4, 0, -524288), 1, "three quarters: negative y");
+        // f32(2π/3) lies above 2π/3, so its cosine narrows to -0.50000006: -262144.03 truncates
+        // to -262144 (flooring would give -262145).
+        same(ring(1, 3, -262144, 454046), 1, "a third of a turn keeps single scaling and truncation");
+    }
     // Missions §10.1: with the stream of srand(1), level 1 + 41 mod 10 = 2 and, in a mild
     // climate, the reptile monster (18467 mod 2 = 1).
     {

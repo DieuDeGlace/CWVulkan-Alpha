@@ -32,9 +32,15 @@ void takeSpiritItem(Inventory &inventory, const ItemRecord &entry);
 // §3.9, materials §1.1: an attached cube's colour at strength 0 (the spirits' own colours,
 // ordinary materials' factors on the white cube).
 glm::vec3 spiritColour(uint8_t material);
-// Held light-source contract: average qualifying material bytes >=128 in the
-// signed-count prefix. 128..131 use strength 1.5; higher bytes contribute grey.
-// Returns whether any qualify; no qualifying records write zero RGB.
-bool averageSpiritColour(const Item &item, glm::vec3 &colour);
+// Materials §1.1: colour K of material byte `material` for input colour C and strength s.
+// Ordinary bytes multiply C.rgb by their factors and pass C.a through (gold copies red);
+// spirits 128..131 use f = s * 0.5 + 1, ignoring C.rgb, with alpha (C.a + s) * f. Every
+// product and sum is one binary32 operation.
+glm::vec4 materialColour(uint8_t material, glm::vec4 input, float strength);
+// Materials §1.5, held light-source contract: A, the four-component sum of
+// K(m, (1, 1, 1, 1), 1) over qualifying bytes >= 128 in the signed-count prefix, in index
+// order, times the binary32 reciprocal 1/n. (0, 0, 0, 0) when none qualify, so A.a > 0
+// exactly when some entry qualified.
+glm::vec4 averageSpiritColour(const Item &item);
 
 } // namespace creatures

@@ -2436,17 +2436,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             player->takeHit(hit);
                         }
                         for (const auto &[hit, at] : happened.seen) {
-                            // Materials §1.5: a critical hit by a weapon with spirits flashes at the hit
-                            // for 400 ms (radius 20).
+                            // Materials §1.5: a critical hit flashes at the hit for 400 ms (radius
+                            // 20), once per spirit-carrying item of the attacker's action weapon list.
                             if (hit.critical) {
                                 const creatures::Combatant *by = hit.attacker == c.id ? &c : nullptr;
                                 for (const creatures::Npc &n : npcs.all())
                                     if (n.fighter.id == hit.attacker)
                                         by = &n.fighter;
                                 if (by)
-                                    for (const creatures::Item *weapon : {&by->mainHand(), &by->offHand()})
-                                        if (glm::vec3 a; weapon->type == 3 && creatures::averageSpiritColour(*weapon, a))
-                                            flashes.append({hit.position, a, 20, 0, 400});
+                                    for (const auto &colour : terrain_lights::criticalFlashColours(*by))
+                                        if (colour)
+                                            flashes.append({hit.position, *colour, 20, 0, 400});
                             }
                             if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.area, hit.target == c.id, at))
                                 interface.floating.push_back(*text);
@@ -3087,8 +3087,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         (*itemTarget)[2] == (int32_t)k)
                         material += glm::vec4(0.25f);
                     items.push_back({mesh, world, true, Shading::World, material});
-                    // World items §2.5: the item's attached cubes, at their model cells, shining
-                    // with an iron, gold, silver or ice item.
+                    // World items §2.5, materials §1.3, §1.4: the main model above draws without
+                    // shimmer; a nonzero item type draws its attached cubes at their model cells,
+                    // each in K(cube material, the item's lit colour, 0), shining with an iron,
+                    // gold, silver or ice item.
+                    if (type == 0)
+                        continue;
                     const glm::vec3 size = creatureView.voxels(model);
                     const uint8_t itemMaterial = creatures::itemMaterial(w.item);
                     const bool shine = itemMaterial == 1 || itemMaterial == 11 || itemMaterial == 12 || itemMaterial == 22;
@@ -3096,7 +3100,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         items.push_back({creatureView.cubeMesh(),
                                          world * glm::translate(glm::mat4(1), glm::vec3(cube.x + 0.5f - size.x / 2,
                                                                                         cube.y + 0.5f - size.y / 2, cube.z)),
-                                         true, Shading::World, glm::vec4(creatures::spiritColour(cube.material), material.a),
+                                         true, Shading::World, creatures::materialColour(cube.material, material, 0.f),
                                          shine});
                 }
         }

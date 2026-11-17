@@ -863,13 +863,17 @@ bool Npcs::randomInteraction(Npc &n, float dtMs, const BlockType &block) {
     return true;
 }
 
-bool Npcs::walkPath(Npc &n, float dtMs, const BlockType &block) {
+// Wildlife §4.6 (server 0x4c5e00): returns not handled for an empty route, a skipped point,
+// the arrival tick and an unloaded goal zone; handled while waiting or walking.
+bool Npcs::walkPath(Npc &n, float dtMs, const BlockType &block, const worldgen::WorldMap &map) {
     if (n.route.empty())
         return false;
     n.waitMs = std::max(0.f, n.waitMs - dtMs);
     if (n.waitMs > 0)
         return true;
-    n.routeIndex %= n.route.size();
+    const size_t points = n.route.size();
+    const auto advance = [&] { n.routeIndex = (n.routeIndex + 1) % points; };
+    n.routeIndex %= points;
     n.body.intent = glm::vec3(0);
     const float h = n.body.size.z;
     // Fit the point to the ground: down while free, then up while colliding (21 tests each).
@@ -883,31 +887,41 @@ bool Npcs::walkPath(Npc &n, float dtMs, const BlockType &block) {
                         return true;
         return false;
     };
+    // The raise loop restarts at the level the lowering loop found colliding.
     int k = 0;
     while (k < 21 && !collides(T))
         T.z -= 1, k++;
     if (k == 21) {
-        n.routeIndex++;
+        advance();
         return false;
     }
     k = 0;
     while (k < 21 && collides(T))
         T.z += 1, k++;
     if (k == 21) {
-        n.routeIndex++;
+        advance();
         return false;
     }
-    const glm::dvec3 feet = n.body.blocks() - glm::dvec3(0, 0, h * 0.5);
-    if (glm::length(feet - T) < n.routeRadius) { // arrived: stand 2-6 s, then the next point
+    // Arrival: binary32 squared 3-D separation in blocks against r².
+    const glm::vec3 offset(n.body.blocks() - glm::dvec3(0, 0, h * 0.5) - T);
+    if (glm::dot(offset, offset) < n.routeRadius * n.routeRadius) { // stand 2-6 s, then the next point
         n.path.clear();
         n.waitMs = 2000.f + (float)(draw() % 4000);
-        n.routeIndex++;
+        advance();
         return false;
     }
     // alpha-path-search.md §3, §8: a search starts only on an empty path list.
     // After an abandoned search the path is the goal cell alone, so no restart
     // here; the follower's 3000 ms re-plan restarts it.
     if (n.path.empty()) {
+        // §4.6 step 6: the goal zone (fx divided by 65536, then 256, toward zero) must be
+        // loaded; otherwise the same point is tried again next update.
+        const auto zoneOf = [](double blocks) { return int32_t(int64_t(blocks * 65536.0) / 65536 / 256); };
+        const int32_t zx = zoneOf(T.x), zy = zoneOf(T.y);
+        if (zx < 0 || zy < 0 || zx >= 65536 || zy >= 65536 || !map.zone(zx, zy)) {
+            n.path.clear();
+            return false;
+        }
         n.path.start(n.body.blocks() + glm::dvec3(0, 0, 0.1 - h * 0.5), T, n.routeRadius, n.body.size);
         n.path.round(n.body.size, block);
     }
@@ -962,18 +976,18 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
         return;
     }
     if (npc.behaviour == 5) { // a location's ring creature: Combat, WalkPath, RandomInteraction
-        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block) && !randomInteraction(npc, dtMs, block))
+        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block, map) && !randomInteraction(npc, dtMs, block))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 6) { // a location's group leader: Combat, WalkPath, RandomWalk
-        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block))
+        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block, map))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 4) { // a shopkeeper: Combat, LookAtPlayer, WalkPath to its counter
         if (!combat(npc, dtMs, players, block, frame, map) && !lookAtPlayer(npc, players))
-            walkPath(npc, dtMs, block);
+            walkPath(npc, dtMs, block, map);
         return;
     }
     if (npc.behaviour == 2 || npc.behaviour == 3) {
@@ -981,7 +995,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
             return;
         if (npc.behaviour == 3 && companion(npc, npc.follows, players, int32_t(dtMs), block, map))
             return;
-        if (!walkPath(npc, dtMs, block))
+        if (!walkPath(npc, dtMs, block, map))
             randomWalk(npc, dtMs);
         return;
     }

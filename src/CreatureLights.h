@@ -31,10 +31,15 @@ std::array<std::optional<Candidate>, 2> bodySources(
 // `displayed` is the creature position that refresh was drawn at.
 std::array<std::optional<FixedPosition>, 2> weaponPoints(const creatures::PoseState &pose, glm::dvec3 displayed);
 
-// Slots in the result retain main hand, off hand, shoulders, chest order. Empty
-// optionals are rejected sites, not zero-colour replacements or merged sources.
+// Held held-light-factor ruling: slots 7, 6, 5, 2 (main hand, off hand, shoulders,
+// chest) in that order, factors 0.3, 0.5, 0.1, 0.1, radius 10. Empty optionals are
+// rejected sites, not zero-colour replacements or merged sources.
 std::array<std::optional<Candidate>, 4> equipmentSources(
     const creatures::Combatant &creature, const FixedPosition &mainPosition,
     const std::array<FixedPosition, 2> &handPositions);
+
+// Materials §1.5 critical-hit flash: one colour A.rgb per item of the attacker's action
+// weapon list (behaviour §5.11), in list order, for items whose A.a > 0.
+std::array<std::optional<glm::vec3>, 2> criticalFlashColours(const creatures::Combatant &attacker);
 
 } // namespace terrain_lights

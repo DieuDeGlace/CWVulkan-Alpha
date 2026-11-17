@@ -13,6 +13,7 @@
 #include "worldgen/Regions.h"
 #include "worldgen/Zone.h"
 #include <glm/glm.hpp>
+#include <array>
 #include <memory>
 #include <optional>
 
@@ -62,6 +63,9 @@ glm::ivec2 pillarOffset(int32_t k, int32_t n);
 // Wildlife spec §2.2: the creature types that may live where the climate and height are these
 // (mode 1: the people list), in the original's order.
 std::vector<int32_t> wildlifeList(float warmth, float moisture, float fire, float mountain, int32_t h, int32_t mode);
+// Wildlife spec §3.3 step 5: companion c of k's fx (x, y) offset on the 8-block ring round
+// its leader (cosine to x, sine to y; binary32 scaling, truncation toward zero).
+std::array<int64_t, 2> companionOffset(int32_t c, int32_t k);
 
 class Terrain {
   public:

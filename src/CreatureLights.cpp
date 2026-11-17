@@ -2,6 +2,7 @@
 #include "creatures/Combat.h"
 #include "creatures/Pose.h"
 #include "creatures/Spirits.h"
+#include "creatures/Strike.h"
 #include <bit>
 #include <cmath>
 
@@ -132,26 +133,49 @@ std::array<std::optional<Candidate>, 4> equipmentSources(
     std::array<std::optional<Candidate>, 4> sources{};
     if (!(creature.health > 0))
         return sources;
+    // One binary32 division, no clamp, shared by all four blocks. Only an ordered
+    // equality with zero (either sign) skips them; negative and NaN ratios proceed.
     const float ratio = float(creature.combo) / creatures::comboMax(creature);
-    // The held ordinary contract admits finite negative ratios and has no cap.
-    // Exceptional ratios have no native contract; the engine omits those sources.
-    if (ratio == 0 || !std::isfinite(ratio))
+    if (ratio == 0.f)
         return sources;
-    constexpr int slots[] = {creatures::MAIN_HAND, creatures::OFF_HAND,
-                             creatures::SHOULDERS_SLOT, creatures::CHEST_SLOT};
-    for (size_t site = 0; site < sources.size(); ++site) {
-        const creatures::Item &item = creature.equipment[slots[site]];
-        const bool weapon = site < 2;
-        if (weapon ? item.type != 3 : item.type == 0)
+    struct Site {
+        int slot;
+        bool weapon; // type byte 3, else any nonzero type byte
+        float factor;
+    };
+    static constexpr std::array<Site, 4> sites{{{creatures::MAIN_HAND, true, .3f},
+                                                {creatures::OFF_HAND, true, .5f},
+                                                {creatures::SHOULDERS_SLOT, false, .1f},
+                                                {creatures::CHEST_SLOT, false, .1f}}};
+    for (size_t index = 0; index < sites.size(); ++index) {
+        const Site &site = sites[index];
+        const creatures::Item &item = creature.equipment[site.slot];
+        if (site.weapon ? item.type != 3 : item.type == 0)
             continue;
-        glm::vec3 average;
-        if (!creatures::averageSpiritColour(item, average))
+        const glm::vec4 average = creatures::averageSpiritColour(item);
+        if (!(average.a > 0)) // a NaN alpha skips too
             continue;
-        const glm::vec3 scaled = average * ratio;
-        sources[site] = Candidate{weapon ? handPositions[site] : mainPosition,
-                                  scaled * (weapon ? .3f : .1f), 10, 0};
+        // (A.rgb x ratio) x factor: two binary32 products per channel, ratio first.
+        const glm::vec3 scaled = glm::vec3(average) * ratio;
+        const glm::vec3 colour = scaled * site.factor;
+        // The ruling leaves downstream use of a non-finite colour (zero-divisor
+        // ratios) unspecified; the engine omits such a source rather than upload it.
+        if (!std::isfinite(colour.r) || !std::isfinite(colour.g) || !std::isfinite(colour.b))
+            continue;
+        sources[index] = Candidate{site.weapon ? handPositions[index] : mainPosition, colour, 10, 0};
     }
     return sources;
+}
+
+std::array<std::optional<glm::vec3>, 2> criticalFlashColours(const creatures::Combatant &attacker) {
+    const creatures::Item *weapons[2];
+    creatures::strikingWeapons(attacker, weapons[0], weapons[1]);
+    std::array<std::optional<glm::vec3>, 2> colours{};
+    for (size_t k = 0; k < colours.size(); ++k)
+        if (weapons[k])
+            if (const glm::vec4 average = creatures::averageSpiritColour(*weapons[k]); average.a > 0)
+                colours[k] = glm::vec3(average);
+    return colours;
 }
 
 } // namespace terrain_lights

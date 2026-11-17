@@ -62,22 +62,32 @@ int main() {
     creatures::Item glowing;
     glowing.spirits = 3;
     glowing.cubes = {{0, 0, 0, 128}, {0, 0, 0, 132}, {0, 0, 0, 255}, {0, 0, 0, 130}};
-    glm::vec3 average(9);
-    check(creatures::averageSpiritColour(glowing, average) &&
-              std::bit_cast<uint32_t>(average.r) == 0x3f555556 &&
+    glm::vec4 average = creatures::averageSpiritColour(glowing);
+    check(std::bit_cast<uint32_t>(average.r) == 0x3f555556 &&
               std::bit_cast<uint32_t>(average.g) == 0x3f155556 &&
-              std::bit_cast<uint32_t>(average.b) == 0x3ec44444,
-          "all material bytes >=128 qualify; three ordered sums use one float reciprocal");
+              std::bit_cast<uint32_t>(average.b) == 0x3ec44444 &&
+              average.a == 5.f * (1.f / 3.f),
+          "all material bytes >=128 qualify; four ordered sums use one float reciprocal");
     glowing.spirits = 1;
-    check(creatures::averageSpiritColour(glowing, average) && average == glm::vec3(1.5f, .75f, .15f),
-          "only the descriptor's signed-count prefix contributes to item glow");
+    average = creatures::averageSpiritColour(glowing);
+    check(average == glm::vec4(1.5f, .75f, .15f, 3.f),
+          "only the descriptor's signed-count prefix contributes to item glow; spirit alpha is 3");
     glowing.spirits = -1;
-    check(!creatures::averageSpiritColour(glowing, average) && average == glm::vec3(0),
+    check(creatures::averageSpiritColour(glowing) == glm::vec4(0),
           "nonpositive descriptor count writes zero even with retained decoded storage");
     glowing.spirits = 1;
     glowing.cubes[0].material = 127;
-    check(!creatures::averageSpiritColour(glowing, average) && average == glm::vec3(0),
+    check(creatures::averageSpiritColour(glowing) == glm::vec4(0),
           "ordinary materials below128 do not qualify and leave zero sums");
+    // Materials §1.1: K(m, C, s).
+    const glm::vec4 lit(.8f, .6f, 1.25f, .9f);
+    check(creatures::materialColour(1, lit, 7) == glm::vec4(.8f * .7f, .6f * .7f, 1.25f * .7f, .9f),
+          "ordinary materials scale the input colour, pass its alpha and ignore strength");
+    check(creatures::materialColour(11, lit, 0).r == .8f, "gold copies the red input channel");
+    check(creatures::materialColour(10, lit, 0) == glm::vec4(.4f, .3f, .625f, .9f), "copper halves the input");
+    check(creatures::materialColour(128, glm::vec4(1, 1, 1, .8f), .5f) == glm::vec4(1.25f, .625f, .1f * 1.25f, (.8f + .5f) * 1.25f),
+          "fire ignores the input RGB: f = s * 0.5 + 1 and alpha (Ca + s) * f (example 2)");
+    check(creatures::materialColour(131, lit, 0) == glm::vec4(.8f, .8f, 1.f, .9f), "wind at strength zero");
 
     const auto fixed = fromBlocks({1.0 / 65536, -1.0 / 65536, .5});
     check(fixed && *fixed == FixedPosition{1, -1, 32768}, "world coordinates retain fixed-point fractions");

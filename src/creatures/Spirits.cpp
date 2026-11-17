@@ -114,8 +114,21 @@ void takeSpiritItem(Inventory &inv, const ItemRecord &entry) {
             }
 }
 
-bool averageSpiritColour(const Item &item, glm::vec3 &colour) {
-    glm::vec3 sum(0);
+glm::vec4 materialColour(uint8_t material, glm::vec4 input, float strength) {
+    if (material >= 128 && material <= 131) {
+        const float half = strength * .5f;
+        const float f = half + 1.f;
+        const glm::vec3 spirit = spiritColour(material);
+        const float alpha = input.a + strength;
+        // A unit table factor is a copy of f (identical to a multiplication by 1).
+        return {spirit.r * f, spirit.g * f, spirit.b * f, alpha * f};
+    }
+    const glm::vec3 factor = spiritColour(material);
+    return {input.r * factor.r, input.g * factor.g, input.b * factor.b, input.a};
+}
+
+glm::vec4 averageSpiritColour(const Item &item) {
+    glm::vec4 sum(0);
     int n = 0;
     // Valid descriptors keep the signed count and decoded vector in sync.
     // Bound malformed counts by owned storage rather than reading beyond it.
@@ -123,12 +136,14 @@ bool averageSpiritColour(const Item &item, glm::vec3 &colour) {
     for (size_t i = 0; i < count; ++i) {
         const uint8_t material = item.cubes[i].material;
         if (material >= 128) {
-            sum += material <= 131 ? 1.5f * spiritColour(material) : glm::vec3(.5f);
+            sum += materialColour(material, glm::vec4(1), 1.f);
             ++n;
         }
     }
-    colour = n ? sum * (1.f / float(n)) : glm::vec3(0);
-    return n > 0;
+    if (n == 0)
+        return glm::vec4(0);
+    const float reciprocal = 1.f / float(n);
+    return sum * reciprocal;
 }
 
 glm::vec3 spiritColour(uint8_t material) {

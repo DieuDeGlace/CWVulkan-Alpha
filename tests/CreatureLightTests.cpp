@@ -3,6 +3,7 @@
 #include "creatures/Pose.h"
 #include "net/Protocol.h"
 #include <bit>
+#include <cmath>
 #include <cstdio>
 #include <limits>
 
@@ -241,7 +242,28 @@ static void weaponPointLights() {
     }
 }
 
+// Materials §1.5: the critical flash walks the action weapon list (behaviour §5.11).
+static void criticalFlashes() {
+    Combatant attacker;
+    attacker.equipment[MAIN_HAND] = spirit(3, 128);
+    attacker.equipment[OFF_HAND] = spirit(3, 130);
+    const glm::vec3 fire(1.5f, .5f * 1.5f, .1f * 1.5f), ice(.3f * 1.5f, .5f * 1.5f, 1.5f);
+    auto colours = criticalFlashColours(attacker);
+    check(colours[0] == fire && !colours[1], "an ordinary action lists the main hand alone");
+    attacker.equipment[OFF_HAND].subtype = 12;
+    colours = criticalFlashColours(attacker);
+    check(colours[0] == fire && colours[1] == ice, "the default list adds a subtype-12 off hand second");
+    attacker.action = 2;
+    colours = criticalFlashColours(attacker);
+    check(colours[0] == ice && !colours[1], "off-hand actions list the off hand alone");
+    attacker.action = 11;
+    attacker.equipment[MAIN_HAND].cubes[0].material = 1;
+    colours = criticalFlashColours(attacker);
+    check(colours[0] == ice && !colours[1], "off then main, and an item without spirits flashes nothing");
+}
+
 int main() {
+    criticalFlashes();
     weaponPointLights();
     bodyLights();
     receivedLights();
@@ -265,10 +287,30 @@ int main() {
                   lights[2]->radius == 10 && lights[3]->radius == 10,
               "every item site retains radius ten, including coincident body sources");
         check(colourBits(lights[0]->colour, {0x3f666667, 0x3ee66667, 0x3db851ec}) &&
-                  colourBits(lights[1]->colour, {0x3e8a3d71, 0x3f666667, 0x3ee66667}) &&
                   colourBits(lights[2]->colour, {0x3db851ec, 0x3e19999a, 0x3e99999a}) &&
                   colourBits(lights[3]->colour, {0x3e75c290, 0x3e75c290, 0x3e99999a}),
-              "hand and body multipliers preserve the uncapped ratio and source order");
+              "main hand 0.3 and body 0.1 multipliers preserve the uncapped ratio and source order");
+        // Held-light-factor ruling: the off hand's factor is 0.5 (ratio 2 x 0.5 is exact here).
+        check(lights[1]->colour == glm::vec3(.3f * 1.5f, 1.5f, .5f * 1.5f),
+              "the off hand uses factor 0.5, not 0.3");
+    }
+    // Materials §1.6 example 2: ratio 0.5 on a fire sword gives (0.225, 0.1125, 0.0225) in the
+    // main hand and (0.375, 0.1875, 0.0375) in the off hand: (A.rgb x ratio) x factor.
+    {
+        Combatant example;
+        example.combo = 25; // default limit 50
+        example.equipment[MAIN_HAND] = spirit(3, 128);
+        example.equipment[OFF_HAND] = spirit(3, 128);
+        const auto glow = equipmentSources(example, main, hands);
+        const glm::vec3 average(1.5f, .5f * 1.5f, .1f * 1.5f);
+        check(glow[0] && glow[1] && !glow[2] && !glow[3], "only the two weapon sites light");
+        if (glow[0] && glow[1]) {
+            const glm::vec3 halved = average * .5f;
+            check(glow[0]->colour == halved * .3f && glow[1]->colour == halved * .5f,
+                  "the ratio product precedes the slot factor");
+            check(std::abs(glow[1]->colour.r - .375f) < 1e-6f && std::abs(glow[0]->colour.r - .225f) < 1e-6f,
+                  "worked example values");
+        }
     }
     creature.combo = -100;
     const auto negative = equipmentSources(creature, main, hands);
@@ -277,8 +319,12 @@ int main() {
     creature.combo = 0;
     check(empty(equipmentSources(creature, main, hands)), "exact zero ratio rejects all four sites");
     creature.combo = 1;
-    creature.multipliers[1] = .01f; // Integer limit truncates to zero.
-    check(empty(equipmentSources(creature, main, hands)), "undefined zero-divisor ratios use the engine omission policy");
+    creature.multipliers[1] = .01f; // Integer limit truncates to zero: an infinite ratio.
+    check(empty(equipmentSources(creature, main, hands)),
+          "an infinite ratio passes the zero gate; its non-finite colour uses the engine omission policy");
+    creature.combo = 0; // 0 / 0: NaN is not an ordered zero and passes the gate likewise.
+    check(empty(equipmentSources(creature, main, hands)), "a NaN ratio's colour is omitted by the same engine policy");
+    creature.combo = 1;
     creature.multipliers[1] = 1;
 
     creature.equipment[MAIN_HAND].type = 8;
