@@ -3305,3 +3305,30 @@ pets still present in the actor map. Display-rotation smoothing and the
 walk phase and amplitude caches remain rendering differences. Connected
 remote refill and attachment, the dormant mount-ID path and native
 interactive acceptance remain open.
+
+## Connected actor motion and riding (2026-11-17)
+
+Read the held [remote interpolation contract](specs/alpha-remote-creature-interpolation.md)
+and [riding actor contract](specs/alpha-riding-actor-step.md) in full. Verified
+SHA-256 `24f15463d3d297d05b196b0e23538c0ed0320c1a0dfe29bb7cb9a574cd369551`
+and `758a29cbd9bfde54bb32d8bf2a939e9dcda9e7e3c672d8eed3e9c149c84909c0`.
+
+The connected world piece advances the controlled and received actors in one
+signed-key pass. Each living received actor ticks its resident buffs and runs
+terrain movement before its drawn-pose pass. A role-five actor refills the live
+owner's meter during its terrain probe. The first attachment replaces normal
+copy or interpolation, and the late pass after world objects rechecks the live
+owner, including for a dead received pet. It copies the live and drawn positions
+and rotations, copies the landing bob, and clears velocity and intent. A zero
+reverse key can resolve a supplied actor. Facing reads the previous drawn aim
+and the aim refresh follows the pose write.
+
+The connected client reuses one smoothing weight per piece and the existing
+receipt snap decisions. The render, aim and interaction paths consume the new
+positions. The connected pet HUD uses the linked role-five actor that belongs
+to the controlled player. The controlled display pose uses its direct body
+pose, and remote facing retains the received clock for its timing.
+
+Walk phase and amplitude still live in the renderer. The precise remote
+action clock and all movement inputs, frame publication of multiple receipt
+poses, the dormant mount-ID path and original-client acceptance remain open.

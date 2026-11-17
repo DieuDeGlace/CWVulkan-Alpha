@@ -1921,3 +1921,20 @@ caller-advanced actor sweep. The cast-point tests passed on the rerun.
 The Windows x64 build, six focused suites and all 60 CTest suites passed,
 including network loopback, live Vulkan water and owner-content zone
 comparison. Connected pet rendering and native hardware acceptance remain open.
+
+## Connected actor motion and riding (2026-11-17)
+
+ActorOrderTests checks that a received negative-key pet refills and attaches
+before the controlled callback, and that the late pass reads the owner's
+updated position, rotation and bob. It covers the late copy for a dead pet,
+a dismount between passes, a retained smoothing flag and an owner at key
+zero whose record and drawn poses differ.
+
+CreatureTests checks snap, interpolation, the frozen unowned dead pose
+and facing with the new actor call path. The Windows x64 build and all seven
+focused suites passed. The main specification was parsed and both new links
+to held contracts resolve.
+
+All 60 CTest suites passed, including dedicated loopback, live Vulkan water
+and the owner-content zone comparison. Original-client interoperation and
+renderer walk-phase acceptance remain open.

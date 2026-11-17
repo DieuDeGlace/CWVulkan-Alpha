@@ -2123,7 +2123,7 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
         frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
 }
 
-void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+void faceAfterStep(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
                    int32_t clockBefore, int32_t milliseconds) {
     // The "driven" flag's setters are the beam-leftovers contract §7.1 list; action 0x48 also
     // turns yaw (the engine's spin motion supplies that yaw).
@@ -2157,12 +2157,14 @@ void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Bod
         if (horizontal > std::bit_cast<float>(0x3CA3D70Au) && along > 0.f)
             yaw = headingOf(v.x, v.y);
     }
+}
+
+void refreshDrawnAim(glm::vec3 &drawnLook, glm::vec3 aim, const Combatant &c, int32_t actionClock, int32_t milliseconds) {
     const float share = approach(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
     for (int axis = 0; axis < 3; axis++)
-        drawnLook[axis] = drawnLook[axis] + (body.look[axis] - drawnLook[axis]) * share;
-    // R0 (query 0x03D1A0) is the engine's action duration, as in actionOver.
-    if (c.action == 0 || c.actionMs == 0 || actionOver(c))
-        drawnLook = body.look;
+        drawnLook[axis] = drawnLook[axis] + (aim[axis] - drawnLook[axis]) * share;
+    if (c.action == 0 || actionClock == 0 || actionClock > duration(c, c.action))
+        drawnLook = aim;
 }
 void Npcs::healStream(Combatant &caster, const Body &casterBody, float t, float dt, std::span<PlayerView> players,
                       NpcFrame &frame) {
@@ -2604,19 +2606,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         const ActorEntry owner = lookupActor(pet.fighter.ownerId, players);
         if (!owner.combat() || owner.combat()->action != 106)
             return false;
-        const Body &rider = *owner.body();
-        const float z = (pet.body.size.z * 0.5f - rider.size.z * 0.5f) + 0.01f;
-        const uint64_t lift = uint64_t(int64_t(z * 65536.f));
-        for (int k = 0; k < 3; k++) {
-            const uint64_t add = k == 2 ? lift : 0;
-            pet.body.follow[k] = std::bit_cast<int64_t>(uint64_t(rider.follow[k]) + add);
-            pet.body.position[k] = std::bit_cast<int64_t>(uint64_t(rider.position[k]) + add);
-        }
-        pet.body.yaw = pet.yaw = owner.npc ? owner.npc->yaw : owner.player->yaw;
-        pet.body.bank = rider.bank;
-        pet.body.swimPitch = rider.swimPitch;
-        pet.body.bob = rider.bob;
-        pet.body.velocity = pet.body.intent = glm::vec3(0);
+        copyRidingPose(pet.body, *owner.body(), owner.npc ? owner.npc->yaw : owner.player->yaw);
+        pet.yaw = pet.body.yaw;
         return true;
     };
     for (auto entry = actors.begin(); entry != actors.end(); ++entry) {
@@ -2823,6 +2814,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         // Riding actor step §4: attach at the displayed-position boundary.
         if (!carryRidingPet(npc))
             setFollowPoint(npc.body);
+        refreshDrawnAim(npc.drawnLook, npc.body.look, c, c.actionMs, milliseconds);
     }
     // Players advanced by a caller supply their prior follow point to the
     // actor pass. Refresh it before the late attachment pass.

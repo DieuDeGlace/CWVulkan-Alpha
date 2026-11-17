@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 1 · 2026-11-15</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 2 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -300,15 +300,17 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
             <tr><td><b>Rendering</b></td><td>Reproduce terrain colour, lighting, point lights, particles, sky and fog in Alpha style.</td><td class="mono">alpha-rendering, alpha-terrain-*, alpha-particles</td><td><span class="status partial">Native captures pending</span></td></tr>
             <tr><td><b>Saves</b></td><td>Read and write the Alpha save databases so that Alpha and AlphaVulkan can open each other's saves.</td><td class="mono">alpha-saves</td><td><span class="status partial">Original-save interchange untested</span></td></tr>
             <tr><td><b>Multiplayer</b></td><td>Host and join sessions with Alpha's protocol, roles and server simulation.</td><td class="mono">alpha-net-*, alpha-server-simulation</td><td><span class="status partial">Original-client test pending</span></td></tr>
+            <tr><td><b>Connected creature motion</b></td><td>Advance received bodies alongside the controlled actor in signed key order. Preserve the live and drawn poses, refill riding energy during the pet's terrain probe, and resolve attachment at the drawn-pose boundary and again after the actor pass.</td><td class="mono"><a href="specs/alpha-remote-creature-interpolation.md">alpha-remote-creature-interpolation</a>, <a href="specs/alpha-riding-actor-step.md">alpha-riding-actor-step</a></td><td><span class="status partial">Native interoperation pending</span></td></tr>
           </tbody>
         </table>
       </div>
+      <p>The dedicated server handles mixed item requests at the sender's turn and answers zone requests in their received order, including duplicates. Connected clients replace received placed-object lists at the zone-content boundary. Stock build-mode activation, model selection and offline blueprint placement remain open.</p>
       <p>Open behaviour questions stay in each contract's unresolved section and in <span class="mono">docs/roadmap.md</span>. An unproved point stays open and is never filled in by guessing.</p>
     </section>
 
     <section id="extensions">
       <h3><span class="num">B2</span>Extensions and engine choices</h3>
-      <p>Features the owner asked for that Alpha does not have are labelled as project choices, never as parity claims. The first four are required and on by default.</p>
+      <p>The first four entries are required engine extensions. Adaptation price fixes and engine quests apply automatically in the client and dedicated server.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Extension</th><th>Provenance</th></tr></thead>
@@ -389,7 +391,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
           <tbody>
             <tr><td><b>Rule checks</b></td><td>One contract's values, order and bit patterns, on synthetic inputs</td><td class="mono">BuffTests, HitRecordTests, HitApplicationTests, ActionPhaseTests, RelationshipTests, ItemIdentityTests, VendorTests</td></tr>
             <tr><td><b>Generation checks</b></td><td>Seeded zones, regions, trees, structures and spawns against the contracts' arithmetic and draw counts</td><td class="mono">WorldgenTests, NoiseMathTests, SpatialScalarTests, GenerationProfileTests</td></tr>
-            <tr><td><b>Creature and world checks</b></td><td>Physics, poses, path search, combat, loot, death and server steps</td><td class="mono">CreatureTests, RouteFollowingTests, SearchStateTests, FatalLootTests, SimulationFrameTests</td></tr>
+            <tr><td><b>Creature and world checks</b></td><td>Physics, poses, path search, combat, loot, death and signed actor order in offline, server and connected steps</td><td class="mono">CreatureTests, RouteFollowingTests, SearchStateTests, FatalLootTests, SimulationFrameTests, ActorOrderTests</td></tr>
             <tr><td><b>Format and protocol checks</b></td><td>Store, save and packet round trips, typed deltas, the handshake and a real loopback server</td><td class="mono">StoreTests, SaveTests, NetTests, RemoteFighterTests, CreaturePublicationTests</td></tr>
             <tr><td><b>Look checks</b></td><td>Daylight, palette, lighting, projection and water arithmetic</td><td class="mono">LookTests, LightingTests, TerrainLightTests, ProjectionTests, WaterTests</td></tr>
             <tr><td><b>Native comparison</b></td><td>Generated zones against zones captured from the owner's game</td><td class="mono">ZoneCompareTests</td></tr>

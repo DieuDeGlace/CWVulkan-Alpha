@@ -332,6 +332,7 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
         // Aim-triplet contract §3.7/§3.8: the shared facing and drawn-aim block after movement
         // (toward the drawn aim while facing it, else along a walk that follows the intent).
         faceAfterStep(yaw, headPitch, drawnLook, state, fighter, actionMsBefore, dt);
+        refreshDrawnAim(drawnLook, state.look, fighter, fighter.actionMs, dt);
     }
     state.yaw = yaw;
 }

@@ -1,40 +1,58 @@
 #include "net/RemoteCreatures.h"
 #include "creatures/AngleStep.h"
 #include "creatures/Npcs.h"
+#include <algorithm>
 #include <bit>
 
 namespace net {
 
-void RemoteCreatures::receive(uint64_t id, const CreatureRecord &record, bool snap) {
+namespace {
+
+glm::vec3 rotationOf(const creatures::Body &body) {
+    return {body.swimPitch, body.bank, body.yaw};
+}
+
+const creatures::Combatant *fighterAt(uint64_t id, const creatures::ActorMap<RemoteFighter> &fighters,
+                                    const RemoteCreatures::Controlled *controlled) {
+    if (controlled && controlled->fighter.id == id)
+        return &controlled->fighter;
+    const auto found = fighters.find(id);
+    return found == fighters.end() ? nullptr : &found->second.fighter;
+}
+
+} // namespace
+
+void RemoteCreatures::receive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter, bool snap) {
     const auto [it, created] = list.try_emplace(id);
     Remote &r = it->second;
     // §1.6: every received field lands on the live state (the whole-record copy).
     creatures::Body &b = r.live;
     for (int axis = 0; axis < 3; axis++)
         b.position[axis] = record.position(axis);
+    b.key = id;
     b.size = record.appearance().box;
     b.velocity = record.velocity();
     b.intent = record.intent();
     b.push = record.response();
-    b.controller = record.controller();
-    b.type = record.fighter().type;
-    b.appearanceFlags = record.appearance().flags;
+    b.controller = fighter.controller;
+    b.type = fighter.type;
+    b.appearanceFlags = fighter.appearanceFlags;
     b.swimmer = (b.appearanceFlags & 0x0100) != 0;
     b.flyer = (b.appearanceFlags & 0x0002) != 0;
     b.replica = true;
-    r.fighter = record.fighter();
-    b.mode = r.fighter.mode;
-    b.dodgeMs = int32_t(r.fighter.dodgeMs);
+    b.mode = fighter.mode;
+    b.dodgeMs = int32_t(fighter.dodgeMs);
     b.look = record.look();
-    r.rotation = record.orientation();
-    b.yaw = r.rotation.z;
+    const glm::vec3 rotation = record.orientation();
+    b.swimPitch = rotation.x;
+    b.bank = rotation.y;
+    b.yaw = rotation.z;
     r.headPitch = record.headPitch();
-    r.health = record.health();
     // A first receipt always snaps (the drawn pose of a new creature starts at the record).
     if (snap || created) {
         r.smoothing = false;
-        std::copy(b.position, b.position + 3, r.drawn.begin());
-        r.drawnRotation = r.rotation;
+        std::copy_n(b.position, 3, b.follow);
+        r.drawnRotation = rotation;
         if (created)
             r.drawnLook = b.look; // engine choice: a new creature's drawn aim starts at its aim
     } else {
@@ -46,38 +64,114 @@ void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {
     std::erase_if(list, [&](const auto &entry) { return !listed.contains(entry.first); });
 }
 
-void RemoteCreatures::step(int32_t dtMs, const creatures::BlockType &block, const creatures::ObjectTest &objects) {
+bool RemoteCreatures::attach(Remote &pet, const creatures::Combatant &fighter,
+                             const creatures::ActorMap<RemoteFighter> &fighters, const Controlled *controlled) {
+    if (fighter.controller != 5)
+        return false;
+    const auto *owner = fighterAt(fighter.ownerId, fighters, controlled);
+    if (!owner || owner->action != 106)
+        return false;
+    if (controlled && owner == &controlled->fighter) {
+        const auto &rider = controlled->body;
+        creatures::copyRidingPose(pet.live, rider, rider.yaw);
+        pet.drawnRotation = rotationOf(rider);
+    } else {
+        const auto *rider = find(fighter.ownerId);
+        if (!rider)
+            return false;
+        creatures::copyRidingPose(pet.live, rider->live, rider->live.yaw);
+        pet.drawnRotation = rider->drawnRotation;
+    }
+    pet.attached = true;
+    return true;
+}
+
+void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs,
+                           const creatures::BlockType &block, const creatures::ObjectTest &objects,
+                           const Controlled *controlled, const std::function<void()> &advanceControlled) {
     // §2.2: the fraction f approaches 1 at 0.015 once per millisecond of the step.
     float f = 0.f;
     for (int32_t ms = 0; ms < dtMs; ms++)
         f = (1.f - f) * 0.015f + f;
     const int64_t k = int64_t(f * 65536.f);
-    for (auto &[id, r] : list) {
-        if (!(r.health > 0.f))
-            continue;
-        creatures::worldStep(r.live, dtMs, block, objects);
-        // Aim §3.7 facing turns the live yaw and head pitch from the previous drawn aim; §3.8
-        // then moves the drawn aim (the received clock stands for the clock before the step).
-        creatures::faceAfterStep(r.rotation.z, r.headPitch, r.drawnLook, r.live, r.fighter, r.fighter.actionMs, dtMs);
-        r.live.yaw = r.rotation.z;
-        const int64_t *live = r.live.position;
-        if (!r.smoothing) { // §2.1: the drawn pose is a copy of the live pose
-            std::copy(live, live + 3, r.drawn.begin());
-            r.drawnRotation = r.rotation;
-            continue;
+    const auto advance = [&](uint64_t id, RemoteFighter &state) {
+        auto &fighter = state.fighter;
+        if (fighter.health > 0.f)
+            creatures::tickBuffs(fighter, dtMs, false);
+        const auto found = list.find(id);
+        if (found == list.end())
+            return;
+        Remote &r = found->second;
+        r.attached = false;
+        if (!(fighter.health > 0.f))
+            return;
+        auto &body = r.live;
+        body.stunMs = fighter.hitStun;
+        if (dtMs > 0) {
+            float *riderEnergy = nullptr;
+            if (fighter.controller == 5) { // riding actor step §3: a reverse link may resolve key zero
+                if (controlled && controlled->fighter.id == fighter.ownerId)
+                    riderEnergy = &controlled->body.ridingEnergy;
+                else if (const auto owner = list.find(fighter.ownerId); owner != list.end())
+                    riderEnergy = &owner->second.live.ridingEnergy;
+            }
+            creatures::step(body, dtMs, block, objects, riderEnergy);
         }
-        // §2.2: each axis closes (d x T(f)) / 65536 of its gap, the vertical axis a second
-        // time by the binary32 gap x f.
-        for (size_t axis = 0; axis < 3; axis++) {
-            const uint64_t d = uint64_t(live[axis]) - uint64_t(r.drawn[axis]);
-            const int64_t e = std::bit_cast<int64_t>(d * uint64_t(k)) / 65536;
-            r.drawn[axis] = std::bit_cast<int64_t>(uint64_t(r.drawn[axis]) + uint64_t(e));
+        const int32_t clock = state.recordClock(); // the existing received-clock adapter
+        creatures::faceAfterStep(body.yaw, r.headPitch, r.drawnLook, body, fighter, clock, dtMs);
+        if (!attach(r, fighter, fighters, controlled)) {
+            const glm::vec3 rotation = rotationOf(body);
+            if (!r.smoothing) {
+                std::copy_n(body.position, 3, body.follow);
+                r.drawnRotation = rotation;
+            } else {
+                // §2.2: all axes close (d × T(f)) / 65536, then Z closes a second time.
+                for (int axis = 0; axis < 3; axis++) {
+                    const uint64_t gap = uint64_t(body.position[axis]) - uint64_t(body.follow[axis]);
+                    const int64_t delta = std::bit_cast<int64_t>(gap * uint64_t(k)) / 65536;
+                    body.follow[axis] = std::bit_cast<int64_t>(uint64_t(body.follow[axis]) + uint64_t(delta));
+                }
+                const float gap = float(std::bit_cast<int64_t>(uint64_t(body.position[2]) - uint64_t(body.follow[2])));
+                body.follow[2] = std::bit_cast<int64_t>(uint64_t(body.follow[2]) + uint64_t(int64_t(gap * f)));
+                for (int axis = 0; axis < 3; axis++)
+                    r.drawnRotation[axis] = creatures::angleStep(r.drawnRotation[axis], rotation[axis], f);
+                body.bob = 0.f;
+            }
         }
-        const float gap = float(std::bit_cast<int64_t>(uint64_t(live[2]) - uint64_t(r.drawn[2])));
-        r.drawn[2] = std::bit_cast<int64_t>(uint64_t(r.drawn[2]) + uint64_t(int64_t(gap * f)));
-        // §2.3: each rotation component by the angle step.
-        for (int c = 0; c < 3; c++)
-            r.drawnRotation[c] = creatures::angleStep(r.drawnRotation[c], r.rotation[c], f);
+        creatures::refreshDrawnAim(r.drawnLook, body.look, fighter, clock, dtMs);
+    };
+    if (controlled) {
+        creatures::visitReceivedActors(fighters, controlled->fighter.id, [&] {
+            if (advanceControlled)
+                advanceControlled();
+            if (controlled->fighter.health > 0.f)
+                std::copy_n(controlled->body.position, 3, controlled->body.follow);
+        }, advance);
+    } else {
+        for (auto &[id, fighter] : fighters)
+            advance(id, fighter);
+    }
+}
+
+void RemoteCreatures::finishStep(creatures::ActorMap<RemoteFighter> &fighters, const Controlled *controlled) {
+    const auto clearTarget = [&](creatures::Combatant &fighter) {
+        if (const uint64_t id = fighter.relations.contact)
+            if (const auto *target = fighterAt(id, fighters, controlled); target && target->health <= 0.f)
+                fighter.relations.contact = 0;
+    };
+    const auto finish = [&](uint64_t id, RemoteFighter &state) {
+        clearTarget(state.fighter);
+        if (state.fighter.controller == 5)
+            if (const auto actor = list.find(id); actor != list.end())
+                attach(actor->second, state.fighter, fighters, controlled);
+    };
+    if (controlled) {
+        creatures::visitReceivedActors(fighters, controlled->fighter.id, [&] {
+            clearTarget(controlled->fighter);
+        }, finish);
+    } else {
+        for (auto &[id, fighter] : fighters)
+            finish(id, fighter);
     }
 }
 

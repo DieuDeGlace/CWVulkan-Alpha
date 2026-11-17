@@ -1,6 +1,7 @@
 #include "BlockEdits.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Npcs.h"
+#include "net/RemoteCreatures.h"
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -143,11 +144,105 @@ void checkRidingRefillOrder() {
     });
     check(pet.body.position[0] == lastPetX, "the late attachment rechecks the rider action after a dismount");
 }
+
+void checkConnectedRidingOrder() {
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    const auto receive = [&](const Combatant &fighter, int32_t x, float yaw, bool snap) {
+        auto record = net::CreatureRecord::nativeDefaults();
+        record.setFighter(fighter);
+        Appearance appearance;
+        appearance.box = {0.96f, 0.96f, 2.16f};
+        record.setAppearance(appearance);
+        record.setPosition(0, int64_t(x) * 65536);
+        record.setPosition(1, 30 * 65536);
+        record.setPosition(2, 8 * 65536);
+        record.setMotion({3, 4, 0}, yaw, {}, {1, 0, 0});
+        auto snapshot = record.fighter();
+        snapshot.id = fighter.id;
+        auto &entry = actors[fighter.id];
+        entry.refresh(std::move(snapshot), 0);
+        remotes.receive(fighter.id, record, entry.fighter, snap);
+    };
+    Combatant rider;
+    rider.id = 2;
+    rider.action = 106;
+    Body owner;
+    owner.place({20.5, 30.5, 8.0});
+    std::copy_n(owner.position, 3, owner.follow);
+    owner.yaw = 15.f;
+    owner.bob = 0.25f;
+    owner.ridingEnergy = 0.9999f;
+    const net::RemoteCreatures::Controlled controlled{rider, owner};
+    Combatant pet;
+    pet.id = UINT64_MAX;
+    pet.controller = 5;
+    pet.type = 19;
+    pet.ownerId = rider.id;
+    receive(pet, 9, 20.f, true);
+    receive(pet, 11, 30.f, false); // the attachment wins over ordinary interpolation
+    Combatant dead = pet;
+    dead.id = 1;
+    dead.health = 0.f;
+    receive(dead, 12, 90.f, true);
+    const BlockType water = [](int32_t, int32_t, int32_t) { return uint8_t(2); };
+    bool earlierVisitVisible = false;
+    int controlledTurns = 0;
+    remotes.step(actors, 20, water, {}, &controlled, [&] {
+        ++controlledTurns;
+        const auto &early = *remotes.find(pet.id);
+        earlierVisitVisible = owner.ridingEnergy == 1.f && early.attached &&
+            early.live.position[0] == owner.position[0] && early.drawnRotation.z == 15.f &&
+            early.live.velocity == glm::vec3(0) && early.live.intent == glm::vec3(0);
+        owner.ridingEnergy -= 0.002f * (20.f * 0.001f);
+        owner.position[0] += 65536;
+        owner.yaw = 80.f;
+        owner.bob = 0.125f;
+    });
+    check(earlierVisitVisible && controlledTurns == 1 && owner.ridingEnergy == 1.f - 0.002f * (20.f * 0.001f),
+          "a received negative-key pet refills and attaches before the single rider visit");
+    check(!remotes.find(dead.id)->attached && remotes.find(dead.id)->live.position[0] == 12 * 65536,
+          "the first pass skips the dead received pet");
+    remotes.finishStep(actors, &controlled);
+    const auto &attached = *remotes.find(pet.id);
+    check(attached.live.position[0] == owner.position[0] && attached.live.follow[0] == owner.follow[0] &&
+              attached.live.position[2] == owner.position[2] + 655 && attached.live.bob == owner.bob &&
+              attached.drawnRotation.z == owner.yaw && attached.smoothing,
+          "the late attachment copies the updated pose, including bob, and keeps the receipt's smoothing flag");
+    check(remotes.find(dead.id)->attached && remotes.find(dead.id)->live.position[0] == owner.position[0],
+          "the late pass reaches the dead received pet");
+
+    const int64_t priorX = owner.position[0];
+    remotes.step(actors, 1, water, {}, &controlled, [&] {
+        rider.action = 0;
+        owner.position[0] += 65536;
+    });
+    remotes.finishStep(actors, &controlled);
+    check(attached.live.position[0] == priorX && !remotes.find(dead.id)->attached,
+          "dismounting during the rider visit prevents the later copies");
+
+    Combatant remoteRider;
+    remoteRider.id = 0;
+    remoteRider.action = 106;
+    receive(remoteRider, 20, 0.f, true);
+    receive(remoteRider, 24, 45.f, false);
+    pet.ownerId = 0;
+    receive(pet, 10, 20.f, false);
+    remotes.step(actors, 16, floorBlock, {});
+    remotes.finishStep(actors);
+    const auto &zeroKey = *remotes.find(0);
+    check(attached.attached && attached.live.position[0] == zeroKey.live.position[0] &&
+              attached.live.follow[0] == zeroKey.live.follow[0] &&
+              attached.live.position[0] != attached.live.follow[0] &&
+              attached.drawnRotation == zeroKey.drawnRotation && attached.live.yaw == zeroKey.live.yaw,
+          "an owner at remote key zero supplies distinct record and smoothed poses");
+}
 }
 
 int main() {
     checkOverlappingStrikes();
     checkRidingRefillOrder();
+    checkConnectedRidingOrder();
     {
         const std::array<uint64_t, 9> expected{
             minimum, 0xffffffff00000000ull, UINT64_MAX, 0, 0x7fffffffull,
@@ -324,12 +419,12 @@ int main() {
         ActorMap<uint64_t> received{{3, 3}, {UINT64_MAX, UINT64_MAX}, {minimum, minimum}};
         std::vector<uint64_t> visited;
         visitReceivedActors(received, 0, [&] { visited.push_back(0); },
-                            [&](uint64_t value) { visited.push_back(value); });
+                            [&](uint64_t key, uint64_t) { visited.push_back(key); });
         check(visited == std::vector<uint64_t>{minimum, UINT64_MAX, 0, 3},
               "protected received-state traversal merges the controlled actor by signed key");
         received.clear();
         visited.clear();
-        visitReceivedActors(received, 0, [&] { visited.push_back(0); }, [&](uint64_t) {});
+        visitReceivedActors(received, 0, [&] { visited.push_back(0); }, [&](uint64_t, uint64_t) {});
         check(visited == std::vector<uint64_t>{0}, "an empty received collection still advances the controlled actor once");
     }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

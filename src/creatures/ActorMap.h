@@ -27,7 +27,7 @@ void visitReceivedActors(ActorMap<Value> &actors, uint64_t controlledKey,
             controlled();
             visited = true;
         }
-        received(actor);
+        received(key, actor);
     }
     if (!visited)
         controlled();

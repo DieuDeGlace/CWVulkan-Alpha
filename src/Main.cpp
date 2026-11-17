@@ -1830,10 +1830,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             scene.timeOfDayMs = clock->second;
         }
         receivedActors = client.connected() ? client.others() : std::map<uint64_t, net::CreatureRecord>{};
-        // Remote smoothing §1.3-§1.5: this frame's receipts, then forget the unlisted.
-        for (const net::Client::Receipt &receipt : client.takeReceipts())
-            if (const auto record = receivedActors.find(receipt.id); record != receivedActors.end())
-                remotes.receive(receipt.id, record->second, receipt.snap);
         remotes.retain(receivedActors);
         std::erase_if(otherFighters, [&](const auto &entry) { return !receivedActors.contains(entry.first); });
         for (const auto &[id, record] : receivedActors) {
@@ -1841,6 +1837,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             snapshot.id = id;
             otherFighters[id].refresh(std::move(snapshot), frameElapsedMs);
         }
+        // Remote smoothing §1.3-§1.5. Reuse the decoded core fields when
+        // applying this frame's existing snap decisions to the body.
+        for (const net::Client::Receipt &receipt : client.takeReceipts())
+            if (const auto record = receivedActors.find(receipt.id); record != receivedActors.end())
+                remotes.receive(receipt.id, record->second, otherFighters.at(receipt.id).fighter, receipt.snap);
         mods.frame(seconds);
         auto held = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS ? 1.f : 0.f; };
         if (player) {
@@ -2302,7 +2303,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             }
                         }
                         advanceStaticState(elapsed, {});
-                        creatures::visitReceivedActors(otherFighters, player->combat().id,
+                        const net::RemoteCreatures::Controlled controlled{player->combat(), player->body()};
+                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, &controlled,
                             [&] {
                                 for (const auto &target : client.pendingStaticRequests())
                                     useStaticRequest(target, false, aggregate);
@@ -2311,10 +2313,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     player->body().mountValid = pet && pet->health >= 0 && creatures::rideable(pet->type);
                                 }
                                 advancePlayer(elapsed);
-                            }, [&](net::RemoteFighter &remote) {
-                                if (remote.fighter.health > 0)
-                                    creatures::tickBuffs(remote.fighter, elapsed, false);
                             });
+                        stepAirships(elapsed);
+                        remotes.finishStep(otherFighters, &controlled);
                     }
                     const auto flushZoneState = [&] {
                         // Changed zones are saved, items and states together (a zone save without its
@@ -2474,9 +2475,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 advanceStaticState(dt, actors);
                             });
                         stepAirships(elapsed); // world objects §6: after the creature loop
-                        if (client.connected()) // remote smoothing §3.2, §2: advance, then follow
-                            remotes.step(elapsed, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                                         npcs.objects);
                         const auto happened = aggregate.addedSince(npcEvents);
                         projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
                         for (const auto &event : happened.buffs)
@@ -2703,16 +2701,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     }
                     wheel.selectorVisible = wheel.open;
                     const std::array<bool, 2> mouseButtons{input.pointerButtons.held(0), input.pointerButtons.held(1)};
-                    // Controller aim contract §3.2: the creatures the aim may pick, at their +0x1350
-                    // point (offline the follow point; online the received position).
+                    // Controller aim §3.2: the pick uses the displayed +0x1350
+                    // point. The attack origin still uses the live record position.
                     std::vector<Player::AimCandidate> aimCandidates;
                     if (!client.connected())
                         for (const creatures::Npc &n : npcs.all())
                             aimCandidates.push_back({&n.fighter, {n.body.follow[0], n.body.follow[1], n.body.follow[2]}, n.body.size,
                                                      {n.body.position[0], n.body.position[1], n.body.position[2]}});
                     for (const auto &[id, record] : receivedActors) {
-                        const camera_view::Fixed3 at{record.position(0), record.position(1), record.position(2)};
-                        aimCandidates.push_back({&otherFighters[id].fighter, at, record.appearance().box, at});
+                        if (const auto *remote = remotes.find(id)) {
+                            const auto &body = remote->live;
+                            aimCandidates.push_back({&otherFighters.at(id).fighter, {body.follow[0], body.follow[1], body.follow[2]},
+                                                     body.size, {body.position[0], body.position[1], body.position[2]}});
+                        } else {
+                            const camera_view::Fixed3 at{record.position(0), record.position(1), record.position(2)};
+                            aimCandidates.push_back({&otherFighters.at(id).fighter, at, record.appearance().box, at});
+                        }
                     }
                     player->timeOfDay = [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); };
                     player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
@@ -2762,16 +2766,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         refreshReceivedLinks();
                     else
                         refreshAirships();
-                    for (auto &[id, remote] : otherFighters)
-                        if (remote.fighter.health > 0)
-                            creatures::tickBuffs(remote.fighter, elapsed, false);
-                    const auto block = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
-                    worldItems.step(elapsed, !client.connected(), block, [&] { return worldRandom.draw(); }, aggregate.sounds);
-                    if (!client.connected())
-                        npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, block, aggregate);
+                    worldItems.step(elapsed, !client.connected(), worldBlock, worldDraw, aggregate.sounds);
+                    if (client.connected())
+                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects);
+                    else
+                        npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, worldBlock, aggregate);
                     stepAirships(elapsed);
-                    if (client.connected()) // remote smoothing §3.2, §2: advance, then follow
-                        remotes.step(elapsed, block, npcs.objects);
+                    if (client.connected())
+                        remotes.finishStep(otherFighters);
                 },
                 [&](creatures::NpcFrame &aggregate) {
                     applyReceivedZoneContents();
@@ -3227,15 +3229,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             for (const auto &[id, other] : otherRecords) {
                 // Remote smoothing §2: drawn at the drawn pose (the record until the first update).
                 const net::RemoteCreatures::Remote *remote = remotes.find(id);
-                const std::array<int64_t, 3> drawn =
-                    remote ? remote->drawn : std::array<int64_t, 3>{other.position(0), other.position(1), other.position(2)};
+                const int64_t recordPosition[] = {other.position(0), other.position(1), other.position(2)};
+                const int64_t *drawn = remote ? remote->live.follow : recordPosition;
                 const float drawnYaw = remote ? remote->drawnRotation.z : other.yaw();
-                const glm::dvec3 centre = glm::dvec3(double(drawn[0]), double(drawn[1]), double(drawn[2])) / 65536.0;
+                glm::dvec3 centre = glm::dvec3(double(drawn[0]), double(drawn[1]), double(drawn[2])) / 65536.0;
+                if (remote)
+                    centre.z -= remote->live.bob;
                 const glm::vec3 p = view.toRender(centre);
                 net::RemoteFighter &f = otherFighters[id];
 
                 creatures::Motion motion;
-                motion.velocity = other.velocity();
+                motion.velocity = remote && remote->attached ? remote->live.velocity : other.velocity();
                 motion.yawDegrees = drawnYaw;
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
@@ -3250,9 +3254,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     continue;
                 }
                 shattered.erase(id);
-                const CreatureLook look = creatureLook(f.fighter, drawn.data(), motion.velocity);
+                const CreatureLook look = creatureLook(f.fighter, drawn, motion.velocity);
                 if (creatureView.draw(items, other.appearance(), otherPoses[id], motion, p, seconds * 1000.f, &effects, &look))
-                    footstep(drawn.data(), other.appearance().box.z);
+                    footstep(drawn, other.appearance().box.z);
                 actionFlames(f.fighter, other.appearance().box.x, centre);
                 // Core fields are current and resident buffs stay on the actor.
                 creatureLights(f.fighter, {drawn[0], drawn[1], drawn[2]}, centre, other.appearance().box.z, drawnYaw);
@@ -3716,22 +3720,29 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 hud.stamina = player->body().stamina;
                 hud.lens = (c.mode & creatures::LENS) != 0; // rulings camera-lens-pan §2.1
                 // Screens §5.3: the pet's bars (its name from the pet item, else its species).
-                if (const creatures::Npc *pet = npcs.petOf(c)) {
+                const creatures::Combatant *pet = nullptr;
+                if (client.connected()) {
+                    if (const auto linked = otherFighters.find(c.linkedId); linked != otherFighters.end() &&
+                        linked->second.fighter.controller == 5 && linked->second.fighter.ownerId == c.id)
+                        pet = &linked->second.fighter;
+                } else if (const auto *residentPet = npcs.petOf(c)) {
+                    pet = &residentPet->fighter;
+                }
+                if (pet) {
                     hud.hasPet = true;
-                    const DictionaryEntry *species = creatures::speciesKey(pet->fighter.type)
-                                                         ? dictionary.find("name", creatures::speciesKey(pet->fighter.type))
-                                                         : nullptr;
+                    const char *speciesKey = creatures::speciesKey(pet->type);
+                    const DictionaryEntry *species = speciesKey ? dictionary.find("name", speciesKey) : nullptr;
                     hud.petSpecies = species && species->field("singular") ? *species->field("singular") : std::string();
                     hud.petName.clear();
                     for (const creatures::Item::Cube &ch : c.equipment[12].cubes)
                         hud.petName += (char)ch.material;
                     if (hud.petName.empty())
                         hud.petName = hud.petSpecies;
-                    hud.petHealth = pet->fighter.health;
-                    hud.petMaxHealth = creatures::maxHealth(pet->fighter);
-                    hud.petLevel = pet->fighter.level;
-                    hud.petExperience = pet->fighter.experience;
-                    hud.petExperienceNeeded = creatures::experienceForLevel(pet->fighter.level);
+                    hud.petHealth = pet->health;
+                    hud.petMaxHealth = creatures::maxHealth(*pet);
+                    hud.petLevel = pet->level;
+                    hud.petExperience = pet->experience;
+                    hud.petExperienceNeeded = creatures::experienceForLevel(pet->level);
                     hud.ridingEnergy = player->body().ridingEnergy;
                 }
                 // §5.5, behaviour §16: the bar's slots, grey when not usable now, with the
@@ -3799,8 +3810,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (!client.connected())
                     for (const creatures::Npc &n : npcs.all())
                         noteRiding(n.fighter.id, n.fighter);
-                for (const auto &[id, other] : receivedActors)
-                    noteRiding(id, other.fighter());
+                for (const auto &[id, other] : otherFighters)
+                    noteRiding(id, other.fighter);
                 const glm::dvec3 viewForward = glm::dvec3(view.camera(renderer.size()).forward());
                 auto addBar = [&](const creatures::Combatant &who, uint64_t id, glm::dvec3 centre, glm::vec3 box, float bob,
                                   uint16_t appearanceFlags, const std::string &ownName) {
@@ -3865,9 +3876,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             addBar(n.fighter, n.fighter.id, n.body.blocks(), n.body.size, n.body.bob, n.looks.flags, "");
                 for (const auto &[id, other] : receivedActors) {
                     const creatures::Appearance looks = other.appearance();
-                    // (A received creature's drawn-height offset is not carried here: 0.)
-                    addBar(other.fighter(), id, glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
-                           looks.box, 0.f, looks.flags, other.name());
+                    const auto *remote = remotes.find(id);
+                    const glm::dvec3 position = remote ? glm::dvec3(remote->live.follow[0], remote->live.follow[1], remote->live.follow[2])
+                                                       : glm::dvec3(other.position(0), other.position(1), other.position(2));
+                    addBar(otherFighters.at(id).fighter, id, position / 65536.0, looks.box, remote ? remote->live.bob : 0.f,
+                           looks.flags, other.name());
                 }
                 // Interaction §2: the creature, static and item passes compete on the squared
                 // camera distance B of the boxes under the crosshair; within 4 blocks (squared
@@ -3883,19 +3896,24 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         glm::dvec3 centre;
                         glm::vec3 box;
                         double dp;
+                        float bob;
                     };
                     std::vector<Listed> listed;
-                    const auto list = [&](uint64_t id, const creatures::Combatant &who, glm::dvec3 centre, glm::vec3 box) {
+                    const auto list = [&](uint64_t id, const creatures::Combatant &who, glm::dvec3 centre, glm::vec3 box, float bob) {
                         const double dp = glm::dot(centre - me, centre - me);
                         if (who.health > 0 && dp <= 3600 && id != c.id)
-                            listed.push_back({id, who.controller, centre, box, dp});
+                            listed.push_back({id, who.controller, centre, box, dp, bob});
                     };
                     if (!client.connected())
                         for (const creatures::Npc &n : npcs.all())
-                            list(n.fighter.id, n.fighter, n.body.blocks(), n.body.size);
-                    for (const auto &[id, other] : receivedActors)
-                        list(id, other.fighter(), glm::dvec3(other.position(0), other.position(1), other.position(2)) / 65536.0,
-                             other.appearance().box);
+                            list(n.fighter.id, n.fighter, n.body.blocks(), n.body.size, n.body.bob);
+                    for (const auto &[id, other] : receivedActors) {
+                        const auto *remote = remotes.find(id);
+                        const glm::dvec3 position = remote ? glm::dvec3(remote->live.follow[0], remote->live.follow[1], remote->live.follow[2])
+                                                           : glm::dvec3(other.position(0), other.position(1), other.position(2));
+                        list(id, otherFighters.at(id).fighter, position / 65536.0, other.appearance().box,
+                             remote ? remote->live.bob : 0.f);
+                    }
                     std::sort(listed.begin(), listed.end(), [](const Listed &a, const Listed &b) { return a.dp < b.dp; });
                     const bool healing = c.action == 34 && c.actionMs < (float)creatures::duration(c, c.action);
                     const float daylight = creatures::controller_aim::daylight(std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)));
@@ -3904,9 +3922,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             continue;
                         const uint8_t light = player->lightAt((int32_t)std::floor(l.centre.x), (int32_t)std::floor(l.centre.y),
                                                               (int32_t)std::floor(l.centre.z));
-                        if (!clearSight(l.centre, creatures::controller_aim::pickRange(light, daylight)))
+                        const glm::dvec3 lowered = l.centre - glm::dvec3(0, 0, l.bob);
+                        if (!clearSight(lowered, creatures::controller_aim::pickRange(light, daylight)))
                             continue;
-                        passes.creature(l.id, l.dp, glm::dot(l.centre - eye, l.centre - eye), underCrosshair(l.centre, l.box));
+                        passes.creature(l.id, l.dp, glm::dot(l.centre - eye, l.centre - eye), underCrosshair(lowered, l.box));
                     }
                 }
                 const int32_t pzx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::ZONE);

@@ -190,6 +190,8 @@ void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTes
 // §2: one piece. A role-five actor can refill its resolved owner's meter during terrain contact.
 void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
           float *riderEnergy = nullptr);
+// Riding actor step §4. Copy the admitted owner's physical and follow pose.
+void copyRidingPose(Body &pet, const Body &rider, float riderYaw);
 
 // §1 test helper: the pieces a frame is cut into.
 std::vector<int32_t> stepPieces(int32_t dtMs);

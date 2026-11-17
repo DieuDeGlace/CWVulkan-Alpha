@@ -1661,20 +1661,27 @@ int main() {
         record.setPosition(0, 100ll << 16), record.setPosition(1, 100ll << 16), record.setPosition(2, 100ll << 16);
         record.setHealth(50.f);
         net::RemoteCreatures remotes;
-        remotes.receive(7, record, true);
-        same(remotes.find(7)->drawn[0], 100ll << 16, "a snap draws at the record");
+        ActorMap<net::RemoteFighter> received;
+        const auto applyReceipt = [&](uint64_t id, bool snap) {
+            auto &state = received[id];
+            state.refresh(record.fighter(), 0);
+            remotes.receive(id, record, state.fighter, snap);
+        };
+        applyReceipt(7, true);
+        same(remotes.find(7)->live.follow[0], 100ll << 16, "a snap draws at the record");
         record.setPosition(0, 104ll << 16); // a jump of 4 blocks, smoothed
-        remotes.receive(7, record, false);
-        same(remotes.find(7)->drawn[0], 100ll << 16, "a smoothing receipt leaves the drawn pose");
-        remotes.step(16, air, {});
-        const double moved = double(remotes.find(7)->drawn[0] - (100ll << 16)) / 65536.0;
+        applyReceipt(7, false);
+        same(remotes.find(7)->live.follow[0], 100ll << 16, "a smoothing receipt leaves the drawn pose");
+        remotes.step(received, 16, air, {});
+        const double moved = double(remotes.find(7)->live.follow[0] - (100ll << 16)) / 65536.0;
         same(moved > 0.5 && moved < 4.0, 1, "the drawn pose closes part of the gap in one update");
         record.setHealth(0.f);
-        remotes.receive(7, record, false);
-        const int64_t frozen = remotes.find(7)->drawn[0];
-        remotes.step(16, air, {});
-        same(remotes.find(7)->drawn[0], frozen, "a dead creature's drawn pose stays frozen");
+        applyReceipt(7, false);
+        const int64_t frozen = remotes.find(7)->live.follow[0];
+        remotes.step(received, 16, air, {});
+        same(remotes.find(7)->live.follow[0], frozen, "a dead creature's drawn pose stays frozen");
         remotes.retain({});
+        received.clear();
         same(remotes.find(7) == nullptr, 1, "unlisted creatures are forgotten");
 
         // Aim §3.7/§3.8 on a received creature: facing its aim turns the yaw toward the aim's
@@ -1684,12 +1691,12 @@ int main() {
         const float aim[3] = {1.f, 0.f, 0.f}, pitch = 12.f;
         std::memcpy(&record.bytes[0x150], aim, sizeof aim);
         std::memcpy(&record.bytes[0x48], &pitch, sizeof pitch);
-        remotes.receive(8, record, true);
+        applyReceipt(8, true);
         same(remotes.find(8)->headPitch, 12.f, "the head pitch is received");
-        remotes.step(16, air, {});
+        remotes.step(received, 16, air, {});
         const net::RemoteCreatures::Remote &faced = *remotes.find(8);
         same(faced.drawnLook == glm::vec3(1, 0, 0), true, "with action 0 the drawn aim is the aim");
-        same(faced.rotation.z < 0.f && faced.rotation.z > -90.f, true, "the yaw turns toward the aim's heading");
+        same(faced.live.yaw < 0.f && faced.live.yaw > -90.f, true, "the yaw turns toward the aim's heading");
         same(faced.headPitch < 12.f && faced.headPitch > 0.f, true, "the head pitch turns toward the level aim");
     }
 

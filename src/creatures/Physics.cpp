@@ -184,6 +184,21 @@ void worldStep(Body &body, int32_t dt, const BlockType &block, const ObjectTest 
         }
 }
 
+void copyRidingPose(Body &pet, const Body &rider, float riderYaw) {
+    const float z = (pet.size.z * 0.5f - rider.size.z * 0.5f) + 0.01f;
+    const uint64_t lift = uint64_t(fixedT(z));
+    for (int axis = 0; axis < 3; axis++) {
+        const uint64_t offset = axis == 2 ? lift : 0;
+        pet.follow[axis] = std::bit_cast<int64_t>(uint64_t(rider.follow[axis]) + offset);
+        pet.position[axis] = std::bit_cast<int64_t>(uint64_t(rider.position[axis]) + offset);
+    }
+    pet.yaw = riderYaw;
+    pet.bank = rider.bank;
+    pet.swimPitch = rider.swimPitch;
+    pet.bob = rider.bob;
+    pet.velocity = pet.intent = glm::vec3(0);
+}
+
 bool lunges(int32_t action, float ms) {
     if (action == 48)
         return true;

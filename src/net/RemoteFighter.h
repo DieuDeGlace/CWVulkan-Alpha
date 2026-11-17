@@ -8,6 +8,7 @@ namespace net {
 struct RemoteFighter {
     creatures::Combatant fighter;
     void refresh(creatures::Combatant snapshot, int32_t elapsedMs);
+    int32_t recordClock() const { return receivedClock; }
 
   private:
     int32_t receivedAction = -1, receivedClock = 0;

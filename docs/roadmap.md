@@ -714,7 +714,12 @@ Differences from the Steam engine that shape the plan:
   A live pet link gates speed. The resident pet's water or type-3 ground
   probe refills the owner's meter in actor order. The two attachment
   passes recheck the owner before copying the pet's physical pose.
-  Connected remote attachment, ride rendering and native acceptance remain open.
+- [x] Connected creature movement and riding (`alpha-remote-creature-interpolation.md`,
+  `alpha-riding-actor-step.md`). The controlled and received bodies advance in
+  one signed-key pass. Terrain refill and both attachment passes use the live
+  owner. Rendering and interaction read the resulting drawn pose.
+  Remote action-clock inputs, renderer walk state, receipt batching and native
+  multiplayer acceptance remain open.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

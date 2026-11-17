@@ -44,6 +44,10 @@
 - Continue through actionable roadmap work after tested checkpoints. Retain open
   parity, provenance and native acceptance gates; do not describe partial results
   as a completed Alpha replacement.
+- Update docs/clean-room-specification.html and the relevant clean-room record,
+  roadmap and verification notes when a checkpoint changes behavior, evidence
+  or known limits. Corrections to held native contracts go through the separate
+  source author process.
 - Owner publication override (2026-11-08): publish the current development source
   now as CWVulkan-Alpha on the owner's GitHub account, with a blank repository
   description and build instructions. This supersedes the earlier beta-only

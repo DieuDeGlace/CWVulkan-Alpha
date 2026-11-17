@@ -504,10 +504,11 @@ void finishSpawn(worldgen::Spawn &s, worldgen::Random &random, bool whole = true
 // No identity rule; callers exclude themselves. Used by target choice, threat spread and the
 // healing paths; strikes use hostilityTest instead.
 bool hostile(const Combatant &a, const Combatant &b);
-// Aim-triplet contract §3.7 facing and §3.8 drawn aim, after a creature's movement step, for
-// NPCs and the local player alike (beam-leftovers §7: every live creature reaches them).
-void faceAfterStep(float &yaw, float &headPitch, glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+// Aim-triplet §3.7/§3.8. Facing uses the previous drawn aim. The refresh
+// follows the displayed-pose pass and uses that actor's current action clock.
+void faceAfterStep(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
                    int32_t clockBefore, int32_t milliseconds);
+void refreshDrawnAim(glm::vec3 &drawnLook, glm::vec3 aim, const Combatant &c, int32_t actionClock, int32_t milliseconds);
 // Cast-point contract §4 (routine 0x046BB0): a creature's attack origin, from its body's yaw
 // and appearance flags (projectiles §2.6, the beam's sight point).
 std::array<int64_t, 3> attackOrigin(const Body &body);
