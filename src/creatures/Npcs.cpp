@@ -2641,7 +2641,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         }
         endActionUpdate(c, milliseconds, {false, false}, [&](const Buff &buff) {
             periodicHit(c, npc.body, buff, players, frame);
-        });
+        }, npc.body.intent);
         npc.body.mode = c.mode;
         // Physics §4.4: overlapping creatures push each other apart (not bombs, nor creatures
         // in actions 83 and 84). The overlap uses the other box grown by (1, 1, 0) unless it is

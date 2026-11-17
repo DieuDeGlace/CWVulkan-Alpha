@@ -820,7 +820,7 @@ void counterDodge(Combatant &target, std::vector<BuffEvent> *events) {
 }
 
 void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
-                     const std::function<void(const Buff &)> &periodic) {
+                     const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent) {
     const float dtMs = (float)milliseconds;
     if (!role.replica || role.local) {
         c.comboElapsedMs += milliseconds;
@@ -887,15 +887,23 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     } else
         c.blockGauge += dtMs / 2000.f;
     c.blockGauge = std::min(c.blockGauge, 1.f);
-    // Existing later consumption/stealth behavior is outside the common phase
-    // contract and remains separate from its independently audited action effects.
-    c.mana = std::min(1.f, c.mana + 0.00025f * dtMs * c.stealth);
-    // Rulings camera-lens-pan §2.1 (0x219c17): the meter grows while the lens bit is set and
-    // falls otherwise.
-    if (c.mode & LENS)
-        c.stealth = std::min(1.f, c.stealth + dtMs * 0.00001f); // the action-99 term waits for skills
-    else
+    // The intent clear precedes the action-99 meter read. Keep the separate,
+    // untraced action-79 branch's existing growth rate when its bit remains set.
+    if (c.mode & LENS) {
+        const float intentSquared = (intent.x * intent.x + intent.y * intent.y) + intent.z * intent.z;
+        if (intentSquared > 0.f)
+            c.mode &= ~LENS;
+    }
+    if (c.mode & LENS) {
+        const float skillRate = c.action == 79 ? 0.f : abilityValue(c, 99) * 0.0005f;
+        const float rate = skillRate + 0.00001f;
+        c.stealth = std::min(1.f, c.stealth + dtMs * rate);
+    } else {
         c.stealth = std::max(0.f, c.stealth - 0.0005f * dtMs);
+    }
+    if (c.hasBuff(3))
+        c.stealth = 1.f;
+    c.mana = std::min(1.f, c.mana + (dtMs * 0.00025f) * c.stealth);
     c.dodgeMs = std::max(0.f, c.dodgeMs - dtMs);
     c.hitFlash = std::max(0.f, c.hitFlash - dtMs * 0.001f * 4.f); // fade rate: ours (the renderer's is unspecified)
 }

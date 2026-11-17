@@ -205,8 +205,11 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
             c.action = 28, c.actionMs = 0;
         break;
     case 34:
-        if (c.actionMs >= duration(c, c.action))
-            c.action = 34, c.actionMs = 0; // aimed at the player itself (field 36)
+        if (c.actionMs >= duration(c, c.action)) {
+            c.action = 34;
+            c.actionMs = 0;
+            c.healTarget = c.id;
+        }
         break;
     case 48: {
         start(c, body, 48);
@@ -257,8 +260,8 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
             out.sounds.push_back(0x5c);
         break;
     case 99:
-        // Engine choice: ability 99 sets the lens bit. No native setter of 0x400 is known
-        // (rulings camera-lens-pan §2.2); native only reads the bit and clears it on intent.
+        // The held action-99 ruling sets the actor's lens bit before the cooldown.
+        c.mode |= LENS;
         body.mode |= LENS;
         c.cooldowns[99] = cooldownLength(c, 99);
         break;
@@ -271,6 +274,10 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
 
 void release(Combatant &c, int32_t id) {
     auto become = [&](int32_t action, int32_t ms) { c.action = action, c.actionMs = ms; };
+    const auto releaseAtAnticipation = [&](int32_t action) {
+        c.action = action;
+        c.actionMs = phases(c, action).windUp;
+    };
     switch (id) {
     case 8: become(104, 0); break;
     case 24: become(23, 0); break;
@@ -282,13 +289,15 @@ void release(Combatant &c, int32_t id) {
         if (c.specialization == 1)
             become(61, 0);
         else
-            become(60, phases(c, 60).windUp);
+            releaseAtAnticipation(60);
         break;
-    case 63: become(11, phases(c, 11).windUp); break;
-    case 64: become(16, phases(c, 16).windUp); break;
+    case 63: releaseAtAnticipation(11); break;
+    case 64: releaseAtAnticipation(16); break;
     case 10:
-        if (c.actionMs > duration(c, 10))
-            become(3, duration(c, 3));
+        if (c.actionMs > duration(c, 10)) {
+            c.action = 3;
+            c.actionMs = duration(c, 3);
+        }
         break;
     default: break;
     }

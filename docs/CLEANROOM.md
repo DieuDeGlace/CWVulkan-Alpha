@@ -3057,3 +3057,27 @@ descriptors across terrain snapshot replacement, and uses its existing relight
 and remesh paths. The earlier deferred bomb-terrain gap is closed. Mixed packet-6
 request timing, deferred melee craters, and native relight and visual acceptance
 remain open.
+
+## Client action input and binding 99 (2026-11-17)
+
+A fresh source-only author re-certified `alpha-client-action-input-phase.md`
+(`65e68e7da488757669daf2dc7094d135e2a9dcb6d63a116a86092b61cbd453d2`) and
+`alpha-client-action-binding-producer.md`
+(`9ab940a949cd76357170e0fdbdedfc8a16cf7bf217556ab20c89830deed6bdb5`). A separate
+source-only ruling author resolved the setter conflict in `alpha-rulings-action-99-lens.md`
+(`327d398623c17cd33d0dd38da32f74e97ceddcc908f8b8d7ca626df0c4e89faf`). The clean
+team verified all three hashes and read the held texts in full.
+
+The engine already captures the concrete bindings before world pieces, visits
+the configured slots in order, and reselects the ordinary primary from current
+state. An admitted action 34 now stores the caster's full ID immediately. The
+held release cases publish the replacement action before querying its clock.
+Binding 99 sets the actor and movement-body lens bit before the cooldown. The
+new ruling supersedes the earlier missing-setter finding. Resident intent clears
+the bit before ordinary meter growth, which uses skill slot 8. Buff 3 forces
+the meter to one before mana reads it.
+
+The engine retains an approximation for action 79's separate meter branch.
+Action 105's timing is present. Its physical input producer and position effect,
+pet-food transfers at action entry, full native device/UI admission, crosshair
+publication timing and hardware controller acceptance remain open.

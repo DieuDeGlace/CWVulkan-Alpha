@@ -608,6 +608,26 @@ int main() {
         endActionUpdate(actor, 1);
         check(actor.actionMs == total && actor.mana == 0.25f + 0.0001f, "caster mana gain uses the updated clock at duration equality");
     }
+    {
+        Combatant actor;
+        actor.actionMs = 10;
+        actor.skills[8] = 10;
+        actor.mode = LENS;
+        actor.mana = 0.25f;
+        actor.stealth = 0.1f;
+        endActionUpdate(actor, 20);
+        const float grown = 0.1f + 20.f * (0.5f * 0.0005f + 0.00001f);
+        const float updatedMana = (0.25f - 20.f * 0.00005f) + (20.f * 0.00025f) * grown;
+        check(actor.stealth == grown && actor.mana == updatedMana, "stationary lens growth uses skill and feeds the updated meter to mana");
+        endActionUpdate(actor, 20, {}, {}, {0, 0, 1});
+        check(!(actor.mode & LENS) && actor.stealth == grown - 20.f * 0.0005f,
+              "positive intent clears lens before the meter takes the decay path");
+        actor.buffs.push_back({3, 0, 100});
+        actor.mana = 0.25f;
+        endActionUpdate(actor, 20);
+        check(actor.stealth == 1.f && actor.mana == (0.25f - 20.f * 0.00005f) + (20.f * 0.00025f),
+              "surviving buff 3 forces the meter to one before mana gain");
+    }
     for (int lifetime : {1, 400, 401}) {
         Combatant actor;
         actor.actionMs = 100;

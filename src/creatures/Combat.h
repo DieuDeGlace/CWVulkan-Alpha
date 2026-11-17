@@ -256,7 +256,7 @@ void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *event
 // Periodic callbacks run before expired-node cleanup and stun progression. They
 // may inspect buffs/update other state, but must not mutate the buff collection.
 void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},
-                     const std::function<void(const Buff &)> &periodic = {});
+                     const std::function<void(const Buff &)> &periodic = {}, const glm::vec3 &intent = glm::vec3(0));
 // Convenience for callers with no action effects to dispatch.
 void stepAction(Combatant &c, float dtMs);
 // Strike-call-sites S7/S9: the deferred-key pass. Deferred keys not struck since go to

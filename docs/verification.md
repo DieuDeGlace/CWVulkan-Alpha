@@ -1777,3 +1777,14 @@ centre, primary and broken-cell burst order, and one dated edit. The existing
 conditional pitch test checks the shared generator immediately at the terrain
 boundary. The Windows x64 build, all 60 CTests, the player/controller diagnostic
 and five actual-client smoke flows pass.
+
+## Client input and lens meter (2026-11-17)
+
+SimulationFrameTests cover action 34 at readiness equality, the caster's full
+ID, preservation of the roll clock, release timing after the new action write,
+and binding 99's mode and integer cooldown. ActionPhaseTests cover skill-scaled
+growth, intent clearing before decay, and the buff-3 override before mana gain.
+The Windows x64 build, all 60 test suites, the player/controller diagnostic and
+five actual-client smoke flows pass. The initial network and zone comparisons
+missed time limits. Both passed in standard isolated reruns, with NetTests at
+17.61 seconds. Physical controller and original-client acceptance remain open.

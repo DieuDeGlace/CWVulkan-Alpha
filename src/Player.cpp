@@ -253,7 +253,7 @@ void Player::advance(int32_t dt, bool replica) {
     actionMsBefore = fighter.actionMs;
     if (onActionEffects)
         onActionEffects(actionMsBefore, dt);
-    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit);
+    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit, state.intent);
 
     // The physics on whole milliseconds.
     state.mode = fighter.mode;

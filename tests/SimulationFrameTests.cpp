@@ -254,6 +254,60 @@ int main() {
     }
     {
         Combatant actor;
+        actor.id = 0x100000001ull;
+        actor.characterClass = 3;
+        actor.specialization = 1;
+        actor.action = 1;
+        actor.actionMs = duration(actor, actor.action) - 1;
+        actor.healTarget = 77;
+        actor.dodgeMs = 25;
+        actor.mana = 1;
+        Body body;
+        body.dodgeMs = 25;
+        const std::array<int32_t, 3> bindings{42, 43, 34};
+        const std::array<bool, 6> held{false, false, true};
+        useBoundAbilities(actor, body, bindings, held, {});
+        check(actor.action == 1 && actor.healTarget == 77, "a busy heal start retains the old target");
+        ++actor.actionMs;
+        useBoundAbilities(actor, body, bindings, held, {});
+        check(actor.action == 34 && actor.actionMs == 0 && actor.healTarget == actor.id &&
+              actor.dodgeMs == 25 && body.dodgeMs == 25,
+              "an admitted heal immediately targets the caster and retains the roll clock");
+    }
+    {
+        Combatant actor;
+        actor.action = 63;
+        actor.equipment[MAIN_HAND].type = 3;
+        int32_t observedAction = 0;
+        const auto previous = itemBonuses().speed;
+        itemBonuses().speed = [&](const Item &) {
+            observedAction = actor.action;
+            return 0.f;
+        };
+        Body body;
+        const std::array<int32_t, 2> bindings{1, 63};
+        useBoundAbilities(actor, body, bindings, {}, {});
+        const int32_t actionAtQuery = observedAction;
+        const int32_t anticipation = phases(actor, 11).windUp;
+        itemBonuses().speed = previous;
+        check(actor.action == 11 && actionAtQuery == 11 && actor.actionMs == anticipation,
+              "release replaces the action before querying its anticipation clock");
+    }
+    {
+        Combatant actor;
+        actor.action = 1;
+        actor.actionMs = 87;
+        actor.skills[8] = 10;
+        actor.mana = 0;
+        Body body;
+        const std::array<int32_t, 3> bindings{6, 0, 99};
+        useBoundAbilities(actor, body, bindings, {true, false, true}, {});
+        check((actor.mode & LENS) && (body.mode & LENS) && actor.cooldowns.at(99) == 7000 &&
+              actor.action == 1 && actor.actionMs == 87,
+              "binding 99 sets the actor and body mode, spends its cooldown and preserves the action");
+    }
+    {
+        Combatant actor;
         AbilityBindings bindings;
         check(bindings.values().empty(), "binding construction has no logical entries");
         for (const int32_t characterClass : {0, 1, 2, 3, 4, 5, 255}) {

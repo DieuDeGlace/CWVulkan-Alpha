@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 28 and the rulings. The 234 tracked contracts
-comprise 173 A, 56 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 29 and the rulings. The 235 tracked contracts
+comprise 176 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -78,6 +78,8 @@ Batch 27 covers `alpha-terrain-chunk-point-lights.md` and
 `alpha-terrain-shader-color-numerics.md`.
 Batch 28 covers `alpha-creature-update-phases.md`,
 `alpha-client-frame-world-step-order.md` and `alpha-world-random-stream-boundaries.md`.
+Batch 29 covers `alpha-client-action-input-phase.md`,
+`alpha-client-action-binding-producer.md` and `alpha-rulings-action-99-lens.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -100,8 +102,8 @@ Batch 28 covers `alpha-creature-update-phases.md`,
 | `alpha-category13-inventory-counter.md` | A | 76 | 0 |
 | `alpha-character-screens.md` | A | 913 | 0 |
 | `alpha-class-83-descriptor-production.md` | A | 157 | 0 |
-| `alpha-client-action-binding-producer.md` | B | 113 | 1 |
-| `alpha-client-action-input-phase.md` | B | 149 | 2 |
+| `alpha-client-action-binding-producer.md` | A | 127 | 0 |
+| `alpha-client-action-input-phase.md` | A | 187 | 1 |
 | `alpha-client-buff-action-boundaries.md` | A | 183 | 3 |
 | `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
@@ -233,6 +235,7 @@ Batch 28 covers `alpha-creature-update-phases.md`,
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | A | 1108 | 3 |
 | `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-rulings-action-99-lens.md` | A | 141 | 0 |
 | `alpha-rulings-audio-ui-sounds.md` | A | 131 | 3 |
 | `alpha-rulings-beam-flag-strike-origin.md` | A | 117 | 1 |
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
