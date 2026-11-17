@@ -93,6 +93,55 @@ int main() {
         failures++;
         std::printf("FAIL stars\n");
     }
+    // §8.3 correction 8: exactly four rand() draws per star (azimuth, elevation, size, the
+    // doubling test). Star n is made from draws 4n .. 4n + 3 of the default-seeded sequence.
+    {
+        uint32_t state = 1;
+        auto rand = [&] {
+            state = state * 214013u + 2531011u;
+            return (int)((state >> 16) & 0x7fff);
+        };
+        const double PI = 3.14159265358979323846;
+        bool fourDraws = true;
+        for (int n = 0; n < 3000; n++) {
+            const float azimuth = (float)(rand() * 2 * PI / 32767);
+            const float elevation = (float)(rand() * (PI / 2) / 32767);
+            float size = (float)rand() * .1f / 32767 + .01f;
+            if (rand() % 10 == 0)
+                size *= 2;
+            const float r = 100.f * (float)std::cos((double)elevation);
+            const glm::vec3 p((float)std::cos((double)azimuth) * r, (float)std::sin((double)azimuth) * r,
+                              100.f * (float)std::sin((double)elevation));
+            fourDraws = fourDraws && stars[n].size == size && stars[n].position == p;
+        }
+        if (!fourDraws) {
+            failures++;
+            std::printf("FAIL stars use four draws each, with binary64 cos/sin of binary32 angles\n");
+        }
+    }
+
+    // §7.1 correction 21: the fog target is to missing chunk centres, starts from R = 640 and
+    // ignores window chunks outside [0, 0x80000).
+    {
+        const auto allLoaded = [](int32_t, int32_t) { return true; };
+        near(alpha::fogTarget({1000, 1000}, {10, 10}, allLoaded), 640 - 22.4f, "fog target with everything loaded");
+        // Camera at block (100, 100); chunk (5, 3) missing: centre (176, 112).
+        const auto oneMissing = [](int32_t i, int32_t j) { return !(i == 5 && j == 3); };
+        near(alpha::fogTarget({100, 100}, {0, 0}, oneMissing), (float)std::sqrt(76.0 * 76 + 12 * 12) - 22.4f,
+             "fog target measures to the chunk centre");
+        // Negative window chunks never count, even when missing.
+        const auto noneLoaded = [](int32_t, int32_t) { return false; };
+        near(alpha::fogTarget({0, 0}, {-40, -40}, noneLoaded), 640 - 22.4f, "chunks outside the world are skipped");
+        near(alpha::fogTarget({16, 16}, {0, 0}, noneLoaded), -22.4f, "a missing chunk under the camera");
+        // Only the 40 x 40 window counts.
+        const auto outside = [](int32_t i, int32_t) { return i != 40; };
+        near(alpha::fogTarget({1296, 16}, {0, 0}, outside), 640 - 22.4f, "chunk 40 lies outside a window from 0");
+        alpha::FogDistance fog;
+        fog.reset(100);
+        fog.update(200, 1000);
+        near(fog.value(), 100 + 100 * (1 - (float)std::pow(.999, 1000.0)), "fog smoothing 1 - 0.999^ms", 1e-3f);
+    }
+
     Scene scene;
     scene.timeOfDayMs = at(12);
     near(drawStars(scene) ? 1.f : 0.f, 0, "no stars at noon");

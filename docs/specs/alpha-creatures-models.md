@@ -1,148 +1,173 @@
 # Alpha creatures: models, appearance, equipment and poses
 
-Behavioural specification of how the Cube World **Alpha** client (`Cube.exe`, SHA-256
-`84a7a132…30bf`) builds and draws a creature: the model table, the 172-byte appearance
-record, the creature-type table that fills it, colours, equipment models, and the
-procedural pose system. Written from the Alpha decompile and checked against the
-executable's assembly and constants; the server (`Server.exe`) contains the same
-appearance generator (server 0x40a840 = client 0x43f7c0, byte-identical size and logic).
+Status: FINAL / STABLE / HELD
 
-Related: `alpha-net-packets.md` (§1.2 appearance, §2.1 creature record — this document
-resolves open question **P-2** and part of **P-11**), `alpha-rendering.md` §11 (creature
-lighting and material), `alpha-data-stores.md` (`.cub` models), `alpha-saves.md` (§3.2
-field 13), `alpha-player-control.md`, `alpha-creatures-behaviour.md`.
+Behavioural contract for how the Cube World **Alpha** client builds and draws a creature:
+the model table, the 172-byte appearance record and the per-type generator that fills it,
+colour handling, equipment models, and the procedural pose system. Supported image:
+`Cube.exe`, SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`
+(image base 0x400000). The Alpha `Server.exe` contains an appearance generator of the same
+size at **server** 0x40a840 (0x40a840..0x40ecff, 17 600 bytes, as the client routine
+0x43f7c0..0x443c7f); identity of its behaviour is not re-verified here (§8).
+
+Related contracts: `alpha-net-packets.md` (appearance and creature record),
+`alpha-rendering.md` §11 (creature lighting and material), `alpha-data-stores.md` (`.cub`
+models), `alpha-saves.md` (saved character data), `alpha-player-control.md`,
+`alpha-creatures-behaviour.md` (actions and their phase lengths).
 
 ---
 
 ## 0. Conventions
 
-* Addresses are `Cube.exe` virtual addresses (base 0x400000) unless marked **server**.
-* "Record offset" = offset in the 4456-byte network creature record. The client's creature
-  object holds that record at object offset +0x10, so object offset = record offset + 0x10.
+* Addresses are `Cube.exe` virtual addresses unless marked **server**.
+* "Record offset" = offset in the 4456-byte creature record. The client creature object
+  holds the record at object offset +0x10, so object offset = record offset + 0x10.
   Client-only state beyond the record is given as object offsets ("obj +0x1188").
-* "Appearance offset" = offset inside the 172-byte appearance record (record offset 0x68,
-  object offset +0x78).
-* Lengths are in **model units** unless stated: one voxel of an unscaled model. How model
-  units become blocks is §7.4. Angles are in **degrees** unless stated.
-* "draw" = one call of the C runtime `rand()` (15-bit, 0..32767) of the thread doing the
-  work; the generator's draws use the caller's random state (world generation re-seeds
-  per zone, see `alpha-worldgen-random.md`). "draw *k*" = the *k*-th draw made by the
-  routine being described.
-* Float maths is single precision unless a step is marked (double).
+  Record "field *n*" numbers follow `alpha-net-packets.md` and are given only alongside
+  the offset.
+* "Appearance offset" = offset inside the 172-byte appearance record, which is at record
+  offset 0x68 (object +0x78).
+* Lengths are **model units** unless stated: one voxel of an unscaled model; §7.4 step 7
+  gives the conversion to blocks. Angles are degrees unless stated.
+* "Draw" = one call of the C runtime `rand()` (MSVCR110, 15-bit result 0..32767) on the
+  calling thread; the generator consumes the caller's random state. "Draw *k*" is the
+  *k*-th draw made by the routine being described.
+* Arithmetic is single precision unless a step says double.
+* *inferred* marks a meaning deduced from use; *unconfirmed* marks a statement that could
+  not be established from the image. Both are collected in §8.
 
 ---
 
-## 1. Where things are
+## 1. Routines
 
-| Routine | What it does |
+| Routine | Role |
 |---|---|
-| 0x4ee230 | loads every voxel model from `data1.db` into the **model table** (§2) |
-| 0x428750 | default appearance record (§3.2) |
-| 0x43f7c0 (**server** 0x40a840) | **appearance generator**: creature type + optional character-creation choices → appearance (§4) |
-| 0x44be40 | character loader; regenerates type and appearance from saved field 13 (§4.1) |
-| 0x42c080 | character-creation screen; wraps the head/hair choices (§4.1) |
-| 0x4ec400 | item → model (§6) |
-| 0x51be60 | weapon (item type 3) → model index (§6.2) |
-| 0x4ec370 | consumable (item type 1) → model index (§6.3) |
-| 0x4b4ef0..0x4b5342 | per frame: creature action id → **pose id** (§7.2) |
-| 0x4128f0 | pose and draw of one creature (§7) |
-| 0x60c510 (≈0x61e9e6..0x61f0f1) | per simulation step: walk-cycle phase/amplitude and other animation decays (§7.3) |
-| 0x413ae9..0x41e660 | the 74 pose cases of 0x4128f0 (jump table at 0x423d4c, index = pose − 1; §7.8, Appendix C) |
-| 0x41e660..0x41f147 | pose-state smoothing and the hand/arm composition (§7.7) |
+| 0x4ee230 | creates the model table and loads every voxel model from `data1.db` (§2) |
+| 0x4e7290, 0x4e7650 | model load and key-colour scan (§5.1) |
+| 0x4e71d0, 0x4e7870 | "voxel is empty" test and model mesher (§5.1) |
+| 0x428750 | appearance record constructor: default values (§3.2) |
+| 0x43f7c0 | **appearance generator**: creature type + optional character-choice record → appearance (§4) |
+| 0x44be40 | character loader; reads the saved choice record and calls the generator (§4.1) |
+| 0x42c080 | character-creation screen update; keeps choices in range and calls the generator (§4.1) |
+| 0x444680 | per-type predicate gated by appearance flags 0x0200/0x0800/0x1000 (§3.3) |
+| 0x4ec400 | item → model (§6.3) |
+| 0x51be60 | weapon (item type 3) → model (§6.2) |
+| 0x4ec370 | consumable (item type 1) → model (§6.3) |
+| 0x4b4ef0..0x4b5342 | per frame: action id → pose id (§7.2) |
+| 0x4128f0 | pose and draw of one creature (§6.5, §7) |
+| 0x413ae9 | pose-case dispatch: 73-entry jump table at 0x423d4c, index = pose id − 1 (§7.8, Appendix C) |
+| 0x41e660..0x41f147 | channel smoothing and hand composition (§7.7) |
 | 0x41f147..0x423d33 | matrices and draws of every part, equipment included (§6.5, §7.9) |
-| 0x61fb7a..0x61fd54 | displayed position and body rotation (obj +0x1350, +0x1374) (§7.10) |
+| 0x60c510 (0x61e9b5..0x61f0f1) | per simulation step: riding, walk phase and amplitude, footsteps, decays (§7.3) |
+| 0x60c510 (0x61f968..0x61fd54) | attach rule, displayed position and body rotation (§7.10) |
 
 ---
 
 ## 2. The model table
 
-At start-up 0x4ee230 creates 2569 empty model slots and then loads named `.cub` assets from
-`data1.db` (`alpha-data-stores.md`) into fixed slots. Every number in this document that
-names a model ("model 430") is a slot of this table. Slots never loaded stay empty
-(1559–1563, 1589–1593, 2060, 2061, 2071, 2353–2356, 2419, 2420). A few slots are loaded
-twice; the later load wins (slot 1300 ends as `orc-head.cub`; 1224–1228 and 1230 load the
-same key twice). The complete table is Appendix A.
+At start-up 0x4ee230 creates **2569** model slots (0xa09) and then makes 2557 load calls,
+each naming a `.cub` key in `data1.db` (`alpha-data-stores.md`), a fixed slot and a key
+flag (§5.1). Every number in this document that names a model ("model 430") is a slot of
+this table; Appendix A lists every slot.
 
-An index is valid if 0 ≤ index < 2569; the renderer treats any other value (65535 in
-particular, i.e. −1 as a signed 16-bit value) as "no model".
+* 2550 slots receive a model. Nineteen slots are never loaded and stay empty: 1559–1563,
+  1589–1593, 2060, 2061, 2071, 2353–2356, 2419, 2420.
+* Seven slots are loaded twice and the later load wins: slot 1300 is loaded with
+  `orc-head-m01` and then `orc-head`; slots 1224–1228 and 1230 load the same key twice.
+* Some keys occupy several slots (body2 0/1232, body4 1/1234, body3 2/1233, foot 228/432,
+  torch 842/2434, mermaid-hand 1350/1358, door 2076/2482, window 2077/2484, goddess2
+  2078/2481, egg1 2164/2165/2166).
+
+A part index is used only when, read as a signed 16-bit value, it lies in 0..2568; any
+other value (65535 in particular) means "no model". An index that names an empty slot
+selects an existing but empty model and draws nothing.
 
 ---
 
-## 3. The appearance record (resolves P-2)
+## 3. The appearance record
 
-### 3.1 Layout
+### 3.1 Layout (172 bytes)
 
 | Off | Size | Type | Meaning |
 |---|---|---|---|
 | 0x00 | 2 | 2 × u8 | *unknown*; 0 by default and never written by the generator |
-| 0x02 | 3 | 3 × u8 | **hair colour** R, G, B (§5) |
-| 0x05 | 1 | — | padding |
+| 0x02 | 3 | 3 × u8 | **hair colour** R, G, B (§5.2) |
+| 0x05 | 1 | — | padding (constructor leaves it unwritten) |
 | 0x06 | 2 | u16 | **appearance flags** (§3.3) |
-| 0x08 | 12 | 3 × f32 | **collision box** size x, y, z in blocks (used by physics, `alpha-player-control.md`) and the model scale (§7.4) |
+| 0x08 | 12 | 3 × f32 | **collision box** x, y, z in blocks; box.x also sets the model scale (§7.4 step 7) |
 | 0x14 | 2 | u16 | model: **head** |
-| 0x16 | 2 | u16 | model: **hair** (second head layer; eyes for skeletons, imps, trolls, lantern fish) |
-| 0x18 | 2 | u16 | model: **hand** (drawn twice, mirrored; front legs of quadrupeds) |
-| 0x1a | 2 | u16 | model: **foot** (drawn twice, mirrored; hind legs of quadrupeds) |
+| 0x16 | 2 | u16 | model: **hair** layer (the eye layer for types 17, 41, 85, 97, 109, 152) |
+| 0x18 | 2 | u16 | model: **hand** (drawn twice, the +x one mirrored; front legs of quadrupeds) |
+| 0x1a | 2 | u16 | model: **foot** (drawn twice; hind legs of quadrupeds) |
 | 0x1c | 2 | u16 | model: **body** |
 | 0x1e | 2 | u16 | model: **tail** |
-| 0x20 | 2 | u16 | model: **arm** (upper arm of large humanoids: trolls, golems, minotaur, lich) |
-| 0x22 | 2 | u16 | model: **wing** (drawn twice, mirrored) |
+| 0x20 | 2 | u16 | model: **arm** (upper arms of large humanoids) |
+| 0x22 | 2 | u16 | model: **wing** (drawn twice) |
 | 0x24 | 4 | f32 | head scale (head and hair) |
-| 0x28 | 4 | f32 | body scale (also multiplies tail, shoulder pads and body-worn items) |
-| 0x2c | 4 | f32 | hand scale (hands and anything held in the hand) |
+| 0x28 | 4 | f32 | body scale (also multiplies tail, shoulder piece and body-worn items) |
+| 0x2c | 4 | f32 | hand scale (hands, held item, pet item) |
 | 0x30 | 4 | f32 | foot scale |
 | 0x34 | 4 | f32 | arm scale |
 | 0x38 | 4 | f32 | weapon scale (both weapon slots) |
 | 0x3c | 4 | f32 | tail scale |
-| 0x40 | 4 | f32 | shoulder-armour scale |
+| 0x40 | 4 | f32 | shoulder-piece scale |
 | 0x44 | 4 | f32 | wing scale |
-| 0x48 | 4 | f32 | body pitch (degrees): added to the body's x rotation and subtracted from the head's, so the head stays level |
-| 0x4c | 12 | 3 × f32 | hand rotation at rest (degrees; right hand (x, y, z), left hand (x, −y, −z)) |
-| 0x58 | 4 | f32 | foot angle (degrees, added to the leg swing rotation) |
-| 0x5c | 4 | f32 | wing angle (degrees, x rotation of the wings) |
-| 0x60 | 4 | f32 | tail angle (degrees, x rotation of the tail) |
+| 0x48 | 4 | f32 | body pitch: added to the body frame's x rotation and subtracted in the head matrix (§7.9.3) |
+| 0x4c | 12 | 3 × f32 | hand rotation at rest (pose 0 only): right hand (x, y, z), left hand (x, −y, −z) |
+| 0x58 | 4 | f32 | foot angle (added to one x rotation of each foot, §7.9.5) |
+| 0x5c | 4 | f32 | wing angle (x rotation of the wings) |
+| 0x60 | 4 | f32 | tail angle (x rotation of the tail) |
 | 0x64 | 12 | 3 × f32 | body offset |
 | 0x70 | 12 | 3 × f32 | head offset |
-| 0x7c | 12 | 3 × f32 | hand offset (right hand; the left hand mirrors x) |
-| 0x88 | 12 | 3 × f32 | foot offset (right foot; the left foot mirrors x) |
+| 0x7c | 12 | 3 × f32 | hand offset (+x hand; the −x hand mirrors x) |
+| 0x88 | 12 | 3 × f32 | foot offset (+x foot; the −x foot mirrors x) |
 | 0x94 | 12 | 3 × f32 | tail offset |
 | 0xa0 | 12 | 3 × f32 | wing offset |
 
-Offsets are in model units relative to the creature's pivot (§7.4); x is to the
-creature's right, y forward, z up. The scalar names come from which drawn part each one
-multiplies in 0x4128f0 (§7.5); 0x4c–0x60 are named from their single use each.
+Offsets are model units relative to the creature pivot (§7.4); x is to the creature's
+right, y forward, z up. The scale names come from the drawn part each multiplies in
+0x4128f0 (§6.5, §7.9).
 
 ### 3.2 Defaults (0x428750)
 
-A fresh appearance holds: bytes 0x00–0x01 = 0; hair colour (255, 255, 255); flags 0;
-collision box (1, 1, 1); all eight model indices **65535 (none)** (0x4287bb sets them
-from −1); scales head 1.01, body 1, hand 1,
-foot 0.98, arm 1, weapon 0.95, tail 0.8, shoulder 1, wing 1; head pitch 0; hand rotation
-(0, 0, 0); foot/wing/tail angles 0; body offset (0, 0, −5); head offset (0, 0.5, 5); hand
-offset (6, 0, 0); foot offset (3, 1, −10.5); tail offset (0, −8, 2); wing offset (0, 0, 0).
+A newly constructed appearance holds: bytes 0x00–0x01 = 0; hair colour (255, 255, 255);
+flags 0; collision box (1, 1, 1); all eight model indices 65535 (none); scales head 1.01,
+body 1, hand 1, foot 0.98, arm 1, weapon 0.95, tail 0.8, shoulder 1, wing 1; body pitch 0;
+hand rotation (0, 0, 0); foot, wing and tail angles 0; body offset (0, 0, −5); head offset
+(0, 0.5, 5); hand offset (6, 0, 0); foot offset (3, 1, −10.5); tail offset (0, −8, 2);
+wing offset (0, 0, 0).
 
-An appearance is constructed with these defaults (0x428750 is the appearance constructor;
-the spawn-object constructor 0x5adb20 calls it, *assumed* likewise for every creature)
-before the generator runs, so a part
-that a type does not set stays **none** and is not drawn: a human has no arm, tail or wing
-model, a dog no hair, arm or wing. Model index 0 (`body2.cub`) is only drawn where a type
-sets it explicitly (body of types 1, 4–6, 11, 12, 15, 16, 18, 44).
+The constructor is called by, among others, 0x5adb20, 0x43c100, 0x4465c0 and 0x60c510,
+and by the creation screen before each generator call (§4.1). That every creature's
+appearance is constructed before the generator runs is *inferred* from these callers.
+With the defaults in place, a part that a type does not set stays **none** and is not
+drawn (a human has no arm, tail or wing model; a dog no hair, arm or wing). Model 0
+(`body2`) is drawn only where a type sets it: the body of types 1, 4–6, 11, 12, 15, 16, 18
+and 44.
 
 ### 3.3 Appearance flags (0x06)
 
-Set by the generator (bitwise OR into the existing value). Observed effects:
+The generator ORs its per-type value into the existing flags (Appendix B lists the value
+per type). Bits and where they are set:
 
-| Bit | Seen on | Effect found |
+| Bit | Set by the generator for types | Effect found |
 |---|---|---|
-| 0x0001 | four-legged animals, fish | **quadruped**: hand parts are front legs; no arm swing, legs swing ×0.75 (§7.3); 0x444680 test |
-| 0x0002 | birds, insects, bats, vampire, frightener, sand horror | **flyer**: when not on ground (contact bit 0 clear) the leg swing and bob are zero |
-| 0x0008 | skeleton, slimes, runners, plant creatures, monkey, moles, crabs… | *unknown* |
-| 0x0010 | fish, beetles, onionlings, bunnies, insects, birds, squid, slimes | **natural weapon**: no weapon combo; primary attack id 75 (`alpha-creatures-behaviour.md` §3.1), combo threshold 20 |
-| 0x0020 | humanoids, most monsters | *unknown* (likely "upright") |
-| 0x0100 | fish, lantern fish | **swimmer** (*inferred*: set on every water creature) |
-| 0x0200 | — (set at run time) | highlight (`alpha-rendering.md` §11.2 step 5) |
-| 0x0400 | skeleton, imp, frightener, dark troll, vampire, lantern fish | **glowing eyes**: the hair layer is the eyes (special handling in the hair draw) |
-| 0x0800, 0x1000 | — (run time) | excluded together with 0x0200 by 0x444680; meaning *unknown* |
+| 0x0001 | 19–23, 25–34, 37–41, 74, 75, 98–105, 116, 119, 145–147, 150, 152–155 | **quadruped**: hands become front legs (hand targets and leg swing of §7.4, §7.9.4); swing ×0.75; no running lean; knocked-down pose turns about y (§7.7) |
+| 0x0002 | 41, 42, 53–62, 92, 97, 101, 151 | **flyer**: off the ground (contact bit 0 clear) the swing and the foot lifts are 0 (test at 0x412ef2); eligible for the walk-cycle increments off the ground (§7.3) |
+| 0x0004 | 118 | suppresses pose 11's case (Appendix C) |
+| 0x0008 | 17, 37–42, 50, 63–67, 69, 70, 85, 87–94, 96, 104, 106, 107, 118 | *unknown* (tested at 0x43dd3e and 0x446f5e outside the draw) |
+| 0x0010 | 19–23, 25–36, 53–62, 71–75, 86, 98–103, 105, 116, 119, 145–147, 150–155 | *unconfirmed here*: natural-weapon behaviour described in `alpha-creatures-behaviour.md` |
+| 0x0020 | every type with a non-zero value except 86 and 97 | *unknown* |
+| 0x0100 | 145–147, 150, 152–155 (all water creatures) | *inferred* swimmer (tested in the world step at 0x61b68b, 0x61c4a3) |
+| 0x0400 | 17, 41, 85, 97, 109, 152 | **glowing eyes**: the hair layer is drawn with its colour unmodulated by the frame material (§5.2) |
+| 0x0200 | — (run time) | highlight (`alpha-rendering.md` §11.2) |
+| 0x0800, 0x1000 | — (run time) | *unknown* |
+| 0x2000 | — (run time) | *unknown* (tested at 0x60c9c6) |
+
+0x444680 is not a flag test for a single bit: it returns true only when none of 0x0200,
+0x0800, 0x1000 is set **and** the creature type is one of 19, 20, 22, 23, 25, 26, 27, 30,
+31, 32, 33, 34, 35, 53, 55, 56, 57, 58, 67, 68, 74, 87, 89, 92, 93, 98, 100, 106, 107, 145,
+146, 147 (meaning *unconfirmed*).
 
 ---
 
@@ -150,8 +175,9 @@ Set by the generator (bitwise OR into the existing value). Observed effects:
 
 ### 4.1 Inputs
 
-The generator takes the creature type (record field 8, offset 0x54), the appearance to
-fill, and optionally a 20-byte **character choice** record:
+The generator (0x43f7c0) receives a pointer to the creature type (record offset 0x54,
+32-bit), the appearance to fill, and an optional pointer to a 20-byte **character-choice
+record**:
 
 | Off | Size | Meaning |
 |---|---|---|
@@ -162,73 +188,81 @@ fill, and optionally a 20-byte **character choice** record:
 | 0x10 | 3 × u8 | hair colour R, G, B |
 | 0x13 | 1 | padding |
 
-This is exactly saved character field 13 (`alpha-saves.md` §3.2, "extra data" bytes
-0–19), which resolves **V-2**: the creature type and appearance are not saved; on load
-(0x44be40) the client calls the generator with the creature's type and this record, which
-first recomputes the type from race and sex.
+**Character loader** (0x44be40): after reading the creature from a save it reads the next
+20 bytes of the save data into a choice record and calls the generator with the
+creature's type, its appearance and that record (call at 0x44c549). Type and appearance
+therefore follow from the saved choice record (`alpha-saves.md`).
 
-**Race and sex → type** (only when a choice record is given):
+**With a choice record**, the generator first sets the type from race and sex:
 
 | Race | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|---|
 | Base type | 2 (human) | 0 (elf) | 9 (dwarf) | 11 (orc) | 4 (goblin) | 7 (lizard) | 15 (undead) | 13 (frogman) |
 
-type = base + (sex bit). A race outside 0..7 leaves the type unchanged.
+type = base + (sex bit 0). A race outside 0..7 leaves the type unchanged.
 
-**No choice record** (NPCs): the generator makes its own: draw 1 → blue, draw 2 → green,
-draw 3 → red (each the low byte of the draw), draw 4 mod 100 → head choice, draw 5 mod
-100 → hair choice, race and sex 0 (the type is **not** changed). Five draws are always
-consumed in this case, before any type-specific draws.
+**Without a choice record** (NPCs and spawned creatures) the generator builds one: draw 1
+→ blue, draw 2 → green, draw 3 → red (each the low byte of the draw), draw 4 mod 100 →
+head choice, draw 5 mod 100 → hair choice, race and sex 0. The type is **not** changed.
+These five draws are always made in this case, before any per-type draw.
 
-The character-creation screen (0x42c080) keeps the head and hair choices within the
-type's ranges (wrap to 0 above the last, to the last below 0), and sets class = menu
-index + 1.
+**Character-creation screen** (0x42c080): it computes the type from race and sex with the
+same table, sets the class byte (object +0x140, i.e. record 0x130) to the class menu index
++ 1, and keeps the head and hair choices within the ranges of the resulting type: a value
+below 0 becomes the last index of the range, a value past the last becomes 0. The ranges
+are those of Appendix B for types 0, 1, 3, 4, 5, 7–16; any other type (including 2) uses
+6 heads and 15 hair layers. It then constructs a default appearance and calls the
+generator (0x42c3c2).
 
 ### 4.2 Order of work
 
-1. Choice record handling as above.
-2. Collision box := (0.96, 0.96, 2.16) (always, before the per-type step).
-3. Per-type step (Appendix B): writes some of hair colour, flags (OR), box, part models,
-   scales, angles and offsets. Anything not written keeps its previous value.
-4. Types ≥ 156 write nothing more.
+1. Choice-record handling as in §4.1 (five draws when no record is given).
+2. Collision box := (0.96, 0.96, 2.16) for every type.
+3. Types 0..155 dispatch through the jump table at 0x443ca0; types ≥ 156 write nothing
+   more.
+4. The per-type step (Appendix B) writes some of: hair colour, flags (OR), box, part
+   models, scales, angles and offsets. Anything not written keeps its previous value.
 
-Choices are used as `choice mod n` with C semantics (sign of the dividend; negative
-choices give negative remainders and therefore other model indices — the creation screen
-never produces them). Hair colour is copied from the choice record by the player races
-0–5, 7–12 and 148–149; types 13 and 14 (frogman) force (255, 255, 255); types 15 and 16
-(undead) copy it; types 6 (bull terrier) and 46 (ogre) take draws 1–3 as R = draw 3,
-G = draw 2, B = draw 1 (low bytes) *in addition* to the five no-record draws when no
-record was given.
+Choices are reduced as `choice mod n` with C semantics: the remainder has the sign of the
+dividend, so a negative choice yields a lower model index (the creation screen never
+produces one). Hair colour: types 0–5, 7–12 and 148–149 copy it from the choice record;
+types 13 and 14 set it to (255, 255, 255); types 15 and 16 copy it from the choice record
+through a 3-byte copy helper (0x428920); types 6 and 46 replace it with three further
+draws (R = third, G = second, B = first of those draws, each the low byte); every other
+type leaves it unchanged.
 
-### 4.3 Worked example: a male human, choices (head 2, hair 7, colour 120/80/40)
+Some boxes are computed from the box of step 2 in single precision: types 4, 5, 9, 10, 48,
+49, 87, 92, 93 divide it by 1.2 (→ 0.8, 0.8, 1.8); type 81 multiplies it by 1.5
+(→ 1.44, 1.44, 3.2400002); types 88 and 89 by 1.1, type 90 by 0.7, type 91 by 0.9.
 
-Type = 2 + 0 = 2. Box (0.96, 0.96, 2.16). Head = 1246 + (2 mod 6) = 1248
-`human-head-m03`; hair = 1252 + (7 mod 15) = 1259 `human-hair-m08`; hand = 430
-`hand2` (head 1248 is not > 1248); foot 432 `foot`; body 1 `body4`; hair colour
-(120, 80, 40). Everything else stays at the defaults of §3.2 (head scale 1.01, head offset
-(0, 0.5, 5), hand offset (6, 0, 0), foot offset (3, 1, −10.5), body offset (0, 0, −5)).
-With head choice 3 the head is 1249 and the hand becomes 431 `brown-hand` (darker skin
-heads 04–06 get darker hands).
+### 4.3 Worked example: male human, choices head 2, hair 7, colour (120, 80, 40)
 
-Server: for a new player the Alpha server sets the box to (1.2, 1.2, 2.7) and type 44
-(`alpha-net-packets.md` §1.2); the client overwrites its own player's appearance from its
-save, and it is the client's record that other players see.
+Type = 2 + 0 = 2. Box (0.96, 0.96, 2.16). Head = 1246 + (2 mod 6) = 1248 `human-head-m03`;
+hair = 1252 + (7 mod 15) = 1259 `human-hair-m08`; hand 430 `hand2` (1248 is not greater
+than 1248); foot 432 `foot`; body 1 `body4`; hair colour (120, 80, 40). Everything else
+keeps the §3.2 defaults. With head choice 3 the head is 1249 and the hand 431
+`brown-hand`: heads m04–m06 get the darker hand. No draws are made.
+
+A bull terrier (type 6) generated without a choice record consumes seven draws in this
+order: draws 1–5 for the internal choice record (§4.1), draws 6–8 for the hair colour
+(B, G, R) and draw 9 for the head (2379 + draw 9 mod 3).
 
 ---
 
 ## 5. Colouring
 
-### 5.1 Key colours in models (0x4e7290, 0x4e7650, 0x4e71d0, mesher 0x4e7870)
+### 5.1 Key colours in models (0x4e7290, 0x4e7650, 0x4e71d0, 0x4e7870)
 
-Each model is loaded with a **key flag** (model object byte +0x55; the third argument of
-the loader 0x4e7290). The model table loader 0x4ee230 sets it per model:
+Each load call passes a **key flag** that the loader stores in model object byte +0x55.
+0x4ee230 passes 0 for 489 load calls and 1 for the other 2068 (2061 distinct slots end
+with flag 1, since the doubly loaded slots all use 1).
 
-* **Key colours active** (flag 0) for 489 models: every hair layer (`*-hair-*`), the eye
-  layers (`skeleton-eyes`, `imp-eyes`, `dark-troll-eyes`, `vampire-eyes`,
-  `frightener-eyes`), all wood/obsidian staffs, wood wands, gold/silver bracelets, and
-  the "random" variants of iron maces, wood bows, crossbows and boomerangs.
-* **Key colours inactive** (flag 1) for the other 2068 models (heads, bodies, hands,
-  feet, armour, items, buildings…).
+* **Key colours active** (flag 0): every hair layer (`*-hair-*`), the eye layers
+  `skeleton-eyes`, `imp-eyes`, `dark-troll-eyes`, `vampire-eyes`, `frightener-eyes`
+  (not `lantern-fish-eyes`), all wood staffs and obsidian staffs, all wood wands, all
+  gold and silver bracelets, and the "random" variants (not the five plain models) of
+  iron maces, wood bows, wood crossbows and wood boomerangs.
+* **Key colours inactive** (flag 1): every other model.
 
 With key colours active, three exact colours are **keys**:
 
@@ -240,134 +274,150 @@ With key colours active, three exact colours are **keys**:
 
 Rules (only when the flag is 0):
 
-1. At load (0x4e7650) the voxel coordinates (x, y, z) of every key voxel are appended to
-   that key's list, scanning x outermost, then y, then z.
-2. The mesher's "is this voxel empty" test (0x4e71d0) treats a key voxel as **empty**:
-   it emits no faces for it. The colour must match exactly; (0, 255, 80) or (254, 0, 0)
-   are ordinary colours.
-3. **Neighbour tests do not use the key rule**: a face of an ordinary voxel is emitted
-   only toward a neighbour whose colour is exactly (0, 0, 0) (or outside the model), and
-   the occlusion sampler (0x4eb8d0, `alpha-rendering.md` §11.1) counts only (0, 0, 0)
-   as empty. So key voxels still hide the faces of ordinary voxels that touch them and
-   still darken them by occlusion — the hair's inner surface against the stand-in head is
-   neither drawn nor lit as open.
-4. Key voxels are **not** replaced by any colour; no skin, hair or eye colour is
-   substituted. The lists are kept but the creature draw does not read them (M-7).
+1. At load (0x4e7650) the coordinates (x, y, z) of every key voxel are appended to that
+   key's list, scanning x outermost, then y, then z.
+2. The mesher's test of the voxel being meshed (0x4e71d0 called with the model's key flag)
+   treats a key voxel as **empty**, so it emits no faces for it. The colour must match
+   exactly.
+3. The mesher's neighbour tests call 0x4e71d0 in strict mode (for example the call at
+   0x4ea203), where only (0, 0, 0) counts as empty. A face of an ordinary voxel facing a key
+   voxel is therefore not emitted, and key voxels count as solid for occlusion
+   (`alpha-rendering.md` §11.1).
+4. Key voxels are not recoloured. Whether anything reads the point lists is unresolved
+   (§8).
 
-So in `human-hair-m01.cub` (18 × 16 × 16) the red stand-in head (298 voxels), the blue
-(10) and green (4) eye markers vanish, and what is drawn is the white hair (463 voxels),
-its light grey shading voxels and the skin-coloured (255, 211, 182) parts (286 voxels:
-ears and face edges that belong to the hair model).
+Example: `human-hair-m01.cub` is 18 × 16 × 16 voxels with 298 red, 10 blue and 4 green key
+voxels (a stand-in head and eye markers), 463 white hair voxels, light-grey shading
+voxels and 286 skin-coloured (255, 211, 182) voxels (ears and face edges that belong to the
+hair model). Only the non-key voxels are meshed.
 
-With the flag 1, pure red/green/blue are ordinary colours and are drawn: red eyes in
-`troll-head`, `minotaur-head`, `undead-head-m03`; Santa's suit (`santa-head` 396, `santa-body`
-358 red voxels); green eyes in `elf-head-m03`; red, green and blue trim on
-`obsidian-chest`.
+With flag 1, pure red, green and blue are ordinary colours and are drawn (for example the
+red eyes of `troll-head` and the red of `santa-body`).
 
-**Skin tone**: body, hand, head and foot models carry their skin as ordinary colours
-(for example `hand2` (255, 182, 182) and (255, 211, 182)); there are no skin key
-colours. Skin tone differences come from choosing other models (§4, hand 430 vs 431).
+**Skin tone** is not a key: body, hand, head and foot models carry their skin as ordinary
+colours (`hand2` uses (255, 182, 182) and (255, 211, 182)). Different skin tones come from
+choosing other models (Appendix B: hand 430 or 431, desert-nomad hands 188/189).
 
 ### 5.2 Tinting
 
-* Body-part models are drawn with their voxel colours (`alpha-rendering.md` §11.1).
-* The **hair layer** (appearance 0x16 model) is drawn with material
-  (R/255, G/255, B/255, 1) of appearance 0x02–0x04 multiplied componentwise by the frame
-  material (0x4128f0 near the hair draw). Because white hair voxels are (255, 255, 255)
-  they take the hair colour exactly; the skin-coloured voxels of a hair model are tinted
-  too. If appearance flag 0x0400 (glowing eyes) is set the hair layer uses the hair
-  colour **without** the frame material, i.e. it is not darkened by night or shade.
-  Whether the head is tinted as well is open question M-2 (no tint was found in the head
-  draw).
-* Skin tone is not a colour: it is the choice of hand model (human types 2 and 3,
-  desert nomads 83/84) or a different head model.
-* Equipment colour comes from its model; materials 1, 11, 12 and 22 shimmer
-  (`alpha-rendering.md` §11.2).
+* Body-part models are drawn with their own voxel colours under the frame material
+  (`alpha-rendering.md` §11.1).
+* The **hair layer** (appearance 0x16 model) is drawn with the material
+  (R/255, G/255, B/255, 1) built from appearance bytes 0x02–0x04. Normally that colour is
+  multiplied component by component (alpha included) with the frame material; when
+  appearance flag 0x0400 (glowing eyes) is set the colour is used **as is**, so the layer
+  is not darkened by night or shade. The frame material is restored after the hair draw.
+  White hair voxels therefore take the hair colour exactly, and the skin-coloured voxels
+  of a hair model are tinted as well.
+* The head draw sets no material of its own: the head is drawn with the frame material
+  and is **not** tinted by the hair colour (0x420433..0x4206c7).
+* Skin tone is not a colour: it is a choice of hand or head model (§4, Appendix B).
+* Equipment colour comes from its model. The shimmer switch is described in §6.5.
 
 ---
 
 ## 6. Equipment and items
 
-### 6.1 Item fields used for models (adds to `alpha-net-packets.md` §1.1, P-1)
+### 6.1 Item fields that select a model
 
-| Off | Meaning (from 0x4ec400, 0x51be60, 0x444db0) |
-|---|---|
-| 0x00 | item type |
-| 0x01 | subtype |
-| 0x04 | **variant seed** (u32): picks one of several models |
-| 0x0c | **rarity** 0..4 (values > 3 are treated as 4) |
-| 0x0d | **material** |
-| 0x10 | level (u16; 1 by default) |
+Evidence: item-to-model selector 0x4ec400, weapon selector 0x51be60, consumable
+selector 0x4ec370, item stat helper 0x4c70b0 (reached from 0x444db0).
 
-Item types: 1 consumable, 2 recipe ("formula"), 3 weapon, 4 chest armour, 5 gloves,
-6 boots, 7 shoulder armour, 8 amulet, 9 ring, 10 block, 11 resource/ingredient, 12 coin,
-13 ice crystal, 14 *unknown* (models 2318–2321), 15 parrot beak, 16 *unknown*, 17
-*unknown*, 18 *unknown*, 19 pet box / egg, 20 pet food, 21 special (keys, potions,
-plaster…), 23 vehicle (glider, boat), 24 lantern, 25 mana cube.
+| Item offset | Width | Meaning |
+|---|---|---|
+| 0x00 | u8 | item type |
+| 0x01 | u8 | subtype |
+| 0x04 | 32-bit | variant seed; picks one of several look variants. The weapon selector reduces it as a **signed** value, every other selector as an **unsigned** value |
+| 0x0c | u8 | rarity; every selector clamps it to at most 4 |
+| 0x0d | u8 | material |
+| 0x10 | 16-bit | level, read as a signed value by 0x4c70b0 (not used for model choice) |
 
-Materials (from model names): 1 iron, 2 wood, 5 obsidian, 6 unique/NPC clothing, 7 bone,
-11 gold, 12 silver, 18 saurian, 19 parrot, 20 mammoth, 22 ice crystal, 23 light,
-25 silk, 26 linen, 27 wool.
+An item occupies 0x118 (280) bytes inside the creature record.
 
-Below, "v" = seed mod *n*, "r" = min(rarity, 4).
+Item types handled by the selector (names follow the model names they select):
+1 consumable, 2 formula, 3 weapon, 4 chest armour, 5 gloves, 6 boots, 7 shoulder
+armour, 8 amulet, 9 ring, 10 block cube, 11 resource / ingredient, 12 coin, 13 ice
+crystal, 14 digested leftovers, 15 parrot beak, 16 painting, 17 vase, 18 candle,
+19 pet box / egg, 20 pet food, 21 special (key, potion, plaster, quest items), 23
+vehicle (glider, boat), 24 lantern, 25 mana cube. Types 0, 22 and 26 or above select
+no model.
 
-### 6.2 Weapons (type 3), 0x51be60
+Material numbers, named from the models they select: 1 iron, 2 wood, 5 obsidian, 6
+unique clothing (innkeeper chest and body1–body5), 7 bone, 11 gold, 12 silver, 18
+saurian, 19 parrot, 20 mammoth, 22 ice crystal, 23 light, 25 silk, 26 linen, 27 wool.
+Resource materials 13–17 are emerald, sapphire, ruby, diamond and sandstone, and
+129–131 select the unholy, ice and wind cubes.
+
+Notation below: *r* = rarity, clamped so that any value above 3 counts as 4;
+*v* = seed reduced modulo the stated number. "No model" means the selector returns
+nothing (a null model reference). A model index outside 0..2568 also yields no model.
+
+### 6.2 Weapons (item type 3), 0x51be60
+
+Here *v* = seed modulo 11 computed on the **signed** seed (a negative seed gives a
+negative remainder and hence a lower index). The selector is keyed by subtype, then
+by material where listed.
 
 | Sub | Weapon | Model index |
 |---|---|---|
-| 0 | sword | material 5 → 2059, 7 → 2072, else 899 + 5·(seed mod 11) + r |
-| 1 | axe | 5 → 2060 (empty slot), 7 → 2074, else 5·(seed mod 11 + 354) + r |
-| 2 | mace | 2 → 664 + r, 7 → 2073, else 609 + 5·(seed mod 11) + r |
-| 3 | dagger | 954 + 5·(seed mod 11) + r |
-| 4 | fist | 1009 + 5·(seed mod 11) + r |
-| 5 | longsword | 5·(seed mod 11 + 376) + r |
-| 6 | bow | 674 + 5·(seed mod 11) + r |
-| 7 | crossbow | 729 + 5·(seed mod 11) + r |
-| 8 | boomerang | 784 + 5·(seed mod 11) + r |
+| 0 | sword | material 5 → 2059; material 7 → 2072; otherwise 899 + 5·*v* + *r* |
+| 1 | axe | material 5 → 2060 (an empty slot); material 7 → 2074; otherwise 1770 + 5·*v* + *r* |
+| 2 | mace | material 2 → 664 + *r*; material 7 → 2073; otherwise 609 + 5·*v* + *r* |
+| 3 | dagger | 954 + 5·*v* + *r* |
+| 4 | fist weapon | 1009 + 5·*v* + *r* |
+| 5 | longsword | 1880 + 5·*v* + *r* |
+| 6 | bow | 674 + 5·*v* + *r* |
+| 7 | crossbow | 729 + 5·*v* + *r* |
+| 8 | boomerang | 784 + 5·*v* + *r* |
 | 9 | arrow | 840 |
-| 10 | staff | 5 → 604 + r, else 434 + 5·(seed mod 11) + r |
-| 11 | wand | 489 + 5·(seed mod 11) + r |
-| 12 | bracelet | 11 → 544 + 5·(seed mod 6) + r, else 574 + 5·(seed mod 6) + r |
-| 13 | shield | 2 → 1119 + r, else 1064 + 5·(seed mod 11) + r |
+| 10 | staff | material 5 → 604 + *r*; otherwise 434 + 5·*v* + *r* |
+| 11 | wand | 489 + 5·*v* + *r* |
+| 12 | bracelet | uses *v* = signed seed modulo 6: material 11 → 544 + 5·*v* + *r*; otherwise 574 + 5·*v* + *r* |
+| 13 | shield | material 2 → 1119 + *r*; otherwise 1064 + 5·*v* + *r* |
 | 14 | quiver | 839 |
-| 15 | greatsword | 5 → 1936, 7 → 1935, else 5·(seed mod 11 + 365) + r |
-| 16 | greataxe | 5 → 1993, 7 → 1992, 18 → 1994, else 1937 + 5·(seed mod 11) + r |
-| 17 | greatmace | 2 → 1995, 5 → 2053, 7 → 2052, else 1996 + 5·(seed mod 11) + r |
+| 15 | greatsword | material 5 → 1936; material 7 → 1935; otherwise 1825 + 5·*v* + *r* |
+| 16 | greataxe | material 5 → 1993; material 7 → 1992; material 18 → 1994; otherwise 1937 + 5·*v* + *r* |
+| 17 | greatmace | material 2 → 1995; material 5 → 2053; material 7 → 2052; otherwise 1996 + 5·*v* + *r* |
 | 18 | pitchfork | 2331 |
 | 19 | pickaxe | 2051 |
 | 20 | torch | 842 |
-| other | — | 899 |
+| 21 or more | — | 899 |
 
-`seed mod 11` uses the seed as a signed 32-bit value (C `%`); each family has 55 models
-(5 plain + 10 × 5 "random" variants), so 11 variants × 5 rarities fill it exactly. Material
-5 of an axe points at slot 2060, which is empty: such an axe is drawn without a model.
+Each seed-varied family occupies 55 consecutive slots: five plain models followed by
+ten groups of five "random" variants, so eleven variants times five rarities fill it.
+The bracelet families occupy 30 slots each (six variants). Slot 2060 is never loaded,
+so an obsidian axe refers to an existing but empty model and shows nothing.
 
 ### 6.3 Armour, jewellery and other items, 0x4ec400
 
-* **Chest (4)**: material 5 → 2054, 6 → by subtype 0..6 → 1229..1235 (innkeeper chest…),
-  7 → 2067, 11 → 2062, 18 → 1224, 19 → 2369, 20 → 2375, 22 → 2360, 23 → 670,
-  25 → 1669 + 5v + r, 26 → 1359 + 5v + r, 27 → 1459 + 5v + r, otherwise 1124 + 5v + r
-  (v = seed mod 5, unsigned).
-* **Gloves (5)**: 1 → 1174 + 5v + r, 5 → 2057, 7 → 2070, 11 → 2065, 18 → 1226, 19 → 2368,
-  20 → 2374, 22 → 2362, 23 → 672, 25 → 1744 + 5v + r, 26 → 1434 + 5v + r,
-  27 → 1534 + 5v + r, otherwise model 7 (`glove`).
-* **Boots (6)**: 1 → 1199 + 5v + r, 5 → 2056, 7 → 2069, 11 → 2064, 18 → 1227, 19 → 2370,
-  20 → 2376, 22 → 2361, 23 → 673, 25 → 1719 + 5v + r, 26 → 1409 + 5v + r,
-  27 → 1509 + 5v + r, otherwise 433 (`boot`).
-* **Shoulders (7)**: 5 → 2055, 7 → 2068, 11 → 2063, 18 → 1225, 19 → 2372, 20 → 2378,
-  22 → 2359, 23 → 671, 25 → 1694 + 5v + r, 26 → 1384 + 5v + r, 27 → 1484 + 5v + r,
-  otherwise 1149 + 5v + r.
-* **Amulet (8)**: material 12 → 1594 + 5v + r, otherwise 1564 + 5v + r.
-* **Ring (9)**: 12 → 1644 + 5v + r, otherwise 1619 + 5v + r.
-* **Consumable (1)**: subtype 0 → 852, 1 → 849, 2 → 850, 3 → 851, 4 → 2395, 5 → 2092,
-  6 → 2393, 7 → 2546, 8 → 2335, 9 → 2333, other → 843.
-* Types 2 → 2421 (`formula`), 10 → 2075 (`cube`), 12 → 2084/2085/2086 (copper / silver
-  (12) / gold (11)), 13 → 2357, 15 → 2367, 19 → 2080 (subtype 24 → 2164, 25 → 2161),
-  24 → lantern 2433, 25 → manacube 2566.
-* **Vehicle (23)** (resolves M-3): subtype 1 → 2548 `boat2`, any other subtype → 2547
-  `glider`.
-* Types 11, 14, 16–18, 20, 21 (resolves F-4) are below (§6.3.1). They are inventory,
-  world-item and hand-held models. Any combination not listed returns **no model** (0).
+For armour, amulets and rings *v* = **unsigned** seed modulo 5.
+
+* **Chest (4)**, by material: 5 → 2054; 6 → by subtype 0..6 → 1229..1235
+  (innkeeper-chest, backpack, body1 … body5); 6 with any subtype above 6 → handled as
+  a shoulder piece of material 6, i.e. 1149 + 5·*v* + *r*; 7 → 2067; 11 → 2062;
+  18 → 1224; 19 → 2369; 20 → 2375; 22 → 2360; 23 → 670; 25 → 1669 + 5·*v* + *r*;
+  26 → 1359 + 5·*v* + *r*; 27 → 1459 + 5·*v* + *r*; any other → 1124 + 5·*v* + *r*.
+* **Gloves (5)**: 1 → 1174 + 5·*v* + *r*; 5 → 2057; 7 → 2070; 11 → 2065; 18 → 1226;
+  19 → 2368; 20 → 2374; 22 → 2362; 23 → 672; 25 → 1744 + 5·*v* + *r*;
+  26 → 1434 + 5·*v* + *r*; 27 → 1534 + 5·*v* + *r*; any other → 7 (`glove`).
+* **Boots (6)**: 1 → 1199 + 5·*v* + *r*; 5 → 2056; 7 → 2069; 11 → 2064; 18 → 1227;
+  19 → 2370; 20 → 2376; 22 → 2361; 23 → 673; 25 → 1719 + 5·*v* + *r*;
+  26 → 1409 + 5·*v* + *r*; 27 → 1509 + 5·*v* + *r*; any other → 433 (`boot`).
+* **Shoulders (7)**: 5 → 2055; 7 → 2068; 11 → 2063; 18 → 1225; 19 → 2372;
+  20 → 2378; 22 → 2359; 23 → 671; 25 → 1694 + 5·*v* + *r*; 26 → 1384 + 5·*v* + *r*;
+  27 → 1484 + 5·*v* + *r*; any other → 1149 + 5·*v* + *r*.
+* **Amulet (8)**: material 12 → 1594 + 5·*v* + *r*; otherwise 1564 + 5·*v* + *r*.
+* **Ring (9)**: material 12 → 1644 + 5·*v* + *r*; otherwise 1619 + 5·*v* + *r*.
+* **Consumable (1)**, by subtype (0x4ec370): 0 → 852, 1 → 849, 2 → 850, 3 → 851,
+  4 → 2395, 5 → 2092, 6 → 2393, 7 → 2546, 8 → 2335, 9 → 2333, any other → 843.
+* Single-model types: 2 → 2421 (`formula`); 10 → 2075 (`cube`); 13 → 2357; 15 → 2367;
+  24 → 2433 (`lantern02`); 25 → 2566 (`manacube`).
+* **Coin (12)**, by material: 11 → 2086 (gold), 12 → 2085 (silver), any other → 2084
+  (copper).
+* **Pet box (19)**, by subtype: 24 → 2164, 25 → 2161, any other → 2080 (`pet-box`).
+* **Vehicle (23)**, by subtype: 1 → 2548 (`boat2`), any other → 2547 (`glider`).
+* Types 11, 14, 16, 17, 18, 20 and 21 follow in §6.3.1. Any type or key not listed
+  selects no model.
 
 #### 6.3.1 Per-subtype tables (0x4ec400)
 
@@ -378,25 +428,27 @@ Below, "v" = seed mod *n*, "r" = min(rarity, 4).
 | 0 | by m: 1 → 2337 `iron-nugget`, 2 → 2365 `wood-log`, 11 → 2339 `gold-nugget`, 12 → 2338 `silver-nugget`, 13 → 2340 `emerald-nugget`, 14 → 2341 `sapphire-nugget`, 15 → 2342 `ruby-nugget`, 16 → 2343 `diamond-nugget`, 17 → 2364 `sandstone`, other → none | 14 | by m: 129 → 2350 `unholy-cube`, 130 → 2349 `ice-cube`, 131 → 2351 `wind-cube`, other → 2348 `fire-cube` |
 | 1 | 2365 `wood-log` | 15 | 843 `mushroom` |
 | 2 | 2366 `parrot-feather` | 16 | 2332 `pumpkin` |
-| 5 | 2394 `plant-fiber` | 17 | 2334 `pineapple` |
-| 6 | 2352 `cobweb` | 18 | 2391 `radish-slice` |
-| 7 | 2373 `mammoth-hair` | 19 | 844 `shimmer-mushroom` |
-| 8 | 2357 `ice-crystal` | 20 | 2097 `ginseng-root` |
-| 9 | 2363 `ice-coated-yarn` | 21 | 2392 `onion-slice` |
-| 10 | by m: 1 → 2344 `iron-cube`, 2 → 2347 `wood-cube`, 11 → 2346 `gold-cube`, 12 → 2345 `silver-cube`, other → none | 22 | 845 `heartflower` |
-| 11 | 2160 `cotton` | 23 | 847 `prickly-pear` |
-| 12 | 2389 `flask` | 24 | 846 `heartflower-frozen` |
-| 13 | 2336 `spiribit` | 25 | 848 `soulflower` |
-| 3, 4, ≥ 28 | none | 26 / 27 | 2390 `water-flask` / 2091 `snow-berry` |
+| 3, 4 | none | 17 | 2334 `pineapple` |
+| 5 | 2394 `plant-fiber` | 18 | 2391 `radish-slice` |
+| 6 | 2352 `cobweb` | 19 | 844 `shimmer-mushroom` |
+| 7 | 2373 `mammoth-hair` | 20 | 2097 `ginseng-root` |
+| 8 | 2357 `ice-crystal` | 21 | 2392 `onion-slice` |
+| 9 | 2363 `ice-coated-yarn` | 22 | 845 `heartflower` |
+| 10 | by m: 1 → 2344 `iron-cube`, 2 → 2347 `wood-cube`, 11 → 2346 `gold-cube`, 12 → 2345 `silver-cube`, other → none | 23 | 847 `prickly-pear` |
+| 11 | 2160 `cotton` | 24 | 846 `heartflower-frozen` |
+| 12 | 2389 `flask` | 25 | 848 `soulflower` |
+| 13 | 2336 `spiribit` | 26 / 27 | 2390 `water-flask` / 2091 `snow-berry` |
+| | | 28 or more | none |
 
-**Type 14** ("digested leftovers"): by rarity *k* = rarity − 1: *k* > 3 → 2321; *k* < 0 →
-2318; otherwise 2318 + *k* (`digested-leftovers01..04`).
-**Type 16**: 2313 + (seed AND 1) (`painting01`/`painting02`).
-**Type 17**: 2113 + (seed AND 3) (`vase` … `vase4`).
-**Type 18**: subtype 1 → 2120 + (seed mod 3) (`undead-candle1..3`); otherwise 2117 +
-(seed mod 3) (`candle01..03`). Here the seed is used **unsigned**.
+**Digested leftovers (14)**: let *k* = rarity − 1 (rarity as an unsigned byte). If *k*
+is greater than 3 the model is 2321; otherwise a negative *k* counts as 0 and the model
+is 2318 + *k* (`digested-leftovers01` … `04`).
+**Painting (16)**: 2313 + (seed AND 1) (`painting01`, `painting02`).
+**Vase (17)**: 2113 + (seed AND 3) (`vase`, `vase2`, `vase3`, `vase4`).
+**Candle (18)**: subtype 1 → 2120 + (unsigned seed mod 3) (`undead-candle1..3`); any
+other subtype → 2117 + (unsigned seed mod 3) (`candle01..03`).
 
-**Pet food (20)**, by subtype (default → 2334 `pineapple`):
+**Pet food (20)**, by subtype (any subtype not listed → 2334 `pineapple`):
 
 | Sub → model |
 |---|
@@ -404,170 +456,220 @@ Below, "v" = seed mod *n*, "r" = min(rarity, 4).
 | 50 → 870 `banana-split`; 53 → 864 `popcorn`; 55 → 876 `licorice-candy`; 56 → 865 `cereal-bar`; 57 → 890 `salted-caramel`; 58 → 891 `ginger-tartlet`; 59 → 892 `mango-juice`; 60 → 893 `fruit-basket`; 61 → 894 `melon-icecream`; 62 → 895 `bloodorange-juice`; 63 → 884 `milk-chocolate-bar`; 64 → 886 `mint-chocolate-bar`; 65 → 887 `white-chocolate-bar`; 66 → 885 `caramel-chocolate-bar`; 67 → 874 `chocolate-cookie` |
 | 74 → 888 `sugar-candy`; 75 → 878 `apple-ring`; 86 → 880 `water-ice`; 87 → 862 `donut-chocolate`; 88 → 896 `pancakes`; 90 → 866 `strawberry-cake`; 91 → 867 `chocolate-cake`; 92 → 860 `lollipop`; 93 → 861 `softice`; 98 → 882 `candied-apple`; 99 → 881 `date-cookie`; 102 → 2408 `bread`; 103 → 897 `curry`; 104 → 872 `lolly`; 105 → 873 `lemon-tart`; 106 → 883 `strawberry-cocktail`; 151 → 898 `biscuit-role` |
 
-**Special (21)**, by subtype (byte): 3 → 2422 `key1`; 4 and 5 → 851 `mana-potion`;
-6 → 2550 `plaster`; 7 → 609 `iron-mace1`; 8 → 2363 `ice-coated-yarn`; 9 → 2395
-`soup-ginseng`; any other → 2081 + (subtype AND 3) (`quest-item-amulet01`,
+The pet-food subtype keys coincide with creature-type numbers of Appendix B
+(*unconfirmed* that each names the creature that eats it).
+
+**Special (21)**, by subtype: 3 → 2422 `key1`; 4 and 5 → 851 `mana-potion`;
+6 → 2550 `plaster`; 7 → 609 `iron-mace1`; 8 → 2363 `ice-coated-yarn`;
+9 → 2395 `soup-ginseng`; any other → 2081 + (subtype AND 3) (`quest-item-amulet01`,
 `quest-item-amulet02`, `quest-item-jewel-case`, `copper-coin`).
 
-Pet-food subtypes are creature types (the pet the food tames); the subtype numbers
-above are the keys of the type-20 switch in 0x4ec400; *inferred*: each matches the
-creature type of Appendix B that eats it.
+### 6.4 Equipment slots
 
-### 6.4 Equipment slots (record field 44, 13 items)
+The creature record holds the **item in hand** at record offset 0x1d8, immediately
+followed by 13 equipment items (0x118 bytes each) starting at record offset 0x2f0, so
+slot *k* is at record offset 0x2f0 + 0x118·*k*. The pose and draw routine 0x4128f0
+selects the model of each drawn slot through 0x4ec400 once per frame.
 
-| Slot | Holds (item type) | Drawn as |
-|---|---|---|
-| 0 | *unknown* | not drawn |
-| 1 | amulet (8) | drawn on the body (body scale), swinging with the walk |
-| 2 | chest (4) | **replaces the body model** |
-| 3 | boots (6) | **replace the foot model** |
-| 4 | gloves (5) | **replace the hand model** |
-| 5 | shoulders (7) | extra part on the body, shoulder scale × (body scale + 0.1) |
-| 6 | weapon (3), off hand | in the left hand, weapon scale |
-| 7 | weapon (3), main hand | in the right hand, weapon scale |
-| 8, 9 | rings (9) | not drawn |
-| 10 | lantern (24) | drawn below the **left** hand while mode flag 0x200 is set (§6.5) |
-| 11 | vehicle (23) | glider drawn above the body while mode flag 0x10 is set; boat during action 107 (§6.5) |
-| 12 | pet item | drawn in the hand when a pet is held (*inferred*) |
+| Slot | Record offset | Usual item type | How the draw uses it |
+|---|---|---|---|
+| 0 | 0x2f0 | *unconfirmed* | never read by the draw |
+| 1 | 0x408 | amulet (8) (*inferred*) | extra part on the body, body scale (§6.5) |
+| 2 | 0x520 | chest (4) | replaces the appearance body model |
+| 3 | 0x638 | boots (6) | replaces the appearance foot model |
+| 4 | 0x750 | gloves (5) | replaces the appearance hand model |
+| 5 | 0x868 | shoulders (7) | extra part on the body (§6.5) |
+| 6 | 0x980 | weapon (3), off hand | in the left hand, or on the back (§6.5) |
+| 7 | 0xa98 | weapon (3), main hand | in the right hand, or on the back (§6.5) |
+| 8, 9 | 0xbb0, 0xcc8 | rings (9) (*inferred*) | never read by the draw |
+| 10 | 0xde0 | lantern (24) (*inferred*) | drawn with the left hand while mode flag 0x200 is set |
+| 11 | 0xef8 | vehicle (23) | while mode flag 0x10 is set (glider) and, separately, while the action id is 107 (boat) (§6.5) |
+| 12 | 0x1010 | pet item (*inferred*) | drawn at the hands' midpoint during action 82 (§6.5) |
 
-Record field 43 (offset 0x1d8, outside the equipment) is the **item held in the hand**
-(drawn at the right hand with the hand scale).
+The weapon slot types 3 and the armour types of slots 2–7 are those the stat helper
+0x444db0 requires; the item types named for slots 1, 8, 9, 10 and 12 are inferred from
+the models drawn there and are not checked by the draw, which draws whatever model the
+slot's item selects.
 
-If an equipment slot holds no item (type 0) or its model is missing, the appearance part
-is used. A quiver (type 3, subtype 14) in the off-hand slot 6 is drawn on the back (weapon
-scale, §6.5) instead of in the hand. Body parts are hidden by draw flags passed by the
-caller (first-person and preview cases): bit 0 head, 1 hair, 3 body, 2 shoulders, 6 both
-weapons, 4 left hand (and the lantern), 5 right hand, 7 left foot, 8 right foot.
+The **item in hand** (record 0x1d8) is drawn at the midpoint of the two hands with the
+hand scale during actions 80 and 81 while the action time is below the item's use limit
+(consumables: 10000 ms, consumable subtype 1: 3000 ms, any other item: 0) (§6.5).
 
-"Left" and "right" in this document follow §3.1: the **right** hand is the +x hand. It
-holds the main weapon (slot 7) and is the hand drawn mirrored (§7.9); the left (−x) hand
-holds the off-hand weapon (slot 6) and the lantern.
+Substitution: when slot 2, 3 or 4 selects no model (an empty item, type 0, or any
+combination that selects nothing) the appearance body, foot or hand model is used. The
+head and hair are always the appearance models; no equipment slot replaces them. The
+tail, arm and wing are always appearance models. An appearance index is used only when
+it lies in 0..2568 read as a signed 16-bit value; otherwise that part has no model. A
+selected model that is an empty slot (for example 2060) suppresses the substitution and
+shows nothing.
+
+**Draw flags.** The caller passes a bit set that removes parts for this draw:
+
+| Bit | Removes |
+|---|---|
+| 0x001 | head |
+| 0x002 | hair layer |
+| 0x004 | shoulder piece (slot 5) |
+| 0x008 | body / chest |
+| 0x040 | both weapons (slots 6 and 7) |
+| 0x010 | the left hand, together with the lantern drawn with it |
+| 0x020 | the right hand |
+| 0x080 | the first foot drawn (the left foot, *unconfirmed* side) |
+| 0x100 | the second foot drawn (the right foot, *unconfirmed* side) |
+
+Bits 0x01–0x40 are applied before any matrix is built (0x41f0f4..0x41f147); bits
+0x10, 0x20, 0x80 and 0x100 are tested at each hand and foot draw (0x423001, 0x4233b0,
+0x4238d7, 0x423b11). When the hand model itself is absent neither hand nor the lantern
+is drawn.
+
+**Left and right.** Following §3.1, the **left** hand is the −x hand and the **right**
+hand the +x hand. The right hand is the one drawn with a negative x scale (mirrored);
+its rotation and position channels are the "R" channels of §7.7, and it carries the
+main weapon (slot 7). The left hand carries the off-hand weapon (slot 6) and the
+lantern (slot 10). Of the two hand draws the left one comes first.
 
 ### 6.5 How equipment is drawn (0x41f147..0x423d33)
 
-Every equipment model is drawn with the part-matrix rule of §7.4 step 8: a parent frame,
-then the listed translations and rotations, then the scale, then a **centring** translation
-by fractions of the model's voxel size (*sx*, *sy*, *sz*). "Centred" means
-(−*sx*/2, −*sy*/2, −*sz*/2). The parent frames are defined in §7.9: **body frame** (the
-body matrix of §7.4 step 8), **arm frame** (§7.9.2) and **base frame** (§7.4 step 7).
-R*a*(θ) is a rotation about axis *a* by θ degrees (right-handed, applied in the order
-written). *s* is the walk swing of §7.4 step 1 **after** all its factors, *s′* the swing
-before the longsword, pose and glide factors (the value kept after the quadruped factor).
-*w* = appearance weapon scale (0x38), *b* = body scale (0x28), *n* = hand scale (0x2c).
+Every equipment model is placed by the part rule of §7.4 step 8: a parent frame, then the
+listed translations and rotations, each applied to the current matrix in the order written
+(post-multiplied), then the scale, then a translation by fractions of the model's voxel
+size (*sx*, *sy*, *sz*). "Centred" means T(−*sx*/2, −*sy*/2, −*sz*/2). The three parent
+frames are the **base frame** (§7.4 step 7), the **body frame** (§7.4 step 8) and the
+**arm frame** (§7.9.2). R*a*(θ) is a right-handed rotation about local axis *a* by θ
+degrees. *s* is the walk swing of §7.4 step 1 after all of its factors; *s′* is the
+swing as it stands right after the quadruped factor. *w* = appearance weapon scale (0x38),
+*b* = body scale (0x28), *n* = hand scale (0x2c). Subtype tests in this section read only
+the subtype byte of the slot; only the quiver tests also require item type 3.
 
-**Shimmer.** Before each draw of an equipment model the shader's shimmer switch is set to 1
-when the item's type is non-zero and its material is 1, 11, 12 or 22 (0x4c7be0), and back to 0
-after the draw (chest, amulet, shoulders, gloves, both weapons).
+**Shimmer switch.** Immediately before drawing the chest, amulet, shoulders, main weapon,
+off-hand weapon, left hand and both feet, the shader's shimmer switch is set from the
+corresponding slot (2, 1, 5, 7, 6, 4, 3): 1 when that slot's item type is non-zero and its
+material is 1, 11, 12 or 22 (0x4c7be0), otherwise 0. After each of these draws it is set
+back to 0. The right hand sets no value of its own (it inherits whatever the switch holds)
+and resets it to 0 afterwards; the lantern draw resets it to 0 before drawing.
 
-**Chest (slot 2 or appearance body).** Body frame · T(body offset) ·
-R*z*(0.5·*Y* + *s*·90/π) · S(*b*) · centred. *Y* is the aim yaw (§7.7).
-If record field 20 (offset 0x12c, *unknown* f32) is > 0 the **plaster** model 2550 is
-drawn over the chest: body frame · T(body offset) · R*z*(0.5·*Y* + *s*·90/π) · S(*b*) ·
-T(0, −½·(chest model *sy*), 0) · S(0.5) · R*y*(45) · R*z*(180) · T(−*sx*/2, 0, −*sz*/2)
-(*inferred*: a bandage after damage).
+**Glider (slot 11, mode 0x10).** Body frame · T(body offset + (0, 0, 8·box.z/box.x)) ·
+R*x*(−*B*.x) · S(2*b*) · centred (*B* = smoothed body tilt, §7.7).
 
-**Amulet (slot 1).** Body frame · T(body offset + (0, 3, 6.05)) · R*z*(*s*·90/π + 0.5·*Y*) ·
-R*x*(0.7·*s*²·180/π) · S(*b*) · T(−*sx*/2, −1.5, −*sz*): it hangs from its top edge and swings
-forward with the square of the swing.
+**Boat (slot 11, action 107).** Body frame · T(body offset + (0, 0, −9·box.z/box.x)) ·
+R*x*(−*B*.x) · R*z*(−*B*.z) · S(2*b*) · T(1, 2, 0) · T(−*sx*/2, −*sy*/2, 0).
+
+**Mana cube** (model 2566) while the pose id is 72 and the pose-state time copy is below
+5000: arm-frame matrix · T(midpoint of the two hand positions + (0, 0, 8)) ·
+R*z*(0.02·*t*) · R*y*(45) · R*x*(45) · S(1) · centred. It is drawn before the arm frame of
+the current frame is rebuilt, so the matrix it starts from is the arm frame kept in the
+pose state from the previous call (*as read*, 0x41fa97..0x41fc52 versus 0x420a48).
+
+**Chest (slot 2, else the appearance body).** Body frame · T(body offset) ·
+R*z*(*s*·90/π + *Y*/2) · S(*b*) · centred, where *Y* is the smoothed aim yaw (§7.7).
+
+**Plaster.** Only when a chest/body model is drawn and record field 20 (offset 0x12c, f32)
+is > 0, model 2550 is drawn: body frame · T(body offset) · R*z*(*s*·90/π + *Y*/2) · S(*b*) ·
+T(0, −½·(chest model *sy*), 0) · S(0.5) · R*y*(45) · R*z*(180) · T(−*sx*/2, 0, −*sz*/2).
+No shimmer value is set for it. (*inferred*: a bandage after damage.)
+
+**Amulet (slot 1).** Body frame · T(body offset + (0, 3, 6.05)) · R*z*(*s*·90/π + *Y*/2) ·
+R*x*(0.7·*s*²·180/π) · S(*b*) · T(−*sx*/2, −1.5, −*sz*): it hangs from its top edge and
+swings forward with the square of the swing.
 
 **Shoulders (slot 5).** Body frame · T(0, 0, 4 + 2·*a*) · T(body offset) · R*z*(*s*·90/π) ·
 S(shoulder scale) · S(*b* + 0.1) · centred (*a* = walk amplitude).
 
-**Gloves (slot 4)** and **boots (slot 3)** replace the hand and foot models and are drawn
-exactly as hands (§7.9.4) and feet (§7.9.5).
+**Gloves (slot 4)** and **boots (slot 3)** only replace the hand and foot models; they are
+placed exactly as hands (§7.9.4) and feet (§7.9.5).
 
-**Main weapon (slot 7), in the hand.** Arm frame · T(right hand) · R*z*(ρ.z) · R*y*(ρ.y) ·
-R*x*(ρ.x) · R*z*(*W*.z) · R*y*(*W*.y) · R*x*(*W*.x + 0.5·*p*) · S(*w*) · grip translation, where
-ρ is the right-hand rotation (§7.7), *W* the main-hand grip rotation (zero unless a pose
-writes it, §7.7) and *p* the head pitch (record field 5). Grip translation by main-weapon
-subtype (it sets which voxel of the model sits in the hand):
+**Held item (record field 43).** During actions 80 and 81, while the action time (record)
+is below the held item's use limit (0x4c6b80: 10 000 ms for item type 1, 3 000 ms for type 1
+subtype 1, otherwise 0): arm frame · T(midpoint of the two hand positions) · R*x*(λ.x) ·
+S(*n*) · centred (λ = left-hand rotation, §7.7).
 
-| Main subtype (or model) | Grip translation |
+**Pet item (slot 12).** During action 82 (no time limit): the same matrix, ending with
+T(−*sx*/2, −*sy*/2, 0) instead of the centring.
+
+**Back quivers for bows.** If slot 6 holds a weapon (type 3) of subtype 6 or 7, model 839
+is drawn on the back: body frame · R*z*(*s*·45/π) · T(0, −7.1, 0.1) · R*y*(45) ·
+R*z*(90) · S(*w* + 0.01) · centred. Then, if slot 7 holds a weapon (type 3) of subtype 6
+or 7, model 839 is drawn the same way with R*y*(−45). Both are drawn whatever the action.
+
+**Main weapon (slot 7) glow.** While record field 23 (offset 0x134) is > 0 the material
+for the main weapon is the frame material (all four components) multiplied by
+1 + 0.25·(1 + cos(0.01·*t*)), *t* = pose-state time copy in ms; the frame material is
+restored after the weapon draw. This applies whether the weapon is in the hand or on the
+back. (*inferred*: a charge glow.)
+
+**Main weapon, on the back (sheathed).** When the action is 0, 21, 79–85, 91, 96, 105,
+106, 107 or 109, or mode 0x10 (gliding) is set — unless the main subtype is 4 (fist) or
+12 (bracelet): body frame · R*z*(*s*·45/π) · T(0, −7.1, 0.1) · R*y*(−45 for a staff
+(subtype 10), −135 for every other subtype) · R*z*(90) · S(*w*) · **centred**.
+
+**Main weapon, in the hand.** Otherwise: arm frame · T(*R*) · R*z*(ρ.z) · R*y*(ρ.y) ·
+R*x*(ρ.x) · R*z*(*W*.z) · R*y*(*W*.y) · R*x*(*W*.x + 0.5·*p*) · S(*w*) · grip translation,
+where *R* is the right-hand position and ρ its rotation (§7.7), *W* the main grip rotation
+(zero unless a pose case writes it) and *p* the head pitch (record field 5). The grip is
+chosen in this order:
+
+| Test | Grip translation |
 |---|---|
-| model 840 (`arrow`) | (−*sx*/2 − 1, 0.5, 1) |
-| 4 fist | centred |
-| 6 bow | (−*sx*/2, 1.5 − *sy*, −*sz*/2) |
-| 7 crossbow | (−*sx*/2, 0, −*sz*/2) |
-| 8 boomerang | (−*sx*/2, −2, −4) |
-| 10 staff | (−*sx*/2, −*sy*/2, −10) |
-| 12 bracelet | first S(0.6), then (−*sx*/2, 1 − *sy*, −*sz*/2) |
-| any other (swords, axes, maces, daggers, longswords, great weapons, pitchfork, pickaxe, torch…) | (−*sx*/2, −*sy*/2, −4) |
+| model is 840 (`arrow`) | (−*sx*/2 − 1, 0.5, 1) |
+| subtype 10 (staff) | (−*sx*/2, −*sy*/2, −10) |
+| subtype 12 (bracelet) | S(0.6) first, then (−*sx*/2, 1 − *sy*, −*sz*/2) |
+| subtype 6 (bow) | (−*sx*/2, 1.5 − *sy*, −*sz*/2) |
+| subtype 7 (crossbow) | (−*sx*/2, 0, −*sz*/2) |
+| subtype 8 (boomerang) | (−*sx*/2, −2, −4) |
+| subtype 4 (fist) | centred |
+| anything else | (−*sx*/2, −*sy*/2, −4) |
 
-So a sword's handle voxel 4 above the bottom of the model is held in the hand and the blade
-points along the hand's +z.
+So a sword's voxel 4 above the bottom of the model sits at the hand and the blade points
+along the hand's +z.
 
-**Main weapon, on the back (sheathed).** Used when the action is 0, 21, 79–85, 91, 96,
-105, 106, 107 or 109, or the creature is gliding (mode 0x10), unless the main weapon is a
-fist (4) or bracelet (12): body frame · R*z*(*s*·45/π) · T(0, −7.1, 0.1) · R*y*(−45) (−135
-for a staff) · R*z*(90) · S(*w*) · the same grip translation as in the hand.
+**Off-hand weapon (slot 6), on the back.** Same action list as the main weapon, but mode
+0x10 does **not** sheathe it; never sheathed when the off-hand subtype is 20 (torch), 4 or
+12: body frame · T(0.5, −0.65, 0.5) · R*z*(*s*·45/π) · then by subtype — 13 (shield):
+T(0, −8.2, 0) · R*z*(180); 6 or 7: T(0, −6.2, 0) · R*y*(−45) · R*z*(90); any other:
+T(0, −7.2, 0) · R*y*(−225) · R*z*(90) — then S(*w*) · centred. No glow is applied in this
+case.
 
-**Off-hand weapon (slot 6), in the hand.** Arm frame · T(left hand) (pose 71 instead:
-T(midpoint of the two hands + (0, 0, 8))) · R*z*(λ.z) · R*y*(λ.y) · R*x*(λ.x) ·
-R*z*(*W*′.z) · R*y*(*W*′.y) · R*x*(*W*′.x + 0.5·*p*) · S(*w*, ×1.5 in pose 71) · grip:
+**Off-hand weapon, in the hand.** Arm frame · T(*L*) (pose 71: T(midpoint of the hands +
+(0, 0, 8))) · R*z*(λ.z) · R*y*(λ.y) · R*x*(λ.x) · R*z*(*W*′.z) · R*y*(*W*′.y) ·
+R*x*(*W*′.x + 0.5·*p*) · S(*w*′) · grip, with *w*′ the off-hand copy of the weapon scale
+(the pose-71 case multiplies it by 1.5 and puts model 2101 in the off hand). The glow
+rule above also applies here. Grip, tested in this order:
 
-| Off-hand subtype (or case) | Grip translation |
+| Test | Grip translation |
 |---|---|
-| model 840 (`arrow`) | (1 − *sx*/2, 0.5, 1) |
+| model is 840 (`arrow`) | (1 − *sx*/2, 0.5, 1) |
 | pose 71 | centred |
-| 6 bow | (−*sx*/2, 1.5 − *sy*, −*sz*/2) |
-| 7 crossbow | (−*sx*/2, 0, −*sz*/2) |
-| 12 bracelet | first S(0.6), then (−*sx*/2, 1 − *sy*, −*sz*/2) (*as read*) |
-| 13 shield | (−*sx*/2, 3, −*sz*/2) |
-| main weapon is a boomerang (8) | (−*sx*/2, −2, −4) |
-| 4 fist | first R*y*(180), then centred |
-| any other | (−*sx*/2, −*sy*/2, −4) |
+| off-hand subtype 6 | (−*sx*/2, 1.5 − *sy*, −*sz*/2) |
+| off-hand subtype 7 | (−*sx*/2, 0, −*sz*/2) |
+| off-hand subtype 12 | S(0.6) first, then (−*sx*/2, 1 − *sy*, −*sz*/2) |
+| off-hand subtype 13 (shield) | (−*sx*/2, 3, −*sz*/2) |
+| **main** subtype 8 (boomerang) | (−*sx*/2, −2, −4) |
+| off-hand subtype 4 | R*y*(180) first, then centred |
+| anything else | (−*sx*/2, −*sy*/2, −4) |
 
-λ is the left-hand rotation, *W*′ the off-hand grip rotation.
+**Slot-6 quiver.** If slot 6 holds a quiver (type 3, subtype 14) its model (839) is taken
+out of the off hand before posing (§7.7 step 4), so no off-hand weapon is drawn, and after
+the off-hand step it is drawn on the back: body frame · T(0.65, −0.5, 0.3) · R*z*(*s*·45/π) ·
+T(0, −6.2, 0) · R*y*(−45) · R*z*(90) · S(*w*) · centred.
 
-**Off-hand weapon, on the back.** Same action list as the main weapon (gliding does
-**not** sheathe it), unless the off-hand subtype is 20 (torch), 4 or 12: body frame ·
-T(0.5, −0.65, 0.5) · R*z*(*s*·45/π) · then by subtype — shield (13): T(0, −8.2, 0) ·
-R*z*(180); bow/crossbow: T(0, −6.2, 0) · R*y*(−45) · R*z*(90); other: T(0, −7.2, 0) ·
-R*y*(−225) · R*z*(90) — then S(*w*) · centred.
+**Weapon trail points.** After each main- or off-hand weapon draw (in hand or on back) the
+model points (*sx*/2, *sy*/2, 0) and (*sx*/2, *sy*/2, *sz*) are transformed by that weapon's
+matrix and kept in the pose state (main hand +0x62c / +0x56c, off hand +0x7ac / +0x6ec). A
+16-entry trail history is then updated for poses 1–3, 8, 10, 12, 14, 28–32, 35, 48 and 49
+(both hands), 15, 17 and 19 (off hand) and 16, 18, 20 and 50 (main hand), and a 16-step
+circle is built for pose 69 (0x4225fd..0x422fe5). The exact time window of the history
+and the trail rendering are *unconfirmed* (§8, U-9).
 
-**Quivers.** (a) If slot 6 holds a quiver (type 3, subtype 14) its model (839) replaces the
-off-hand weapon, which is then not drawn: body frame · T(0.65, −0.5, 0.3) · R*z*(*s*·45/π) ·
-T(0, −6.2, 0) · R*y*(−45) · R*z*(90) · S(*w*) · centred. (b) If slot 6 is a bow or crossbow,
-model 839 is drawn on the back as: body frame · R*z*(*s*·45/π) · T(0, −7.1, 0.1) · R*y*(45) ·
-R*z*(90) · S(*w* + 0.01) · centred; (c) the same for a main-hand bow or crossbow with
-R*y*(−45). (b) and (c) are drawn whatever the action.
-
-**Glow while charging.** While record field 23 (offset 0x134) is > 0, each weapon is drawn
-with the frame material multiplied by 1 + 0.25·(1 + cos(0.01·*t*)), *t* = action time in
-ms (*inferred*: the charge glow).
-
-**Weapon trails.** After each in-hand or sheathed weapon draw, two points of the weapon's
-matrix are stored, (*sx*/2, *sy*/2, 0) and (*sx*/2, *sy*/2, *sz*) (bottom and top of the
-blade axis): main hand in pose state +0x62c / +0x56c, off hand +0x7ac / +0x6ec. A 16-step
-trail history follows them while P1 < action time < duration for poses 1–3, 8, 10, 12, 14,
-28–32, 35, 48, 49 (both hands), 15, 17, 19 (off hand), 16, 18, 20, 50 (main hand), and a
-16-step circle in pose 69 (0x4225fd..0x422fe5; the key is the pose id, *inferred*). Trail
-rendering is follow-up F-5.
-
-**Lantern (slot 10).** Drawn while mode flag 0x200 is set and the left hand is drawn:
-arm frame · T(left hand + (0, 2, −2)) · S(0.8) · T(−*sx*/2, 1 − *sy*/2, 2 − *sz*), with the
-material set to (1, 1, 1, 1) and the shader's light switch at 0 (it is not darkened).
-
-**Held item (record field 43).** During actions 80 and 81 while the action time is below the
-item's use limit (consumables (type 1): 10000 ms, 3000 ms for subtype 1; others 0): arm frame
-· T(midpoint of the two hands) · R*x*(λ.x) · S(*n*) · centred. **Pet item (slot 12)** during
-action 82: the same matrix, but centred only in x and y (T(−*sx*/2, −*sy*/2, 0)).
-
-**Mana cube** (model 2566) during pose 72 while the action time is < 5000: arm frame ·
-T(midpoint of the hands + (0, 0, 8)) · R*z*(0.02·*t*) · R*y*(45) · R*x*(45) · centred, scale 1.
-
-**Glider (slot 11, mode 0x10).** Body frame · T(body offset + (0, 0, 8·box.z/box.x)) ·
-R*x*(−*B*.x) · S(2*b*) · centred (*B* = smoothed body tilt, §7.7: the glider stays level).
-**Boat (slot 11, action 107).** Body frame · T(body offset + (0, 0, −9·box.z/box.x)) ·
-R*x*(−*B*.x) · R*z*(−*B*.z) · S(2*b*) · T(1, 2, 0) · T(−*sx*/2, −*sy*/2, 0).
+**Lantern (slot 10).** Drawn only inside the left-hand step (a hand model is present and
+draw-flag bit 4 is clear) while mode flag 0x200 is set: arm frame · T(*L* + (0, 2, −2)) ·
+S(0.8) · T(−*sx*/2, 1 − *sy*/2, 2 − *sz*). The shimmer switch is set to 0 and the material
+to (1, 1, 1, 1) for the draw (so it is not darkened), then the frame material is restored.
 
 ---
 
 ## 7. Poses and animation
 
-The creature has no skeleton file. Every frame 0x4128f0 computes the pose procedurally
-from the creature's record (action id, action time, velocity, flags), client-only
-animation state, and smoothed pose vectors kept per creature (obj +0x1498, "pose state").
+The creature has no skeleton file. Every frame 0x4128f0 computes the pose procedurally from the creature record (action id, action time, velocity, flags), client-only animation state, and smoothed pose channels kept per creature in the pose state (obj +0x1498).
 
 ### 7.1 Inputs per creature
 
@@ -575,26 +677,36 @@ animation state, and smoothed pose vectors kept per creature (obj +0x1498, "pose
 |---|---|
 | record 0x58 (field 9) | **action id** (u8) |
 | record 0x5c (field 10) | **action time** in ms since the action began |
-| record 0x24 (field 2) | velocity (blocks/s) |
+| record 0x24 (field 2) | velocity (blocks/s); x, y used for the running and lean tests, all three for the dodge axis |
 | record 0x30 (field 3) | movement intent (`alpha-player-control.md` §3) |
-| record 0x48 (field 5) | head pitch (degrees) |
-| record 0x4c (field 6) | contact flags: bit 0 on ground, bit 1 in water, bit 2 touching a wall |
-| record 0x114 (field 14) | mode flags: 0x01 climbing allowed, 0x04 aiming, 0x10 gliding, 0x40 running, 0x200 lantern lit, 0x400 sitting/riding pose (*names inferred from use*) |
-| record 0x118 (field 15) | dodge-roll time left (ms, 600 at start) |
-| record 0x120 (field 17) | > 0 forces pose 56 (stun, *inferred*) |
-| record 0x1b8 (obj +0x11c8)… | mount id (obj +0x11c0, u64): non-zero → riding pose |
-| obj +0x1188 | **walk amplitude** 0..1 (§7.3) |
-| obj +0x118c | **walk phase** (radians, grows without bound) |
-| obj +0x1180 | landing bob (decays toward 0) |
-| obj +0x1184 | hit flash (`alpha-rendering.md` §11.2) |
-| obj +0x1374 | displayed body rotation *D* (x, y, z), smoothed toward record field 1 (§7.10) |
-| obj +0x1350 | displayed position (3 × i64), smoothed toward record field 0 (§7.10) |
+| record 0x48 (field 5) | head pitch *p* (degrees) |
+| record 0x4c (field 6) | contact flags: bit 0 on ground, bit 2 touching a wall |
+| record 0x50 (u8) | value 5 suppresses the riding leg pose (§7.4 step 2) |
+| record 0x54 (field 8) | creature type (type 101 special cases) |
+| record 0x114 (field 14) | mode flags: 0x01 climbing allowed, 0x04 aiming, 0x10 gliding, 0x40 running, 0x200 lantern lit, 0x400 sitting pose (*names inferred from use*) |
+| record 0x118 (field 15) | dodge-roll time left (ms; the roll angle is scaled by 600) |
+| record 0x11c (field 16) | > 0: knocked-down pose |
+| record 0x120 (field 17) | > 0: pose 56 is forced (§7.2) |
+| record 0x12c, 0x134 (fields 20, 23) | plaster and weapon glow (§6.5) |
+| record 0x130, 0x131 | class and specialisation (dodge exception, §7.4 step 7) |
+| record 0x150 (field 26) | aim direction (*inferred*), §7.7 step 2 |
+| record 0x1d8 (field 43) | held item |
+| record 0x2f0 (field 44) | the 13 equipment items, 0x118 bytes each |
+| obj +0x11c0 | **mount id** (client-only, u64): non-zero → riding |
+| obj +0x1180 | landing bob (blocks) |
+| obj +0x1188 | **walk amplitude** *a* 0..1 (§7.3) |
+| obj +0x118c | **walk phase** (radians) |
+| obj +0x1350 | displayed position (3 × i64, 1/65536 block), §7.10 |
+| obj +0x1374 | displayed body rotation *D* (x, y, z degrees), §7.10 |
 
-### 7.2 Action id → pose id (0x4b4ef0)
+### 7.2 Action id → pose id (Cube.exe 0x4b4ef0..0x4b5342)
 
-Each frame the client copies the action time into the pose state and maps the action id
-to a **pose id** (pose state +8). Action 0 → pose 0. Then, if record field 17 > 0, the pose
-is forced to 56.
+Each frame, before any pose work, the client copies the creature's action time (record
+0x5c, object +0x6c) into the pose state (+0x04, object +0x149c) and derives a **pose id**
+(pose state +0x08, object +0x14a0) from the action id (record 0x58, u8). The action id is
+dispatched through a 110-entry table covering actions 1..110; action 0 and every action
+above 110 fall to the default, pose 0. After the mapping, if record field 17 (offset 0x120,
+signed 32-bit) is greater than 0 the pose id is overwritten with 56.
 
 | Actions → pose | | | |
 |---|---|---|---|
@@ -621,370 +733,476 @@ is forced to 56.
 | 97→0 | 98→8 | 99, 100→0 | 101→68 |
 | 102→0 | 103→68 | 104→69 | 105→61 |
 | 106→58 | 107→59 | 108→71 | 109→72 |
-| 110→73 | ≥ 111 → 0 | | |
+| 110→73 | 0 and ≥ 111 → 0 | | |
 
-Action 48: main weapon (slot 7) a bow or crossbow (type 3, subtype 6/7) → 22; else
-off-hand (slot 6) a shield (subtype 13) → 9; else any off-hand weapon → 35; else 34.
-Action 93: off-hand slot empty → 2 (as action 57); else 35.
+**Action 48** (0x4b51ca): if the main-hand item (equipment slot 7, object +0xaa8) has type 3
+and subtype 6 or 7 (bow, crossbow), pose 22. Otherwise, if the off-hand item (slot 6,
+object +0x990) has type 3: subtype 13 (shield) gives pose 9, any other subtype pose 35.
+Otherwise pose 34.
 
-What each action means is in `alpha-creatures-behaviour.md` §3.
+**Action 93** (0x4b52dc): if the off-hand item type (object +0x990) is 0 (empty), pose 49 —
+the same result as actions 61 and 66; otherwise pose 35.
 
-### 7.3 Walk cycle state (simulation step, 0x61e9e6..0x61f0f1)
+The slot numbers follow §6.4; the two item records are 0x118 (280) bytes apart.
 
-Per creature and per step of dt milliseconds (dt_s = dt/1000):
+### 7.3 Walk-cycle state (simulation step, Cube.exe 0x61e9b5..0x61f0f1)
 
-* Let *speed* = |velocity| (3-D) and *speed_xy* = its horizontal part,
-  *k* = sqrt(0.8 / *S*) where *S* is a per-creature size value (open question M-4;
-  most likely the collision box x).
-* If speed² > 0.5, the action is not 107 (boat), and the creature is on ground or in
-  water or (climbing allowed and touching a wall) or a flyer:
-  * climbing (mode 0x01 and wall contact): phase += *k*·speed·dt_s·6 and
-    amplitude += 0.2·dt_s (nothing else in this list);
-  * on ground, during an attack's wind-up — action 48 always, action 54 before its end,
-    actions 6, 7, 10, 17, 18, 19, 20 while the action time is below their first phase
-    (`alpha-creatures-behaviour.md` §3.2): phase += *k*·dt·0.0001·speed_xy·1.5;
-  * on ground otherwise: phase += *k*·speed_xy·dt_s·1.5 (×2 for action 79);
-  * not on ground (water, air): phase += *k*·dt·0.002·speed_xy·1.5;
-  * in the last three cases amplitude += dt_s.
-* Otherwise, if not on ground, not in water and not climbing: phase := 0 and
-  amplitude += *k*·dt_s.
-* Then amplitude := min(amplitude, 1) and the amplitude relaxes toward 0 by the
-  per-millisecond rule *a* ← *a* + (0 − *a*)·0.005 applied dt times.
-* Landing bob (obj +0x1180) relaxes toward 0 at 0.01 per ms if negative, 0.02 if
-  positive; hit flash (obj +0x1184) toward 0 at 0.0075 per ms.
-* **Riding** (checked before all of the above; mount id obj +0x11c0 non-zero, the mount
-  exists and its health > 0, and the rider's controller kind ≠ 5): position := mount
-  position + (0, 0, 1.5 − mount landing bob) blocks; velocity := 0; orientation := mount
-  orientation + (20, 0, 0); intent := 0; amplitude := mount amplitude × 0.5; phase :=
-  mount phase; the rest of the walk-cycle step is skipped. A mount that no longer exists
-  or has health ≤ 0 clears the mount id.
+Per creature and per step of *dt* milliseconds (an integer; *dt*ₛ = *dt*·0.001):
 
-"Relax toward *t* at rate *r* per ms" always means: repeat dt times *x* ← *x* + (*t* − *x*)·*r*
-(0x411d40), i.e. *x* ← *t* + (*x* − *t*)·(1 − *r*)^dt. Implement it as the loop or the
-power; results differ in the last float bits only.
+* *speed²* = squared 3-D length of the velocity (record 0x24); *speed* its square root;
+  *speed_xy* = length of the horizontal part of the velocity.
+* *k* = sqrt(0.8 / *S*), where *S* is the creature's **collision box x** (appearance 0x08,
+  object +0x80) (0x619137..0x619151, used at 0x61ea5b).
+* "contact" = record 0x4c (bit 0 on ground, bit 1 in water, bit 2 touching a wall); "mode" =
+  record 0x114; "flyer" = appearance flag 0x0002; "climbing" = mode bit 0x01 and contact
+  bit 2.
 
-**Footsteps** (only creatures in the local world, not dodging, not in water, speed_xy > 5):
-whenever ⌊phase/π⌋ increases, a positional sound event is emitted at the feet
-(position − box.z/2): if the ground under the feet is block type 3 (*inferred*: water
-edge / snow; follow-up), sound 33 + (draw mod 3) at pitch 1; otherwise sound 32 at pitch
-1 + 0.2·draw/32767. (These are world-update section 4 records, see
-`alpha-creatures-behaviour.md` §6.)
+**Riding** (tested first, 0x61e9b5). If the mount id (object +0x11c0, 64-bit) resolves to an
+existing creature:
+
+* if that creature's value at record offset 0x15c (health) is not greater than 0, the mount
+  id is cleared to 0 and the normal walk-cycle step below runs;
+* otherwise, if this creature's record byte 0x50 equals 5, the normal step runs (no riding);
+* otherwise the creature rides: position := mount position + (0, 0, 1.5 − mount landing
+  bob) blocks (converted to fixed point); velocity := 0; orientation := mount orientation
+  + (20, 0, 0); movement intent (record 0x30) := 0; walk amplitude := mount amplitude × 0.5;
+  walk phase := mount phase. The phase/amplitude increments below are skipped, but the
+  equipment-flag checks, the amplitude clamp and all three relaxations at the end of this
+  section still run.
+
+If the mount id does not resolve to a creature, it is left unchanged and the normal step
+runs.
+
+**Normal step.** The creature is *eligible* when it is on ground, or a flyer, or climbing,
+or in water.
+
+* If eligible, *speed²* > 0.5 and the action id is not 107:
+  * climbing: phase += *k*·*speed*·*dt*ₛ·6; amplitude += 0.2·*dt*ₛ (nothing else);
+  * else on ground, in an attack wind-up — action 48 at any time; action 54 while the
+    action time is below the action's full duration; actions 6, 7, 10, 17, 18, 19, 20 while
+    the action time is below the action's first phase (`alpha-creatures-behaviour.md`
+    §3.2): phase += *k*·(*dt*·0.0001·*speed_xy*·1.5); amplitude += *dt*ₛ;
+  * else on ground: phase += *k*·(*speed_xy*·*dt*ₛ·1.5), doubled for action 79;
+    amplitude += *dt*ₛ;
+  * else (not on ground; water or air): phase += *k*·(*dt*·0.002·*speed_xy*·1.5);
+    amplitude += *dt*ₛ.
+* Otherwise (not eligible, or too slow, or action 107): if the creature is not on ground,
+  not in water and not climbing, phase := 0 and amplitude += *k*·*dt*ₛ; else nothing changes.
+
+**Footsteps** (0x61ed8f..0x61ef06), only in the two on-ground, non-climbing cases above,
+and only when: the world has a local player creature (the reference is non-null;
+*unconfirmed* whether this is the intended meaning), record field 15 (dodge time, 0x118) is
+0, contact bit 1 (water) is clear, and *speed_xy* > 5. If trunc(old phase/π) <
+trunc(new phase/π) (double-precision division, truncation), one sound event is emitted at
+the **creature position**. The ground is probed at the creature position lowered by
+0.5·box.z blocks and by a further 0.5 block (each converted to fixed point by ×65536 and
+truncation); the block type there is its type byte AND 0x1F:
+
+* type 3: one draw; sound id 33 + (draw mod 3), pitch 1;
+* any other: sound id 32; one draw; pitch draw·0.2/32767 + 1.
+
+Volume is 1 in both cases. Exactly one draw is made per footstep. What block type 3
+represents is *unconfirmed*.
+
+**After the increments** (0x61f008..0x61f0f1), every step, riding included:
+
+1. Mode bit 0x10 (gliding) is cleared unless the item at object +0xf08 (equipment slot 11)
+   has type 23 and subtype 0 (glider).
+2. Mode bit 0x200 (lantern) is cleared unless the item at object +0xdf0 (slot 10) has
+   type 24.
+3. If amplitude > 1, amplitude := 1.
+4. Amplitude relaxes toward 0 at rate 0.005 per ms.
+5. Landing bob (object +0x1180) relaxes toward 0 at rate 0.01 per ms if it is negative,
+   otherwise at rate 0.02.
+6. Hit flash (object +0x1184) relaxes toward 0 at rate 0.0075 per ms.
+
+"Relax *x* toward *t* at rate *r* per ms" (0x411d40) means: *dt* times in succession,
+*x* ← *x* + (*t* − *x*)·*r*, each step in single precision.
 
 ### 7.4 From pose to matrices
 
-All of this is per frame in 0x4128f0. Notation: R*x*(*a*), R*y*(*a*), R*z*(*a*) rotations
-about the local axes by *a* degrees (applied to the current matrix in the order written,
-each post-multiplied), T(*v*) a translation, S(*s*) a uniform scale.
+All of this is per frame in 0x4128f0. Rotations, translations and scales are applied to
+the current matrix in the order written (post-multiplied); angles are degrees.
 
-1. **Swing.** *s₀* = sin(phase + π/2) computed in double then rounded to float;
-   *swing* = amplitude·0.7π·*s₀* (radians; 0.7π = 2.19911485751, double). Then:
-   ×0.5 for action 79; ×0.1 for actions 106/107; ×1.25 and "running" if (mode 0x40 set,
-   not climbing, |intent|² > 0.1 and |velocity_xy|² > 0.1) or action 48; 0 if flyer and
-   not on ground; ×0.75 if quadruped; ×0.25 if main weapon is a longsword and action ≠ 0;
-   ×0.1 for poses 51/52 while the action time is below the value of 0x4c6b80
-   (*unknown* limit), and for pose 53;
-   ×0.5 for actions 22, 36, 63, 8, 28 or poses 2, 3, 48, 49, 37; 0 if gliding.
-2. **Leg angles.** *L* = swing·180/π (double divide); left leg = 1.5·*L*, right leg =
-   −1.5·*L* (degrees). Overrides: riding → legs 20/20 and body lean 10; poses 57, 52, 58,
-   59 → legs 40/40, lean 10; pose 55 → legs −10/−10. Body lean otherwise 0.
-3. **Hand targets** (not quadruped), with *h* = hand offset, *a* = amplitude,
-   *r* = *h*.x·(1 + *a*):
-   right = (cos(swing)·*r*, *h*.y + sin(swing)·*r* + 2.1 − 5*a*, *h*.z − 4.1 + 6*a*),
-   left = (−cos(swing)·*r*, *h*.y − sin(swing)·*r* + 2.1 − 5*a*, *h*.z − 4.1 + 6*a*).
-   Quadrupeds: right = (*h*.x, *h*.y, *h*.z), left = (−*h*.x, *h*.y, *h*.z). Riding: y += 2,
-   x ×0.5. Arm-part targets (for the arm model) are the midpoints:
-   ((±hand.x + *h*.x·∓0.3)·0.5, (hand.y − 8)·0.25, (hand.z + *h*.z + 12)·0.5).
-4. **Foot targets**: right = foot offset, left = (−x, y, z). Tail target = tail offset.
-5. **Pose overrides**: the pose id selects a case that replaces some of these targets and
-   sets extra rotations (attacks, bow aiming, sitting, swimming, gliding…). Each case is a
-   short list of constant targets and of time curves of the action time (§7.8,
-   Appendix C); pose 0 adds the appearance hand rotation (§3.1, 0x4c).
-6. **Smoothing.** With *w* = 1 − 0.99^dt (0x411d40 with rate 0.01; dt in ms, the
-   caller's frame time), every smoothed vector *p* of the pose state moves toward its
-   target: *p* ← *p* + (target − *p*)·*w*; the body-lean scalar likewise; rotation angles
-   use the shortest-arc rule *a* ← *a* + asin(sin(target − *a*))·*w* (degrees in, degrees
-   out; sin/asin in double).
-7. **Base matrix**, in this order (verified at 0x41f225..0x41f640):
-   T(creature position − camera position, in blocks: the 64-bit difference × 1/65536;
-   the position is the **displayed** position obj +0x1350 (§7.10), and its z first gets
-   + lean.z − landing bob (both in blocks, each converted to fixed point by ×65536 and
-   truncation; lean is the smoothed vector *E* of §7.7));
-   if dodging (field 15 > 0, and not a rogue-class special case: class 4 spec 1 during
-   actions 17, 5 or 20 while the action time is below its duration): a roll about the
-   axis velocity × (0, 0, 1) = (v.y, −v.x, 0) (normalised; type 101 uses the velocity
-   itself; skipped when that axis is shorter than 0.01) by angle (1 − field15/600)·(−360)°,
-   and **both hand targets** are raised in z by 5·box.z/box.x model units (correction:
-   not the pivot height); the same hand raise applies while gliding (mode 0x10);
-   R*z*(displayed rotation z); T(0, 0, *h*); R*y*(displayed rotation y);
-   R*x*(displayed rotation x); T(lean.x, lean.y, 0); R*z*, R*y*, R*x* of the smoothed body
-   angles (the body tilt *B* of §7.7); T(0, 0, −*h*); **S(box.x / 11.2)**. From here on lengths are model units: a
-   box 0.96 wide makes one model unit 0.0857 blocks. *h* is a smoothed pivot height
-   (pose state) whose target is box.z/2 while **gliding** (mode 0x10, falling, not on
-   ground, field 16 < 1 and not dodging — 0x444650) and 0 otherwise.
-8. **Body matrix** = base · T(0, 0, 4·|*s′*|) (×4 again for action 79; *s′* = the swing
-   kept after the quadruped factor, before the longsword, pose and glide factors) ·
-   T(torso shift *S*) · R*z*(*T*.z) · R*y*(*T*.y) · R*x*(appearance body pitch + *T*.x), with
-   *S* and *T* the smoothed torso shift and torso angles of §7.7. Each part is
-   then drawn as: part matrix = body matrix · T(part offset) · rotations · S(part scale) ·
-   T(−model size / 2) (the model is centred: −0.5·width, −0.5·depth, −0.5·height in
-   voxels).
-
-The order and constants of steps 7–8 are verified at 0x41f225..0x41f640; the per-part
-rotation lists are summarised in §7.5 and given in full in §7.9 (equipment in §6.5).
+1. **Swing.** *s₀* = sin(phase + π/2), where phase + π/2 is formed in double, rounded to
+   single, and the sine is taken in double and rounded to single. *swing* =
+   *a*·C·*s₀* in double, rounded to single, with C = 2.19911482006215 (0.7π rounded to
+   single precision, stored as a double). Then, in this order: ×0.5 for action 79; ×0.1
+   for actions 106 and 107; ×1.25 and the **running** flag set if (mode 0x40 set, not
+   (mode 0x01 with wall contact), |intent|² > 0.1 (all three components) and
+   |velocity_xy|² > 0.1) or the action is 48; set to 0 if appearance flag 0x0002 (flyer)
+   and not on ground; ×0.75 if appearance flag 0x0001 (quadruped) — the value at this
+   point is *s′*; ×0.25 if the main-slot subtype byte is 5 and the action is non-zero;
+   ×0.1 for poses 51 and 52 while the action time is below the held item's use limit
+   (§6.5), and ×0.1 for pose 53; ×0.5 for actions 22, 36, 63, 8, 28 or poses 2, 3, 48, 49,
+   37; set to 0 if mode 0x10.
+2. **Leg angles and body lean.** leg*L* = 1.5·(*s′*·180/π) and leg*R* = −leg*L* (the
+   product *s′*·180 in single, the division by π in double). Body lean ℓ = 0. Overrides,
+   in order: riding (mount id non-zero and record byte 0x50 ≠ 5) → both legs 20, ℓ = 10;
+   poses 57, 52, 58, 59 → both legs 40, ℓ = 10; pose 55 → both legs −10.
+3. **Hand base targets**, with *h* = appearance hand offset and *r* = *h*.x·(1 + *a*).
+   Not quadruped: right *R* = (cos(swing)·*r*, *h*.y + sin(swing)·*r* + 2.1 − 5*a*,
+   *h*.z − 4.1 + 6*a*); left *L* = (−cos(swing)·*r*, *h*.y − sin(swing)·*r* + 2.1 − 5*a*,
+   *h*.z − 4.1 + 6*a*). Quadruped: *R* = (*h*.x, *h*.y + 2.1 − 5*a*, *h*.z) and
+   *L* = (−*h*.x, *h*.y + 2.1 − 5*a*, *h*.z). Riding: both y += 2, both x × 0.5.
+   Arm base targets (for the arm model): left = ((*L*.x − 0.3·*h*.x)/2, (*L*.y − 8)/4,
+   (*L*.z + *h*.z + 12)/2), right = ((*R*.x + 0.3·*h*.x)/2, (*R*.y − 8)/4,
+   (*R*.z + *h*.z + 12)/2).
+4. **Foot base targets**: right = appearance foot offset, left = (−x, y, z). Tail target =
+   appearance tail offset.
+5. **Pose overrides**: the pose case (§7.8, Appendix C) replaces some targets and sets
+   channel targets (§7.7).
+6. **Smoothing.** The weight is *w* = 1 − (1 − *r*)^dt, obtained by relaxing 0 toward 1
+   dt times at rate *r* (0x411d40; dt is the caller's frame time in ms, *r* = 0.01 unless
+   the pose case sets another). Linear channels move by *p* ← *p* + (target − *p*)·*w*.
+   Angle channels move by the shortest arc (0x423f70): with *a* and target *t* converted
+   to radians, *d* = asin(clamp(sin *t*·cos *a* − cos *t*·sin *a*, −1, 1)), and
+   *a* ← *a* + *d*·*w*·180/π.
+7. **Base matrix** (0x41f147..0x41f5c7), in this order:
+   * T(*X*, *Y*, *Z*) in blocks with *X* = (displayed x + caller x offset)/65536,
+     *Y* = (displayed y + caller y offset)/65536 and *Z* = (displayed z − ⌊bob·65536⌋ +
+     ⌊*E*.z·65536⌋)/65536, all sums in 64-bit fixed point (the conversions truncate toward
+     zero). The two 64-bit horizontal offsets are passed in by the caller; no offset is
+     added to z (*inferred*: the negated camera position).
+   * **Dodge roll** when field 15 ≠ 0, unless class 4 specialisation 1 is performing
+     action 17, 5 or 20 within its duration: axis = velocity × (0, 0, 1) = (*v*.y, −*v*.x, 0)
+     (type 101: the velocity itself), applied only if the axis is longer than 0.01, by the
+     angle (1 − field15/600)·(−360) about the normalised axis. In the same case (and also
+     whenever mode 0x10 is set) the z of both composed hand positions *L* and *R* is raised
+     by 5·box.z/box.x, whether or not the roll itself was applied; dodging while gliding
+     raises them twice.
+   * R*z*(*D*.z) · T(0, 0, *h*) · R*y*(*D*.y) · R*x*(*D*.x) · T(*E*.x, *E*.y, 0) ·
+     R*z*(*B*.z) · R*y*(*B*.y) · R*x*(*B*.x) · T(0, 0, −*h*) · S(box.x/11.2).
+   From here on lengths are model units (box 0.96 → one unit = 0.0857143 blocks). *h* is
+   the smoothed pivot height whose target is box.z/2 while 0x444650 holds (mode 0x10,
+   velocity z < 0, not on ground, field 16 < 1 and field 15 < 1) and 0 otherwise.
+8. **Body matrix** = base · T(0, 0, bob) · T(*S*) · R*z*(*T*.z) · R*y*(*T*.y) ·
+   R*x*(appearance body pitch + *T*.x), with bob = 4·|*s′*| (×4 once more for action 79).
+   Each part is then drawn as parent frame · T(offsets) · rotations · S(scales) ·
+   T(fraction of the model size), the fraction normally being one half on each axis.
 
 ### 7.5 Parts in drawing order
 
-| # | Part (model source) | Offset | Rotation | Scale |
-|---|---|---|---|---|
-| 1 | body (slot 2 or appearance body) | body offset | R*z*(0.5·aim yaw + swing·90/π) | body |
-| 2 | slot 1 item | body offset | R*z*(swing·0.5·180/π), R*x*(0.7·swing²·180/π) | body |
-| 3 | shoulders (slot 5) | (0, 0, 2*a* + 4) + body offset | R*z*(swing·0.5·180/π) | shoulder × (body + 0.1) |
-| 4 | tail | body + tail offset | R*x*(tail angle), R*z*(−swing·180/π), smoothed tail angles | tail × body |
-| 5 | head | head offset, then (0, 0, −3) | R*x*(−body angle − body pitch), R*y*, R*z*, R*y*, then R*x*(field 5 head pitch …), then (0, 0, 3) | head |
-| 6 | hair | as head | as head | head |
-| 7 | arms ×2 (appearance arm) | arm targets | smoothed | arm |
-| 8 | held item (field 43), pet item | midpoint of the hands | R*x*(left-hand rotation x) | hand |
-| 9 | main weapon (slot 7) | right hand; on the back: (0, −7.1, 0.1) from the body frame | hand rotation, grip rotation, grip translation per subtype (§6.5) | weapon (×0.6 more for bracelets) |
-| 10 | off-hand weapon (slot 6) | left hand; on the back (0.5, −0.65, 0.5) then per subtype; quivers on the back | per subtype (§6.5) | weapon (×1.5 in pose 71) |
-| 11 | hands ×2 (slot 4 or appearance hand) | hand targets | hand rotation, quadruped variant (§7.9.4) | hand (the **right** hand mirrored in x) |
-| 12 | lantern (slot 10, mode 0x200) | **left** hand + (0, 2, −2) | — | 0.8 |
-| 13 | wings ×2 | ±wing offset (arm frame) | R*x*(wing angle), R*y*(±flap), R*z*(−90), R*x*(90) | wing |
-| 14 | feet ×2 (slot 3 or appearance foot) | foot targets (base frame) | §7.9.5 | foot |
-| 15 | gliders, boats, special items | §6.5 | §6.5 | body × 2 |
+| # | Part (model source) | Frame | Condition |
+|---|---|---|---|
+| 1 | glider (slot 11) | body | mode 0x10 |
+| 2 | boat (slot 11) | body | action 107 |
+| 3 | mana cube (2566) | previous arm frame | pose 72, time < 5000 |
+| 4 | body (slot 2, else appearance body) | body | model present, draw-flag bit 3 clear |
+| 5 | plaster (2550) | body | with 4, field 20 > 0 |
+| 6 | amulet (slot 1) | body | |
+| 7 | shoulders (slot 5) | body | draw-flag bit 2 clear |
+| 8 | tail (appearance) | body | |
+| 9 | head | body | bit 0 clear |
+| 10 | hair / eyes | body | bit 1 clear |
+| 11 | arms: left, then right (appearance arm) | arm | |
+| 12 | held item (field 43) | arm | actions 80, 81 within limit |
+| 13 | pet item (slot 12) | arm | action 82 |
+| 14 | back quiver for an off-hand bow/crossbow | body | |
+| 15 | back quiver for a main-hand bow/crossbow | body | |
+| 16 | main weapon (slot 7), hand or back | arm / body | bit 6 clear |
+| 17 | off-hand weapon (slot 6), hand or back | arm / body | bit 6 clear |
+| 18 | slot-6 quiver on the back | body | |
+| 19 | left hand (slot 4, else appearance hand) | arm | bit 4 clear |
+| 20 | lantern (slot 10) | arm | inside 19, mode 0x200 |
+| 21 | right hand, mirrored | arm | bit 5 clear |
+| 22 | wings: −x, then +x | arm | |
+| 23 | left foot (slot 3, else appearance foot) | base | bit 7 clear |
+| 24 | right foot | base | bit 8 clear |
+
+The matrices of each part are in §6.5 (equipment) and §7.9.
 
 ### 7.6 Worked example: standing and walking human
 
 Standing (amplitude 0, phase 0): *s₀* = 1, swing = 0, legs 0/0. Right hand target
-(6, 0 + 2.1, 0 − 4.1) = (6, 2.1, −4.1), left (−6, 2.1, −4.1). Feet (3, 1, −10.5) and
-(−3, 1, −10.5). Body at (0, 0, −5), head at (0, 0.5, 5), head scale 1.01. Model scale
-0.96/11.2 = 0.085714 blocks per unit, so the head pivot is 0.43 blocks above and the
-feet pivots 0.90 blocks below the creature position.
+(6, 2.1, −4.1), left (−6, 2.1, −4.1). Feet (3, 1, −10.5) and (−3, 1, −10.5). Body offset
+(0, 0, −5), head offset (0, 0.5, 5), head scale 1.01. One model unit = 0.96/11.2 =
+0.085714 blocks, so the head pivot is about 0.43 blocks above and the foot pivots about
+0.90 blocks below the creature position.
 
-Walking at amplitude 1, phase π/3 (60°): *s₀* = sin(π/3 + π/2) = 0.5; swing = 0.7π·0.5 =
-1.0996 rad; legs ±1.5·63.0° = ±94.5°; *r* = 6·2 = 12; right hand =
-(12·cos 1.0996, 0 + 12·sin 1.0996 + 2.1 − 5, −4.1 + 6) = (5.43, 7.80, 1.9); left hand =
-(−5.43, −13.60, 1.9). These are targets; the drawn pose approaches them at
-*w* = 1 − 0.99^dt per frame.
+Walking at amplitude 1, phase π/3: *s₀* = 0.5; swing = 1.0995574 rad; legs ±94.5°;
+*r* = 12; right hand = (12·cos 1.0995574, 12·sin 1.0995574 + 2.1 − 5, −4.1 + 6) =
+(5.448, 7.792, 1.9); left hand = (−5.448, −13.592, 1.9). These are base targets; the drawn
+pose approaches them through the channels of §7.7.
 
-### 7.7 Pose state, channels and the per-frame order (resolves F-2, part 1)
+### 7.7 Pose state, channels and the per-frame order
 
-The pose function keeps, per creature, a **pose state** (obj +0x1498; offsets below are
-pose-state offsets) holding the copied action time (+0x04), the pose id (+0x08), smoothed
-**channels**, the model pointers of the parts (+0xbc..+0xe8) and the part matrices. Pose
-cases never move a part directly: they set channel **targets**; the channels follow their
-targets with the smoothing of §7.4 step 6 and are then added to the base targets.
+The pose function keeps per creature a **pose state** (obj +0x1498; offsets below are
+pose-state offsets) holding the copied action time (+0x04), the pose id (+0x08), the
+smoothed **channels**, the part model pointers (+0xbc..+0xe8) and the part matrices.
+Pose cases set channel **targets**; the channels follow them (§7.4 step 6) and are then
+added to the base targets.
 
-| Channel | Symbol | Pose state | Kind | Used by (§7.9) |
+| Channel | Symbol | Pose state | Kind | Used by |
 |---|---|---|---|---|
-| left-hand position offset | Δ*L* | +0x0c | vector | added to the left hand; 0.4·Δ*L* to the left arm |
-| right-hand position offset | Δ*R* | +0x18 | vector | added to the right hand; 0.4·Δ*R* to the right arm |
-| left-hand rotation offset | ρ*L* | +0x24 | vector | added to the left-hand rotation λ |
-| right-hand rotation offset | ρ*R* | +0x30 | vector | added to the right-hand rotation ρ |
-| torso angles | *T* | +0x54 | vector | body frame, arm frame, head counter-rotation |
-| body tilt | *B* | +0x60 | angles | base frame (rotation about the pivot height) |
-| torso shift | *S* | +0x6c | vector | body frame and arm frame translation |
-| head shift | *K* | +0x78 | vector | added to the head offset |
+| left-hand position offset | Δ*L* | +0x0c | linear | added to *L*; 0.4·Δ*L* to the left arm |
+| right-hand position offset | Δ*R* | +0x18 | linear | added to *R*; 0.4·Δ*R* to the right arm |
+| left-hand rotation offset | ρ*L* | +0x24 | linear | added to λ |
+| right-hand rotation offset | ρ*R* | +0x30 | linear | added to ρ |
+| torso angles | *T* | +0x54 | linear | body frame, arm frame, head counter-rotation |
+| body tilt | *B* | +0x60 | angles | base frame; glider and boat |
+| torso shift | *S* | +0x6c | linear | body and arm frames |
+| head shift | *K* | +0x78 | linear | added to the head offset |
 | head angles | *H* | +0x84 | angles | head and hair |
 | tail angles | *Q* | +0x90 | angles | tail |
-| shoulder roll | *U* | +0x9c | vector (only *U*.y used) | arm frame |
-| aim yaw | *Y* | +0xa8 | scalar | chest, amulet R*z*(*Y*/2); feet R*z*(*Y*) |
-| lean | *E* | +0xac | vector | base frame T(*E*.x, *E*.y, 0); *E*.z is added to the world z in **blocks** |
-| pivot height | *h* | +0xb8 | scalar | base frame |
+| shoulder roll | *U* | +0x9c | linear (only *U*.y read) | arm frame |
+| aim yaw | *Y* | +0xa8 | linear scalar | chest, plaster, amulet (*Y*/2); feet (*Y*) |
+| lean | *E* | +0xac | linear | base frame T(*E*.x, *E*.y, 0); *E*.z added to world z in blocks |
+| pivot height | *h* | +0xb8 | linear scalar | base frame |
 
-"vector" channels move by *p* ← *p* + (target − *p*)·*w*; "angles" channels by the
-shortest-arc rule of §7.4 step 6. The weight is *w* = 1 − (1 − *r*)^dt (0x411d40) with the
-**smoothing rate** *r* = 0.01 unless the pose case sets another (Appendix C; values seen
-0.002, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2). One weight is used for all channels.
+One weight *w* serves all channels in a frame. Rates seen in pose cases: 0.002, 0.005,
+0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2.
 
-Besides the channels, a frame uses these **unsmoothed** per-frame values: hand base
-targets *L*, *R* (§7.4 step 3), arm base targets, foot base targets, tail target (= tail
-offset), hand rotations λ, ρ, leg angles leg*L*, leg*R*, a foot extra angle *F* (0), the
-body lean ℓ (0; riding 10 …, §7.4 step 2), a **foot-turn flag** (off), grip rotations *W*,
-*W*′ (0, §6.5) and *r*.
+Unsmoothed per-frame values: hand base targets *L*, *R*; arm, foot and tail base
+targets; hand rotations λ (left) and ρ (right); leg*L*, leg*R*; a foot extra angle *F*
+(starts at 0); the body lean ℓ; a **foot-turn flag** (starts off); grip rotations *W*
+(main) and *W*′ (off hand), both starting at 0; and *r*.
 
 **Order of work** (0x4128f0):
 
-1. Part models (§7.5) and swing *s* (§7.4 step 1). The leg angles use *s′* (the swing kept
-   after the quadruped factor, before the longsword, pose and glide factors): leg*L* =
-   1.5·*s′*·180/π, leg*R* = −leg*L* (correction to §7.4 step 2, which named it "swing").
-2. All channel targets := 0, except *h* := box.z/2 while gliding (0x444650). Aim yaw
-   target: if mode 0x04 (aiming), |intent_xy|² > 5 and |*a*_xy|² > 0 where *a* = record
-   field 26 (offset 0x150, *inferred*: aim direction): with *u* = intent_xy and *v* = *a*_xy
-   normalised, *Y* = asin(clamp(*v*.x·*u*.y − *v*.y·*u*.x, −1, 1))·180/π, negated if
-   *u*·*v* < −0.2. Otherwise *Y* = 0.
-3. Base targets as §7.4 steps 2–4. Hand rotations: pose 0 → ρ = appearance hand rotation
-   (x, y, z), λ = (x, −y, −z); every other pose → both 0.
-4. A slot-6 quiver is taken out of the off hand (§6.5).
-5. **Sitting** (mode 0x400): *B* := (−70, 0, 0); *H*.x := 70; Δ*L* := (0, 3, 1); Δ*R* := (0, 3, 1)
-   (Δ*R*.y := 11 if the main weapon subtype is 7, crossbow); *E*.z := (box.y − box.z)/2;
-   *K* := (0, −1, 0); leg*L* = leg*R* := −20. If an action is running (id ≠ 0, time <
-   duration) Δ*L* and Δ*R* each get + (0, −5, 6).
-6. The **pose case** for the pose id (§7.8, Appendix C). It may overwrite any of the above.
+1. Part models: equipment models for slots 1–7, then the appearance model for each part
+   left empty (an index that is negative as a signed 16-bit value or not below the table
+   size gives no model). Swing *s* and *s′* (§7.4 step 1).
+2. All channel targets := 0, except *h* := box.z/2 while 0x444650 holds. Aim yaw target:
+   if mode 0x04, |intent_xy|² > 5 and |*v*_xy|² > 0 with *v* = record field 26: with
+   *u* = intent_xy and *v* = *v*_xy both normalised, *Y* = asin(clamp(*v*.x·*u*.y −
+   *v*.y·*u*.x, −1, 1))·180/π, negated when *u*·*v* < −0.2; otherwise 0.
+3. Base targets (§7.4 steps 2–4). Hand rotations: pose 0 → ρ = appearance hand rotation
+   (x, y, z) and λ = (x, −y, −z); any other pose → both 0.
+4. A slot-6 quiver (type 3, subtype 14) is taken out of the off hand (§6.5).
+5. **Sitting** (mode 0x400): *B* := (−70, 0, 0); *H*.x := 70; Δ*L* := (0, 3, 1); Δ*R* :=
+   (0, 3, 1), with Δ*R*.y := 11 when the main-slot subtype byte is 7; *E*.z :=
+   (box.y − box.z)/2; *K* := (0, −1, 0); leg*L* = leg*R* := −20. If an action is running
+   (id ≠ 0 and time below its duration) Δ*L* and Δ*R* each get + (0, −5, 6).
+6. The **pose case** (§7.8, Appendix C); it may overwrite any of the above.
 7. If the pose id is 0, the copied action time := 0.
 8. Arm targets: left arm := ½(left arm + *L*), right arm := ½(right arm + *R*).
-9. **Knocked down** (record field 16 > 0): not quadruped → *B* := (90, 0, 0),
-   *E*.z := (box.x − box.z)/2; quadruped → *B* := (0, 90, 0), *E*.z := (box.y − box.z)/2.
+9. **Knocked down** (field 16 > 0): not quadruped → *B* := (90, 0, 0), *E*.z :=
+   (box.y − box.z)/2; quadruped → *B* := (0, 90, 0), *E*.z := (box.x − box.z)/2.
 10. **Climbing** (mode 0x01 and wall contact): Δ*L*.z += 7, Δ*R*.z += 7, ρ*L*.x += 90,
-    ρ*R*.x += 90 (arms up).
-11. **Torch in the off hand** (slot 6 subtype 20): ρ*L*.x := 0, Δ*L*.y += 4, Δ*L*.z += 4.
-12. **Running lean** (not quadruped, action not 106/107): if the running test of §7.4 step 1
-    passed: *B*.x −= 25, *H*.x += 10; else if |velocity_xy|² > 0.1 and intent·velocity > 0:
-    *B*.x −= 10, *H*.x += 5.
-13. Smooth all channels (order in the code: ρ*R*, ρ*L*, Δ*R*, Δ*L*, *T*, *E*, *h*, *B*, *H*, *Q*,
-    *Y*, *U*, *S*, *K*). During action 28 a further vector (pose state +0x86c) follows the
-    normalised velocity at rate 0.01, else it is set to 0 (no reader found in the draw).
+    ρ*R*.x += 90.
+11. **Torch in the off hand** (slot-6 subtype byte 20): ρ*L*.x := 0, Δ*L*.y += 4,
+    Δ*L*.z += 4.
+12. **Running lean** (not quadruped, action not 106/107): if the running flag of §7.4
+    step 1 is set: *B*.x −= 25, *H*.x += 10; otherwise, if |velocity_xy|² > 0.1 and
+    intent·velocity > 0 (three components): *B*.x −= 10, *H*.x += 5.
+13. Weight *w* (§7.4 step 6), then smoothing in this order: ρ*R*, ρ*L*, Δ*R*, Δ*L*, *T*, *E*,
+    *h*, *B*, *H*, *Q*, *Y*, *U*, *S*, *K*. During action 28 a further vector (pose state
+    +0x86c) moves toward record field 26 normalised (left unnormalised when its length is
+    not above 0) with its own weight at rate 0.01; for any other action it is set to 0. No
+    reader of it was found in this routine.
 14. Composition: ρ += ρ*R*, λ += ρ*L*, *R* += Δ*R*, *L* += Δ*L*, right arm += 0.4·Δ*R*,
     left arm += 0.4·Δ*L*.
-15. Draw flags (§6.4) remove part models; matrices and draws (§7.4 steps 7–8, §7.9, §6.5).
+15. Draw flags (caller argument): bit 0 removes the head, 1 the hair, 3 the body, 2 the
+    shoulders, 6 both weapons; bits 4, 5, 7, 8 skip the left hand (with the lantern), right
+    hand, left foot and right foot. Then the matrices and draws of §7.4 steps 7–8, §6.5
+    and §7.9, in the order of §7.5.
 
-### 7.8 Action poses: how a pose case works (resolves F-2, part 2)
+### 7.8 Action poses: how a pose case works
 
-Every pose case reads only the copied action time *t* (ms), the action's phase lengths
-(P1, P2, P3 and duration D = P1 + P2 + P3 of `alpha-creatures-behaviour.md` §3.3, with the
-attack-speed factors included), the equipment, a few record fields and its own constants.
-Phases:
+Evidence: `Cube.exe` (SHA-256 `84a7a132…30bf`), pose dispatch at 0x413ae9 (pose id − 1 bounded
+to 0..72, jump table of 73 entries at 0x423d4c), cases 0x413afd..0x41e660, shared write-back
+tails at 0x41e64e / 0x41e653 / 0x41e65a.
 
-| Phase | Time | Meaning |
-|---|---|---|
-| W | *t* < P1 | wind-up |
-| A | P1 ≤ *t* < P1 + P2 | active (the hit window) |
-| R | P1 + P2 ≤ *t* < D | recovery |
-| E | *t* ≥ D | after the end (one frame or so before the action id is cleared) |
+Each frame the pose id held in pose state +0x08 selects at most one case. Poses 1..73 have a
+table entry; poses 12, 13, 14, 36 and 64 point at the common exit (no case) and poses 44 and
+73 share one case. Any other id (0, or above 73) takes no case.
 
-A case with fewer branches merges phases (written "A..D" for P1 ≤ *t* < D). Progress
-values are *q* = *t*/P1 in W and *u* = (*t* − P1)/P2 in A, clamped to [0, 1] where Appendix C
-writes "clamp"; a few cases use other divisors, noted there. Lerps are written
+A case reads the copied action time *t* (pose state +0x04, ms; a few cases read the record's
+action time, which holds the same value this frame), the phase lengths of the current action,
+the equipment, some record and object fields, and its own constants. The phase lengths come
+from four per-action routines: P1 (0x43caa0), P2 (0x447310), P3 (0x444270) and the action
+duration D (0x43d1a0); they are integers in ms (see `alpha-creatures-behaviour.md` §3.3).
+Halved or thirded lengths ("P1/2", "P2/3") are integer divisions truncating toward zero.
+
+Phase names used below:
+
+| Name | Condition |
+|---|---|
+| W | *t* < P1 |
+| A | P1 ≤ *t* < P1 + P2 |
+| R | P1 + P2 ≤ *t* < D |
+| E | *t* ≥ D |
+
+Many cases use other boundaries (P1/2, P1 + P2/2, P1 + 300, 2·D, fixed millisecond values);
+these are stated in the case. Branches are tested in the order written and the first that
+matches is taken; a phase not mentioned writes nothing. Progress values are written
+explicitly; "clamp" means limited to [0, 1] and "min(…, 1)" limits only from above.
 lerp(*x*, *y*, *q*) = (1 − *q*)·*x* + *q*·*y*.
 
-A case writes some of: channel targets (":=" replaces, "+=" adds to the default of §7.7),
-base targets (*L*, *R*, arm, foot, head and tail bases), *r*, *F*, ℓ, the foot-turn flag,
-the pose id (":= 0" only resets the time copy, step 7), and the part models (a hand may be
-given the arrow model 840 or the iron-deposit model 2101, or lose its weapon model).
-Two shared blocks recur:
+A case writes some of: channel targets of §7.7 (":=" replaces the value, "+=" / "−=" adjust
+the value present at that moment, which is the §7.7 default unless an earlier step of the
+same frame changed it), base targets (*L*, *R* hands, left/right arm bases, left/right foot
+bases, head base = appearance head offset, tail base = tail offset), the smoothing rate *r*,
+the foot extra angle *F*, the body lean ℓ, the foot-turn flag ("turn"), the pose id, and the
+part model pointers of the pose state (+0xbc head, +0xcc hand, +0xd4 tail, +0xd8 foot,
++0xdc main-hand weapon, +0xe0 off-hand weapon). A case that sets the pose id to 0 also causes
+the copied action time to be cleared after the switch (§7.7 step 7).
 
-* **Grip G(*g*)** (two-handed hold): *L* := *R* + *g*; left arm base y += 10, z −= 4; usually
-  followed by ρ*L* := ρ*R*. Default *g* = (2, 0, 0).
-* **STANCE** (0x4195c3, end of poses 10 and 15–18, 29, 35): pose id := 0; *U* := 0; unless
-  the action is 87 or 96: ρ*L*.x := −90 (−60 for pose 35), *T*.z := 20, ρ*R* := (−120, −90, 30);
-  then (skipped when the off hand holds a shield) ρ*L* := (−80, 40, 60); Δ*L*.y −= 4,
-  Δ*L*.z += 2; and if a main-hand weapon is drawn and no off-hand weapon: *R* += (0, 2, 3),
-  G((−3, 0, −3)), ρ*R*.x := 0, ρ*R*.y := 20, ρ*L* := ρ*R*.
+Arithmetic: products and sums are single precision. Every sine or cosine is evaluated in
+double precision on a single-precision argument and rounded back to single; where a
+constant π or π/2 is added to the argument, the addition is made in double and the sum is
+rounded to single before the call.
 
-Poses 0, 12, 13, 14, 36 and 64 have no case (default: nothing overridden). Poses 44 and
-73 share one case. Appendix C lists every case.
+Shared blocks:
+
+* **Grip G(*g*)**: *L* := *R* + *g* (the right-hand base target as it stands at that moment,
+  plus *g*). "G(*g*) with arm lift" additionally adds 10 to the left arm base y and subtracts
+  4 from its z. Whether the arm lift is applied is stated per case.
+* **STANCE** (end branch of poses 10, 15, 16, 17, 18, 29 and 35; common code at
+  0x41952a..0x419748 with per-pose entry stubs): the pose id := 0 and *U* := 0. Then, except
+  in pose 29, if the creature type (record 0x54) is 87 or 96 nothing further is written.
+  Otherwise *T*.z := 20; ρ*R* := (−120, −90, 30); ρ*L* := (−80, 40, 60) — in poses 10 and 18,
+  when the off-hand slot's subtype byte is 13, ρ*L* := (0, 0, 90) instead; Δ*L*.y −= 4,
+  Δ*L*.z += 2; and if the main-hand model pointer is set and the off-hand model pointer is
+  not: *R* += (0, 2, 3), G((−3, 0, −3)) with arm lift, ρ*R*.x := 0, ρ*R*.y := 20 (ρ*R*.z stays
+  30), ρ*L* := ρ*R*. (Each entry stub first writes ρ*L*.x := −90, or −60 in poses 16 and 35;
+  that value is always overwritten by the ρ*L* assignment above.)
+* **Two-handed test** (0x444230): true when the main-hand slot (slot 7) holds item type 3 with
+  subtype 5, 6, 7, 8, 10, 11, 15, 16, 17 or 18 (longsword, bow, crossbow, boomerang, staff,
+  wand, greatsword, greataxe, greatmace, pitchfork).
+* **Hand wobble**: "wobble (z)" adds 0.5·cos(0.5·*t*) to the z of both hand base targets
+  *R* and *L*. "Wobble (Δ)" adds 0.5·sin(0.04·*t*) to Δ*R*.x and Δ*L*.x and 0.5·cos(0.05·*t*)
+  to Δ*R*.z and Δ*L*.z.
+* **Guard idle** (poses 19, 20 outside their active window, pose 50 after its active phase):
+  *T*.z := 0; *B*.z := 0; ρ*R* := (60, −20, 20); Δ*R* := (0, 2 + sin(0.01·*t*),
+  4 + cos(0.01·*t*)); ρ*L* := (60, 20, −20); Δ*L* := (0, 2 + sin(0.01·*t* + π/2),
+  4 + cos(0.01·*t* + π/2)); *S*.z += 0.5·sin(*k*·*t*) with *k* = 0.005 (poses 19, 50) or 0.01
+  (pose 20); *r* := 0.03 in poses 19 and 20 (pose 50 leaves *r* at its default).
+* **Spin counter**: some sword cases read the object counter at obj +0x1314 (meaning
+  *unresolved*) and use *c* = (counter / 2) mod 3, both operations with C integer semantics.
+
+The arm-frame head-pitch tilt of §7.9.2 is omitted while the pose id is 2, 3 or 37 (test at
+0x420ad7..0x420ae7, made after the case has run; the end branches of these cases set the pose
+id to 0, so the tilt is present in those branches).
 
 ### 7.9 Part transforms in full
 
-Frames (all in model units after the base scale S(box.x/11.2)):
+Frames (model units after the base scale S(box.x/11.2)):
 
-* **Base frame** = §7.4 step 7 (displayed position, dodge roll, displayed rotation, *h*,
-  *E*, *B*).
+* **Base frame** = §7.4 step 7.
 * **Body frame** = §7.4 step 8: base · T(0, 0, bob) · T(*S*) · R*z*(*T*.z) · R*y*(*T*.y) ·
-  R*x*(body pitch + *T*.x), with bob = 4·|*s′*| (×4 again for action 79).
+  R*x*(body pitch + *T*.x).
 
 #### 7.9.1 Body-attached parts
 
-Chest, plaster, amulet, shoulders: §6.5. **Tail**: body frame · T(body offset) · T(tail
-target) · R*x*(tail angle) · R*z*(−*s*·180/π) · R*z*(*Q*.z) · R*y*(*Q*.y) · R*x*(*Q*.x) ·
-S(tail scale) · S(*b*) · T(−*sx*/2, −*sy*, −*sz*/2) (the tail's root is its +y face).
+Glider, boat, chest, plaster, amulet and shoulders: §6.5. **Tail**: body frame ·
+T(body offset) · T(tail target) · R*x*(appearance tail angle) · R*z*(−*s*·180/π) ·
+R*z*(*Q*.z) · R*y*(*Q*.y) · R*x*(*Q*.x) · S(tail scale) · S(*b*) · T(−*sx*/2, −*sy*, −*sz*/2):
+the tail's root is its +y face.
 
 #### 7.9.2 Arm frame
 
 Arm frame = base · T(0, 0, bob) · T(*S*) · [R*x*(2·*p*) unless (mode 0x01 and wall contact)
-or the pose is 2, 3 or 37] · [R*x*(60) while sitting] · T(0, 0, −4) · R*y*(*U*.y) · T(0, 0, 4) ·
-R*z*(*T*.z) · R*y*(*T*.y) · R*x*(*T*.x). *p* = record field 5 (head pitch). The body pitch is
-**not** applied. Arms, hands, held items, both weapons, the lantern and the wings hang
-from this frame.
+or the pose is 2, 3 or 37] · [R*x*(60) while mode 0x400] · T(0, 0, −4) · R*y*(*U*.y) ·
+T(0, 0, 4) · R*z*(*T*.z) · R*y*(*T*.y) · R*x*(*T*.x). The body pitch is **not** applied.
+It is stored in the pose state (+0x12c). Arms, hands, held and pet items, both in-hand
+weapons, the lantern and the wings hang from it.
 
 #### 7.9.3 Head and hair
 
-Body frame · T(head offset + *K* + (0, 0, −bob/2)) · T(0, 0, −3) · R*x*(−*T*.x − body pitch) ·
-R*y*(−*T*.y) · R*z*(*H*.z − *T*.z) · R*y*(*H*.y) · R*x*(*p* − *D*.x + *H*.x) · T(0, 0, 3) ·
-S(head scale) · centred (creature type 101: y centring −0.2·*sy*). *D* = displayed body
-rotation (§7.10). The head therefore cancels the torso's x and y turn and half of its
-bob, and pitches with the look pitch less the body's displayed pitch. The hair uses the
-same matrix and the tint of §5.2.
+Body frame · T(head offset + *K* + (0, 0, −bob/2)) · T(0, 0, −3) · R*x*(−*T*.x − body
+pitch) · R*y*(−*T*.y) · R*z*(*H*.z − *T*.z) · R*y*(*H*.y) · R*x*(*p* − *D*.x + *H*.x) ·
+T(0, 0, 3) · S(head scale) · centred, except that type 101 uses −0.2·*sy* for the y
+fraction. The head cancels the torso's x and y turn and half its bob, and pitches by the
+look pitch less the displayed body pitch. The hair layer uses the same matrix and the
+material of §5.2.
 
 #### 7.9.4 Arms and hands
 
-**Arms** (appearance arm model, both sides the same, not mirrored): arm frame · T(arm
-target) · S(arm scale) · centred.
+**Arms** (appearance arm model, not mirrored; left first): arm frame · T(arm target) ·
+S(arm scale) · centred.
 **Left hand** (−x): arm frame · [quadruped: R*x*(leg*R*)] · T(*L*) · R*z*(λ.z) · R*y*(λ.y) ·
 [quadruped: R*x*(leg*R*)] · R*x*(λ.x) · S(*n*) · centred.
-**Right hand** (+x): the same with *R*, ρ and leg*L*, and S(−*n*, *n*, *n*): mirrored in x; the
-renderer swaps the triangle culling order for this one draw (render state 22 set to 3,
-then back to 2). Glove models (slot 4) are drawn this way too.
+**Right hand** (+x): the same with *R*, ρ and leg*L*, scaled by (−*n*, *n*, *n*), i.e.
+mirrored in x; for this one draw render state 22 is set to 3 and afterwards back to 2.
+Glove models are placed the same way.
 
 #### 7.9.5 Feet
 
-From the **base** frame (no body bob, no torso): base · R*z*(*Y*) · R*x*(*a*₁) · R*y*(±ℓ) ·
+From the **base** frame: base · R*z*(*Y*) · R*x*(*a*₁) · R*y*(±ℓ) ·
 T(foot target + (0, 0, 3·|*s′*| + lift)) · [action 79: R*x*(−1.5·leg)] · S(foot scale) ·
 [left foot with the foot-turn flag: R*z*(60); otherwise R*x*(*a*₂)] · centred.
 
 | | *a*₁ | *a*₂ | R*y* | lift | leg |
 |---|---|---|---|---|---|
-| left foot (−x) | foot angle + *F* + leg*L* | *F* + leg*L* | +ℓ | 4·*a*·*s₀* | leg*L* |
+| left foot (−x), drawn first | foot angle + *F* + leg*L* | *F* + leg*L* | +ℓ | 4·*a*·*s₀* | leg*L* |
 | right foot (+x) | *F* + leg*R* | foot angle + *F* + leg*R* | −ℓ | 4·*a*·(1 − *s₀*) | leg*R* |
 
-*s₀* = sin(phase + π/2) and *a* the walk amplitude (§7.4 step 1); both lifts are 0 for a
-flyer off the ground. (Correction to §7.5 row 14.) Boots (slot 3) replace the model only.
-Quadrupeds use the same rule for their hind legs; their front legs are the hands.
+Both lifts are 0 for a flyer off the ground. The foot-turn flag affects only the left foot.
+Quadrupeds use this rule for their hind legs; their front legs are the hands.
 
 #### 7.9.6 Wings
 
 Arm frame · T(∓wing offset.x, wing offset.y, wing offset.z) · R*x*(wing angle) · R*y*(±*f*) ·
 R*z*(−90) · R*x*(90) · S(wing scale) · T(−*sx*/2, 0, −*sz*/2), with
-*f* = cos(phase/2)·*a*·90 − 45; the −x wing is drawn first with +*f*, then the +x wing with −*f*.
+*f* = cos(phase/2)·*a*·90 − 45 (cosine of a single-precision argument, rounded to single);
+the −x wing is drawn first with +*f*, then the +x wing with −*f*.
 
-### 7.10 Displayed position and body rotation (resolves F-3)
+### 7.10 Displayed position and body rotation (Cube.exe 0x61f968..0x61fd54)
 
-The world step (0x60c510 at 0x61fb7a..0x61fd54) keeps a **displayed position** (obj +0x1350,
-3 × i64) and **displayed body rotation** *D* (obj +0x1374, 3 × f32 degrees) apart from the
-record's position (obj +0x10, record field 0) and orientation (obj +0x28, record field 1):
+Besides the record position (record field 0, object +0x10, 3 × i64 fixed point, 65536 per
+block) and orientation (record field 1, object +0x28, degrees), every creature keeps a
+**displayed position** (object +0x1350, 3 × i64) and **displayed body rotation** *D*
+(object +0x1374, 3 × f32 degrees). Each step one of three rules applies.
 
-* If the creature's client counter obj +0x1398 is > 0 (*unknown* meaning; zeroed by
-  0x43b690, 0x446330, 0x447110 — *inferred*: set for creatures updated from the network):
-  *w*ᴰ = 1 − (1 − 0.015)^dt (0x411d40 with rate 0.015); the displayed position moves
-  toward the record position by the fraction *w*ᴰ (fixed-point arithmetic); each component
-  of *D* moves by the shortest-arc rule *D* ← *D* + asin(sin(target − *D*))·*w*ᴰ toward the
-  record orientation; the landing bob is set to 0.
-* Otherwise: displayed position := record position and *D* := record orientation.
+**Attach rule** (checked first, 0x61f968). It applies when this creature's record byte 0x50
+equals 5, the creature id at record offset 0x188 (object +0x198) resolves to an existing
+creature, and that creature's action id is 106. With *z*₁ = this creature's box z and
+*z*₂ = the other's box z, offset = (0, 0, 0.5·*z*₁ − 0.5·*z*₂ + 0.01) blocks (fixed point):
 
-A second rule (0x61f9c0..0x61fb75, condition not traced) attaches a creature to another:
-its displayed and record positions become the other's plus (0, 0, ½·*z*₁ − ½·*z*₂ + 0.01)
-(two box heights), *D* and the orientation are copied, landing bob, walk amplitude and
-phase are copied, and its velocity and intent are zeroed (*inferred*: carrying).
+* displayed position := other displayed position + offset; *D* := other *D*;
+* record position := other record position + offset; orientation := other orientation;
+* landing bob, walk amplitude and walk phase are copied from the other creature;
+* velocity := 0; movement intent := 0.
+
+The smoothing rules below are then skipped. What this attachment represents is
+*unconfirmed*.
+
+**Smoothing** (object +0x1398 > 0, signed; 0x61fb80): *w* is obtained by relaxing 0 toward 1
+at rate 0.015 per ms over *dt* (so *w* = 1 − 0.985^*dt* up to float rounding). Then:
+
+1. *wf* = trunc(*w*·65536). Each displayed-position component *p* moves by
+   trunc((*rec* − *p*)·*wf* / 65536) (64-bit product, truncating division).
+2. The z component moves once more: *p*.z += trunc(float(*rec*.z − *p*.z)·*w*), using the
+   already updated *p*.z.
+3. Each component of *D* moves toward the matching orientation component by
+   *D* ← *D* + asin(clamp(sin(target − *D*), −1, 1))·*w* (degrees in and out; the sine
+   difference is formed from the sines and cosines of the two angles).
+4. Landing bob := 0.
+
+What sets or clears object +0x1398 is *unconfirmed* (zeroed by 0x43b690, 0x446330,
+0x447110).
+
+**Otherwise**: displayed position := record position; *D* := orientation.
 
 *D* is what the base frame rotates by (§7.4 step 7) and what the head pitch subtracts
 (§7.9.3).
 
-### 7.11 Worked examples (test vectors)
+### 7.11 Worked examples
 
 1. **Smoothing weight.** dt = 16 ms: *r* = 0.01 → *w* = 1 − 0.99¹⁶ = 0.148542;
    *r* = 0.03 → 0.385746; *r* = 0.005 → 0.077069; *r* = 0.05 → 0.559873.
-2. **Greatsword wind-up (pose 2, action 57)**, player with *S* = 1 and attack-speed
-   multiplier 1: P1 = 800 ms. At *t* = 200: *q* = min(1.5·200/800, 1) = 0.375. Targets:
-   *B*.x = 5 + 10·0.375 = 8.75; *T* = (10, 10, −60); ρ*R* = (0.625·90 + 0.375·60, 0, same) =
-   (78.75, 0, 78.75); Δ*R* = Δ*L* = (0, 0, 14·0.375) = (0, 0, 5.25); *r* = 0.01. For a standing
-   human (§7.6, *R* = (6, 2.1, −4.1)): the left hand base becomes *R* + (2, 0, 0) =
-   (8, 2.1, −4.1). From rest (all channels 0) one 16 ms frame moves ρ*R*.x to
-   78.75·0.148542 = 11.6977 and Δ*R*.z to 0.779847; the drawn right hand target is then
-   (6, 2.1, −4.1 + 0.779847) = (6, 2.1, −3.320153). Fully settled it would be (6, 2.1, 1.15)
-   and the left hand (8, 2.1, 1.15).
-3. **Sword in the hand.** A hypothetical sword model 5 × 5 × 18 voxels, weapon scale 0.95:
-   grip translation (−2.5, −2.5, −4), so the model voxel (2.5, 2.5, 4) sits exactly at the
-   right hand's origin and the model extends 14·0.95 = 13.3 model units along the hand's +z.
-4. **Feet while walking** (§7.6 case: amplitude 1, phase π/3, human): *s′* = 1.0995574 rad,
-   leg*L* = 94.5°, leg*R* = −94.5°, *s₀* = 0.5. Left foot: *a*₁ = *a*₂ = 94.5°, z target =
-   −10.5 + 3·1.0995574 + 4·0.5 = −5.2013277; right foot: *a*₁ = *a*₂ = −94.5°, same z.
-5. **Dodge roll.** Field 15 = 450 ms left: angle (1 − 450/600)·(−360) = −90° about
-   (v.y, −v.x, 0)/|…|; velocity (3, 4, 0) → axis (0.8, −0.6, 0).
-6. **Displayed rotation.** *D*.z = 350°, record orientation z = 10°, dt = 16:
+2. **Greatsword wind-up (pose 2, action 57)** — the pose-case values are those of
+   Appendix C: P1 = 800 ms, *t* = 200: *q* = min(1.5·200/800, 1) = 0.375; ρ*R* target
+   (78.75, 0, 78.75); Δ*R* = Δ*L* target (0, 0, 5.25); *r* = 0.01. From rest one 16 ms frame
+   moves ρ*R*.x to 78.75·0.148542 = 11.6977 and Δ*R*.z to 0.779847, so the drawn right hand
+   of a standing human is (6, 2.1, −3.320153); fully settled it would be (6, 2.1, 1.15),
+   and the left hand, based on *R* + (2, 0, 0), (8, 2.1, 1.15).
+3. **Sword in the hand.** A model 5 × 5 × 18 voxels, weapon scale 0.95: grip
+   (−2.5, −2.5, −4), so voxel point (2.5, 2.5, 4) sits at the right hand's origin and the
+   model extends 14·0.95 = 13.3 model units along the hand's +z.
+4. **Feet while walking** (amplitude 1, phase π/3, human): *s′* = 1.0995574 rad,
+   leg*L* = 94.5°, leg*R* = −94.5°, *s₀* = 0.5. Left foot *a*₁ = *a*₂ = 94.5°, right foot
+   *a*₁ = *a*₂ = −94.5°; both z targets −10.5 + 3·1.0995574 + 2 = −5.2013278.
+5. **Dodge roll.** Field 15 = 450: angle (1 − 450/600)·(−360) = −90° about
+   (*v*.y, −*v*.x, 0) normalised; velocity (3, 4, 0) → axis (0.8, −0.6, 0).
+6. **Displayed rotation** (rate from §7.10). *D*.z = 350°, target 10°, dt = 16:
    *w*ᴰ = 1 − 0.985¹⁶ = 0.214801; *D*.z ← 350 + 20·0.214801 = 354.29602°.
 7. **Wing flap.** Amplitude 1, phase π: *f* = cos(π/2)·90 − 45 = −45°: the −x wing turns
    R*y*(−45), the +x wing R*y*(45).
-8. **Lantern.** Idle human (left hand (−6, 2.1, −4.1)): the lantern's frame origin is the
-   arm-frame point (−6, 4.1, −6.1), then S(0.8) and T(−*sx*/2, 1 − *sy*/2, 2 − *sz*).
+8. **Lantern.** Idle human (left hand (−6, 2.1, −4.1)): the lantern frame origin is the
+   arm-frame point (−6, 4.1, −6.1), followed by S(0.8) and T(−*sx*/2, 1 − *sy*/2, 2 − *sz*).
 9. **Item models.** Type 11 subtype 0 material 11 → 2339 `gold-nugget`; type 17 seed 6 →
    2113 + 2 = 2115 `vase3`; type 18 subtype 1 seed 7 → 2120 + 1 = 2121; type 14 rarity 0
    → 2318, rarity 3 → 2320, rarity 4 → 2321; type 21 subtype 10 → 2081 + 2 = 2083
@@ -992,49 +1210,49 @@ phase are copied, and its velocity and intent are zeroed (*inferred*: carrying).
 
 ---
 
-## 8. Open questions (and how to settle them)
+## 8. Unresolved
 
-The user's 32-bit Alpha mod DLLs can read creature objects from the running client.
+Statements below are either open or rest on inference; the rest of the document does not
+depend on them for its numeric content.
 
-* **M-1** *Resolved*: unset parts are 65535 (§3.2).
-* **M-7** Who reads the key-colour point lists of §5.1 (none found in the creature draw;
-  candidates are the particle/glow code of staffs, wands and bracelets). Find readers of
-  model object +0x04/+0x10/+0x1c.
-* **M-2** Whether the head as well as the hair is tinted by the hair colour. Change the
-  hair colour of a character and screenshot.
-* **M-3** *Resolved* for the model (§6.3: subtype 1 = boat); the boat is drawn during
-  action 107, the glider while mode 0x10 is set.
-* **M-8** Record field 20 (0x12c) > 0 draws the plaster on the chest (§6.5); what sets it.
-* **M-9** Meaning of obj +0x1398 (smoothing on/off for the displayed position, §7.10) and
-  of obj +0x1314 (its (n/2) mod 3 picks the spin variants of poses 15, 16, 30).
-* **M-10** Record field 24 (0x138, 3 × f32) is copied into the shoulder roll *U* by poses 15,
-  16, 48, 49; only its y is used. What it holds.
-* **M-11** obj +0x13b4 > 0 selects the second branch of pose 66 (boomerang in flight,
-  *inferred*).
-* **M-4** The size value *S* of the walk-cycle rate. Read [creature list node] at
-  0x60eba4 in a debugger, or compare walking speeds of a small and a big creature.
-* **M-5** Appearance flags 0x0008, 0x0020, 0x0100 meanings (toggle and observe).
-* **M-6** Meaning of appearance bytes 0x00–0x01 (never written).
-
-**Follow-ups**
-
-* **F-1** Climbing-cycle term and the exact branch conditions of §7.3 (from 0x61ea44
-  onwards).
-* **F-2** *Resolved* in structure (§7.7, §7.8, §7.9, Appendix C). Remaining: the cells of
-  Appendix C marked "n.t." (not transcribed: values produced through registers or shared
-  tails that the transcription did not follow) and the intermediate thresholds of pose
-  44/73. Read those branches at the RVAs given in Appendix C.
-* **F-3** *Resolved* (§7.10), except the condition of the attach rule.
-* **F-4** *Resolved* (§6.3.1).
-* **F-5** Weapon-trail rendering from the stored blade points (0x4225fd..0x422fe5 and its
-  reader), and the 16-step circle of pose 69.
-* **F-6** Verify Appendix C against recordings: with the mod DLLs log pose state +0x08
-  (pose id), +0x0c..+0xb8 (channels) and the action time for one attack of each weapon;
-  the targets and *w* of §7.7 predict every frame.
+* **U-1** Meaning of appearance bytes 0x00–0x01 (never written by the generator).
+* **U-2** Meanings of appearance flags 0x0008, 0x0020, 0x0800, 0x1000 and 0x2000; the
+  natural-weapon effect of 0x0010 (described in `alpha-creatures-behaviour.md`, not
+  re-verified here); 0x0100 as "swimmer" (*inferred*); what the type list of 0x444680
+  selects (§3.3).
+* **U-3** Whether any routine reads the key-colour point lists at model object +0x04,
+  +0x10, +0x1c (§5.1).
+* **U-4** Behavioural identity of the server generator (**server** 0x40a840) with the
+  client one beyond equal size; the server's new-player defaults (box (1.2, 1.2, 2.7) and
+  type 44, from `alpha-net-packets.md`) are not re-verified here.
+* **U-5** That every creature's appearance passes through the constructor before the
+  generator runs (§3.2, *inferred* from the callers).
+* **U-6** Item types of equipment slots 0, 1, 8, 9, 10 and 12 (*inferred* from the models
+  drawn); which foot belongs to draw-flag bits 0x080 and 0x100 (§6.4).
+* **U-7** That each pet-food subtype names the creature type that eats it; the material
+  names (derived from model names); the default item level (§6.1, §6.3.1).
+* **U-8** What the two caller-supplied 64-bit horizontal offsets of the base translation
+  are (*inferred*: the negated camera position) (§7.4 step 7).
+* **U-9** The time window of the weapon-trail history and how trails are rendered (§6.5).
+* **U-10** What sets record field 20 (0x12c, plaster) and field 23 (0x134, weapon glow and
+  pose 67); both labels are *inferred*.
+* **U-11** What sets or clears obj +0x1398 (displayed-position smoothing); the meaning of
+  record byte 0x50 = 5 (riding and attach exceptions); what the attach rule represents;
+  footstep block type 3; the meaning of the footstep "local player present" gate (§7.3,
+  §7.10).
+* **U-12** Meanings of obj +0x1314 (spin counter), obj +0x13b4 (pose 66 branch) and the
+  record vectors at 0x138 and 0x144 (shoulder roll sources); whether D (0x43d1a0) always
+  equals P1 + P2 + P3; whether pose 7 is reachable (no action maps to it) (§7.8,
+  Appendix C).
+* **U-13** Contact bit 1 as "in water" and record field 26 (0x150) as "aim direction" are
+  *inferred* from use; record field 17 (0x120) forcing pose 56 is labelled "stunned" by
+  inference.
+* **U-14** The mana-cube matrix starts from the arm frame stored by the previous call
+  (*as read*, §6.5).
 
 ---
 
-## Appendix A. Model table (slot: key without `.cub`, ten per row)
+## Appendix A. Model table (slot: key without `.cub`, ten per row; "—" = empty slot)
 
 ```
    0: body2, body4, body3, wizard-head, wizard-body, witch-head, witch-body, glove, head2, girl-head3
@@ -1293,250 +1511,409 @@ The user's 32-bit Alpha mod DLLs can read creature objects from the running clie
 2530: street-light01, fence01, fence02, fence03, fence04, furnace, anvil, sawbench, workbench, customization-bench
 2540: spinningwheel, loom, overground-dungeon01, underground-dungeon01, castle-arc, temple-arc, bomb1, glider, boat2, stars
 2550: plaster, zzz, heart, angry, campfire, tent, beach-umbrella, beach-towel, wood-mat, compass2
-2560: mission, city, skull, airship, sphinx01, obelisk, manacube, maptile, cloud02```
+2560: mission, city, skull, airship, sphinx01, obelisk, manacube, maptile, cloud02
+```
 
-## Appendix B. Creature types (per-type step of the generator)
+## Appendix B. Creature types (per-type step of the generator 0x43f7c0)
 
-Columns: models set; flags OR-ed into appearance 0x06; scalars set (names of §3.1; "bodyPitch" is 0x48); vectors set as (x, y, z), "·" = component not written; "angles" = (foot 0x58, wing 0x5c, tail 0x60). Types with no box entry keep (0.96, 0.96, 2.16); parts not listed stay 65535 (none). "head choice"/"hair choice" are fields 0x08/0x0c of the choice record (§4.1); "draw *k*" counts the routine's own draws, after the five no-record draws when those happen. Type 58: draw 1 odd → the red parrot models listed, even → parrot-blue (270–273). Types 6 and 46 also set the hair colour from draws 1–3 (R = draw 3, G = draw 2, B = draw 1) and take further draws after them (the head of type 6 is draw 4). Types 0–5, 7–14 and 148–149 copy the hair colour from the choice record; 13–14 set it to (255, 255, 255); 15–16 copy it. Type 116 and 145–146 box values use draw 1. Type 44 is the Alpha server's default new player. Keys loaded into more than one slot (body2 0/1232, body4 1/1234, body3 2/1233, foot 228/432, torch 842/2434, mermaid-hand 1350/1358, door 2076/2482, window 2077/2484, goddess2 2078/2481, egg1 2164/2165/2166) are written with the slot the generator uses.
+Columns: models set; flags ORed into appearance 0x06; scalars set (names of §3.1,
+"bodyPitch" is 0x48); vectors set as (x, y, z), "·" = component not written; "angles" =
+(foot 0x58, wing 0x5c, tail 0x60). A type without a box entry keeps (0.96, 0.96, 2.16); a
+part not listed keeps its previous value (65535 after the constructor). "head choice" and
+"hair choice" are choice-record fields 0x08 and 0x0c, reduced with C `%` (§4.2). "Draw *k*"
+counts the draws of the per-type step; when no choice record was given they follow the
+five draws of §4.1. A model written as "*n* + (… mod *m*)" uses the remainder with C
+semantics; "odd"/"even" tests use the signed remainder of division by 2. Keys that exist in
+several slots are written with the slot this routine uses.
+
+Hair colour per type: see §4.2. Computed boxes (single precision, from (0.96, 0.96, 2.16)):
+"÷1.2" = (0.8, 0.8, 1.8); "×1.5" = (1.44, 1.44, 3.2400002); "×1.1" = (1.056, 1.056, 2.376);
+"×0.7" = (0.672, 0.672, 1.512); "×0.9" = (0.864, 0.864, 1.944).
 
 | Type | Models | Flags | Scalars | Vectors |
 |---|---|---|---|---|
-| 0 | head head choice mod 4 → 1236.. (elf-head-m01 … elf-head-m04); hair hair choice mod 10 → 1280.. (elf-hair-m01 … elf-hair-m10); hand hand2; foot foot (432); body body4 (1) |  |  |  |
-| 1 | head head choice mod 6 → 1240.. (elf-head-f01 … elf-head-f06); hair hair choice mod 10 → 1290.. (elf-hair-f01 … elf-hair-f10); hand hand2; foot foot (432); body body2 (0) |  |  |  |
-| 2 | head head choice mod 6 → 1246.. (human-head-m01 … human-head-m06); hair hair choice mod 15 → 1252.. (human-hair-m01 … human-hair-m15); hand brown-hand (431) if head index > 1248, else hand2 (430); foot foot (432); body body4 (1) |  |  |  |
-| 3 | head head choice mod 6 → 1267.. (human-head-f01 … human-head-f06); hair hair choice mod 7 → 1273.. (human-hair-f01 … human-hair-f07); hand brown-hand (431) if head index > 1269, else hand2 (430); foot foot (432); body body4 (1) |  |  |  |
-| 4 | head head choice mod 5 → 75.. (goblin-head-m01 … goblin-head-m05); hair hair choice mod 6 → 80.. (goblin-hair-m01 … goblin-hair-m06); hand goblin-hand; foot foot (432); body body2 (0) |  | weapon 1.2 | box (0.8, 0.8, 1.8) |
-| 5 | head head choice mod 5 → 86.. (goblin-head-f01 … goblin-head-f05); hair hair choice mod 6 → 91.. (goblin-hair-f01 … goblin-hair-f06); hand goblin-hand; foot foot (432); body body2 (0) |  | weapon 1.2 | box (0.8, 0.8, 1.8) |
-| 6 | head draw mod 3 → 2379.. (bullterrier-head1 … bullterrier-head3); hand brown-hand; foot foot (432); body body2 (0) |  | head 0.9; weapon 1.2 | headOff (0, 3, 5) |
-| 7 | head head choice mod 2 → 98.. (lizard-head-m01 … lizard-head-m02); hair hair choice mod 6 → 100.. (lizard-hair-m01 … lizard-hair-m06); hand lizard-hand; foot lizard-foot; body lizard-body |  |  |  |
-| 8 | head head choice mod 5 → 106.. (lizard-head-f01 … lizard-head-f05); hair hair choice mod 6 → 100.. (lizard-hair-m01 … lizard-hair-m06); hand lizard-hand; foot lizard-foot; body lizard-body |  |  |  |
-| 9 | head head choice mod 5 → 282.. (dwarf-head-m01 … dwarf-head-m05); hair hair choice mod 3 → 287.. (dwarf-hair-m01 … dwarf-hair-m03); hand hand2; foot foot (432); body dwarf-body |  | head 0.9; weapon 1.2 | box (0.8, 0.8, 1.8) |
-| 10 | head head choice mod 5 → 290.. (dwarf-head-f01 … dwarf-head-f05); hair hair choice mod 5 → 295.. (dwarf-hair-f01 … dwarf-hair-f05); hand hand2; foot foot (432); body dwarf-body-female |  | head 0.9; weapon 1.2 | box (0.8, 0.8, 1.8) |
-| 11 | head head choice mod 5 → 1300.. (orc-head … orc-head-m05); hair hair choice mod 10 → 1310.. (orc-hair-m01 … orc-hair-m10); hand orc-hand; foot foot (432); body body2 (0) |  | head 0.9; shoulder 1.2 | box (1.04, 1.04, 2.34) |
-| 12 | head head choice mod 5 → 1305.. (orc-head-f01 … orc-head-f05); hair hair choice mod 4 → 1320.. (orc-hair-f01 … orc-hair-f04); hand orc-hand; foot foot (432); body body2 (0) |  | head 0.8; body 0.95; shoulder 1.1 | box (1.04, 1.04, 2.34); headOff (0, 1.5, 4) |
-| 13 | head head choice mod 5 → 1324.. (frogman-head-m01 … frogman-head-m05); hair hair choice mod 5 → 1329.. (frogman-hair-m01 … frogman-hair-m05); hand frogman-hand; foot foot (432); body body4 (1) |  |  |  |
-| 14 | head head choice mod 4 → 1334.. (frogman-head-f01 … frogman-head-f04); hair hair choice mod 4 → 1338.. (frogman-hair-f01 … frogman-hair-f04); hand frogman-hand; foot foot (432); body body4 (1) |  |  |  |
-| 15 | head head choice mod 6 → 303.. (undead-head-m01 … undead-head-m06); hair hair choice mod 6 → 309.. (undead-hair-m01 … undead-hair-m06); hand undead-hand; foot foot (432); body body2 (0) |  | head 0.9 |  |
-| 16 | head head choice mod 6 → 315.. (undead-head-f01 … undead-head-f06); hair hair choice mod 6 → 321.. (undead-hair-f01 … undead-hair-f06); hand undead-hand; foot foot (432); body body2 (0) |  | head 0.9 |  |
-| 17 | head skeleton-head; hair skeleton-eyes; hand skeleton-hand; foot skeleton-foot; body skeleton-body | 0x428 | head 0.8 | handRot (0, -90, 0); bodyOff (0, 0, -2); headOff (0, 4, 7); handOff (5, 3, 0) |
-| 18 | head old-head; hand hand2; foot foot (432); body body2 (0) |  |  |  |
-| 19 | head collie-head; hand collie-hand; foot collie-foot; body collie-body; tail collie-tail | 0x31 | head 0.9; hand 1; foot 1; tail 1 | box (0.8, 0.8, 1); angles (·, ·, -30); bodyOff (0, 0, 2); headOff (0, 9, 6); handOff (3, 4, -2.5); footOff (3, -4, -1); tailOff (0, -8, -1) |
-| 20 | head shepherd-dog-head; hand shepherd-dog-hand; foot shepherd-dog-foot; body shepherd-dog-body; tail shepherd-dog-tail | 0x31 | head 0.9; hand 1; foot 1; tail 1 | box (0.8, 0.8, 1); angles (·, ·, -30); bodyOff (0, 0, 2); headOff (0, 9, 6); handOff (3, 4, -2.5); footOff (3, -4, -1); tailOff (0, -8, -1) |
-| 21 | head skull-bull-head; hand skull-bull-hand; foot skull-bull-foot; body skull-bull-body; tail skull-bull-tail | 0x31 | head 0.7; body 1.2; hand 0.8; foot 0.8; tail 1 | box (2.8, 2.8, 4); angles (·, ·, -30); bodyOff (0, 0, 1); headOff (0, 12.5, 3); handOff (3, 2.5, -4.5); footOff (3, -4, -4); tailOff (0, -8, -2.5) |
-| 22 | head alpaca-head; hand alpaca-hand; foot alpaca-foot; body alpaca-body | 0x31 | head 0.8; hand 1; foot 1 | bodyOff (0, 0, -4); headOff (0, 9, 5); handOff (3, 4, -8.5); footOff (3, -4, -9) |
-| 23 | head alpaca-brown-head; hand alpaca-brown-hand; foot alpaca-brown-foot; body alpaca-brown-body | 0x31 | head 0.8; hand 1; foot 1 | bodyOff (0, 0, -4); headOff (0, 9, 5); handOff (3, 4, -8.5); footOff (3, -4, -9) |
-| 24 | body egg1 (2164) | 0x20 |  | box (0.8, 0.8, 1.2); bodyOff (0, 0, -1.5) |
-| 25 | head turtle-head; hand turtle-foot; foot turtle-foot; body turtle-body | 0x31 | head 0.65; hand 0.8; foot 0.8; tail 1 | box (0.8, 0.8, 1); angles (·, ·, -30); bodyOff (0, 0, 3.5); headOff (0, 13, 0.5); handOff (3, 4, -3.5); footOff (3, -4, -3.5); tailOff (0, -8, 4.5) |
-| 26 | head dog-head2; hand dog-hand2; foot dog-foot2; body dog-body2; tail dog-tail2 | 0x31 | head 0.9; body 1.05; hand 1; foot 1; tail 0.8 | box (1.04, 1.04, 2.34); angles (·, ·, -120); bodyOff (0, 0, -5.5); headOff (0, 9, -1); handOff (3, 4, -8.5); footOff (3, -4.1, -8.5); tailOff (0, -10, 3) |
-| 27 | head scottish-terrier-head; hand scottish-terrier-hand; foot scottish-terrier-foot; body scottish-terrier-body; tail scottish-terrier-tail | 0x31 | head 0.9; body 1.05; hand 1; foot 1; tail 0.8 | box (0.8, 0.8, 0.7); angles (·, ·, -120); bodyOff (0, 0, 0.5); headOff (0, 9, 5); handOff (3, 4, -2.5); footOff (3, -4.1, -2.5); tailOff (0, -7, 2) |
-| 28 | head wolf-head; hand wolf-hand; foot wolf-foot; body wolf-body; tail wolf-tail | 0x31 | head 0.8; body 1.2; hand 0.9; foot 0.9 | box (1.52, 1.52, 3.23); bodyOff (0, 0, -3.5); headOff (0, 11, -1); handOff (3, 3, -7.5); footOff (3, -4.1, -7.5); tailOff (0, -5.5, -1) |
-| 29 | head panther-head; hand panther-hand; foot panther-foot; body panther-body; tail panther-tail | 0x31 | head 0.6; hand 1.1; foot 1; tail 1 | angles (·, ·, -30); bodyOff (0, 0, 0); headOff (0, 14, -1); handOff (3, 5, -8.5); footOff (3, -6, -9); tailOff (0, -11, -4) |
-| 30 | head cat-head; hand cat-hand; foot cat-foot; body cat-body; tail cat-tail | 0x31 | head 0.9; hand 1; foot 1; tail 1.1 | angles (·, ·, -30); bodyOff (0, 0, -4); headOff (0, 9, -1); handOff (3, 4, -8.5); footOff (3, -4.1, -8.5); tailOff (0, -8, -1) |
-| 31 | head cat-head2; hand cat-hand2; foot cat-foot2; body cat-body2; tail cat-tail2 | 0x31 | head 0.9; hand 1; foot 1; tail 1.1 | angles (·, ·, -30); bodyOff (0, 0, -4); headOff (0, 9, -1); handOff (3, 4, -8.5); footOff (3, -4.1, -8.5); tailOff (0, -8, -1) |
-| 32 | head cat-head3; hand cat-hand3; foot cat-foot3; body cat-body3; tail cat-tail3 | 0x31 | head 0.9; hand 1; foot 1; tail 1.1 | angles (·, ·, -30); bodyOff (0, 0, -4); headOff (0, 9, -1); handOff (3, 4, -8.5); footOff (3, -4.1, -8.5); tailOff (0, -8, -1) |
-| 33 | head pig-head; hand pig-foot; foot pig-foot; body pig-body | 0x31 | head 0.85; body 1.2; hand 1; foot 1; tail 1 | box (0.8, 0.8, 0.8); angles (·, ·, -30); bodyOff (0, 0, 1); headOff (0, 9, 1.9); handOff (3, 4, -4.2); footOff (3, -4, -4.2); tailOff (0, -8, -1) |
-| 34 | head sheep-head; hand sheep-foot; foot sheep-foot; body sheep-body | 0x31 | head 0.85; body 1.2; hand 1; foot 1; tail 1 | box (1.2, 1.2, 1.2); angles (·, ·, -30); bodyOff (0, 0, 1); headOff (0, 4, 1.9); handOff (3, 4, -4.2); footOff (3, -4, -4.2); tailOff (0, -8, -1) |
-| 35 | foot bunny-foot; body bunny-body | 0x30 | hand 0.9 | box (1, 1, 1.1); bodyOff (0, 0, 2); headOff (0, 1, 8); handOff (9, 0, 8); footOff (5, 1, -2.5) |
-| 36 | foot porcupine-foot; body porcupine-body | 0x30 | hand 0.9 | box (1, 1, 1.1); bodyOff (0, 0, 2); headOff (0, 1, 8); handOff (9, 0, 8); footOff (5, 1, -2.5) |
-| 37 | body slime-green | 0x29 | body 1.5 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 0) |
-| 38 | body slime-pink | 0x29 | body 1.5 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 0) |
-| 39 | body slime-yellow | 0x29 | body 1.5 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 0) |
-| 40 | body slime-blue | 0x29 | body 1.5 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 0) |
-| 41 | head frightener-head; hair frightener-eyes | 0x42b | head 0.8 | box (1.4, 1.4, 2.5); headOff (0, 0, 0) |
-| 42 | head sand-horror-head; hand sand-horror-hand | 0x2a | head 0.8; hand 0.5 | box (1.4, 1.4, 2.5); headOff (0, 0, 0); handOff (6, 0, 2) |
-| 43 | head wizard-head; hand hand2; foot foot (432); body wizard-body | 0x20 |  |  |
-| 44 | head elf-head-female; hair none (65535); hand hand2; foot foot (432); body body2 (0) |  |  |  |
-| 45 | head witch-head; hand hand2; foot foot (432); body witch-body | 0x20 | head 0.8 | headOff (0, 3, 4) |
-| 46 | head ogre-head; hand ogre-hand; foot ogre-foot; body ogre-body | 0x20 | head 0.61 | box (2.4, 2.4, 5.4); bodyOff (0, 0, -2); headOff (0, 4, 6); handOff (7.5, 0, 3) |
-| 47 | head rockling-head; hand rockling-hand; foot rockling-foot | 0x20 | head 0.8; hand 0.85; foot 0.85; weapon 0.65 | box (2.4, 2.4, 3.6); bodyOff (0, 0, -1); headOff (0, 0, 2); handOff (7.5, 0, 5); footOff (3, 1, -6.5) |
-| 48 | head gnoll-head; hand gnoll-hand; foot gnoll-foot; body gnoll-body | 0x20 |  | box (0.8, 0.8, 1.8) |
-| 49 | head polar-gnoll-head; hand polar-gnoll-hand; foot polar-gnoll-foot; body polar-gnoll-body | 0x20 | head 1.2 | box (0.8, 0.8, 1.8); headOff (0, 1.5, 4) |
-| 50 | head monkey-head; hand monkey-hand; foot monkey-foot; body monkey-body | 0x28 | head 1.05; body 0.8 | box (0.64, 0.64, 1.36); bodyOff (0, 0, -4); headOff (0, 3.5, 2); footOff (3.5, 1, -8.5) |
-| 51 | head gnobold-head; hand gnobold-hand; foot gnobold-foot; body zombie-body | 0x20 |  |  |
-| 52 | head insectoid-head; hand insectoid-hand; foot insectoid-foot; body insectoid-body | 0x20 |  | bodyOff (0, 0, -4); handOff (6, 0, 1) |
-| 53 | head hornet-head; foot hornet-foot; body hornet-body; wing hornet-hand | 0x32 | bodyPitch -45 | angles (30, 45, ·); footOff (3, -1, -7); wingOff (1, -6, 1) |
-| 54 | head insect-guard-head; hand insect-guard-hand; foot insect-guard-foot; body insect-guard-body; wing insect-guard-wing | 0x32 | bodyPitch -45 | angles (30, 45, ·); footOff (3, -1, -7); wingOff (1, -6, 1) |
-| 55 | head crow-head; foot crow-foot; body crow-body; wing crow-hand | 0x32 | bodyPitch -45 | angles (·, 45, ·); headOff (0, 3, 6); footOff (3, -4, -10); wingOff (3, -5, 0) |
-| 56 | head chicken-head; foot chicken-foot; body chicken-body; wing chicken-hand | 0x32 | body 1.3; bodyPitch 0 | box (0.8, 0.8, 1.65); angles (·, 45, ·); headOff (0, 3, 2); footOff (3, 0, -10); wingOff (3, -2, -5) |
-| 57 | head seagull-head; foot seagull-foot; body seagull-body; wing seagull-hand | 0x32 | bodyPitch -45 | angles (·, 45, ·); headOff (0, 5, 8); footOff (3, -4, -10); wingOff (3, -5, 0) |
-| 58 | head parrot-head; foot parrot-foot; body parrot-body; wing parrot-hand | 0x32 | bodyPitch -45 | angles (·, 45, ·); headOff (0, 3, 6); footOff (3, -4, -10); wingOff (3, -5, 0) |
-| 59 | head bat-head; foot bat-foot; body bat-body; wing bat-hand | 0x32 | bodyPitch -45 | angles (·, 45, ·); footOff (3, -4, -10); wingOff (3, -5, 0) |
-| 60 | head fly-head; foot fly-foot; body fly-body; wing fly-hand | 0x32 | bodyPitch -45 | angles (30, 45, ·); headOff (0, 3, 4); footOff (3, -1, -7); wingOff (1, -6, 1) |
-| 61 | head midge-head; foot midge-foot; body midge-body; wing midge-hand | 0x32 | bodyPitch -45 | angles (30, 45, ·); headOff (0, 3, 4); footOff (3, -1, -5); wingOff (1, -5, -1) |
-| 62 | head mosquito-head; foot mosquito-foot; body mosquito-body; wing mosquito-hand | 0x32 | bodyPitch -45 | angles (30, 45, ·); headOff (0, 3, 4); footOff (3, -1, -7); wingOff (1, -6, 1) |
-| 63 | hand none (65535); foot plainrunner-foot; body plainrunner-body | 0x28 | foot 1.5 | box (1.2, 1.2, 2.7); bodyOff (0, 3, 6); footOff (4, 0, -1.5) |
-| 64 | hand none (65535); foot leafrunner-foot; body leafrunner-body | 0x28 | foot 1.5 | box (1.2, 1.2, 2.7); bodyOff (0, 3, 6); footOff (4, 0, -1.5) |
-| 65 | hand none (65535); foot snowrunner-foot; body snowrunner-body | 0x28 | foot 1.5 | box (1.2, 1.2, 2.7); bodyOff (0, 3, 6); footOff (4, 0, -1.5) |
-| 66 | hand none (65535); foot desertrunner-foot; body desertrunner-body | 0x28 | foot 1.5 | box (1.2, 1.2, 2.7); bodyOff (0, 3, 6); footOff (4, 0, -1.5) |
-| 67 | head peacock-head; foot peacock-foot; body peacock-body | 0x28 | head 0.5; body 0.7; foot 1.5 | box (1.2, 1.2, 3.75); bodyOff (0, 0, 4); headOff (0, 4, 8); footOff (4, 0, -6) |
-| 68 | head frog-head; hand frog-hand; foot frog-foot; body frog-body | 0x20 | hand 1.2 | bodyOff (0, 0, -6); headOff (0, 1, 2); handOff (8, 0, 2); footOff (5, 1, -8.5) |
-| 69 | head plant-creature-head; hand plant-creature-hand; foot plant-creature-foot; body plant-creature-body | 0x28 | hand 0.8; foot 0.7 | box (1.2, 1.2, 2.7); handRot (-45, 45, -45); bodyOff (0, 0, -4); headOff (0, 1, 7); handOff (6, 3, 0); footOff (3, 2, -10) |
-| 70 | hand radish-creature-hand; foot radish-creature-foot; body radish-creature-head | 0x28 |  | box (1.2, 1.2, 2.7); handRot (-45, 45, -45); bodyOff (0, 0, 5); headOff (0, 1, 7); handOff (6, 3, 0); footOff (3, 2, -8) |
-| 71 | foot onionling-foot; body onionling-head | 0x30 |  | box (1.2, 1.2, 2.7); bodyOff (0, 0, 1); headOff (0, 0, 0); footOff (3, 0, -12) |
-| 72 | foot desert-onionling-foot; body desert-onionling | 0x30 |  | box (1.2, 1.2, 2.7); bodyOff (0, 0, 1); headOff (0, 0, 0); footOff (3, 0, -12) |
-| 73 | foot devourer-foot; body devourer-head | 0x30 |  | box (1.2, 1.2, 2.7); headOff (0, 0, -12); footOff (3, 0, -11) |
-| 74 | head duckbill-head; hand duckbill-foot; foot duckbill-foot; body duckbill-body; tail duckbill-tail | 0x31 | head 0.73; body 0.9; hand 1; foot 1; tail 0.8 | box (1, 1, 1); angles (·, ·, -80); bodyOff (0, 0, 0.6); headOff (0, 8.5, 1.5); handOff (4, 1, -3.7); footOff (4, -3, -3.7); tailOff (0, -8.5, -2.9) |
-| 75 | head crocodile-head; hand crocodile-foot; foot crocodile-foot; body crocodile-body | 0x31 | head 1.1; body 2; hand 1.6; foot 1.6 | box (1, 1, 1); bodyOff (0, -9, 2.6); headOff (0, 17.5, 2.5); handOff (6, 9, -1.7); footOff (6, -9, -1.7) |
-| 76 | head spike-head; hand spike-hand; foot spike-foot; body spike-body | 0x20 | body 0.9 | handOff (6, 0, -2) |
-| 77 | head anubis-head; hand anubis-hand; foot anubis-foot; body anubis-body | 0x20 | body 0.9 | handOff (6, 0, -2) |
-| 78 | head horus-head; hand horus-hand; foot horus-foot; body horus-body | 0x20 | body 0.9 | handOff (6, 0, -2) |
-| 79 | head jester-head; hand jester-hand; foot jester-foot; body jester-body | 0x20 | body 0.9 | handOff (6, 0, -2) |
-| 80 | head spectrino-head; hand spectrino-hand; foot spectrino-foot; body spectrino-body | 0x20 |  |  |
-| 81 | head djinn-head; hand djinn-hand; foot djinn-foot; body djinn-body | 0x20 | head 0.8; foot 0.8 | box (1.44, 1.44, 3.24); headOff (0, 1.8, 6); footOff (3.5, 1, -10.8) |
-| 82 | head minotaur-head; hand minotaur-hand; foot minotaur-foot; body minotaur-body; arm minotaur-arm | 0x20 | head 0.5; body 0.9; hand 0.7; foot 0.9; arm 0.65; weapon 0.9 | box (3.2, 3.2, 5.8); bodyOff (0, 0, -2); headOff (0, 3, 4.5); handOff (7, 0, 1.5); footOff (3, 1, -7.5) |
-| 83 | head draw mod 3 → 180.. (desert-nomad-head1 … desert-nomad-head3); hand desert-nomad-hand2 (189) if head index ≠ 180, else desert-nomad-hand (188); foot desert-nomad-foot; body desert-nomad-body | 0x20 | head 0.9 | headOff (0, 0.8, 6) |
-| 84 | head draw mod 3 → 183.. (desert-nomad-female-head1 … desert-nomad-female-head3); hand desert-nomad-hand2 (189) if head index ≠ 183, else desert-nomad-hand (188); foot desert-nomad-foot; body desert-nomad-body | 0x20 | head 0.9 | headOff (0, 0.8, 6) |
-| 85 | head imp-head; hair imp-eyes; hand imp-hand; foot imp-foot; body imp-body | 0x428 | body 0.9 | handRot (-90, 30, ·); handOff (8, 5, 0) |
-| 86 | foot squid-foot; body squid-body | 0x10 |  | box (0.8, 0.8, 1); bodyOff (0, 0, 2); footOff (5, 1, -5.5) |
-| 87 | head mole-head; hand mole-hand; foot mole-foot; body mole-body | 0x28 | hand 0.9 | box (0.8, 0.8, 1.8); handRot (·, -30, ·); bodyOff (0, 0, -6); headOff (0, 1, 2); handOff (9, 0, 2); footOff (5, 1, -8.5) |
-| 88 | head biter-head; hand biter-hand; foot biter-foot; body biter-body | 0x28 | hand 0.9 | box (1.056, 1.056, 2.376); handRot (·, -30, ·); bodyOff (0, 0, -5); headOff (0, 1, 3); handOff (9, 0, 2); footOff (5, 1, -8.5) |
-| 89 | head koala-head; hand koala-hand; foot koala-foot; body koala-body | 0x28 | head 1.2; hand 0.9 | box (1.056, 1.056, 2.376); handRot (·, -30, ·); bodyOff (0, 0, -5); headOff (0, 1, 3); handOff (9, 0, 2); footOff (5, 1, -8.5) |
-| 90 | head squirrel-head; hand squirrel-hand; foot squirrel-foot; body squirrel-body | 0x28 | head 1.2; hand 0.75; foot 0.8 | box (0.672, 0.672, 1.512); handRot (·, -30, ·); bodyOff (0, -5, -5); headOff (0, 1, 4); handOff (7, 0, 0); footOff (5, 1, -8.5) |
-| 91 | head raccoon-head; hand raccoon-hand; foot raccoon-foot; body raccoon-body | 0x28 | head 1.2; hand 0.75; foot 0.8 | box (0.864, 0.864, 1.944); handRot (·, -30, ·); bodyOff (0, -5, -5); headOff (0, 1, 4); handOff (7, 0, 0); footOff (5, 1, -8.5) |
-| 92 | head owl-head; foot owl-foot; wing owl-hand | 0x2a | hand 0.9; bodyPitch -10 | box (0.8, 0.8, 1.8); angles (·, 80, ·); headOff (0, 0, -2); handOff (9, 0, 2); footOff (5, 0, -11.5); wingOff (3, -5, 0) |
-| 93 | head penguin-head; hand penguin-hand; foot penguin-foot; body penguin-body | 0x28 | hand 0.9 | box (0.8, 0.8, 1.8); handRot (-60, -45, 0); bodyOff (0, 0, -6); headOff (0, 1, 2); handOff (8, 0, 2); footOff (5, 1, -8.5) |
-| 94 | head werewolf-head; hand werewolf-hand; foot werewolf-foot; body werewolf-body | 0x28 | head 0.8; hand 0.6; shoulder 1.2 | box (2.4, 2.4, 5.4); handRot (0, -45, 0); headOff (0, 3, 3); handOff (5, 4, 0) |
-| 95 | head santa-head; hand hand2; foot foot (432); body santa-body | 0x20 | head 0.8 |  |
-| 96 | head zombie-head; hair none (65535); hand zombie-hand; foot foot (228); body zombie-body | 0x28 |  | handRot (0, -90, 0); handOff (6, 3, -2) |
-| 97 | head vampire-head; hair vampire-eyes; hand vampire-hand; foot foot (432); body wool-chest5; wing bat-hand | 0x402 | wing 2 | angles (·, 60, ·) |
-| 98 | head pony-head; hand pony-foot; foot pony-foot; body pony-body; tail pony-tail | 0x31 | head 0.8; body 0.9; hand 0.8; foot 0.8; tail 1 | box (1.44, 1.44, 1.6); bodyOff (0, 0, 3); headOff (0, 8, 6); handOff (3, 3, -3.25); footOff (3, -5, -3.25); tailOff (0, -7, -4) |
-| 99 | head camel-head; hand camel-foot; foot camel-foot; body camel-body | 0x31 | head 0.65; body 0.95; hand 0.8; foot 0.75 | box (1.8, 1.8, 3); bodyOff (0, 0, 1); headOff (0, 12, 4); handOff (3, 3, -5.75); footOff (3, -4, -5.75) |
-| 100 | head cow-head; hand cow-foot; foot cow-foot; body cow-body | 0x31 | head 0.65; body 1.2; hand 0.8; foot 0.75 | box (1.8, 1.8, 3); bodyOff (0, 0, -2); headOff (0, 10, 1); handOff (3, 3, -6.75); footOff (3, -4, -6.75) |
-| 101 | head dragon-head; hand dragon-foot; foot dragon-foot; body dragon-body; tail dragon-tail | 0x33 | head 0.51; hand 1.5; foot 1 | bodyOff (0, 0, -2); headOff (0, 12.5, 0.5); handOff (3, 4, 1); footOff (3, -4, 1); tailOff (0, -16, 4) |
-| 102 | head barkbeetle-head; foot barkbeetle-foot | 0x31 | head 0.75 | box (1.6, 1.6, 1.6); headOff (0, 1, 1); footOff (3.5, 1, -2.5) |
-| 103 | head firebeetle-head; foot firebeetle-foot | 0x31 | head 0.9 | box (1.6, 1.6, 1.6); headOff (0, 1, 1); footOff (3.5, 1, -2.5) |
-| 104 | head snoutbeetle-head; foot snoutbeetle-foot | 0x29 | head 0.9 | box (1.6, 1.6, 1.6); headOff (0, 1, 1); footOff (3.5, 1, -2.5) |
-| 105 | head lemonbeetle-head; foot lemonbeetle-foot | 0x31 | head 0.9 | box (1.6, 1.6, 1.6); headOff (0, 1, 1); footOff (3.5, 1, -2.5) |
-| 106 | head crab-head; hand crab-hand; foot crab-foot; body crab-body | 0x28 | head 0.75; hand 1.2 | box (0.8, 0.8, 1.2); handRot (90, 30, 0); bodyOff (0, 0, 1); headOff (0, 1, 5); handOff (10, 0, 8); footOff (6, 1, -5.5) |
-| 107 | head crab-head-blue; hand crab-hand-blue; foot crab-foot-blue; body crab-body-blue | 0x28 | head 0.75; hand 1.2 | box (4.8, 4.8, 7.2); handRot (90, 30, 0); bodyOff (0, 0, 1); headOff (0, 1, 5); handOff (10, 0, 8); footOff (6, 1, -5.5) |
-| 108 | head troll-head; hand troll-hand; foot troll-foot; body troll-body; arm troll-arm | 0x20 | head 0.6; foot 0.75; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 3, 3); handOff (8, 3, 0) |
-| 109 | head dark-troll-head; hair dark-troll-eyes; hand dark-troll-hand; foot dark-troll-foot; body dark-troll-body; arm dark-troll-arm | 0x420 | head 0.6; foot 0.75; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 3, 3); handOff (8, 3, 0) |
-| 110 | head hell-demon-head; hand hell-demon-hand; foot hell-demon-foot; body hell-demon-body; arm hell-demon-arm | 0x20 | head 0.6; foot 0.75; arm 0.85; shoulder 1.1 | box (3.2, 3.2, 7.2); headOff (0, 3, 1); handOff (8, 3, 0) |
-| 111 | head golem-head; hand golem-hand; foot golem-foot; body golem-body; arm golem-arm | 0x20 | head 0.6; foot 0.755; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 4, 3); handOff (8, 3, 0) |
-| 112 | head golem-ember-head; hand golem-ember-hand; foot golem-ember-foot; body golem-ember-body; arm golem-ember-arm | 0x20 | head 0.61; foot 0.755; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 4, 3); handOff (8, 3, 0) |
-| 113 | head golem-snow-head; hand golem-snow-hand; foot golem-snow-foot; body golem-snow-body; arm golem-snow-arm | 0x20 | head 0.61; foot 0.755; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 4, 3); handOff (8, 3, 0) |
-| 114 | head yeti-head; hand yeti-hand; foot yeti-foot; body yeti-body; arm yeti-arm | 0x20 | head 0.6; foot 0.75; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 3, 3); handOff (8, 3, 0) |
-| 115 | head cyclops-head; hand cyclops-hand; foot cyclops-foot; body cyclops-body; arm cyclops-arm | 0x20 | head 0.6; foot 0.75; arm 0.9; shoulder 1.2 | box (4.8, 4.8, 10.8); headOff (0, 3, 3); handOff (8, 3, 0) |
-| 116 | head mammoth-head; hand mammoth-foot; foot mammoth-foot; body mammoth-body | 0x31 | head 0.4; body 0.7; hand 0.5; foot 0.5 | box (s, s, 1.12·s) with s = 3·draw1/32767 + 7; bodyOff (0, 0, 1); headOff (0, 8, 2); handOff (3, 3, -4.1); footOff (2.9, -3, -4.1); tailOff (0, -4, -3) |
-| 117 | head lich-head; hand lich-hand; foot none (65535); body lich-body; arm lich-arm | 0x20 | head 0.4; hand 0.75 | box (6.4, 6.4, 14.4); handRot (0, -90, 0); bodyOff (0, 0, 3); headOff (0, 1, 11); handOff (6, 5, 6) |
-| 118 | head rune-giant-head-laser; hand rune-giant-hand01; foot rune-giant-foot01; body draw mod 2 → 2155.. (rune-giant-body01 … rune-giant-body02) | 0x2c | head 0.7; hand 1.5; foot 0.8; arm 0.9; shoulder 1.2 | box (4, 4, 10); bodyOff (0, 0, 2); headOff (0, 4, 8); handOff (8, 0, 5); footOff (3, 1, -9.5) |
-| 119 | head draw mod 5 → 2145.. (monster-head-reptile-lizard … monster-head-reptile-horn3); hand draw mod 3 → 2142.. (monster-foot-reptile-normal … monster-foot-reptile-claw2); foot draw mod 3 → 2142.. (monster-foot-reptile-normal … monster-foot-reptile-claw2); body draw mod 9 → 2133.. (monster-body-reptile-shell … monster-body-reptile-spiked2); tail draw mod 2 → 2150.. (monster-tail-reptile-normal … monster-tail-reptile-spike1) | 0x31 | head 0.1·draw5/32767 + 0.4; body 0.7; hand 0.5; foot 0.5; tail 0.7 | box (9, 9, 10.08); bodyOff (0, 0, 1); headOff (0, 8, 0.5·draw6/32767 − 1); handOff (draw7/32767 + 3, 3, -4.1); footOff (draw8/32767 + 3, -3, -4.1); tailOff (0, -4, -3) |
-| 120 | body bush |  |  | box (2, 2, 2); bodyOff (0, 0, 0) |
-| 121 | body snow-bush |  |  | box (2, 2, 2); bodyOff (0, 0, 0) |
-| 122 | body berry-bush |  |  | box (2, 2, 2); bodyOff (0, 0, 0) |
-| 123 | body cotton-plant |  |  | box (0.5, 0.5, 1.5); bodyOff (0, 0, 0) |
-| 124 | body scrub (2093) if draw 1 is odd, else scrub-green (2094) |  |  | box (2, 2, 2); bodyOff (0, 0, 2) |
-| 125 | body cobwebscrub |  | body 1.5 | box (0.5, 0.5, 1.7); bodyOff (0, 0, 0) |
-| 126 | body fire-scrub |  |  | box (2, 2, 2); bodyOff (0, 0, 2) |
-| 127 | body ginseng |  |  | box (1, 1, 1); bodyOff (0, 0, 0) |
-| 128 | body cactus1 |  |  | box (1.5, 1.5, 4); bodyOff (0, 0, 0) |
-| 129 | body fir-tree |  |  | bodyOff (0, 0, -4) |
-| 130 | body thorn-tree |  |  | box (3, 3, 12); bodyOff (0, 0, -4) |
-| 131 | body gold-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 132 | body iron-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 133 | body silver-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 134 | body sandstone-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 135 | body emerald-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 136 | body sapphire-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 137 | body ruby-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 138 | body diamond-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 139 | body ice-crystal-deposit |  |  | box (2, 2, 2); bodyOff (0, 0, -4) |
-| 140 | body scarecrow | 0x20 | body 2 | box (0.8, 0.8, 4); bodyOff (0, 0, 0) |
-| 141 | body aim | 0x20 |  | box (1.5, 1.5, 2); bodyOff (0, 0, 0) |
-| 142 | body dummy | 0x20 |  | box (1.5, 1.5, 2.5); bodyOff (0, 0, 0) |
-| 143 | body draw mod 4 → 2113.. (vase … vase4) |  |  | box (1.5, 1.5, 1.25); bodyOff (0, 0, 0) |
-| 144 | body bomb1 |  | body 0.8 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 1) |
-| 145 | body fish1 | 0x131 | body 0.9 | box (s, s, s) with s = (0.5·draw1/32767 + 1.2)·0.8; bodyOff (0, 0, 0) |
-| 146 | body fish2 | 0x131 | body 0.9 | box (s, s, s) with s = (0.5·draw1/32767 + 1.2)·0.8; bodyOff (0, 0, 0) |
-| 147 | body seahorse | 0x131 |  | box (0.8, 0.8, 2); bodyOff (0, 0, 0) |
-| 148 | head head choice mod 3 → 1343.. (mermaid-head-f01 … mermaid-head-f03); hair hair choice mod 3 → 1346.. (mermaid-hair-f01 … mermaid-hair-f03); hand mermaid-hand (1350); body mermaid-body |  |  |  |
-| 149 | head head choice mod 3 → 1351.. (merman-head-m01 … merman-head-m03); hair hair choice mod 3 → 1354.. (merman-hair-m01 … merman-hair-m03); hand mermaid-hand (1350); body merman-body |  |  |  |
-| 150 | body shark | 0x131 | body 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0) |
-| 151 | head bumblebee; foot bumblebee-foot; wing bumblebee-hand | 0x32 | head 1.2; foot 1; wing 0.6; bodyPitch -45 | box (1, 1, 1.875); angles (·, 45, ·); headOff (0, 3, 0); footOff (3, 4, -8); wingOff (6.5, 3, -1) |
-| 152 | head lantern-fish; hair lantern-fish-eyes | 0x531 | head 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0); headOff (0, 0, 0) |
-| 153 | body mawfish | 0x131 | body 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0) |
-| 154 | body piranha | 0x131 | body 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0) |
-| 155 | body blowfish | 0x131 | body 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0) |
+| 0 | head 1236 + (head choice mod 4) (elf-head-m01 … m04); hair 1280 + (hair choice mod 10) (elf-hair-m01 … m10); hand 430 hand2; foot 432 foot; body 1 body4 |  |  |  |
+| 1 | head 1240 + (head choice mod 6) (elf-head-f01 … f06); hair 1290 + (hair choice mod 10) (elf-hair-f01 … f10); hand 430; foot 432; body 0 body2 |  |  |  |
+| 2 | head 1246 + (head choice mod 6) (human-head-m01 … m06); hair 1252 + (hair choice mod 15) (human-hair-m01 … m15); hand 431 brown-hand if the head index > 1248, else 430; foot 432; body 1 |  |  |  |
+| 3 | head 1267 + (head choice mod 6) (human-head-f01 … f06); hair 1273 + (hair choice mod 7) (human-hair-f01 … f07); hand 431 if the head index > 1269, else 430; foot 432; body 1 |  |  |  |
+| 4 | head 75 + (head choice mod 5) (goblin-head-m01 … m05); hair 80 + (hair choice mod 6) (goblin-hair-m01 … m06); hand 97 goblin-hand; foot 432; body 0 |  | weapon 1.2 | box ÷1.2 |
+| 5 | head 86 + (head choice mod 5) (goblin-head-f01 … f05); hair 91 + (hair choice mod 6) (goblin-hair-f01 … f06); hand 97; foot 432; body 0 |  | weapon 1.2 | box ÷1.2 |
+| 6 | head 2379 + (draw 4 mod 3) (bullterrier-head1 … 3), after hair-colour draws 1–3; hand 431 brown-hand; foot 432; body 0 |  | head 0.9; weapon 1.2 | headOff (0, 3, 5) |
+| 7 | head 98 + (head choice mod 2) (lizard-head-m01, m02); hair 100 + (hair choice mod 6) (lizard-hair-m01 … m06); hand 111 lizard-hand; foot 113 lizard-foot; body 112 lizard-body |  |  |  |
+| 8 | head 106 + (head choice mod 5) (lizard-head-f01 … f05); hair 100 + (hair choice mod 6) (lizard-hair-m01 … m06); hand 111; foot 113; body 112 |  |  |  |
+| 9 | head 282 + (head choice mod 5) (dwarf-head-m01 … m05); hair 287 + (hair choice mod 3) (dwarf-hair-m01 … m03); hand 430; foot 432; body 300 dwarf-body |  | head 0.9; weapon 1.2 | box ÷1.2 |
+| 10 | head 290 + (head choice mod 5) (dwarf-head-f01 … f05); hair 295 + (hair choice mod 5) (dwarf-hair-f01 … f05); hand 430; foot 432; body 301 dwarf-body-female |  | head 0.9; weapon 1.2 | box ÷1.2 |
+| 11 | head 1300 + (head choice mod 5) (orc-head, orc-head-m02 … m05); hair 1310 + (hair choice mod 10) (orc-hair-m01 … m10); hand 302 orc-hand; foot 432; body 0 |  | head 0.9; shoulder 1.2 | box (1.04, 1.04, 2.34) |
+| 12 | head 1305 + (head choice mod 5) (orc-head-f01 … f05); hair 1320 + (hair choice mod 4) (orc-hair-f01 … f04); hand 302; foot 432; body 0 |  | head 0.8; body 0.95; shoulder 1.1 | box (1.04, 1.04, 2.34); headOff (0, 1.5, 4) |
+| 13 | head 1324 + (head choice mod 5) (frogman-head-m01 … m05); hair 1329 + (hair choice mod 5) (frogman-hair-m01 … m05); hand 1342 frogman-hand; foot 432; body 1 |  |  |  |
+| 14 | head 1334 + (head choice mod 4) (frogman-head-f01 … f04); hair 1338 + (hair choice mod 4) (frogman-hair-f01 … f04); hand 1342; foot 432; body 1 |  |  |  |
+| 15 | head 303 + (head choice mod 6) (undead-head-m01 … m06); hair 309 + (hair choice mod 6) (undead-hair-m01 … m06); hand 327 undead-hand; foot 432; body 0 |  | head 0.9 |  |
+| 16 | head 315 + (head choice mod 6) (undead-head-f01 … f06); hair 321 + (hair choice mod 6) (undead-hair-f01 … f06); hand 327; foot 432; body 0 |  | head 0.9 |  |
+| 17 | head 328 skeleton-head; hair 329 skeleton-eyes; hand 330 skeleton-hand; foot 332 skeleton-foot; body 331 skeleton-body | 0x428 | head 0.8 | handRot (0, −90, 0); bodyOff (0, 0, −2); headOff (0, 4, 7); handOff (5, 3, 0) |
+| 18 | head 11 old-head; hand 430; foot 432; body 0 |  |  |  |
+| 19 | head 355 collie-head; hand 356 collie-hand; foot 357 collie-foot; body 354 collie-body; tail 358 collie-tail | 0x31 | head 0.9; hand 1; foot 1; tail 1 | box (0.8, 0.8, 1); angles (·, ·, −30); bodyOff (0, 0, 2); headOff (0, 9, 6); handOff (3, 4, −2.5); footOff (3, −4, −1); tailOff (0, −8, −1) |
+| 20 | head 360 shepherd-dog-head; hand 361; foot 362; body 359; tail 363 (shepherd-dog parts) | 0x31 | head 0.9; hand 1; foot 1; tail 1 | as type 19 |
+| 21 | head 365 skull-bull-head; hand 366; foot 367; body 364; tail 368 (skull-bull parts) | 0x31 | head 0.7; body 1.2; hand 0.8; foot 0.8; tail 1 | box (2.8, 2.8, 4); angles (·, ·, −30); bodyOff (0, 0, 1); headOff (0, 12.5, 3); handOff (3, 2.5, −4.5); footOff (3, −4, −4); tailOff (0, −8, −2.5) |
+| 22 | head 370 alpaca-head; hand 371; foot 372; body 369 | 0x31 | head 0.8; hand 1; foot 1 | bodyOff (0, 0, −4); headOff (0, 9, 5); handOff (3, 4, −8.5); footOff (3, −4, −9) |
+| 23 | head 374 alpaca-brown-head; hand 375; foot 376; body 373 | 0x31 | head 0.8; hand 1; foot 1 | as type 22 |
+| 24 | body 2164 egg1 | 0x20 |  | box (0.8, 0.8, 1.2); bodyOff (0, 0, −1.5) |
+| 25 | head 2162 turtle-head; hand 2163 turtle-foot; foot 2163; body 2161 turtle-body | 0x31 | head 0.65; hand 0.8; foot 0.8; tail 1 | box (0.8, 0.8, 1); angles (·, ·, −30); bodyOff (0, 0, 3.5); headOff (0, 13, 0.5); handOff (3, 4, −3.5); footOff (3, −4, −3.5); tailOff (0, −8, 4.5) |
+| 26 | head 378 dog-head2; hand 379; foot 380; body 377; tail 381 | 0x31 | head 0.9; body 1.05; hand 1; foot 1; tail 0.8 | box (1.04, 1.04, 2.34); angles (·, ·, −120); bodyOff (0, 0, −5.5); headOff (0, 9, −1); handOff (3, 4, −8.5); footOff (3, −4.1, −8.5); tailOff (0, −10, 3) |
+| 27 | head 383 scottish-terrier-head; hand 384; foot 385; body 382; tail 386 | 0x31 | head 0.9; body 1.05; hand 1; foot 1; tail 0.8 | box (0.8, 0.8, 0.7); angles (·, ·, −120); bodyOff (0, 0, 0.5); headOff (0, 9, 5); handOff (3, 4, −2.5); footOff (3, −4.1, −2.5); tailOff (0, −7, 2) |
+| 28 | head 388 wolf-head; hand 389; foot 390; body 387; tail 391 | 0x31 | head 0.8; body 1.2; hand 0.9; foot 0.9 | box (1.52, 1.52, 3.23); bodyOff (0, 0, −3.5); headOff (0, 11, −1); handOff (3, 3, −7.5); footOff (3, −4.1, −7.5); tailOff (0, −5.5, −1) |
+| 29 | head 393 panther-head; hand 394; foot 395; body 392; tail 396 | 0x31 | head 0.6; hand 1.1; foot 1; tail 1 | angles (·, ·, −30); bodyOff (0, 0, 0); headOff (0, 14, −1); handOff (3, 5, −8.5); footOff (3, −6, −9); tailOff (0, −11, −4) |
+| 30 | head 398 cat-head; hand 399; foot 400; body 397; tail 401 | 0x31 | head 0.9; hand 1; foot 1; tail 1.1 | angles (·, ·, −30); bodyOff (0, 0, −4); headOff (0, 9, −1); handOff (3, 4, −8.5); footOff (3, −4.1, −8.5); tailOff (0, −8, −1) |
+| 31 | head 403 cat-head2; hand 404; foot 405; body 402; tail 406 | 0x31 | as type 30 | as type 30 |
+| 32 | head 408 cat-head3; hand 409; foot 410; body 407; tail 411 | 0x31 | as type 30 | as type 30 |
+| 33 | head 413 pig-head; hand 414 pig-foot; foot 414; body 412 pig-body | 0x31 | head 0.85; body 1.2; hand 1; foot 1; tail 1 | box (0.8, 0.8, 0.8); angles (·, ·, −30); bodyOff (0, 0, 1); headOff (0, 9, 1.9); handOff (3, 4, −4.2); footOff (3, −4, −4.2); tailOff (0, −8, −1) |
+| 34 | head 416 sheep-head; hand 417 sheep-foot; foot 417; body 415 sheep-body | 0x31 | head 0.85; body 1.2; hand 1; foot 1; tail 1 | box (1.2, 1.2, 1.2); angles (·, ·, −30); bodyOff (0, 0, 1); headOff (0, 4, 1.9); handOff (3, 4, −4.2); footOff (3, −4, −4.2); tailOff (0, −8, −1) |
+| 35 | foot 155 bunny-foot; body 154 bunny-body | 0x30 | hand 0.9 | box (1, 1, 1.1); bodyOff (0, 0, 2); headOff (0, 1, 8); handOff (9, 0, 8); footOff (5, 1, −2.5) |
+| 36 | foot 157 porcupine-foot; body 156 porcupine-body | 0x30 | hand 0.9 | as type 35 |
+| 37–40 | body 2399 slime-green / 2400 slime-pink / 2401 slime-yellow / 2402 slime-blue | 0x29 | body 1.5 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 0) |
+| 41 | head 2403 frightener-head; hair 2404 frightener-eyes | 0x42b | head 0.8 | box (1.4, 1.4, 2.5); headOff (0, 0, 0) |
+| 42 | head 2405 sand-horror-head; hand 2406 sand-horror-hand | 0x2a | head 0.8; hand 0.5 | box (1.4, 1.4, 2.5); headOff (0, 0, 0); handOff (6, 0, 2) |
+| 43 | head 3 wizard-head; hand 430; foot 432; body 4 wizard-body | 0x20 |  |  |
+| 44 | head 10 elf-head-female; hair none (65535); hand 430; foot 432; body 0 |  |  |  |
+| 45 | head 5 witch-head; hand 430; foot 432; body 6 witch-body | 0x20 | head 0.8 | headOff (0, 3, 4) |
+| 46 | hair colour from draws 1–3 (§4.2); head 60 ogre-head; hand 62 ogre-hand; foot 63 ogre-foot; body 61 ogre-body | 0x20 | head 0.61 | box (2.4, 2.4, 5.4); bodyOff (0, 0, −2); headOff (0, 4, 6); handOff (7.5, 0, 3) |
+| 47 | head 64 rockling-head; hand 65 rockling-hand; foot 66 rockling-foot | 0x20 | head 0.8; hand 0.85; foot 0.85; weapon 0.65 | box (2.4, 2.4, 3.6); bodyOff (0, 0, −1); headOff (0, 0, 2); handOff (7.5, 0, 5); footOff (3, 1, −6.5) |
+| 48 | head 12 gnoll-head; hand 14; foot 15; body 13 | 0x20 |  | box ÷1.2 |
+| 49 | head 16 polar-gnoll-head; hand 18; foot 19; body 17 | 0x20 | head 1.2 | box ÷1.2; headOff (0, 1.5, 4) |
+| 50 | head 20 monkey-head; hand 22; foot 23; body 21 | 0x28 | head 1.05; body 0.8 | box (0.64, 0.64, 1.36); bodyOff (0, 0, −4); headOff (0, 3.5, 2); footOff (3.5, 1, −8.5) |
+| 51 | head 2383 gnobold-head; hand 2384 gnobold-hand; foot 2382 gnobold-foot; body 226 zombie-body | 0x20 |  |  |
+| 52 | head 2386 insectoid-head; hand 2387; foot 2385; body 2388 | 0x20 |  | bodyOff (0, 0, −4); handOff (6, 0, 1) |
+| 53 | head 231 hornet-head; foot 232 hornet-foot; body 230 hornet-body; wing 233 hornet-hand | 0x32 | bodyPitch −45 | angles (30, 45, ·); footOff (3, −1, −7); wingOff (1, −6, 1) |
+| 54 | head 235 insect-guard-head; hand 237; foot 236; body 234; wing 238 insect-guard-wing | 0x32 | bodyPitch −45 | as type 53 |
+| 55 | head 255 crow-head; foot 256; body 254; wing 257 crow-hand | 0x32 | bodyPitch −45 | angles (·, 45, ·); headOff (0, 3, 6); footOff (3, −4, −10); wingOff (3, −5, 0) |
+| 56 | head 259 chicken-head; foot 260; body 258; wing 261 chicken-hand | 0x32 | body 1.3; bodyPitch 0 | box (0.8, 0.8, 1.65); angles (·, 45, ·); headOff (0, 3, 2); footOff (3, 0, −10); wingOff (3, −2, −5) |
+| 57 | head 263 seagull-head; foot 264; body 262; wing 265 seagull-hand | 0x32 | bodyPitch −45 | angles (·, 45, ·); headOff (0, 5, 8); footOff (3, −4, −10); wingOff (3, −5, 0) |
+| 58 | draw 1 odd → head 267, foot 268, body 266, wing 269 (parrot); even → head 271, foot 272, body 270, wing 273 (parrot-blue) | 0x32 | bodyPitch −45 | angles (·, 45, ·); headOff (0, 3, 6); footOff (3, −4, −10); wingOff (3, −5, 0) |
+| 59 | head 275 bat-head; foot 276; body 274; wing 277 bat-hand | 0x32 | bodyPitch −45 | angles (·, 45, ·); footOff (3, −4, −10); wingOff (3, −5, 0) |
+| 60 | head 240 fly-head; foot 241; body 239; wing 242 fly-hand | 0x32 | bodyPitch −45 | angles (30, 45, ·); headOff (0, 3, 4); footOff (3, −1, −7); wingOff (1, −6, 1) |
+| 61 | head 247 midge-head; foot 248; body 246; wing 249 midge-hand | 0x32 | bodyPitch −45 | angles (30, 45, ·); headOff (0, 3, 4); footOff (3, −1, −5); wingOff (1, −5, −1) |
+| 62 | head 251 mosquito-head; foot 252; body 250; wing 253 mosquito-hand | 0x32 | bodyPitch −45 | angles (30, 45, ·); headOff (0, 3, 4); footOff (3, −1, −7); wingOff (1, −6, 1) |
+| 63–66 | hand none (65535); foot 334 / 336 / 338 / 340 and body 333 / 335 / 337 / 339 (plain-, leaf-, snow-, desert-runner) | 0x28 | foot 1.5 | box (1.2, 1.2, 2.7); bodyOff (0, 3, 6); footOff (4, 0, −1.5) |
+| 67 | head 343 peacock-head; foot 342; body 341 | 0x28 | head 0.5; body 0.7; foot 1.5 | box (1.2, 1.2, 3.75); bodyOff (0, 0, 4); headOff (0, 4, 8); footOff (4, 0, −6) |
+| 68 | head 115 frog-head; hand 117; foot 116; body 114 | 0x20 | hand 1.2 | bodyOff (0, 0, −6); headOff (0, 1, 2); handOff (8, 0, 2); footOff (5, 1, −8.5) |
+| 69 | head 119 plant-creature-head; hand 121; foot 120; body 118 | 0x28 | hand 0.8; foot 0.7 | box (1.2, 1.2, 2.7); handRot (−45, 45, −45); bodyOff (0, 0, −4); headOff (0, 1, 7); handOff (6, 3, 0); footOff (3, 2, −10) |
+| 70 | hand 124 radish-creature-hand; foot 123; body 122 radish-creature-head | 0x28 |  | box (1.2, 1.2, 2.7); handRot (−45, 45, −45); bodyOff (0, 0, 5); headOff (0, 1, 7); handOff (6, 3, 0); footOff (3, 2, −8) |
+| 71 | foot 126 onionling-foot; body 125 onionling-head | 0x30 |  | box (1.2, 1.2, 2.7); bodyOff (0, 0, 1); headOff (0, 0, 0); footOff (3, 0, −12) |
+| 72 | foot 128 desert-onionling-foot; body 127 desert-onionling | 0x30 |  | as type 71 |
+| 73 | foot 130 devourer-foot; body 129 devourer-head | 0x30 |  | box (1.2, 1.2, 2.7); headOff (0, 0, −12); footOff (3, 0, −11) |
+| 74 | head 419 duckbill-head; hand 420 duckbill-foot; foot 420; body 418; tail 421 | 0x31 | head 0.73; body 0.9; hand 1; foot 1; tail 0.8 | box (1, 1, 1); angles (·, ·, −80); bodyOff (0, 0, 0.6); headOff (0, 8.5, 1.5); handOff (4, 1, −3.7); footOff (4, −3, −3.7); tailOff (0, −8.5, −2.9) |
+| 75 | head 423 crocodile-head; hand 424 crocodile-foot; foot 424; body 422 | 0x31 | head 1.1; body 2; hand 1.6; foot 1.6 | box (1, 1, 1); bodyOff (0, −9, 2.6); headOff (0, 17.5, 2.5); handOff (6, 9, −1.7); footOff (6, −9, −1.7) |
+| 76–79 | head / foot / body / hand of spike (160, 161, 162, 163), anubis (164–167), horus (168–171), jester (172–175) | 0x20 | body 0.9 | handOff (6, 0, −2) |
+| 80 | head 176 spectrino-head; foot 177; body 178; hand 179 | 0x20 |  |  |
+| 81 | head 190 djinn-head; foot 191; body 192; hand 193 | 0x20 | head 0.8; foot 0.8 | box ×1.5; headOff (0, 1.8, 6); footOff (3.5, 1, −10.8) |
+| 82 | head 194 minotaur-head; foot 195; body 196; hand 197; arm 198 minotaur-arm | 0x20 | head 0.5; body 0.9; hand 0.7; foot 0.9; arm 0.65; weapon 0.9 | box (3.2, 3.2, 5.8); bodyOff (0, 0, −2); headOff (0, 3, 4.5); handOff (7, 0, 1.5); footOff (3, 1, −7.5) |
+| 83 | head 180 + (draw 1 mod 3) (desert-nomad-head1 … 3); hand 189 desert-nomad-hand2 if the head index ≠ 180, else 188 desert-nomad-hand; foot 186; body 187 | 0x20 | head 0.9 | headOff (0, 0.8, 6) |
+| 84 | head 183 + (draw 1 mod 3) (desert-nomad-female-head1 … 3); hand 189 if the head index ≠ 183, else 188; foot 186; body 187 | 0x20 | head 0.9 | headOff (0, 0.8, 6) |
+| 85 | head 200 imp-head; hair 199 imp-eyes; hand 203; foot 201; body 202 | 0x428 | body 0.9 | handRot (−90, 30, ·); handOff (8, 5, 0) |
+| 86 | foot 159 squid-foot; body 158 squid-body | 0x10 |  | box (0.8, 0.8, 1); bodyOff (0, 0, 2); footOff (5, 1, −5.5) |
+| 87 | head 132 mole-head; hand 134; foot 133; body 131 | 0x28 | hand 0.9 | box ÷1.2; handRot (·, −30, ·); bodyOff (0, 0, −6); headOff (0, 1, 2); handOff (9, 0, 2); footOff (5, 1, −8.5) |
+| 88 | head 136 biter-head; hand 138; foot 137; body 135 | 0x28 | hand 0.9 | box ×1.1; handRot (·, −30, ·); bodyOff (0, 0, −5); headOff (0, 1, 3); handOff (9, 0, 2); footOff (5, 1, −8.5) |
+| 89 | head 140 koala-head; hand 142; foot 141; body 139 | 0x28 | head 1.2; hand 0.9 | as type 88 |
+| 90 | head 144 squirrel-head; hand 146; foot 145; body 143 | 0x28 | head 1.2; hand 0.75; foot 0.8 | box ×0.7; handRot (·, −30, ·); bodyOff (0, −5, −5); headOff (0, 1, 4); handOff (7, 0, 0); footOff (5, 1, −8.5) |
+| 91 | head 148 raccoon-head; hand 150; foot 149; body 147 | 0x28 | head 1.2; hand 0.75; foot 0.8 | box ×0.9; otherwise as type 90 |
+| 92 | head 151 owl-head; foot 152 owl-foot; wing 153 owl-hand | 0x2a | hand 0.9; bodyPitch −10 | box ÷1.2; angles (·, 80, ·); headOff (0, 0, −2); handOff (9, 0, 2); footOff (5, 0, −11.5); wingOff (3, −5, 0) |
+| 93 | head 205 penguin-head; hand 207; foot 206; body 204 | 0x28 | hand 0.9 | box ÷1.2; handRot (−60, −45, 0); bodyOff (0, 0, −6); headOff (0, 1, 2); handOff (8, 0, 2); footOff (5, 1, −8.5) |
+| 94 | head 2167 werewolf-head; hand 2168; foot 2170; body 2169 | 0x28 | head 0.8; hand 0.6; shoulder 1.2 | box (2.4, 2.4, 5.4); handRot (0, −45, 0); headOff (0, 3, 3); handOff (5, 4, 0) |
+| 95 | head 225 santa-head; hand 430; foot 432; body 224 santa-body | 0x20 | head 0.8 |  |
+| 96 | head 227 zombie-head; hair none (65535); hand 229 zombie-hand; foot 228 foot; body 226 zombie-body | 0x28 |  | handRot (0, −90, 0); handOff (6, 3, −2) |
+| 97 | head 2171 vampire-head; hair 2172 vampire-eyes; hand 2173 vampire-hand; foot 432; body 1463 wool-chest5; wing 277 bat-hand | 0x402 | wing 2 | angles (·, 60, ·) |
+| 98 | head 345 pony-head; hand 346 pony-foot; foot 346; body 344; tail 347 pony-tail | 0x31 | head 0.8; body 0.9; hand 0.8; foot 0.8; tail 1 | box (1.44, 1.44, 1.6); bodyOff (0, 0, 3); headOff (0, 8, 6); handOff (3, 3, −3.25); footOff (3, −5, −3.25); tailOff (0, −7, −4) |
+| 99 | head 349 camel-head; hand 350 camel-foot; foot 350; body 348 | 0x31 | head 0.65; body 0.95; hand 0.8; foot 0.75 | box (1.8, 1.8, 3); bodyOff (0, 0, 1); headOff (0, 12, 4); handOff (3, 3, −5.75); footOff (3, −4, −5.75) |
+| 100 | head 352 cow-head; hand 353 cow-foot; foot 353; body 351 | 0x31 | head 0.65; body 1.2; hand 0.8; foot 0.75 | box (1.8, 1.8, 3); bodyOff (0, 0, −2); headOff (0, 10, 1); handOff (3, 3, −6.75); footOff (3, −4, −6.75) |
+| 101 | head 426 dragon-head; hand 427 dragon-foot; foot 427; body 425; tail 429 dragon-tail | 0x33 | head 0.51; hand 1.5; foot 1 | bodyOff (0, 0, −2); headOff (0, 12.5, 0.5); handOff (3, 4, 1); footOff (3, −4, 1); tailOff (0, −16, 4) |
+| 102 | head 216 barkbeetle-head; foot 217 | 0x31 | head 0.75 | box (1.6, 1.6, 1.6); headOff (0, 1, 1); footOff (3.5, 1, −2.5) |
+| 103 | head 218 firebeetle-head; foot 219 | 0x31 | head 0.9 | as type 102 |
+| 104 | head 220 snoutbeetle-head; foot 221 | 0x29 | head 0.9 | as type 102 |
+| 105 | head 222 lemonbeetle-head; foot 223 | 0x31 | head 0.9 | as type 102 |
+| 106 | head 209 crab-head; hand 211; foot 210; body 208 | 0x28 | head 0.75; hand 1.2 | box (0.8, 0.8, 1.2); handRot (90, 30, 0); bodyOff (0, 0, 1); headOff (0, 1, 5); handOff (10, 0, 8); footOff (6, 1, −5.5) |
+| 107 | head 213 crab-head-blue; hand 215; foot 214; body 212 | 0x28 | head 0.75; hand 1.2 | box (4.8, 4.8, 7.2); otherwise as type 106 |
+| 108 | head 24 troll-head; hand 27; foot 28; body 25; arm 26 troll-arm | 0x20 | head 0.6; foot 0.75; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 3, 3); handOff (8, 3, 0) |
+| 109 | head 30 dark-troll-head; hair 29 dark-troll-eyes; hand 33; foot 34; body 31; arm 32 | 0x420 | as type 108 | as type 108 |
+| 110 | head 35 hell-demon-head; hand 38; foot 39; body 36; arm 37 | 0x20 | head 0.6; foot 0.75; arm 0.85; shoulder 1.1 | box (3.2, 3.2, 7.2); headOff (0, 3, 1); handOff (8, 3, 0) |
+| 111 | head 40 golem-head; hand 43; foot 44; body 41; arm 42 | 0x20 | head 0.6; foot 0.755; arm 0.9; shoulder 1.2 | box (5.6, 5.6, 12.6); headOff (0, 4, 3); handOff (8, 3, 0) |
+| 112 | head 45 golem-ember-head; hand 48; foot 49; body 46; arm 47 | 0x20 | head 0.61; foot 0.755; arm 0.9; shoulder 1.2 | as type 111 |
+| 113 | head 50 golem-snow-head; hand 53; foot 54; body 51; arm 52 | 0x20 | head 0.61; foot 0.755; arm 0.9; shoulder 1.2 | as type 111 |
+| 114 | head 55 yeti-head; hand 58; foot 59; body 56; arm 57 | 0x20 | as type 108 | as type 108 |
+| 115 | head 67 cyclops-head; hand 70; foot 71; body 68; arm 69 | 0x20 | as type 108 | box (4.8, 4.8, 10.8); headOff (0, 3, 3); handOff (8, 3, 0) |
+| 116 | head 72 mammoth-head; hand 74 mammoth-foot; foot 74; body 73 | 0x31 | head 0.4; body 0.7; hand 0.5; foot 0.5 | box (*s*, *s*, 1.12·*s*) with *s* = 3·draw 1/32767 + 7 (made before the models are written); bodyOff (0, 0, 1); headOff (0, 8, 2); handOff (3, 3, −4.1); footOff (2.9, −3, −4.1); tailOff (0, −4, −3) |
+| 117 | head 279 lich-head; hand 280 lich-hand; foot none (65535); body 278 lich-body; arm 281 lich-arm | 0x20 | head 0.4; hand 0.75 | box (6.4, 6.4, 14.4); handRot (0, −90, 0); bodyOff (0, 0, 3); headOff (0, 1, 11); handOff (6, 5, 6) |
+| 118 | head 2154 rune-giant-head-laser; body 2155 + (draw 1 mod 2) (rune-giant-body01, 02); hand 2157 rune-giant-hand01; foot 2158 rune-giant-foot01 | 0x2c | head 0.7; hand 1.5; foot 0.8; arm 0.9; shoulder 1.2 | box (4, 4, 10); bodyOff (0, 0, 2); headOff (0, 4, 8); handOff (8, 0, 5); footOff (3, 1, −9.5) |
+| 119 | box first; then head 2145 + (draw 1 mod 5) (monster-head-reptile-lizard … horn3); body 2133 + (draw 2 mod 9) (monster-body-reptile-shell … spiked2); hand **and** foot both 2142 + (draw 3 mod 3) (monster-foot-reptile-normal … claw2; one draw for both); tail 2150 + (draw 4 mod 2) (monster-tail-reptile-normal, spike1) | 0x31 | tail 0.7; body 0.7; head 0.1·draw 5/32767 + 0.4; foot 0.5; hand 0.5 | box (9, 9, 10.08); headOff (0, 8, 0.5·draw 6/32767 − 1); bodyOff (0, 0, 1); tailOff (0, −4, −3); handOff (draw 7/32767 + 3, 3, −4.1); footOff (draw 8/32767 + 3, −3, −4.1) |
+| 120 | body 2087 bush |  |  | box (2, 2, 2); bodyOff (0, 0, 0) |
+| 121 | body 2088 snow-bush |  |  | box (2, 2, 2); bodyOff (0, 0, 0) |
+| 122 | body 2090 berry-bush |  |  | box (2, 2, 2); bodyOff (0, 0, 0) |
+| 123 | body 2159 cotton-plant |  |  | box (0.5, 0.5, 1.5); bodyOff (0, 0, 0) |
+| 124 | body 2093 scrub if draw 1 is odd, else 2094 scrub-green |  |  | box (2, 2, 2); bodyOff (0, 0, 2) |
+| 125 | body 2089 cobwebscrub |  | body 1.5 | box (0.5, 0.5, 1.7); bodyOff (0, 0, 0) |
+| 126 | body 2095 fire-scrub |  |  | box (2, 2, 2); bodyOff (0, 0, 2) |
+| 127 | body 2096 ginseng |  |  | box (1, 1, 1); bodyOff (0, 0, 0) |
+| 128 | body 2310 cactus1 |  |  | box (1.5, 1.5, 4); bodyOff (0, 0, 0) |
+| 129 | body 2098 fir-tree |  |  | bodyOff (0, 0, −4) |
+| 130 | body 2099 thorn-tree |  |  | box (3, 3, 12); bodyOff (0, 0, −4) |
+| 131–139 | body 2100 … 2108 (gold-, iron-, silver-, sandstone-, emerald-, sapphire-, ruby-, diamond-, ice-crystal-deposit) |  |  | box (2, 2, 2); bodyOff (0, 0, −4) |
+| 140 | body 2109 scarecrow | 0x20 | body 2 | box (0.8, 0.8, 4); bodyOff (0, 0, 0) |
+| 141 | body 2110 aim | 0x20 |  | box (1.5, 1.5, 2); bodyOff (0, 0, 0) |
+| 142 | body 2111 dummy | 0x20 |  | box (1.5, 1.5, 2.5); bodyOff (0, 0, 0) |
+| 143 | body 2113 + (draw 1 mod 4) (vase … vase4) |  |  | box (1.5, 1.5, 1.25); bodyOff (0, 0, 0) |
+| 144 | body 2546 bomb1 |  | body 0.8 | box (0.8, 0.8, 0.8); bodyOff (0, 0, 1) |
+| 145 | body 2410 fish1 | 0x131 | body 0.9 | box (*s*, *s*, *s*) with *s* = (0.5·draw 1/32767 + 1.2)·0.8; bodyOff (0, 0, 0) |
+| 146 | body 2411 fish2 | 0x131 | body 0.9 | as type 145 |
+| 147 | body 2418 seahorse | 0x131 |  | box (0.8, 0.8, 2); bodyOff (0, 0, 0) |
+| 148 | head 1343 + (head choice mod 3) (mermaid-head-f01 … f03); hair 1346 + (hair choice mod 3) (mermaid-hair-f01 … f03); hand 1350 mermaid-hand; body 1349 mermaid-body |  |  |  |
+| 149 | head 1351 + (head choice mod 3) (merman-head-m01 … m03); hair 1354 + (hair choice mod 3) (merman-hair-m01 … m03); hand 1350; body 1357 merman-body |  |  |  |
+| 150 | body 2412 shark | 0x131 | body 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0) |
+| 151 | head 243 bumblebee; foot 245 bumblebee-foot; wing 244 bumblebee-hand | 0x32 | head 1.2; foot 1; wing 0.6; bodyPitch −45 | box (1, 1, 1.875); angles (·, 45, ·); headOff (0, 3, 0); footOff (3, 4, −8); wingOff (6.5, 3, −1) |
+| 152 | head 2413 lantern-fish; hair 2414 lantern-fish-eyes | 0x531 | head 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0); headOff (0, 0, 0) |
+| 153–155 | body 2415 mawfish / 2416 piranha / 2417 blowfish | 0x131 | body 1.2 | box (2.4, 2.4, 6); bodyOff (0, 0, 0) |
 
-## Appendix C. Pose cases (0x4128f0, jump table 0x423d4c)
+## Appendix C. Pose cases
 
-Notation of §7.7–§7.8: channels Δ*L*, Δ*R* (hand position offsets), ρ*L*, ρ*R* (hand rotation
-offsets), *T* (torso angles), *B* (body tilt), *S* (torso shift), *K* (head shift), *H* (head
-angles), *Q* (tail angles), *U* (shoulder roll), *E* (lean; *E*.z in blocks), *h*; base targets
-*L*, *R* (hands); *F* foot extra angle; ℓ body lean; *r* smoothing rate (0.01 unless given);
-"turn" = foot-turn flag on. Unlisted channels keep the defaults of §7.7 (0). Phases W, A,
-R, E and "A..D" as §7.8; *q* = *t*/P1, *u* = progress through A; "clamp" = clamped to
-[0, 1]. "n.t." = not transcribed (follow-up F-2). Vectors are (x, y, z); a component
-written alone (e.g. "*T*.z := 40") leaves the others at their defaults. "Actions" lists the
-action ids that map to the pose (§7.2). Leg and lean overrides of §7.4 step 2 (poses 52,
-55, 57–59) apply in addition.
+Notation as §7.7–§7.8: Δ*L*, Δ*R* hand position offsets; ρ*L*, ρ*R* hand rotation offsets;
+*T* torso angles; *B* body tilt; *S* torso shift; *K* head shift; *H* head angles; *Q* tail
+angles; *U* shoulder roll; *E* lean (*E*.z in blocks); *h* pivot height; *L*, *R* hand base
+targets; *F* foot extra angle; ℓ body lean; *r* smoothing rate (0.01 unless written). Vectors
+are (x, y, z); a single component written alone leaves the other components as they were.
+"Actions" are the action ids mapped to the pose by 0x4b4ef0 (§7.2). Addresses are case
+entries from the jump table.
 
 | Pose (entry) | Actions | Case |
 |---|---|---|
-| 1 (0x4174a0) | 47, 54 | **t < 500** (fixed): *q* = clamp(*t*/500). Two-handed/ranged main (0x444230): ρ*R*.x := 120*q*; Δ*R* := (−*R*.x, 0, 14); Δ*L* := (2 − Δ*L*.x, 0, 12). Otherwise Δ*R* := (1, 0, 14), Δ*L* := (−1, 0, 14), ρ*L*.x = ρ*R*.x := −100. Both: *T*.x := −40*q*; *B*.x := −40*q*; *F* := −50*q*; during action 48 *B*.x −= min(360·*t*/500, 360); the creature's walk amplitude := 0. **500 ≤ t < D**: *B*.x from a lerp of −60 (n.t.); *T*.x := −20; ρ*R*.x := −70; two-handed: Δ*R* := (−*R*.x, 4, 0), Δ*L* := (2 − Δ*L*.x, 4, 0); otherwise Δ*R* := (1, 3, 8), Δ*L* := (−1, 3, 8), ρ*L*.x := −150; *r* = 0.1. **E**: two-handed: *R* += (−8, 4, 0), G((−2, 0, −1)), ρ*R*.x := −60, ρ*R*.z := 20; otherwise Δ*R* := (1, 3, 2), Δ*L* := (−1, 3, 2), ρ*L*.x = ρ*R*.x := −250. Always: off-hand shield → ρ*L* := (−250, −90, 0). |
-| 2 (0x41644b) | 57, 60, 93 (no off-hand) | **W**: *q* = clamp(1.5·*t*/P1); *B*.x := 5 + 10*q*; *T* := (10, 10, −60); ρ*R* := (lerp(90, 60, *q*), 0, lerp(90, 60, *q*)); Δ*R* = Δ*L* := (0, 0, 14*q*); G((2, 0, 0)); ρ*L* := ρ*R*; *r* = 0.01. **A**: *B*.x := −10; *T*.y := 10, *T*.z := 60; ρ*R* := (−70, 0, −60); Δ*R* = Δ*L* := (0, 2·sin(π*u*/2), 0) (*u* clamp); G((2, −1, 0)); ρ*L* := ρ*R*; *r* = 0.04. **R..E**: pose id := 0; *R* += (0, 2, 3); G((−3, 0, −3)); ρ*R*.x := 0, ρ*R*.y := 20; ρ*L* := ρ*R*. Arm frame: no head-pitch tilt. |
-| 3 (0x4170ee) | 58 | **W**: *B*.z := 0; ρ*R* := (−90, 0, 0); Δ*R* = Δ*L* := n.t.; G((2, 0, 0)); ρ*L* := ρ*R*; *r* = 0.005. **A**: *B* := (10, 0, −10); *T* := (30, 0, −30); ρ*R* := (0, 0, 90); rest as W. **R**: *B*.z := −30; *T* := (0, 20, −60); ρ*R* := (70, 0, 90); Δ*R* = Δ*L* := (5, −2, 0); G((2, 0, 0)); ρ*L* := (70, 0, 90); *r* = 0.02. **E**: pose id := 0; G((−2, 0, −1)); ρ*R*.y := 90; *T*.z := −80; ρ*L* := ρ*R*. No head-pitch tilt. |
-| 4 (0x416052) | 59 | **W**: *q* = clamp(*t*/P1); *B*.x := 5*q*; *T*.y := 10*q*; *T*.z := −20*q*; ρ*R* := (60*q*, lerp(120, 60, *q*), 60*q*); G((2, 0, 0)); ρ*L* := ρ*R*; *r* = 0.005. **A..D**: class 1 spec 1: Δ*R* := (2, 7, 4), ρ*R* := (0, −60, 0); otherwise *q*₂ = clamp(1.5·…) (n.t.): *B*.x := 0, *T* := (20, 0, 0), ρ*R* := (lerp(90, 30, *q*₂), 0, lerp(90, 0, *q*₂)), *R*.z += 0.5·cos(0.5·*t*), Δ*R* := (−6, 0, 16·*q*₂) (n.t. factor). Then Δ*L* := Δ*R*; G((2, 0, 0)); ρ*L* := ρ*R*. |
-| 5 (0x419a6f) | 64 | All times: ρ*R* := (−90, 0, −40); ρ*L* := (−90, 0, 40); *R*.z += 0.5·cos(0.5·*t*); *L*.z += 0.5·cos(0.5·*t*); Δ*R* := (1, −7, 0); Δ*L* := (−1, −7, 0); *T*.z := −40; *r* = 0.005. |
-| 6 (0x419bee) | 63 | Specialization 1: ρ*R* := (−50, −60, 40); ρ*L* := (−90, 90, −50); hand z wobble as pose 5; Δ*R* := (−3, 7, 3); Δ*L* := (−2, 2, 0); *T*.z := −20; *r* = 0.005. Otherwise: ρ*R* := (−90, 0, −40); ρ*L* := (−90, 90, −40); wobble; Δ*R* := (1, −7, 0); Δ*L* := (−1, −7, 0); *T*.z := −40; *r* = 0.005. |
-| 7 (0x417ab1) | — | *U* := a vector eased by (*t*/D)³·15 (n.t.); ρ*R* := (0, 90, 0); two-handed main: G((2, 0, 0)); *r* = 0.005 / 0.03. |
-| 8 (0x419ebd) | 98 | **Off-hand model present**: *t* < 100: *T*.z := 80, ρ*L* := (0, 0, 90), ρ*R* := (−45, 45, 0); 100 ≤ *t* < 500: *T*.z := −90, ρ*L* := (0, 60, 90), *L*.z += 5, ρ*R* := (−90, 0, 45); *t* ≥ 500: *T*.z := −30, ρ*L* := (0, 100, 60), ρ*R* := (−45, 45, 0). **No off-hand model**: *t* < 100: *T*.z := −80, ρ*R* := (0, 0, 90); 100 ≤ *t* < 500: *T*.z := 90, ρ*R* := (0, 60, −85), Δ*L* += (2, 3, 3), Δ*R* += (2, 3, 3); *t* ≥ 500: *R* += (0, 2, 3), ρ*R*.x := 0, ρ*R*.y := 20; then (all three) G((−3, 0, −3)) and ρ*L* := ρ*R*. |
-| 9 (0x41b54e) | 8, 48 (shield) | **W**: *T*.z := 80; ρ*L* := (0, 0, 90); ρ*R* := (−45, 45, 0); action 48: *B*.z := 360·*t*/300. **after W**: *T*.z := −90; ρ*L* := (0, 0, 90); ρ*R* := (−90, 0, 45). |
-| 10 (0x41b850) | 10 | **W**: as pose 9 W. **A..D**: *T*.z := −90; ρ*L* := (0, 0, 90); ρ*R* := (−90, 0, 45); plus a sine term of (*t* − 600) (n.t.). **E**: STANCE (shield entry with a shield). |
-| 11 (0x41b006) | 28 | Unless appearance flag 0x0004: *T*.z := 60; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0). |
-| 15 (0x41db88) | 2 | Spin variant when (obj +0x1314 / 2) mod 3 = 2: *B*.z := −360·clamp((*t* − P1)/(P1 + P2)), *r* = 0.03; else *B*.z := 0. *U* := record field 24. **W**: *T*.z := 40; ρ*L* := (0, −90, 30); Δ*L*.y −= 4, Δ*L*.z += 4; ρ*R* := (0, −90, −120); Δ*R*.y −= 6. **A..D**: *T*.z := −90; *E*.x := −0.1; ρ*L* := (−90, −90, −30); ρ*R* := (0, −90, −120); Δ*R*.y −= 6. **E**: STANCE. |
-| 16 (0x41e029) | 1 | Spin variant when (obj +0x1314 / 2) mod 3 = 1, as pose 15. *U* := record field 24. **W**: *T*.z := 90; ρ*R* := (0, −90, 0); ρ*L* := (−90, 0, 90); Δ*R*.y += 6, Δ*R*.z += 4. **A..D**: *T*.z := 20; ρ*L* := (−90, −60, 90); Δ*L*.y −= 4, Δ*L*.z += 4; ρ*R* := (0, −90, −220); Δ*R*.y −= 6; *E*.x := 0.1; left foot base y −= 4, right foot base y += 4; turn. **E**: STANCE. Always: off-hand shield → ρ*L* := (0, 0, 90). |
-| 17 (0x41d3ee) | 4, 18 | **W**: *T*.z := 40; ρ*R* := (−90, 90, 30); ρ*L* := (−90, 0, −20); Δ*R*.y −= 6. **A..D**: *T*.z := −90; ρ*R* := (−40, 0, 30); Δ*R* := (3, 0, 4); ρ*L* := (−90, 90, 90); turn; *r* = 0.05. **E**: STANCE. |
-| 18 (0x41d123) | 3, 9, 19, 62 | **W**: *T*.z := −40; ρ*L* := (−90, −90, −30); ρ*R* := (−90, 0, 20); Δ*R*.y −= 6. **A..D**: *T*.z := 90; ρ*L* := n.t. (shield-dependent); Δ*L* := (−3, 0, 4); ρ*R* := (−90, −90, −90); Δ*R* := n.t.; turn; *r* = 0.05. **E**: STANCE. |
-| 19 (0x41be27) | 7 | **P1 < t < D**: *T*.z := −20; *B*.z := −20; ρ*L* := (0, 90, 40); Δ*L* := (0, 8, 4); ρ*R* := (0, 90, 30); then *H*.x := −10, *S*.y := 3, *r* = 0.03. **Otherwise** (guard idle): *T*.z := 0; *B*.z := 0; ρ*R* := (60, −20, 20); Δ*R* := (0, 2 + sin(0.01*t*), 4 + cos(0.01*t*)); ρ*L* := (60, 20, −20); Δ*L* := (0, 2 + sin(0.01*t* + π/2), 4 + cos(0.01*t* + π/2)); a sine is added to one *S* component (n.t.); *r* = 0.03. |
-| 20 (0x41badc) | 6 | **P1 < t < D**: *T*.z := 45; *B*.z := 45; ρ*R* := (0, −90, −90); Δ*R* := (8, 0, 4); ρ*L* := (0, −90, −30); then as pose 19 (*H*.x := −10, *S*.y := 3, *r* = 0.03). **Otherwise**: guard idle as pose 19. |
-| 21 (0x418591) | 22, 23 | Bow/crossbow **in the off hand** (main subtype not 6/7): off-hand crossbow → ρ*L*.y := −90. *t* < D: Δ*L*.y += 5 (bow) or 2 (otherwise, *as read*); Δ*L*.z += 4; Δ*R* += (−10, 3, 3); *T*.z −= 70; ρ*L*.z := 70; ρ*R*.z := 70; while *t* < (a second limit, n.t.): ρ*L*.x := −5, Δ*R* := (−5, 1, 0), main-hand model removed. *t* ≥ D: Δ*R*.x −= 1; ρ*L*.x = ρ*R*.x := −30; ρ*R*.y := 45 (off-hand crossbow: ρ*L*.z := 50). If the off hand is a weapon (type 3) the main hand shows the arrow (840). **Bow/crossbow in the main hand**: the mirror image — crossbow ρ*R*.y := −90; Δ*R*.y += 5 / 2; Δ*R*.z += 4; Δ*L* += (10, 3, 3); *T*.z := 70; ρ*R*.z = ρ*L*.z := −70; then ρ*R*.x := −5, Δ*L* := (5, 1, 0), off-hand model removed; after D: Δ*L*.x += 1, ρ*L*.x = ρ*R*.x := −30, ρ*L*.y := −45; the off hand shows the arrow if the main is type 3. |
-| 22 (0x417c84) | 24, 25, 50, 55, 48 (bow) | **Aiming.** Main not a bow/crossbow: Δ*L* += (−4, 3, 2); Δ*R* += (−10, 2, 1); *T*.z := −60; ρ*L*.z := 60; ρ*L*.y := −90; ρ*R*.z := 60; if slot 6 is a weapon the main hand shows the arrow (840); for *t* < 300 ρ*L*.x += 20 (*as read*). Main bow/crossbow: Δ*R* += (4, 3, 2); Δ*L* += (10, 2, 1); *T*.z := 60; ρ*R*.z := −60; ρ*R*.y := −90; ρ*L*.z := −60; if slot 7 is a weapon the off hand shows the arrow; *t* < 300: ρ*R*.x += 20. |
-| 23 (0x41a5c1) | 37, 43 | **W**: *T*.z := −30; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0); Δ*R*.y += 4, Δ*L*.y += 4; Δ*R*.x, Δ*R*.z, Δ*L*.x, Δ*L*.z each += 0.5·sin or cos of a time term (n.t.). **after W**: *T*.z := 60; ρ*R*, ρ*L* as W. |
-| 24 (0x41ad90) | 39, 41 | **W**: Δ*R*.y += 4, Δ*L*.y += 4, wobble as 23 (also *L*.z); *T*.z := 20. **A..D**: *E*.x := 0.5; *T*.z := −60; *B*.z := −30; ρ*L* := (0, 45, 60); ρ*R* := (−45, 45, 0); Δ*L* := (−2, 0, 0); turn. |
-| 25 (0x41ab1a) | 40, 42 | **W**: as 24 with *T*.z := −20. **A..D**: *E*.x := −0.5; *T*.z := 60; *B*.z := 30; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0); Δ*R* := (2, 0, 0); turn. |
-| 26 (0x41a80b) | 38, 44–46, 94, 95 | **W**: as 23 W. **A..D**: *T*.z := 90; ρ*R* := (−90, 0, −90); ρ*L* := (−45, −45, 0); Δ*R* := (3, 0, 1); *r* = 0.03. **E**: ρ*R* := (−60, 0, 0); Δ*R* := (3, 0, 1). |
-| 27 (0x41a3e6) | 36 | As 23 W at all times. |
-| 28 (0x418ac6) | 11 | **W**: *T*.z := −80; *B*.z := 0; ρ*R* := (−90, 90, −90); ρ*L* := (20, 90, 90). **A**: *T*.z := −90; *B*.z := 360·*u*; ρ*L* := (0, 100, 90); ρ*R* := (0, 90, 0); *r* = 0.2. **R..**: *T*.z := 80; *B*.z := 0; ρ*L* := (90, 90, 270); ρ*R* := (0, 90, 90). |
-| 29 (0x419347) | 12 | **W**: ρ*R* := (−80, −90, 60); ρ*L* := (−80, 90, −60); Δ*R*.y += 3, Δ*R*.x −= 5; Δ*L*.x += 5. **A..D**: *T* := (0, 0, −30); Δ*R*.y −= 5; Δ*L*.y −= 5; ρ*L* := (−90, 90, 110); ρ*R* := (−90, −90, −110); *E*.y := −0.5; *r* = 0.04. **E**: STANCE. |
-| 30 (0x41c115) | 13 | **W**: *q* = *t*/P1; ρ*R* := (−80, 90, −90); Δ*R* := (−10, 8, 8); *T*.z := −45; *B*.z := −20*q* (spin variant when the combo test gives 2 and *t* < P1 + P2: + 360*q*, *inferred* same test as pose 15). **A**: *q*₂ = clamp(1.2·(*t* − P1)/P2): *E*.x := −0.8*q*₂; ρ*R*, Δ*R* := blends (n.t.); *H*.x := −10; *T*.z := 90*q*₂ − 45(1 − *q*₂); *B*.z := 30*q*₂; ℓ := 10*q*₂; *r* = 0.05. **R..**: Δ*R* := (2, 0, 0); ρ*R* := 0; *T*.z := −30. **All phases**: Δ*L* := Δ*R*; ρ*L* := ρ*R*; *L* := *R* + (−0.2, −0.2, −1). |
-| 31 (0x41c67c) | 14 | **W**: ρ*R* := (0, −90, 0); Δ*R* := (−8, 6, 6); *H*.x := −10, *H*.z := 30; *T*.z := 45; *B*.z := 20; *r* = 0.05 (spin variant as 30). **A**: *q*₂ = clamp(1.2·(*t* − P1)/P2): *E*.x := 0.8*q*₂; *H*.z := −30; ρ*R*, Δ*R* blends (n.t.); *T*.z := 45(1 − *q*₂) − 45*q*₂; *B*.z := −30*q*₂; *B*.x := −20*q*₂; ℓ := 10*q*₂; *r* = 0.05. **R..**: as 30. Tail as 30. |
-| 32 (0x41cbda) | 15 | **W**: *q* = *t*/P1; Δ*R* := (2, 2, 14); ρ*R* := (50, 0, 0); *T*.z := −45; *B*.z := −20*q*; *E*.x := 0.5*q*. **A**: *q*₂ = clamp(2·(*t* − P1)/P2): *B*.x := 20(1 − *q*₂) − 10*q*₂; ρ*R*, Δ*R* blends (n.t.); *T*.z := 45*q*₂ − 45(1 − *q*₂). **R..**: as 30. Tail as 30. |
-| 33 (0x41cf8b) | 5 | **W**: Δ*R* := (4, 2, 8); ρ*R* := (−90, −180, 90); *T*.z := −90; *E*.y := −1. **A**: Δ*R* := (6, 0, 0); *E*.y := 0.5; *T*.z := 90; ρ*R* := (−90, 0, −90); turn. **R..**: Δ*R*.x := 2; ρ*R* := 0; *T*.z := −30. Tail as 30. |
-| 34 (0x419a23) | 48 (else) | ρ*R* := (−90, −90, 80); *T*.z := −80. |
-| 35 (0x419748) | 16, 17, 48/93 (off-hand) | **W**: ρ*R* := (−90, 0, 0); ρ*L* := (−90, 0, 40); Δ*R* := (1, −7, 0); Δ*L* := (−1, −7, 0); *T*.z := −40; *E*.y := −0.5; *r* = 0.005; turn. **A..D**: ρ*R* := (−90, −60, −30); ρ*L* := (−90, 60, −50); Δ*R* := (3, 5, 2); Δ*L* := (6, 8, 2); *T*.z := 40; *r* = 0.05; turn. **E**: STANCE (ρ*L*.x := −60). |
-| 37 (0x415dee) | 67 | **W**: ρ*R* := (−90, −90, 80); *T*.z := −80. **A..D**: ρ*R* := (−90, 0, −90); *T*.z := 90; *R*.x += 4; left foot base y −= 4, right foot base y += 4; turn; *r* = 0.05. **W and A..D**: then G((2, 0, 0)) with the left arm base taken from the unmodified arm (n.t.), ρ*L* := ρ*R*. **E**: pose id := 0; *R* += (−8, 4, 0); G((−2, 0, −1)); ρ*R*.x := −60, ρ*R*.z := 20; *T*.z := −20. No head-pitch tilt. |
-| 38 (0x4144fc) | 68 | **W**: *H* := (−30, 10, 90); *T* := (0, 0, 60); *K* := (n.t., −2, 0). **after W**: *H* := (30, −10, −30); *T* := (10, 0, −20); *K* := (3, 0, 2). |
-| 39 (0x41466c) | 69 | **W**: *H* := (−70, 0, 0); *T* := (−10, 0, 0); *K* := (0, −3, −1); ρ*L*.x = ρ*R*.x := 20. **after W**: *H* := (50, 0, 0); *T* := (20, 0, 0); *S* := (0, −3, 1); *K* := (0, 0, 2); ρ*R*.x = ρ*L*.x := −20; *Q* := (n.t., 0, 0). |
-| 40 (0x415624) | 70 | **W**: *B*.z := 90; *H* := (0, 10, −60); *Q* := (0, 0, −70); *r* = 0.002. **after W**: *B*.z := 200; *H* := (0, −20, 60); *K* := (−3, 0, −2); *Q* := (0, 0, 70). |
-| 41 (0x415771) | 71, 72 | **W** (*f* = *t*/P1): hand, foot and head base targets move toward the body offset point by the fraction *f* (head toward body offset + (0, 0, −2), tail toward body offset + (0, 4, 4)): the creature curls up. **A**: pose id := 0; hand, foot and tail models removed (not drawn); *S* := (0, 0, −3). **R** (*g* = 1 − (*t* − P1 − P2)/P3): the same lerps with *g*: it uncurls. |
-| 42 (0x415113) | 73 | **W**: *H* := (−10, 10, 30); *T* := (−10, 0, 0); *K* := (−3, 0, −1); ρ*L*.x = ρ*R*.x := 20; *r* = 0.005. **after W**: *H* := (50, 30, 0) (*H*.y := −30 while *t* < P1 + P2); *T* := (30, 0, 0); *S* := (0, −1, 2); *K* := (0, 0, 2); ρ*R*.x := −60; ρ*L*.x := −20; *Q* as 39; *r* = 0.005. |
-| 43 (0x414878) | 74 | **W**: *H* := (−20, 0, 0); *T* := (50, 0, 0); *S* := (0, −2, 2); *K* := (0, −6, −2); ρ*L*.x := 20; ρ*R*.x := 30; *Q* as 39. **after W**: *H* := (−10, 0, 0); *T* := 0; *K* := (0, 0, 1); ρ*L*.x = ρ*R*.x := 0; *r* = 0.02. |
-| 44, 73 (0x414a6e) | 75, 110 | Five steps (thresholds after the first n.t.): (1) *t* < P1: *H* := (10, 0, 0); *T* := (−20, 0, 0); *S* := (0, −1, 0); *K* := (0, 1, 1); ρ*L*.x = ρ*R*.x := 20; Δ*L*.z = Δ*R*.z := 2; *Q* := (30, 0, 10). (2) *H* := (−30, 0, 0); *T* := (50, 0, 0); *S* := (0, 0, 1); *K* := (0, −4, 2); ρ*L*.x := 60; ρ*R*.x := 70; *Q* as 39. (3) *H* := (−30, 0, 0); *T* := (40, 0, 0); *S* := (0, 1, 1); *K* := (0, −2, 2); ρ*L*.x := 70; ρ*R*.x := −30; Δ*R* := (0, 3, −2); *Q* := (−30, 0, −10). (4) as (3) with *T* := (10, 0, 0), ρ*L*.x := −30, ρ*R*.x := −40, Δ*L* := (0, 3, −2) instead of Δ*R*. (5) *t* < D: *H* := (10, 0, −10); then as (1). |
-| 45 (0x41550e) | 76 | **W**: *T*.x := −10; *H*.x := 10; *Q*.x := −60. **A**: ρ*L*.x = ρ*R*.x := 80; *H*.x := −60; *B*.x := −360·*u*; *K* := (0, −3, 0). **R**: *T*.x := 20; *H*.x := −10; *K* := (n.t., −2, 0). |
-| 46 (0x415420) | 77 | **W**: *T*.z := −10; *T*.y := 30; ρ*L*.y = ρ*R*.y := −30; *H*.z := 60. **A**: ρ*L*.y = ρ*R*.y := 80; *B*.y := −360·*u*. **R**: *T*.y := −30; ρ*L*.y = ρ*R*.y := 30. |
-| 47 (0x415332) | 78 | Mirror of 46: **W**: *T*.z := 10; *T*.y := −30; ρ*L*.y = ρ*R*.y := 30; *H*.z := −60. **A**: ρ.y := −80; *B*.y := 360·*u*. **R**: *T*.y := 30; ρ.y := −30. |
-| 48 (0x4168ac) | 65 | *U* := record field 24. **W**: *q* = clamp(*t*/P1); *T*.y := 10*q*; *T*.z := −80*q*; ρ*R* := (−90, 90*q*, −30*q*); G((2, 0, 0)); *r* = 0.01. **A**: *T* := (10, 0, −90); ρ*R* := (0, 110, −20); *L* := *R*; *r* = 0.01. **R**: *B*.z := 20; *T* := (0, 0, 90); ρ*R* := (0, 90, 90); *L* := *R*. **E**: pose id := 0; G((−2, 0, −1)); ρ*R*.y := 90; *T*.z := −80; ρ*L* := ρ*R*. **A..E**: left arm base y += 10, z −= 4; *B*.z := 360·clamp(progress) (*as read*); ρ*L* := ρ*R*. |
-| 49 (0x416d25) | 61, 66 | *U* := record field 24. **W**: *B*.z := 30; *T* := (0, 0, 90); ρ*R* := (−90, −90, 90); G((2, 0, 0)); ρ*L* := ρ*R*; *r* = 0.005. **A..D**: *T* := 0; ρ*R* := (−90, −90, 0); *E*.x := 0.25 while *t* < P1 + P2; G((−2, 0, 0)); *B*.z := −360·clamp(progress); *r* = 0.03. **E**: pose id := 0; G((−2, 0, −1)); ρ*R* := (−90, 90, 0); *T*.z := 0. |
-| 50 (0x41d62d) | 20, 21 | Base: ρ*R* := (60, −20, 20); Δ*R* := (0, 2, 4); ρ*L* := (60, 20, −20); Δ*L* := (0, 2, 4). **W**: *T*.z := 50; ρ*L*.x := −90; ρ*L*.z := 90; ρ*R*.x := −90; Δ*L* := (−4, −4, −2); Δ*R* := (0, 4, 1). **A**: *q* = clamp(1.5·*u*): *B*.z := −270·*q* (*as read*); *B*.y := −40*q*; *S*.z += 4; ℓ := 40*q*; hands as W; *H*.x := −30; *H*.z := −60; *r* = 0.03. **R..**: guard idle as pose 19. |
-| 51 (0x41414f) | 80 | While *t* < the held item's use limit (§6.5): *H* := (45 + 5·cos(0.02*t*), 0, 0); *T* := (10, 0, 0); *B* := (10, 0, 0); Δ*L* := (1, 7, 8); Δ*R* := (−1, 7, 8); ρ*L* := (100, 0, 0); ρ*R* := (100, 0, 0) (eating, drinking). |
-| 52 (0x41409a) | 81 | Pose 57's settings, then pose 51's (sitting and eating). |
-| 53 (0x4142fc) | 82 | *T* := (−30, 0, 0); Δ*L* := (4, 6, 6); Δ*R* := (−4, 6, 6); *S*.y := 3 (holding the pet item). |
-| 54 (0x4143ab) | 79 | Only while moving (|intent|² > 0): *B*.x := 20; *T*.x := −10; *H*.x := −20; ρ*L*.x = ρ*R*.x := −20; Δ*L*.y += 4, Δ*R*.y += 4; *F* := −40; both foot bases y += 4 and z += n.t. |
-| 55 (0x413f91) | 84 | *B* := (−90, 0, 0); *H*.x := 20; *E*.z := (box.y − box.z)/2 − 0.15; *K* := (0, −1, 0); Δ*L* = Δ*R* := (0, 0, 3) (lying down). |
-| 56 (0x41e576) | field 17 > 0 | *T*.x += 30; Δ*L* := (−2, 0, 0); Δ*R* := (2, 0, 0); ρ*L* := (−10, −10, 90); ρ*R* := n.t. (stunned). |
-| 57 (0x413afd) | 83 | *E*.z := −0.14; *T*.x := 10; Δ*L* = Δ*R* := (0, 4, 0); *K* := (0, 2, −2) (sitting on a seat, *inferred*). |
-| 58 (0x413c3d) | 106 | **Riding** (with the creature passed as the last argument of 0x4128f0): *E*.y −= 0.25; *E* += a seat offset by that creature's type (0x446950); *E*.z += its box.z·0.75 + 0.3·4·*a*·*s₀*; types 22 and 23: *E*.z −= 0.75; *h* := −*E*.z. Then *T*.x := 20; Δ*L* := (4, 6, −3); Δ*R* := (−4, 6, −3); *K* := (0, 2, −2); ρ*L* := (60, 90, 60); ρ*R* := (60, −90, −60) (reins). |
-| 59 (0x413e2b) | 107 | **Boat**: *T*.x := 20; *E*.z += 1.25; *B*.z := −50; Δ*L* := (4, 6, −3); Δ*R* := (−4, 6, −3); *K* := (0, 1, 0); *H* := (0, 0, 30); ρ*L* := (60, 90, 60); ρ*R* := (60, −90, −60). |
-| 60 (0x418cdf) | 86 | *t* < 600: as pose 28 W. 600 ≤ *t* < 5000: *T*.z := 0; *B*.z := 360·*t*/300; ρ*L* := (0, −90, 0); ρ*R* := (0, 90, 0); *r* = 0.2. *t* ≥ 5000: as pose 28 R. |
-| 61 (0x41b08b) | 30–34, 49, 87–90, 92, 105 | **W** (casting): *T*.x := 20; *H*.x := 20; Δ*L* := (3·cos(0.005*t*) − 1, 5, 5·sin(0.005*t*) + 5); Δ*R* := (3·cos(0.005*t* + π) + 1, 5, 5·sin(0.005*t* + π) + 5) (hands circle in opposition). **A**: *T*.x := −20; *T*.z := 10; Δ*L* := (2, 4, 0); Δ*R* := (−2, 6, 0); ρ*L* := (0, 45, 0); ρ*R* := (0, −45, 0). **R**: Δ*L* := (−3, −6, 0); Δ*R* := (3, −6, 0); ρ*L* := (−90, 0, 130); ρ*R* := (−90, 0, −130); *r* = 0.03. |
-| 62 (0x41b3f0) | 35 | Pose 61 W at all times. |
-| 63 (0x418e84) | 91 | Only for *t* < P1 + P2. **W**: one of two mirrored sets by a sign/parity test (n.t.): Δ*L* := (2, −2, 12), Δ*R* := (0, 0, −5), *T* := (−10, 0, 20), *B* := (−5, 0, 10); or Δ*L* := (0, 0, −5), Δ*R* := (−2, −2, 12), *T* := (−10, 0, −20), *B* := (−5, 0, −10); *r* = 0.03. **A**: Δ*L* := (2, −2, 12); Δ*R* := (−2, −2, 12); *T*.x := 20; *B*.x := 10. |
-| 65 (0x41a2fd) | 96 | *t* < D: *T*.z := 90·sin(n.t.); Δ*L* = Δ*R* := 0; *r* = 0.04. |
-| 66 (0x417f9e) | 26 | If obj +0x13b4 > 0 (M-11): **W**: *T*.z := −90; Δ*R* := (2, −2, 1); ρ*R* := (0, 10, 0); off-hand model replaced (n.t.). **A**: *T*.z := 10; Δ*L* := (−2, −2, 1); ρ*L* := (0, −10, 0); main-hand model removed. **R**: both weapon models removed; *T*.z := 90. **A..D**: *B*.z := min(360·(*t* − P1)/200, 700). Otherwise: **W**: *T*.z := −90; Δ*R* := (2, −2, 1); ρ*R* := (0, 10, 0); **after W**: *T*.z := 90; main-hand model removed (the boomerang is in flight). |
-| 67 (0x41825e) | 27 | *T*.z := −90·(record field 23); Δ*R* := (2, −2, 1); ρ*R* := (0, 10, 0); *R*.z and *L*.z += 0.5·cos(n.t.); if field 23 > 0 the off-hand model is replaced (n.t.). |
-| 68 (0x41b689) | 101, 103 | **W**: *T*.x := −20; ρ*L* := (−90, 0, 0); ρ*R* := (−90, 0, 0); Δ*R* := (1, −2, 0); Δ*L* := (−1, −2, 0). **after W**: *T*.x := 0; ρ*L* := (0, 45, 0); ρ*R* := (0, −45, 0); Δ*R* := (−2, 5, 0); Δ*L* := (2, 6, 0). |
-| 69 (0x41916a) | 104 | *t* < P1 + P2: *B*.z := −360·(fraction, n.t.); ρ*R* := (−90, −90, −90); Δ*R* := (4, 3, 0); *T*.z := −60·*t*/(P1 + P2) (*as read*); ρ*L* := (0, 0, 90); *r* = 0.03. Otherwise: ρ*L* := (0, 0, 90); ρ*R* := (−60, −60, −60). |
+| 1 (0x4174a0) | 47, 54 | **t < 500** (fixed 500 ms), *q* = min(*t*/500, 1): two-handed main → ρ*R*.x := 120*q*, Δ*R* := (−*R*.x, 0, 14), Δ*L* := (2, 0, 12); otherwise Δ*R* := (1, 0, 14), Δ*L* := (−1, 0, 14), ρ*L*.x := −100, ρ*R*.x := −100. Then *T*.x := −40*q*; *B*.x := −40*q*; *F* := −50*q*; if the record action id is 48, *B*.x −= min(360·*t*/500, 360); the object's walk amplitude (obj +0x1188) := 0. **500 ≤ t < D**, *q*′ = min(2·(*t* − 500)/500, 1): *B*.x := −60·(1 − *q*′); *T*.x := −20; ρ*R*.x := −70; two-handed → Δ*R* := (−*R*.x, 4, 0), Δ*L* := (2, 4, 0); otherwise Δ*R* := (1, 3, 8), Δ*L* := (−1, 3, 8), ρ*L*.x := −150, ρ*R*.x := −150; *r* := 0.1. **E**: two-handed → *R* += (−8, 4, 0), G((−2, 0, −1)) with arm lift, ρ*R*.x := −60, ρ*R*.z := 20; otherwise Δ*R* := (1, 3, 2), Δ*L* := (−1, 3, 2), ρ*L*.x := −250, ρ*R*.x := −250. **Every phase**, afterwards: off-hand slot item type 3 subtype 13 (shield) → ρ*L* := (−250, −90, 0). (The Δ*L*.x values written as 2 are computed as 2 minus the value present, which is 0 on every path into this case.) |
+| 2 (0x41644b) | 57, 60 | **W**, *q* = min(1.5·*t*/P1, 1): *B*.x := 5 + 10*q*; *T* := (10, 10, −60); ρ*R* := (lerp(90, 60, *q*), 0, lerp(90, 60, *q*)); Δ*R* := (0, 0, 14*q*); Δ*L* := Δ*R*; G((2, 0, 0)) with arm lift; ρ*L* := ρ*R*; *r* := 0.01. **P1 ≤ t < D**, *u* = min((*t* − P1)/P2, 1): *B*.x := −10; *T*.y := 10, *T*.z := 60; ρ*R* := (−70, 0, −60); Δ*R* := (0, 2·sin(*u*·π/2), 0); Δ*L* := Δ*R*; G((2, −1, 0)) without arm lift; ρ*L* := ρ*R*; *r* := 0.04. **E**: pose id := 0; *R* += (0, 2, 3); G((−3, 0, −3)) with arm lift; ρ*R*.x := 0, ρ*R*.y := 20; ρ*L* := ρ*R*. Arm-frame head-pitch tilt omitted (§7.8). |
+| 3 (0x4170ee) | 58 | **W**: *B*.z := 0; ρ*R* := (−90, 0, 0); Δ*R* := (−5, 8, 0); *r* := 0.005. **P1 ≤ t < P1 + P2/2**: *B* := (10, 0, −10); *T* := (30, 0, −30); ρ*R* := (0, 0, 90); Δ*R* := (−8, −4, 20); *r* := 0.005. **P1 + P2/2 ≤ t < D**: *B*.z := −30; *T* := (0, 20, −60); ρ*R* := (70, 0, 90); Δ*R* := (5, −2, 0); *r* := 0.02. In these three branches then Δ*L* := Δ*R*, G((2, 0, 0)) with arm lift, ρ*L* := ρ*R*. **E**: pose id := 0; G((−2, 0, −1)) with arm lift; ρ*R*.y := 90; *T*.z := −80; ρ*L* := ρ*R*. Arm-frame head-pitch tilt omitted. |
+| 4 (0x416052) | 59 | **t < P1/2**, *q* = min(*t*/(P1/2), 1): *B*.x := 5*q*; *T*.y := 10*q*; *T*.z := −20*q*; ρ*R* := (60*q*, lerp(120, 60, *q*), 60*q*); G((2, 0, 0)) with arm lift; ρ*L* := ρ*R*; *r* := 0.005. **t ≥ P1/2** (no upper limit): if record bytes 0x130 and 0x131 (class, specialization) are both 1 → Δ*R* := (2, 7, 4), ρ*R* := (0, −60, 0), *r* := 0.01; otherwise *q*₂ = min(1.5·(*t* − P1/2)/(P1/2), 1), *B*.x := 0, *T* := (20, 0, 0), ρ*R* := (lerp(90, 30, *q*₂), 0, lerp(90, 0, *q*₂)), *R*.z += 0.5·cos(0.5·*t*), Δ*R* := (−6, 0, 16*q*₂), *r* := 0.005. Then Δ*L* := Δ*R*; G((2, 0, 0)) with arm lift; ρ*L* := ρ*R*. |
+| 5 (0x419a6f) | 64 | All times: ρ*R* := (−90, 0, −40); ρ*L* := (−90, 0, 40); wobble (z); Δ*R* := (1, −7, 0); Δ*L* := (−1, −7, 0); *T*.z := −40; *r* := 0.005. |
+| 6 (0x419bee) | 63 | Record byte 0x131 (specialization) = 1: ρ*R* := (−50, −60, 40); ρ*L* := (−90, 90, −50); wobble (z); Δ*R* := (−3, 7, 3); Δ*L* := (−2, 2, 0); *T*.z := −20; *r* := 0.005. Otherwise: ρ*R* := (−90, 0, −40); ρ*L* := (−90, 90, −40); wobble (z); Δ*R* := (1, −7, 0); Δ*L* := (−1, 0, 1); *T*.z := −40; *r* := 0.005. |
+| 7 (0x417ab1) | none in §7.2 | **t < D/2**: *U* := the 3-vector at record 0x144 (meaning *unresolved*); *r* := 0.005. **D/2 ≤ t < D**: *c* = min(15·((*t* − D/2)/(D/2))³, 1); *U* := *c*·(record 0x138 vector) + (1 − *c*)·(record 0x144 vector); *r* := 0.03. **E**: *U* := record 0x138 vector. Every phase: ρ*R* := (0, 90, 0); if two-handed, G((2, 0, 0)) with arm lift. |
+| 8 (0x419ebd) | 98 | **Off-hand model pointer set**: *t* < 100: *T*.z := 80, ρ*L* := (0, 0, 90), ρ*R* := (−45, 45, 0); 100 ≤ *t* < 500: *T*.z := −90, ρ*L* := (0, 60, 90), Δ*L*.z += 5, ρ*R* := (−90, 0, 45); *t* ≥ 500: *T*.z := −30, ρ*L* := (0, 100, 60), ρ*R* := (−45, 45, 0). **No off-hand model**: *t* < 100: *T*.z := −80, ρ*R* := (0, 0, 90); 100 ≤ *t* < 500: *T*.z := 90, ρ*R* := (0, 60, −85), Δ*L* += (2, 3, 3), Δ*R* += (2, 3, 3); *t* ≥ 500: *R* += (0, 2, 3), G((−3, 0, −3)) with arm lift, ρ*R*.x := 0, ρ*R*.y := 20. In all three no-off-hand branches, then G((−3, 0, −3)) without arm lift and ρ*L* := ρ*R*. |
+| 9 (0x41b54e) | 8; 48 with an off-hand shield | **W**: *T*.z := 80; ρ*L* := (0, 0, 90); ρ*R* := (−45, 45, 0); if the record action id is 48, *B*.z := −360·*t*/300. **t ≥ P1**: *T*.z := −90; ρ*L* := (0, 0, 90); ρ*R* := (−90, 0, 45). |
+| 10 (0x41b850) | 10 | **W**: as pose 9 W (including the action-48 term). **P1 ≤ t < D**: *T*.z := −90; ρ*L* := (0, 0, 90); ρ*R* := (−90, 0, 45); *L*.x += sin(0.1·(*t* − 600)); *r* := 0.03. **E**: STANCE (shield form). |
+| 11 (0x41b006) | 28 | Unless appearance flag 0x0004 is set: *T*.z := 60; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0). |
+| 15 (0x41db88) | 2 | First: if *c* = 2 → *B*.z := −360·clamp((*t* − P1)/P2), *r* := 0.03; else *B*.z := 0. *U* := record 0x138 vector. **W**: *T*.z := 40; ρ*L* := (0, −90, 30); Δ*L*.y −= 4, Δ*L*.z += 4; ρ*R* := (0, −90, −120); Δ*R*.y −= 6. **P1 ≤ t < D**: *T*.z := −90; *E*.x := −0.1; ρ*L* := (−90, −90, −30); ρ*R* := (0, −90, −120); Δ*R*.y −= 6. **E**: STANCE. Every phase, last: off-hand subtype byte 13 → ρ*L* := (0, 0, 90). |
+| 16 (0x41e029) | 1 | First: if *c* = 1 → *B*.z := −360·clamp((*t* − P1)/P2), *r* := 0.03; else *B*.z := 0. *U* := record 0x138 vector. **W**: *T*.z := 90; ρ*R* := (0, −90, 0); ρ*L* := (−90, 0, 90); Δ*R*.y += 6, Δ*R*.z += 4. **P1 ≤ t < D**: *T*.z := 20; ρ*L* := (−90, −60, 90); Δ*L*.y −= 4, Δ*L*.z += 4; ρ*R* := (0, −90, −220); Δ*R*.y −= 6; *E*.x := 0.1; left foot base y −= 4; right foot base y += 4; turn. **E**: STANCE. Every phase, last: off-hand subtype byte 13 → ρ*L* := (0, 0, 90). |
+| 17 (0x41d3ee) | 4, 18 | **W**: *T*.z := 40; ρ*R* := (−90, 90, 30); ρ*L* := (−90, 0, −20); Δ*L*.y −= 6. **P1 ≤ t < D**: *T*.z := −90; ρ*R* := (−40, 0, 30); Δ*R* := (3, 0, 4); ρ*L* := (−90, 90, 90); Δ*L* := (−3, −1, 0); turn; *r* := 0.05. **E**: STANCE. |
+| 18 (0x41d123) | 3, 9, 19, 62 | **W**: *T*.z := −40; ρ*L* := (−90, −90, −30); ρ*R* := (−90, 0, 20); Δ*R*.y −= 6. **P1 ≤ t < D**: *T*.z := 90; ρ*L* := (0, 0, 40) if the off-hand subtype byte is 13, else (−40, 0, −30); Δ*L* := (−3, 0, 4); ρ*R* := (−90, −90, −90); Δ*R* := (3, −1, 0); turn; *r* := 0.05. **E**: STANCE (shield form). |
+| 19 (0x41be27) | 7 | **P1 < t < D**: *T*.z := −20; *B*.z := −20; ρ*L* := (0, 90, 40); Δ*L* := (0, 8, 4); ρ*R* := (0, 90, 30); Δ*R* := (1, −4, −1); *H*.x := −10; *S*.y := 3; *r* := 0.03. **Otherwise**: guard idle (*k* = 0.005). |
+| 20 (0x41badc) | 6 | **P1 < t < D**: *T*.z := 45; *B*.z := 45; ρ*R* := (0, −90, −90); Δ*R* := (8, 0, 4); ρ*L* := (0, −90, −30); Δ*L* := (−1, −4, −1); *H*.x := −10; *S*.y := 3; *r* := 0.03. **Otherwise**: guard idle (*k* = 0.01). |
+| 21 (0x418591) | 22, 23 | **Main-hand subtype byte (slot 7) not 6 or 7**: if the off-hand subtype is 7, ρ*L*.y := −90. *t* < 2·D: Δ*L*.y += 5 and Δ*L*.x −= 7 when the off-hand subtype is 6, else Δ*L*.y += 2 and Δ*L*.x −= 3; Δ*L*.z += 4; Δ*R* += (−10, 3, 3); *T*.z −= 70; ρ*L*.z := 70; ρ*R*.z := 70; and while *t* < D/2 also Δ*L*.z −= 2, ρ*L*.x := −5, Δ*R* := (−5, 1, 0), main-hand model removed, *T*.z := −50, ρ*L*.z := 70. *t* ≥ 2·D: Δ*L*.x −= 1; ρ*L*.x := −30; ρ*R*.x := −30; ρ*R*.y := 45; off-hand subtype 7 → ρ*L*.z := 50. From *t* ≥ D/2 on, if the off-hand slot holds item type 3, the main hand draws model 840 (arrow). **Main-hand subtype 6 or 7**: subtype 7 → ρ*R*.y := −90. *t* < 2·D: Δ*R*.y += 5 and Δ*R*.x += 7 for subtype 6, else Δ*R*.y += 2 and Δ*R*.x += 3; Δ*R*.z += 4; Δ*L* += (10, 3, 3); *T*.z := 70; ρ*R*.z := −70; ρ*L*.z := −70; while *t* < D/2 also Δ*R*.z −= 2, ρ*R*.x := −5, Δ*L* := (5, 1, 0), off-hand model removed, *T*.z := 50, ρ*R*.z := −70. *t* ≥ 2·D: Δ*R*.x += 1; ρ*R*.x := −30; ρ*L*.x := −30; ρ*L*.y := −45. From *t* ≥ D/2 on, if the main-hand slot holds item type 3, the off hand draws model 840. |
+| 22 (0x417c84) | 24, 25, 50, 55; 48 with a main-hand bow or crossbow | **Main-hand subtype not 6 or 7**: Δ*L* += (−4, 3, 2); Δ*R* += (−10, 2, 1); *T*.z := −60; ρ*L*.z := 60; ρ*L*.y := −90; ρ*R*.z := 60; if the off-hand slot holds item type 3, the main hand draws model 840; while *t* < 300: Δ*L*.z −= 1, ρ*L*.x += 20, ρ*L*.y −= 20. **Main-hand subtype 6 or 7**: Δ*R* += (4, 3, 2); Δ*L* += (10, 2, 1); *T*.z := 60; ρ*R*.z := −60; ρ*R*.y := −90; ρ*L*.z := −60; if the main-hand slot holds item type 3, the off hand draws model 840; while *t* < 300: Δ*R*.z −= 1, ρ*R*.x += 20, ρ*R*.y += 20. |
+| 23 (0x41a5c1) | 37, 43 | **W**: *T*.z := −30; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0); Δ*R*.y += 4, Δ*L*.y += 4; wobble (Δ). **t ≥ P1**: *T*.z := 60; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0). |
+| 24 (0x41ad90) | 39, 41 | **W**: Δ*R*.y += 4, Δ*L*.y += 4; wobble (Δ); *T*.z := 20. **P1 ≤ t < D**: *E*.x := 0.5; *T*.z := −60; *B*.z := −30; ρ*L* := (0, 45, 60); ρ*R* := (−45, 45, 0); Δ*L* := (−2, 0, 0); turn. |
+| 25 (0x41ab1a) | 40, 42 | **W**: as pose 24 W with *T*.z := −20. **P1 ≤ t < D**: *E*.x := −0.5; *T*.z := 60; *B*.z := 30; ρ*R* := (0, −45, −60); ρ*L* := (−45, −45, 0); Δ*R* := (2, 0, 0); turn. |
+| 26 (0x41a80b) | 38, 44, 45, 46, 94, 95 | **W**: as pose 23 W. **P1 ≤ t < D**: *T*.z := 90; ρ*R* := (−90, 0, −90); ρ*L* := (−45, −45, 0); Δ*R* := (3, 0, 1); *r* := 0.03. **E**: ρ*R* := (−60, 0, 0); Δ*R* := (3, 0, 1). |
+| 27 (0x41a3e6) | 36 | All times: as pose 23 W. |
+| 28 (0x418ac6) | 11 | **W**: *T*.z := −80; *B*.z := 0; ρ*R* := (−90, 90, −90); ρ*L* := (20, 90, 90). **A**: *T*.z := −90; *B*.z := 360·(*t* − P1)/P2; ρ*L* := (0, 100, 90); ρ*R* := (0, 90, 0); *r* := 0.2. **t ≥ P1 + P2**: *T*.z := 80; *B*.z := 0; ρ*L* := (90, 90, 270); ρ*R* := (0, 90, 90). |
+| 29 (0x419347) | 12 | **W**: ρ*R* := (−80, −90, 60); ρ*L* := (−80, 90, −60); Δ*R*.y += 3, Δ*R*.x −= 5; Δ*L*.x += 5. **P1 ≤ t < D**: *T* := (0, 0, −30); Δ*R*.y −= 5; Δ*L*.y −= 5; ρ*L* := (−90, 90, 110); ρ*R* := (−90, −90, −110); *E*.y := −0.5; *r* := 0.04. **E**: STANCE (no creature-type exception). |
+| 30 (0x41c115) | 13 | **W**, *q* = *t*/P1: ρ*R* := (−80, 90, −90); Δ*R* := (−10, 8, 8); *T*.z := −45; *B*.z := −20*q*; *E*.x := 0; if *c* = 2 and *t* < P1 + P2/2, *B*.z += 360*q*; *r* := 0.04. **P1 ≤ t < P1 + P2 + P3**, *q*₂ = min(1.2·(*t* − P1)/P2, 1): *E*.x := −0.8*q*₂; ρ*R* := lerp((−90, 90, 48), (−110, 60, 0), *q*₂); Δ*R* := lerp((−10, 8, 8), (−12, 0, −1), *q*₂); *H*.x := −10; *T*.z := 90*q*₂ − 45·(1 − *q*₂); *B*.z := 30*q*₂; ℓ := 10*q*₂; *r* := 0.05. **Later**: Δ*R* := (2, 0, 0); ρ*R* := (0, 0, 0); *T*.z := −30; *r* := 0.03. **Every phase**, then: Δ*L* := Δ*R*; ρ*L* := ρ*R*; *L* := *R* + (−0.2, −0.2, −1). |
+| 31 (0x41c67c) | 14 | **W**, *q* = *t*/P1: ρ*R* := (0, −90, 0); Δ*R* := (−8, 6, 6); *H*.x := −10, *H*.z := 30; *T*.z := 45; *E*.x := 0; *B*.z := 20; if *c* = 2 and *t* < P1 + P2/2, *B*.z −= 360*q*; *r* := 0.05. **P1 ≤ t < D**, *q*₂ = min(1.2·(*t* − P1)/P2, 1): *E*.x := 0.8*q*₂; *H*.z := −30; ρ*R* := lerp((0, −90, 20), (0, −90, −130), *q*₂); Δ*R* := lerp((−8, 6, 6), (0, 2, 0), *q*₂); *T*.z := 45·(1 − *q*₂) − 45*q*₂; *B*.z := −30*q*₂; *B*.x := −20*q*₂; ℓ := 10*q*₂; *r* := 0.05. **E**: Δ*R* := (2, 0, 0); ρ*R* := (0, 0, 0); *T*.z := −30; *r* := 0.03. **Every phase**, then as pose 30. |
+| 32 (0x41cbda) | 15 | **W**, *q* = *t*/P1: Δ*R* := (2, 2, 14); ρ*R* := (50, 0, 0); *T*.z := −45; *B*.z := −20*q*; *E*.x := 0.5*q*; *r* := 0.04. **P1 ≤ t < P1 + P2 + P3**, *q*₂ = min(2·(*t* − P1)/P2, 1): *B*.x := 20·(1 − *q*₂) − 10*q*₂; ρ*R* := lerp((90, 0, 45), (−90, 0, −45), *q*₂); Δ*R* := lerp((2, 2, 14), (0, 9, 0), *q*₂); *T*.z := 45*q*₂ − 45·(1 − *q*₂); *r* := 0.05. **Later**: Δ*R* := (2, 0, 0); ρ*R* := (0, 0, 0); *T*.z := −30; *r* := 0.03. **Every phase**, then as pose 30. |
+| 33 (0x41cf8b) | 5 | **W**: Δ*R* := (4, 2, 8); ρ*R* := (−90, −180, 90); *T*.z := −90; *E*.y := −1; *r* := 0.02. **A**: Δ*R* := (6, 0, 0); *E*.y := 0.5; *T*.z := 90; ρ*R* := (−90, 0, −90); turn; *r* := 0.05. **t ≥ P1 + P2**: Δ*R* := (2, 0, 0); ρ*R* := (0, 0, 0); *T*.z := −30; *r* := 0.03. **Every phase**, then as pose 30. |
+| 34 (0x419a23) | 48 (no bow, crossbow or off-hand weapon) | ρ*R* := (−90, −90, 80); *T*.z := −80. |
+| 35 (0x419748) | 16, 17; 48 with an off-hand weapon; 93 with an off-hand item | **W**: ρ*R* := (−90, 0, 0); ρ*L* := (−90, 0, 40); Δ*R* := (1, −7, 0); Δ*L* := (−1, −7, 0); *T*.z := −40; *E*.y := −0.5; *r* := 0.005; turn. **P1 ≤ t < D**: ρ*R* := (−90, −60, −30); ρ*L* := (−90, 60, −50); Δ*R* := (3, 5, 2); Δ*L* := (6, 8, 2); *T*.z := 40; *r* := 0.05; turn. **E**: STANCE. |
+| 37 (0x415dee) | 67 | **W**: ρ*R* := (−90, −90, 80); *T*.z := −80. **P1 ≤ t < D**: ρ*R* := (−90, 0, −90); *T*.z := 90; *R*.x += 4; left foot base y −= 4; right foot base y += 4; turn; *r* := 0.05. In both: G((2, 0, 0)) with arm lift; ρ*L* := ρ*R*. **E**: pose id := 0; *R* += (−8, 4, 0); ρ*R*.x := −60, ρ*R*.z := 20; *T*.z := −20; then *L* := *R* + (2, 0, 0) with the left arm base lifted twice (y += 20, z −= 8 in total); ρ*L* := ρ*R*. Arm-frame head-pitch tilt omitted except in E. |
+| 38 (0x4144fc) | 68 | **t < P1 + P2/2**: *H* := (−30, 10, 90); *T* := (0, 0, 60); *K* := (−3, −2, 0). **P1 + P2/2 ≤ t < D**: *H* := (30, −10, −30); *T* := (10, 0, −20); *K* := (3, 0, 2). |
+| 39 (0x41466c) | 69 | **t < P1 + P2/2**: *H* := (−70, 0, 0); *T* := (−10, 0, 0); *K* := (0, −3, −1); ρ*L*.x := 20; ρ*R*.x := 20. **P1 + P2/2 ≤ t < D**: *H* := (50, 0, 0); *T* := (20, 0, 0); *S* := (0, −3, 1); *K* := (0, 0, 2); ρ*R*.x := −20; ρ*L*.x := −20; *Q* := (−10, 0, 0). |
+| 40 (0x415624) | 70 | **W**: *B*.z := 90; *H* := (0, 10, −60); *Q* := (0, 0, −70); *r* := 0.002. **P1 ≤ t < D**: *B*.z := 200; *H* := (0, −20, 60); *K* := (−3, 0, −2); *Q* := (0, 0, 70). |
+| 41 (0x415771) | 71, 72 | **W**, *f* = *t*/P1: each hand base, each foot base and the head base move toward the appearance body offset (the head toward body offset + (0, 0, −2)) by the fraction *f*, i.e. *x* := *x* + (target − *x*)·*f*; the tail base moves toward body offset + (0, 4, 4) the same way. **A**: the head, hand, foot and tail model pointers are cleared (not drawn); *S* := (0, 0, −3). The pose id is not changed. **R**, *g* = 1 − (*t* − P1 − P2)/P3: the same moves with fraction *g*. |
+| 42 (0x415113) | 73 | **t < P1 + P2/2**: *H* := (−10, 10, 30); *T* := (−10, 0, 0); *K* := (−3, 0, −1); ρ*L*.x := 20; ρ*R*.x := 20; *r* := 0.005. **P1 + P2/2 ≤ t < D**: *H* := (50, 30, 0), then *H*.y := −30 while *t* < P1 + P2; *T* := (30, 0, 0); *S* := (0, −1, 2); *K* := (0, 0, 2); ρ*R*.x := −60; ρ*L*.x := −20; *Q* := (−20, 0, 0); *r* := 0.005. |
+| 43 (0x414878) | 74 | **t < P1 + P2/2**: *H* := (−20, 0, 0); *T* := (50, 0, 0); *S* := (0, −2, 2); *K* := (0, −6, −2); ρ*L*.x := 20; ρ*R*.x := 30; *Q* := (−50, 0, 0). **P1 + P2/2 ≤ t < D**: *H* := (−10, 0, 0); *T* := (0, 0, 0); *K* := (0, 0, 1); ρ*L*.x := 0; ρ*R*.x := 0; *r* := 0.02. |
+| 44, 73 (0x414a6e) | 75, 110 | Five steps, first matching: (1) *t* < P1: *H* := (10, 0, 0); *T* := (−20, 0, 0); *S* := (0, −1, 0); *K* := (0, 1, 1); ρ*L*.x := 20; ρ*R*.x := 20; Δ*L*.z := 2; Δ*R*.z := 2; *Q* := (30, 0, 10). (2) *t* < P1 + P2/3: *H* := (−30, 0, 0); *T* := (50, 0, 0); *S* := (0, 0, 1); *K* := (0, −4, 2); ρ*L*.x := 60; ρ*R*.x := 70; *Q* := (−30, 0, 0). (3) *t* < P1 + (2·P2)/3: *H* := (−30, 0, 0); *T* := (40, 0, 0); *S* := (0, 1, 1); *K* := (0, −2, 2); ρ*L*.x := 70; ρ*R*.x := −30; Δ*R* := (0, 3, −2); *Q* := (−30, 0, −10). (4) *t* < P1 + P2: as (3) but *T* := (10, 0, 0), ρ*L*.x := −30, ρ*R*.x := −40, and Δ*L* := (0, 3, −2) instead of the Δ*R* write. (5) *t* < D: *H* := (10, 0, −10); *T* := (−20, 0, 0); *S* := (0, 1, 0); *K* := (0, 1, 1); ρ*L*.x := 20; ρ*R*.x := 20; Δ*L*.z := 2; Δ*R*.z := 2; *Q* := (30, 0, 10). |
+| 45 (0x41550e) | 76 | **W**: *T*.x := −10; *H*.x := 10; *Q*.x := −60. **A**: ρ*L*.x := 80; ρ*R*.x := 80; *H*.x := −60; *B*.x := −360·(*t* − P1)/P2; *K* := (0, −3, 0). **R**: *T*.x := 20; *H*.x := −10; *K* := (0, −2, 0). |
+| 46 (0x415420) | 77 | **W**: *T*.z := −10; *T*.y := 30; ρ*L*.y := −30; ρ*R*.y := −30; *H*.z := 60. **A**: ρ*L*.y := 80; ρ*R*.y := 80; *B*.y := −360·(*t* − P1)/P2. **R**: *T*.y := −30; ρ*L*.y := 30; ρ*R*.y := 30. |
+| 47 (0x415332) | 78 | **W**: *T*.z := 10; *T*.y := −30; ρ*L*.y := 30; ρ*R*.y := 30; *H*.z := −60. **A**: ρ*L*.y := −80; ρ*R*.y := −80; *B*.y := 360·(*t* − P1)/P2. **R**: *T*.y := 30; ρ*L*.y := −30; ρ*R*.y := −30. |
+| 48 (0x4168ac) | 65 | *U* := record 0x138 vector. **t < P1/2**, *q* = min(*t*/(P1/2), 1): *T*.y := 10*q*; *T*.z := −80*q*; ρ*R* := (−90, 90*q*, −30*q*); G((2, 0, 0)) with arm lift; *r* := 0.01. **P1/2 ≤ t < P1**: *T* := (10, 0, −90); ρ*R* := (0, 110, −20); G((2, 0, 0)) with arm lift; *r* := 0.01. **P1 ≤ t < D**: *T* := (0, 0, 90); ρ*R* := (0, 90, 90); G((−2, 0, 0)) with arm lift; *r* := 0.01. **E**: pose id := 0; G((−2, 0, −1)) with arm lift; ρ*R*.y := 90; *T*.z := −80. **Every phase**, then: *B*.z := 360·clamp((*t* − P1)/P2); ρ*L* := ρ*R*. (The third branch also writes *B*.z := 20 before this final assignment replaces it.) |
+| 49 (0x416d25) | 61, 66; 93 with an empty off-hand slot | *U* := record 0x138 vector. **W**: *B*.z := 30; *T* := (0, 0, 90); ρ*R* := (−90, −90, 90); G((2, 0, 0)) with arm lift; ρ*L* := ρ*R*; *r* := 0.005. **P1 ≤ t < D**: *T* := (0, 0, 0); ρ*R* := (−90, −90, 0); *E*.x := 0.25 while *t* < P1 + P2; G((−2, 0, 0)) with arm lift; *B*.z := −360·min((*t* − P1)/P2, 1); ρ*L* := ρ*R*; *r* := 0.03. **E**: pose id := 0; G((−2, 0, −1)) with arm lift; ρ*R* := (−90, 90, 0); *T*.z := 0; ρ*L* := ρ*R*. |
+| 50 (0x41d62d) | 20, 21 | First: ρ*R* := (60, −20, 20); Δ*R* := (0, 2, 4); ρ*L* := (60, 20, −20); Δ*L* := (0, 2, 4). **W**: *T*.z := 50; ρ*L*.x := −90; ρ*L*.z := 90; ρ*R*.x := −90; Δ*L* := (−4, −4, −2); Δ*R* := (0, 4, 1). **A**, *q* = clamp(1.5·(*t* − P1)/P2): *B*.z := −270*q*; *B*.y := −40*q*; *S*.z += 4; ℓ := 40*q*; ρ*L*.x := −90; ρ*L*.z := 90; ρ*R*.x := −90; Δ*L* := (−4, −4, −2); Δ*R* := (0, 4, 1); *H*.x := −30; *H*.z := −60; *r* := 0.03. **t ≥ P1 + P2**: guard idle (*k* = 0.005, *r* unchanged). |
+| 51 (0x41414f) | 80 | While the record action time is below the held item's use limit (record 0x1d8 item; §6.5): *H* := (45 + 5·cos(0.02·*t*), 0, 0); *T* := (10, 0, 0); *B* := (10, 0, 0); Δ*L* := (1, 7, 8); Δ*R* := (−1, 7, 8); ρ*L* := (100, 0, 0); ρ*R* := (100, 0, 0). |
+| 52 (0x41409a) | 81 | The writes of pose 57, then the case of pose 51. |
+| 53 (0x4142fc) | 82 | *T* := (−30, 0, 0); Δ*L* := (4, 6, 6); Δ*R* := (−4, 6, 6); *S*.y := 3. |
+| 54 (0x4143ab) | 79 | Only while the record's movement intent (record 0x30, 3-D) has a squared length > 0: *B*.x := 20; *T*.x := −10; *H*.x := −20; ρ*L*.x := −20; ρ*R*.x := −20; Δ*L*.y += 4, Δ*R*.y += 4; *F* := −40; both foot bases y += 4 and z += 3. |
+| 55 (0x413f91) | 84 | *B* := (−90, 0, 0); *H*.x := 20; *E*.z := (box.y − box.z)·0.5 − 0.15; *K* := (0, −1, 0); Δ*L* := (0, 0, 3); Δ*R* := (0, 0, 3). |
+| 56 (0x41e576) | any, while record 0x120 > 0 | *T*.x += 30; Δ*L* := (−2, 0, 0); Δ*R* := (2, 0, 0); ρ*L* := (−10, −10, 90); ρ*R* := (−10, 10, −90). |
+| 57 (0x413afd) | 83 | *E*.z := −0.14; *T*.x := 10; Δ*L* := (0, 4, 0); Δ*R* := (0, 4, 0); *K* := (0, 2, −2). |
+| 58 (0x413c3d) | 106 | If a mount creature is passed to 0x4128f0 (last argument): *E*.y −= 0.25; *E*.z += 0.75·(mount box.z) + 0.3·(4·*a*·*s₀*), with *a* and *s₀* the drawn creature's own walk amplitude and swing base (§7.4 step 1); then *E* += a seat offset by mount creature type (0x446950): types 26 and 30 → (0, 0, −0.9), 33 → (0, 0, −0.2), 74 → (0, 0, −0.3), 75 → (0, 0, 0.1), 151 → (0, 0, −0.35), any other → 0; mount types 22 and 23 → *E*.z −= 0.75; *h* := −*E*.z. Always: *T*.x := 20; Δ*L* := (4, 6, −3); Δ*R* := (−4, 6, −3); *K* := (0, 2, −2); ρ*L* := (60, 90, 60); ρ*R* := (60, −90, −60). |
+| 59 (0x413e2b) | 107 | *T*.x := 20; *E*.z += 1.25; *B*.z := −50; Δ*L* := (4, 6, −3); Δ*R* := (−4, 6, −3); *K* := (0, 1, 0); *H* := (0, 0, 30); ρ*L* := (60, 90, 60); ρ*R* := (60, −90, −60). |
+| 60 (0x418cdf) | 86 | *t* < 600: as pose 28 W. 600 ≤ *t* < 5000: *T*.z := 0; *B*.z := 360·(*t* − 600)/300; ρ*L* := (0, −90, 0); ρ*R* := (0, 90, 0); *r* := 0.2. *t* ≥ 5000: as pose 28's last branch. |
+| 61 (0x41b08b) | 30–34, 49, 87–90, 92, 105 | **W**: *T*.x := 20; *H*.x := 20; Δ*L* := (3·cos(0.005·*t*) − 1, 5, 5·sin(0.005·*t*) + 5); Δ*R* := (3·cos(0.005·*t* + π) + 1, 5, 5·sin(0.005·*t* + π) + 5). **A**: *T*.x := −20; *T*.z := 10; Δ*L* := (2, 4, 0); Δ*R* := (−2, 6, 0); ρ*L* := (0, 45, 0); ρ*R* := (0, −45, 0). **R**: Δ*L* := (−3, −6, 0); Δ*R* := (3, −6, 0); ρ*L* := (−90, 0, 130); ρ*R* := (−90, 0, −130); *r* := 0.03. |
+| 62 (0x41b3f0) | 35 | All times: as pose 61 W. |
+| 63 (0x418e84) | 91 | Nothing while *t* ≥ P1 + P2 + 400. Otherwise, with *k* = *t* − P1 + 100: if *t* ≤ P1, or ⌊*k*/500⌋ is odd → "both": Δ*L* := (2, −2, 12), Δ*R* := (−2, −2, 12), *T*.x := 20, *B*.x := 10. Else if ⌊*k*/1000⌋ is even → "right": Δ*L* := (0, 0, −5), Δ*R* := (−2, −2, 12), *T* := (−10, 0, −20), *B* := (−5, 0, −10), *r* := 0.03. Else → "left": Δ*L* := (2, −2, 12), Δ*R* := (0, 0, −5), *T* := (−10, 0, 20), *B* := (−5, 0, 10), *r* := 0.03. (The sequence after P1 is right, both, left, both, right, … in 500 ms steps offset by 100 ms.) |
+| 65 (0x41a2fd) | 96 | While the record action time is < D: *T* := (0, 0, 90·sin(0.03·*t*)); Δ*R* := (0, 0, 0); Δ*L* := (0, 0, 0); *r* := 0.04. |
+| 66 (0x417f9e) | 26 | **If obj +0x13b4 > 0** (meaning *unresolved*): W: *T*.z := −90; Δ*R* := (2, −2, 1); ρ*R* := (0, 10, 0); the off hand draws the main-hand weapon model. P1 ≤ *t* < P1 + 300: *T*.z := 10; Δ*L* := (−2, −2, 1); ρ*L* := (0, −10, 0); the off hand draws the main-hand model and the main-hand model is removed. P1 + 300 ≤ *t* < D: both weapon models removed; *T*.z := 90. In every branch then *r* := 0.03 and, while P1 < *t* < D, *B*.z := min(360·(*t* − P1)/200, 700). **Otherwise**: W: *T*.z := −90; Δ*R* := (2, −2, 1); ρ*R* := (0, 10, 0). P1 ≤ *t* < D: *T*.z := 90; main-hand model removed. |
+| 67 (0x41825e) | 27 | *T*.z := −90·(record 0x134); Δ*R* := (2, −2, 1); ρ*R* := (0, 10, 0); wobble (z); if record 0x134 > 0, the off hand draws the main-hand weapon model. |
+| 68 (0x41b689) | 101, 103 | **W**: *T*.x := −20; ρ*L* := (−90, 0, 0); ρ*R* := (−90, 0, 0); Δ*R* := (1, −2, 0); Δ*L* := (−1, −2, 0). **t ≥ P1**: *T*.x := 0; ρ*L* := (0, 45, 0); ρ*R* := (0, −45, 0); Δ*R* := (−2, 5, 0); Δ*L* := (2, 6, 0). |
+| 69 (0x41916a) | 104 | **t < P1 + P2**: *r* := 0.03; *B*.z := −360·*t*/(P1 + P2); ρ*R* := (−90, −90, −90); Δ*R* := (4, 3, 0); *T*.z := −60·*t*/(P1 + P2); ρ*L* := (0, 0, 90). **Otherwise**: ρ*L* := (0, 0, 90); ρ*R* := (−60, −60, −60). |
 | 70 (0x4144af) | 51 | **W**: *B*.x := −30. **A**: *B*.x := 120. |
-| 71 (0x4183ac) | 108 | **W**: Δ*R* := (−3, −2, 10); Δ*L* := (3, −2, 10); the off hand draws model 2101 `iron-deposit` at the hands' midpoint + (0, 0, 8) (§6.5) with weapon scale ×1.5; *T*.x := 40; *B*.x := 10. **A**: Δ*R* = Δ*L* := (0, 5, 0); *T*.x := −20; *B*.x := −40. **R..**: Δ*R* := (2, −1, n.t.); Δ*L* := (−2, −1, 0) (lifting and throwing, *inferred*). |
-| 72 (0x413bb1) | 109 | *t* < 5000: *T*.x := 20; *H*.x := 30; Δ*L* = Δ*R* := (0, 0, 16) (the mana cube is held overhead, §6.5). |
+| 71 (0x4183ac) | 108 | **W**: Δ*R* := (−3, −2, 10); Δ*L* := (3, −2, 10); the off hand draws model 2101 (`iron-deposit`); the frame's weapon scale value is multiplied by 1.5; *T*.x := 40; *B*.x := 10. **A**: *r* := 0.01; Δ*R* := (0, 5, 0); Δ*L* := (0, 5, 0); *T*.x := −20; *B*.x := −40. **t ≥ P1 + P2**: Δ*R* := (2, −1, 0); Δ*L* := (−2, −1, 0). |
+| 72 (0x413bb1) | 109 | While *t* < 5000: *T*.x := 20; *H*.x := 30; Δ*L* := (0, 0, 16); Δ*R* := (0, 0, 16). |
+
+---
+
+## Re-certification (2026-11-15)
+
+Every section was re-checked against `Cube.exe` (SHA-256 `84a7a132…30bf`) only: the
+loader 0x4ee230 (all 2557 load calls), the constructor 0x428750, the generator 0x43f7c0
+(all 156 jump-table cases at 0x443ca0, read instruction by instruction), 0x42c080,
+0x44be40, 0x444680, the key-colour and mesher routines, the item selectors, 0x4b4ef0,
+0x4128f0 with its pose cases and draw tail, and the walk-cycle and display steps of
+0x60c510. Reconstruction leads (Infinite-Cubes) were **not** consulted. Implementer
+advice, verification procedures, "resolves X-n" history notes and in-text "correction to"
+notes were removed; the text was rewritten as independent prose.
+
+### Corrections (old → new; evidence)
+
+Marked **[REVERSAL]** where a claim was inverted and **[DRAW ORDER]** where the order of
+draws (random or render) changed.
+
+1. §1: "74 pose cases" → the jump table has 73 entries (poses 1–73; bound check at
+   0x413aed); poses 12, 13, 14, 36, 64 have no case and 44/73 share one.
+2. §3.2: "head pitch 0" → body pitch (offset 0x48) 0 (0x428750).
+3. §3.3 **[REVERSAL]**: 0x444680 was cited as the quadruped test and as excluding
+   0x0800/0x1000 "together with 0x0200"; it tests no single flag bit — it returns true only
+   when flags & 0x1a00 = 0 and the type is in a fixed list (0x444680).
+4. §3.3: "seen on" lists rebuilt from the per-type writes of 0x43f7c0. Slimes (0x29) and the
+   snout beetle (0x29) do **not** carry 0x0010; 0x0001 is also set on slimes, the
+   frightener, beetles and the dragon; 0x0020 is on every flagged type except 86 and 97;
+   bit 0x0004 (type 118, 0x44069a) and run-time bit 0x2000 (0x60c9c6) were added.
+5. §5.1: "flag 1 for 2068 models" → 2068 load calls with flag 1 and 489 with flag 0
+   (2557 calls); 2550 slots are filled and 2061 of them end with flag 1 (0x4ee230).
+6. §5.1 rule 3 re-stated from the calls: the meshed voxel is tested with the model's key
+   flag (e.g. 0x4e7938..0x4e7946), neighbours in strict mode (e.g. 0x4ea1fe..0x4ea203).
+7. §4.2 / Appendix B header: the hair-colour list "types 0–5, 7–14 and 148–149 copy" (which
+   contradicted "13–14 set white") → 0–5, 7–12, 148–149 copy; 13–14 white; 15–16 copy via
+   0x428920; 6 and 46 draw.
+8. Appendix B type 119 **[DRAW ORDER]**: old order head, hand, foot, body, tail with
+   separate hand and foot draws → head (draw 1), body (draw 2), hand **and** foot from one
+   shared draw 3, tail (draw 4), then draws 5–8 as before (0x443ad9..0x443c48).
+9. Appendix B: boxes of types 4, 5, 9, 10, 48, 49, 81, 87–93 are computed from the base box
+   (÷1.2, ×1.5, ×1.1, ×0.7, ×0.9 in single precision; 0x43fc40, 0x440aaa, 0x4412bc,
+   0x44144d, 0x441516); type 81's z is 3.2400002, not exactly 3.24.
+10. Appendix B type 116: the box draw is made before the model writes (0x4439a6).
+11. Header: server generator "byte-identical in size and logic" → same size only; logic
+    identity and the server new-player defaults moved to §8 (U-4).
+12. §4.1: the creation screen also derives the type itself, writes the class byte (record
+    0x130) and uses 6/15 ranges for types without their own range (0x42c080).
+13. §5.2: head tinting (was open) → the head draw sets no material and is not tinted
+    (0x420433..0x4206c7).
+14. §5.2 / §6.5 shimmer: boots were missing; both feet set shimmer from slot 3 (0x423ae4,
+    0x423d03); the right hand sets none; the lantern clears it (0x423352).
+15. §6.1: item types 14, 16, 17, 18 were "unknown" → named from their models; level is
+    16-bit read signed, default 1 dropped (0x4c70b0).
+16. §6.3: chest material 6 with subtype > 6 was unstated → falls into the shoulder default
+    1149 + 5v + r (0x4ec5eb..0x4ec5f4, 0x4ec94d).
+17. §6.4 held item: "at the right hand" → at the midpoint of the two hands, during actions
+    80/81 below the use limit (0x420de8..0x420ec7, 0x4c6b80).
+18. §6.4 slot 12: "in the hand when a pet is held (inferred)" → at the hands' midpoint
+    during action 82 (0x420f5a).
+19. §6.4 slot 11: glider (mode 0x10) and boat (action 107) are independent tests (0x41f726,
+    0x41f8c8).
+20. §6.4 additions: head, hair, tail, arm and wing are appearance-only; an absent hand model
+    also suppresses the lantern (0x422ff4); slot offsets 0x2f0 + 0x118·k.
+21. §7.5 **[DRAW ORDER]**: gliders/boats/special items were drawn last (#15) → glider
+    (0x41f72d), boat (0x41f8c6) and mana cube (0x41fa97) are drawn first, before the chest.
+22. §7.5 **[DRAW ORDER]**: the two bow back-quivers (0x421092, 0x421269) come before the
+    main weapon; the slot-6 quiver (0x42243d) after the off-hand weapon; the lantern between
+    the left and right hands (0x423219); the left hand before the right; the −x wing before
+    the +x wing; left foot before right foot.
+23. §6.5 **[REVERSAL]** sheathed main weapon: "Ry(−45), −135 for a staff" → −45 for a staff
+    (subtype 10), −135 for every other subtype (0x4215b7..0x4215e2).
+24. §6.5 sheathed main weapon: "same grip translation as in the hand" → always centred
+    (0x421634 → 0x42198a).
+25. §6.5 grip tables: the tests are made in a fixed order (arrow, staff, bracelet, bow,
+    crossbow, boomerang, fist, other for the main hand).
+26. §6.5 glow: "each weapon" → main weapon in hand or sheathed (0x421467); off-hand weapon
+    only in the hand (sheathed path skips 0x42227b).
+27. §7.7 step 9 **[REVERSAL]** knocked down: upright *E*.z = (box.y − box.z)/2, quadruped
+    (box.x − box.z)/2 — the old text had box.x and box.y swapped (0x41e711, 0x41e787).
+28. §7.4 step 3 quadruped hand targets: y is *h*.y + 2.1 − 5*a* (was *h*.y) (0x413567 →
+    0x41369e).
+29. §7.4 step 7 base translation: "creature position − camera position" → displayed x/y
+    plus two caller-supplied 64-bit offsets; z = displayed z − ⌊bob·65536⌋ + ⌊E.z·65536⌋
+    with no offset (0x41f19d..0x41f220).
+30. §7.4 step 1: swing constant 2.19911485751 → stored double 2.19911482006215 (0.7π rounded
+    to single); phase + π/2 is rounded to single before the sine (0x412df0..0x412e26).
+31. §7.4 step 1: the "unknown limit" of poses 51/52 → the held item's use limit (0x4c6b80).
+32. §7.7 step 13: the action-28 vector follows normalised record field 26, not the
+    velocity, with its own rate-0.01 weight (0x41ef87..0x41f02c).
+33. §7.4 step 2: the riding leg pose also requires record byte 0x50 ≠ 5 (0x413479).
+34. §7.4 step 7 dodge: "field 15 > 0" → field 15 ≠ 0 (0x41f22b); the hand raise applies to
+    the composed hands even when the roll is skipped, and twice when also gliding.
+35. §7.1: mount id row "record 0x1b8 (obj +0x11c8)" → client-only obj +0x11c0 (u64); inputs
+    actually read were added.
+36. §7.6: walking hand targets (5.43, 7.80, 1.9) / (−5.43, −13.60, 1.9) → (5.448, 7.792, 1.9) /
+    (−5.448, −13.592, 1.9).
+37. §7.4 step 6: shortest-arc step restated from 0x423f70 (asin of clamped sin·cos − cos·sin).
+38. §7.2 **[REVERSAL]** action 93 with an empty off hand: pose 2 → pose 49 (0x4b52dc →
+    0x4b4fbd).
+39. §7.2 action 48: "any off-hand weapon → 35" → off-hand item type 3 and subtype ≠ 13 → 35;
+    off-hand type other than 3 → 34 (0x4b51f0..0x4b5225).
+40. §7.3 **[REVERSAL]** missing mount: "a mount that no longer exists or has health ≤ 0
+    clears the id" → only an existing mount with health ≤ 0 clears it; an unresolved id is
+    kept (0x61e9c5 → 0x61e9e6).
+41. §7.3 riding: "the rest of the step is skipped" → only the phase/amplitude increments;
+    the flag clears, clamp and three relaxations still run (jump to 0x61f000).
+42. §7.3: the size value *S* (was open) → collision box x (0x619137..0x619151).
+43. §7.3 footsteps: the sound is placed at the creature position, the ground probe at
+    position.z − 0.5·box.z − 0.5 block, block type = type byte AND 0x1F; footsteps only in the
+    on-ground non-climbing branches; the gate is a non-null local-player reference
+    (0x61ed8f..0x61ef06, 0x434c10).
+44. §7.3 additions: gliding bit 0x10 cleared unless slot 11 holds a glider (type 23 subtype 0);
+    lantern bit 0x200 cleared unless slot 10 holds type 24 (0x61f008..0x61f03b).
+45. §7.3: relaxation is *dt* successive single-precision steps (0x411d40); the "power"
+    equivalence advice was removed.
+46. §7.10: two-stage fixed-point position smoothing (all axes by trunc(Δ·wf/65536), then z
+    again by trunc(float Δz·w)) (0x42c580, 0x42c900, 0x42c980, 0x61fc09..0x61fc4f).
+47. §7.10 attach rule (condition was "not traced") → record byte 0x50 = 5, the creature id at
+    record 0x188 resolves, and that creature's action is 106 (0x61f968..0x61f994);
+    "carrying" label dropped.
+48. §7.8 STANCE: "unless the action is 87 or 96" → unless the creature **type** is 87 or 96
+    (0x4199a7 and the other stubs); pose 29 has no such test.
+49. §7.8 STANCE shield rule: "(−80, 40, 60) skipped with a shield" → poses 10 and 18 write
+    (0, 0, 90) with a shield; other entries always write (−80, 40, 60) (0x41baa4, 0x41d3b6).
+50. §7.8 Grip G: the arm lift is per case, not part of G (absent in pose 2 P1..D, pose 8
+    below 500 ms, poses 30–33).
+51. Appendix C pose cases (0x413afd..0x41e660): every former "n.t." cell resolved and the
+    following values changed — pose 1 500..D *B*.x curve and both ρ.x = −150 (0x4178ba);
+    pose 2 phase split P1..D / E (0x416625, 0x4167b8); pose 3 middle phase ends at P1 + P2/2
+    with Δ*R* (−8, −4, 20), W Δ*R* (−5, 8, 0) (0x417169..0x417247); pose 4 W is *t* < P1/2
+    (0x416052, 0x416398); pose 6 non-specialised Δ*L* (−1, 0, 1) (0x419ea1); pose 7 *U* blend
+    of record 0x144/0x138 (0x417ab1..0x417bcf); pose 8 Δ*L*.z is a channel offset
+    (0x419f88); poses 9/10 action-48 term negative, −360·*t*/300 (0x41b5e9, 0x41b8eb); pose
+    10 *L*.x += sin(0.1·(*t* − 600)) (0x41b9b1); pose 15 spin divisor P2 (0x41dbc3) and shield
+    rule in every phase (0x41dfe8); pose 17 W Δ*L*.y −= 6, not Δ*R* (0x41d47a); pose 18 ρ*L*
+    and Δ*R* resolved; poses 19/20 extra Δ writes and *S*.z sine; pose 21 limit 2·D, second
+    limit D/2, hand fix-ups were swapped (0x4185d1); pose 22 extra *t* < 300 writes
+    (0x417dc5, 0x417f46); pose 24 "(also *L*.z)" removed; pose 30 spin window P1 + P2/2, W
+    rate 0.04, blends resolved; pose 31 spin subtracted; pose 32 W rate 0.04, blends
+    resolved; pose 33 W rate 0.02; pose 37 E net effect; poses 38, 39, 42, 43 boundary
+    P1 + P2/2 and *Q* values (39: (−10, 0, 0); 42: (−20, 0, 0); 43: (−50, 0, 0)); pose 41
+    also removes the head and does not reset the pose id (0x415a78..0x415a96); pose 44/73
+    thresholds and step-5 *S* (0, 1, 0) (0x415063); pose 45 R *K* (0, −2, 0); pose 48 phase
+    split and *B*.z override (0x416c9f); pose 49 adds ρ*L* := ρ*R*; pose 50 keeps the default
+    rate after its active phase; pose 54 foot z += 3 (0x41391b); pose 56 ρ*R* (−10, 10, −90);
+    pose 58 seat-offset table of 0x446950; pose 60 *B*.z uses *t* − 600 (0x418d93); pose 63
+    active until P1 + P2 + 400 with a 500/1000 ms alternation (0x418e84..0x419151); poses
+    65, 66 (middle phase ends at P1 + 300), 67, 69, 71 resolved.
+
+### Confirmations
+
+* Appendix A: all 2569 slots match the load calls of 0x4ee230, including the empty and
+  doubly loaded slots; the key-flag 0 set of §5.1 matches exactly.
+* §3.1/§3.2: layout size 172 and every default value (0x428750).
+* §4.1: race/sex table, the five no-record draws and their colour mapping (B, G, R), the 20-
+  byte record read by 0x44be40.
+* §4.3 example and Appendix B: every model index, modulus, flag value, scalar and vector of
+  all 156 types (0x43f7c0), apart from the items listed above.
+* §5.1: key colours, list offsets, scan order, the hair-model voxel counts (data1
+  `human-hair-m01`), and the red voxels of `troll-head`, `santa-head`, `santa-body`.
+* §6.1–§6.3.1 and §7.11 item 9: every item model rule (0x51be60, 0x4ec370, 0x4ec400).
+* §7.2: every action→pose cell except action 93; field 17 → pose 56 (0x4b532f).
+* §7.3–§7.7, §7.9, §7.10: constants, rates, channel offsets, smoothing order, rotation
+  orders and frames, except the items listed above; worked examples 1–8 recomputed.
+
+### Unresolved
+
+U-1 … U-14 of §8.

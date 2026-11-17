@@ -9,6 +9,16 @@
 #include <map>
 #include <tuple>
 
+// How one creature is shaded this frame (rendering §11.2; CreatureShading.h).
+struct CreatureLook {
+    glm::vec4 material{1};         // steps 1-3 for the objects pass
+    glm::vec4 deferredMaterial{1}; // the same for the deferred translucent body (kind-1 tints only)
+    float white = 0;               // the hit flash (+0x1184)
+    bool trail = false;            // the five motion-trail ghosts
+    float stealth = 0;             // +0x1190: positive defers the body until after the water
+    glm::vec3 velocity{0};         // +0x34, blocks per second: the ghosts' displacement
+};
+
 class CreatureView {
   public:
     CreatureView(Renderer &renderer, const Content &content) : renderer(renderer), content(content) {}
@@ -22,11 +32,12 @@ class CreatureView {
     // A model's mesh as it is stored (0 when the slot has no model).
     MeshId plainMesh(uint16_t slot) { return mesh(slot, false, 0xffffff); }
     // Adds the creature's parts at `position` (render space, the centre of its collision box).
-    // With `effects`, the creature's weapon trails go there (trails §1.3). True when a foot
-    // came down this frame (models §7.3).
+    // With `effects`, the creature's weapon trails go there (trails §1.3). With `look`, the
+    // creature's material, hit flash, motion-trail ghosts and translucency apply (rendering
+    // §11.2). True when a foot came down this frame (models §7.3).
     bool draw(std::vector<DrawItem> &items, const creatures::Appearance &a, creatures::PoseState &state,
               const creatures::Motion &motion, glm::vec3 position, float dtMs,
-              std::vector<EffectVertex> *effects = nullptr);
+              std::vector<EffectVertex> *effects = nullptr, const CreatureLook *look = nullptr);
     // The creature's posed parts as meshes and their matrices (voxel mesh -> blocks from the
     // centre of the box), for drawing it outside the world (the character panels).
     std::vector<std::pair<MeshId, glm::mat4>> parts(const creatures::Appearance &a, creatures::PoseState &state,
@@ -53,4 +64,5 @@ class CreatureView {
     std::map<uint16_t, Model> models;
     std::map<std::tuple<uint16_t, bool, uint32_t>, MeshId> meshes;
     MeshId cube = 0;
+    uint32_t translucentGroups = 0; // tells consecutive translucent creatures apart
 };

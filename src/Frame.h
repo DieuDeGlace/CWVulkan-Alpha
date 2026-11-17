@@ -54,6 +54,18 @@ PointLight pointLightAt(glm::dvec3 absolute, glm::vec3 relative, float radius, g
 // Global fallback for model draws; terrain keeps separate per-chunk selections.
 constexpr int FRAME_LIGHTS = 16;
 
+// Where a world draw falls in the frame (alpha-rendering.md §1.3, rulings §16):
+//   Opaque       the objects pass (statics, items, opaque creatures), depth writes on
+//   Ghost        a motion-trail ghost: in the objects pass, blended, depth writes off
+//   Effect       particles after the objects, depth writes off (§1.3 step 15)
+//   Translucent  a creature body queued until after the water (§1.3 step 18)
+enum class DrawLayer : uint8_t { Opaque, Ghost, Effect, Translucent };
+
+// Rulings §13: the point lights draws after the water see. No upload follows the water
+// loop, so they keep the last drawn water sub-mesh's chunk row, or the frame list (row 0)
+// when no water was drawn. `drawnRow` is that last water draw's row, if any.
+inline uint32_t postWaterLightRow(std::optional<uint32_t> drawnRow) { return drawnRow.value_or(0); }
+
 struct FrameConstants {
     glm::mat4 viewProjection;
     glm::mat4 skyViewProjection;

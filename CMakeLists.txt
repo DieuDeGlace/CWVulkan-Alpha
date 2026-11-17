@@ -113,6 +113,7 @@ add_library(engine STATIC
     src/SectorLights.cpp
     src/CreatureLights.cpp
     src/CachedLights.cpp
+    src/CreatureShading.cpp
     src/Audio.cpp
     src/Dictionary.cpp
     src/ItemNames.cpp

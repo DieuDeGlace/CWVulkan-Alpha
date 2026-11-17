@@ -48,7 +48,7 @@ class Player {
     // Adds the player's creature to the draw list.
     // Also the player's footsteps (models §7.3), into the ability effects' sounds.
     void draw(std::vector<DrawItem> &items, CreatureView &creatureView, float dtMs,
-              std::vector<EffectVertex> *effects = nullptr);
+              std::vector<EffectVertex> *effects = nullptr, const CreatureLook *look = nullptr);
 
     const creatures::Body &body() const { return state; }
     creatures::Body &body() { return state; }

@@ -170,12 +170,16 @@ std::vector<Star> stars() {
     };
     std::vector<Star> out;
     out.reserve(3000);
+    // Each cosine and sine is taken of the binary32 angle in binary64, then rounded.
+    const auto cosine = [](float angle) { return (float)std::cos((double)angle); };
+    const auto sine = [](float angle) { return (float)std::sin((double)angle); };
     for (int i = 0; i < 3000; i++) {
-        double azimuth = rand() * 2 * PI / 32767;
-        double elevation = rand() * (PI / 2) / 32767;
+        // §8.3: exactly four draws per star, in this order.
+        const float azimuth = (float)(rand() * 2 * PI / 32767);
+        const float elevation = (float)(rand() * (PI / 2) / 32767);
         float size = (float)rand() * .1f / 32767 + .01f;
-        float a = (float)azimuth, e = (float)elevation;
-        glm::vec3 position(std::cos(a) * 100 * std::cos(e), std::sin(a) * 100 * std::cos(e), 100 * std::sin(e));
+        const float r = 100.f * cosine(elevation);
+        const glm::vec3 position(cosine(azimuth) * r, sine(azimuth) * r, 100.f * sine(elevation));
         if (rand() % 10 == 0)
             size *= 2;
         out.push_back({position, size});

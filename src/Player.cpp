@@ -351,7 +351,7 @@ void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
 }
 
 void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, float dtMs,
-                  std::vector<EffectVertex> *effects) {
+                  std::vector<EffectVertex> *effects, const CreatureLook *look) {
     if (camera.distance < 0.8f)
         return; // looking from inside the head
     creatures::Motion motion;
@@ -364,18 +364,19 @@ void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, floa
     motion.running = (state.mode & 0x40) != 0;
     motion.climbing = (state.mode & creatures::CLIMB) && (state.contact & creatures::ON_WALL);
     motion.gliding = (state.mode & creatures::GLIDER) != 0;
+    motion.lantern = (state.mode & creatures::LANTERN) != 0;
     motion.lens = (state.mode & creatures::LENS) != 0;
     motion.dodgeMs = (float)state.dodgeMs;
     motion.fighter = &fighter;
     glm::dvec3 at = state.blocks();
     at.z -= state.bob;
-    if (creatureView.draw(items, looks, pose, motion, view.toRender(at), dtMs, effects)) {
-        // Models §7.3: a footstep, softer on type-3 ground.
-        const glm::dvec3 feet = state.blocks() - glm::dvec3(0, 0, state.size.z * 0.5);
-        const glm::ivec3 below = glm::ivec3(glm::floor(feet - glm::dvec3(0, 0, 0.5)));
+    if (creatureView.draw(items, looks, pose, motion, view.toRender(at), dtMs, effects, look)) {
+        // Models §7.3: a footstep at the creature's position, softer on type-3 ground, which is
+        // probed half the box height and half a block below it (1/65536 blocks).
+        const glm::ivec3 below = creatures::footstepCell(state.position, state.size.z);
         if (blockType(below.x, below.y, below.z) == 3)
-            abilityEffects.placed.push_back({feet, 33 + random.draw() % 3, 1, 1});
+            abilityEffects.placed.push_back({state.blocks(), 33 + random.draw() % 3, 1, 1});
         else
-            abilityEffects.placed.push_back({feet, 32, 1 + 0.2f * (float)random.draw() / 32767.f, 1});
+            abilityEffects.placed.push_back({state.blocks(), 32, 1 + 0.2f * (float)random.draw() / 32767.f, 1});
     }
 }

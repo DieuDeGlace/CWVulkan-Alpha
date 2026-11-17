@@ -70,6 +70,17 @@ worldgen::ItemRecord missionRewardGear(const MissionArea &mission, int32_t chara
 std::vector<worldgen::ItemRecord> missionRewards(const MissionArea &mission, int32_t characterClass,
                                                  worldgen::Random &random);
 
+// §2.1 (rulings-mission-rewards Ruling 3): the region whose daily pass a player tests: the
+// owner indices (rx, ry) of the player's block position (each axis truncated toward zero), or
+// none when no region cell is found. Not the region containing the position (block / 16384).
+std::optional<std::pair<int32_t, int32_t>> missionPassRegion(const worldgen::World &world, glm::dvec3 position);
+// §3.2 step 5: a wandering group's member count n = trunc(4 (u / 32767)²) for the draw u.
+int32_t wanderingGroupSize(int32_t u);
+// §3.2 step 3: one route point of a group leader in zone `zone`: y is drawn before x, and z
+// rises from the zone-centre column's field +0x14 to the first air or water block at the
+// point, at most 100 tests (start + 100 when none qualifies).
+std::array<int32_t, 3> wanderingRoutePoint(const worldgen::Zone &zone, worldgen::Random &random);
+
 // The map cell of a zone, and the cell's location record (null when its region is not ready).
 inline std::pair<int32_t, int32_t> cellOfZone(int32_t zx, int32_t zy) {
     return {worldgen::floorDiv(zx, 8), worldgen::floorDiv(zy, 8)};
@@ -133,10 +144,10 @@ class Missions {
     // listed for section 13 (takeChanged).
     void dailyPass(const worldgen::World &world, int32_t rx, int32_t ry, const std::vector<Player> &players,
                    worldgen::Random &random);
-    // §3.1, §3.2: the extra spawns of zone (zx, zy): its cell's monster, or a wandering group.
-    // `ground` is the zone's ground height at a column.
-    std::vector<worldgen::Spawn> zonePass(const worldgen::World &world, int32_t zx, int32_t zy,
-                                          const std::function<float(int32_t, int32_t)> &ground,
+    // §3.1, §3.2: the extra spawns of the loaded `zone`: its cell's monster, or a wandering
+    // group, each finished (appearance, mode-0 equipment) in the order of §2.7 step 4. The
+    // ground height is the top of the zone-centre column (fields +0x10 + +0x1c).
+    std::vector<worldgen::Spawn> zonePass(const worldgen::World &world, const worldgen::Zone &zone,
                                           const std::vector<Player> &players, worldgen::Random &random) const;
     // §4: a player inside a location's area discovers its mission.
     void discover(const worldgen::World &world, glm::dvec3 position);

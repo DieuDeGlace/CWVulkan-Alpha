@@ -54,6 +54,13 @@ struct DrawItem {
     glm::vec4 material{1};
     // Materials §1.2: iron, gold, silver and ice items shimmer (world draws only).
     bool shine = false;
+    // World draws: where in the frame the item is drawn (rendering §1.3 steps 15-18).
+    DrawLayer layer = DrawLayer::Opaque;
+    float alpha = 1; // the pixel alpha constant (ghosts, translucent creatures)
+    float white = 0; // §5 step 9: the hit flash, towards white
+    // Translucent creatures: consecutive items with one nonzero group are one creature, drawn
+    // depth-only and then in colour.
+    uint32_t group = 0;
 };
 
 // One corner of a blended effect triangle (weapon trails): world blocks and an RGBA colour
@@ -136,9 +143,22 @@ class Renderer {
     void updateWaterConstants(const FrameConstants &frame);
     void snapshotWaterBackground(VkCommandBuffer cmd);
     // Binds and draws the items that pass `visible`; returns how many.
-    // `only` limits the scene pass to one kind of shading; the shadow pass draws every kind.
+    // `only` limits the scene pass to one kind of shading and one layer; the shadow pass
+    // draws every kind.
     uint32_t drawItems(VkCommandBuffer cmd, const std::vector<DrawItem> &items, const glm::mat4 &clip, bool shadowPass,
-                       Shading only = Shading::World);
+                       Shading only = Shading::World, DrawLayer layer = DrawLayer::Opaque);
+    // Draws one item inside the view planes with the given point-light row (0: the frame
+    // list); false when it was skipped.
+    bool drawItem(VkCommandBuffer cmd, const DrawItem &item, const std::array<glm::vec4, 6> &planes, uint32_t lightRow);
+    // The terrain light row of a chunk mesh (solid or water), or 0.
+    uint32_t lightRowOf(MeshId mesh) const { return mesh < meshLightRows.size() ? meshLightRows[mesh] : 0; }
+    // §1.3 step 15: statics, items and opaque creatures with their motion-trail ghosts in
+    // list order, then the particles; returns how many were drawn.
+    uint32_t drawObjects(VkCommandBuffer cmd, const std::vector<DrawItem> &items, const glm::mat4 &clip);
+    // §1.3 step 18: the queued translucent creatures, each depth-only then in colour, lit by
+    // `lightRow` (rulings §13).
+    uint32_t drawTranslucent(VkCommandBuffer cmd, const std::vector<DrawItem> &items, const glm::mat4 &clip,
+                             uint32_t lightRow);
 
     // RendererPost.cpp
     bool createPostResources();
@@ -189,6 +209,8 @@ class Renderer {
     VkPipeline cloudPipeline = VK_NULL_HANDLE;
     VkPipeline waterPipeline = VK_NULL_HANDLE;
     VkPipeline effectPipeline = VK_NULL_HANDLE;
+    VkPipeline ghostPipeline = VK_NULL_HANDLE, particlePipeline = VK_NULL_HANDLE;
+    VkPipeline translucentDepthPipeline = VK_NULL_HANDLE, translucentPipeline = VK_NULL_HANDLE;
     std::vector<EffectVertex> effects;
     Buffer effectBuffer; // grown as needed
     VkSampler depthSampler = VK_NULL_HANDLE;

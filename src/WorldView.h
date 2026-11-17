@@ -65,6 +65,11 @@ class WorldView {
     std::optional<uint16_t> lensWord;
     // The followed camera's constructed view; empty keeps the look-at view.
     std::optional<std::array<std::array<float, 4>, 4>> nativeView;
+    // Rendering §11.4: the local player's block column, which gates the clouds. Empty (a free
+    // camera with no player) uses the camera's column as the engine's fallback.
+    std::optional<glm::ivec2> playerColumn;
+    // §7.1 steps 1-3: this frame's fog target from the chunks held round the camera.
+    float fogTarget() const;
     // The render origin as raw fixed coordinates; heights are not rebased.
     std::array<int64_t, 3> originFixed() const { return {int64_t(origin.x) * 65536, int64_t(origin.y) * 65536, 0}; }
     void move(glm::vec3 local, float seconds, bool fast); // x right, y forward, z up

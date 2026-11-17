@@ -26,6 +26,7 @@
 #include "Renderer.h"
 #include "CreatureView.h"
 #include "CreatureLights.h"
+#include "CreatureShading.h"
 #include "Player.h"
 #include "creatures/Strike.h"
 #include "creatures/Inventory.h"
@@ -846,6 +847,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     float travelled = 0;
     view.setLook(options.lookGiven ? options.yaw : 30.f, options.lookGiven ? options.pitch : 15.f);
     Scene scene;
+    // Rendering §7.1: the fog distance F, smoothed towards the nearest missing chunk. The
+    // engine starts it at the first target (the native starting value is not specified).
+    alpha::FogDistance fogDistance;
+    bool fogStarted = false;
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
     npcs.removesBlocks = [&](glm::dvec3 centre, int32_t radius) {
         return !breakCells(rawBlocks(centre), radius, CellRounding::FloorAdjusted, scene.day,
@@ -2215,10 +2220,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 missionDay = scene.day;
                                 missions.clearGenerated();
                             }
-                            const int32_t rx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::REGION);
-                            const int32_t ry = worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::REGION);
-                            // §7: the region's saved cells, read the first time it is needed.
-                            if (session && world.region(rx, ry) && missionRegionsRead.insert({rx, ry}).second) {
+                            // §7: a region's saved cells, read the first time it is needed (the
+                            // player's own region for discovery, the pass region below).
+                            const auto readSavedCells = [&](int32_t rx, int32_t ry) {
+                                if (!session || !world.region(rx, ry) || !missionRegionsRead.insert({rx, ry}).second)
+                                    return;
                                 std::vector<std::string> keys;
                                 for (int32_t i = 0; i < 64; i++)
                                     for (const char *kind : {"mission", "monster"})
@@ -2232,15 +2238,32 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                                      mission == saved.end() ? std::nullopt : MissionArea::parse(mission->second),
                                                      monster == saved.end() ? std::nullopt : MonsterArea::parse(monster->second));
                                 }
-                            }
-                            if (world.region(rx, ry) && !missions.generated(rx, ry)) {
+                            };
+                            readSavedCells(worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::REGION),
+                                           worldgen::floorDiv((int32_t)std::floor(me.y), worldgen::REGION));
+                            // §2.1, Ruling 3: the region tested is the owner of the player's position.
+                            const auto passRegion = missionPassRegion(world, me);
+                            const int32_t rx = passRegion ? passRegion->first : -1, ry = passRegion ? passRegion->second : -1;
+                            if (passRegion)
+                                readSavedCells(rx, ry);
+                            const auto zonePass = [&](int32_t zx, int32_t zy) {
+                                if (const worldgen::Zone *zone = view.held().zone(zx, zy))
+                                    npcs.setExtraSpawns(zx, zy, zone->spawns.size(),
+                                                        missions.zonePass(world, *zone, players, worldRandom));
+                            };
+                            if (passRegion && world.region(rx, ry) && !missions.generated(rx, ry)) {
                                 std::set<std::pair<int32_t, int32_t>> regionZones;
                                 for (const auto &[key, zone] : view.held().zones())
                                     if (worldgen::floorDiv(key.first, 64) == rx && worldgen::floorDiv(key.second, 64) == ry)
                                         regionZones.insert(key);
                                 npcs.removeTargets(regionZones);
                                 missions.dailyPass(world, rx, ry, players, worldRandom);
-                                zonesForMissions.insert(regionZones.begin(), regionZones.end());
+                                // §2.6, §2.7 step 4: the driver ends with the zone pass of every loaded
+                                // zone of its region, x outer, each zone's draws complete before the next.
+                                for (const auto &[zx, zy] : regionZones) {
+                                    zonesForMissions.erase({zx, zy});
+                                    zonePass(zx, zy);
+                                }
                                 for (int32_t k = 0; k < 64 && options.quest; k++)
                                     if (const Missions::Cell *cell = missions.cell(8 * rx + k / 8, 8 * ry + k % 8);
                                         cell && cell->mission.kind == 1) {
@@ -2253,14 +2276,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                         break;
                                     }
                             }
-                            const auto ground = [&](int32_t x, int32_t y) {
-                                const worldgen::Zone *z = view.held().zoneAt(x, y);
-                                return z ? (float)z->column(x, y).top() : 0.f;
-                            };
                             for (const auto &[zx, zy] : std::exchange(zonesForMissions, {}))
-                                if (const worldgen::Zone *zone = view.held().zone(zx, zy))
-                                    npcs.setExtraSpawns(zx, zy, zone->spawns.size(),
-                                                        missions.zonePass(world, zx, zy, ground, players, worldRandom));
+                                zonePass(zx, zy); // §2.6: newly generated zones
                             missions.discover(world, me);
                             npcs.killCompletedMissionTargets(missions);
                             // §7: the saves, of every cell of a region whose pass ran and of changed cells.
@@ -2352,7 +2369,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 if (const char *key = creatures::soundKey(30))
                                     audio.play(key);
                             }
-                            if (!progress.rewardsApplied && progress.victimRole == 1 && progress.contributor == c.id)
+                            // Rulings Ruling 1: every player creature is rewarded, in or out of the
+                            // victim's threat map; offline that is the local player.
+                            if (!progress.rewardsApplied && progress.victimRole == 1)
                                 for (const auto &item : missionRewards(progress.mission, c.characterClass, worldRandom))
                                     receive(creatures::toRecord(item));
                         };
@@ -2632,12 +2651,24 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         view.update();
         const bool settling = travelled < options.travel || (options.travel > 0 && view.busy());
         view.fillScene(scene);
+        {
+            const float target = view.fogTarget();
+            if (!fogStarted)
+                fogDistance.reset(target), fogStarted = true;
+            else
+                fogDistance.update(target, frameElapsedMs);
+            scene.fogDistance = fogDistance.value();
+        }
         scene.seconds = now - start;
         const auto &motionSettings = options.worldOptions.motion;
         scene.leafSway = motionSettings.leaves
                              ? motion::leafOffset(scene.seconds * motionSettings.windSpeed, motionSettings.leafAmplitude)
                              : glm::vec2(0);
         scene.leafRange = motionSettings.leafRange;
+        // Rendering §11.4: the clouds are gated at the local player's block column.
+        view.playerColumn = player ? std::optional<glm::ivec2>(glm::ivec2(int32_t(player->body().position[0] / 65536),
+                                                                          int32_t(player->body().position[1] / 65536)))
+                                   : std::nullopt;
         items = view.items((now - start) * 1000);
         effects.clear();
         // Screens §5.2.2: with the map open, the zoom eases to its target, a middle drag pans
@@ -2669,14 +2700,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         // Particles §8: flame cubes round a creature during a healing stream (action 34, blue)
         // and while a fire explosion charges (87, 88, red to yellow), on the action's clock.
-        // Models §7.3: a foot coming down at `feet` (blocks), softer on type-3 ground.
-        const auto footstep = [&](glm::dvec3 feet) {
-            const glm::ivec3 below = glm::ivec3(glm::floor(feet - glm::dvec3(0, 0, 0.5)));
+        // Models §7.3: a foot coming down, sounded at the creature's position (1/65536 blocks)
+        // and softer on type-3 ground; only while the world has a local player.
+        const auto footstep = [&](const int64_t position[3], float boxZ) {
+            if (!player)
+                return;
+            const glm::dvec3 at = glm::dvec3(double(position[0]), double(position[1]), double(position[2])) / 65536.0;
+            const glm::ivec3 below = creatures::footstepCell(position, boxZ);
             const auto u = [&] { return (float)worldRandom.draw() / 32767.f; };
             if (view.held().read(below.x, below.y, below.z).type() == 3)
-                playAt(33 + worldRandom.draw() % 3, feet, 1, 1);
+                playAt(33 + worldRandom.draw() % 3, at, 1, 1);
             else
-                playAt(32, feet, 1, 1 + 0.2f * u());
+                playAt(32, at, 1, 1 + 0.2f * u());
         };
         const auto drawFlames = [&](const std::vector<creatures::FlameCube> &cubes, glm::dvec3 base) {
             for (const creatures::FlameCube &k : cubes) {
@@ -2685,7 +2720,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 m = glm::rotate(m, glm::radians(k.turn.y), glm::vec3(0, 1, 0));
                 m = glm::rotate(m, glm::radians(k.turn.z), glm::vec3(0, 0, 1));
                 m = glm::scale(m, glm::vec3(k.edge)) * glm::translate(glm::mat4(1), glm::vec3(0, 0, -0.5f));
-                items.push_back({creatureView.cubeMesh(), m, false, Shading::World, glm::vec4(k.colour, 1)});
+                DrawItem flame{creatureView.cubeMesh(), m, false, Shading::World, glm::vec4(k.colour, 1)};
+                flame.layer = DrawLayer::Effect; // rendering §1.3 step 15: particles, depth writes off
+                items.push_back(flame);
             }
         };
         // Particles §8, open points 3 §3: the flame cubes round a creature (at its centre,
@@ -2726,8 +2763,25 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                                  {0, 1, 0}, {0.5f, 1, 0}),
                                at);
         };
+        // Rendering §11.2: a creature's material from the light of the block 0.1 above its
+        // position (0.1 block = 6553 fixed units, truncated), its tints, hit flash, motion trail
+        // and translucency.
+        const auto creatureLook = [&](const creatures::Combatant &c, const int64_t position[3], glm::vec3 velocity) {
+            const int32_t x = worldgen::blockOfFixed(position[0]), y = worldgen::blockOfFixed(position[1]),
+                          z = worldgen::blockOfFixed(position[2] + 6553);
+            const int light = creature_shading::standingLight(view.held().read(x, y, z).type(), view.held().light(x, y, z));
+            CreatureLook look;
+            look.material = creature_shading::material(light, c, false);
+            look.deferredMaterial = creature_shading::material(light, c, true);
+            look.white = c.hitFlash;
+            look.trail = creature_shading::hasMotionTrail(c);
+            look.stealth = c.stealth;
+            look.velocity = velocity;
+            return look;
+        };
         if (player) {
-            player->draw(items, creatureView, seconds * 1000.f, &effects);
+            const CreatureLook look = creatureLook(player->combat(), player->body().position, player->body().velocity);
+            player->draw(items, creatureView, seconds * 1000.f, &effects, &look);
             // (Less the landing bob, as for every other creature: open points 3 §3.3's base.)
             actionFlames(player->combat(), player->body().size.x,
                          player->body().blocks() - glm::dvec3(0, 0, player->body().bob));
@@ -2790,6 +2844,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             motion.intent = npc.body.intent;
             motion.running = (npc.body.mode & 0x40) != 0;
             motion.lens = (npc.body.mode & creatures::LENS) != 0; // the 0x400 pose override
+            motion.gliding = (npc.body.mode & creatures::GLIDER) != 0;
+            motion.lantern = (npc.body.mode & creatures::LANTERN) != 0;
             motion.dodgeMs = (float)npc.body.dodgeMs;
             motion.fighter = &npc.fighter;
             glm::dvec3 at = npc.body.blocks();
@@ -2814,8 +2870,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 continue;
             }
             shattered.erase(npc.fighter.id);
-            if (creatureView.draw(items, npc.looks, npc.pose, motion, view.toRender(at), seconds * 1000.f, &effects))
-                footstep(npc.body.blocks() - glm::dvec3(0, 0, npc.body.size.z * 0.5));
+            const CreatureLook look = creatureLook(npc.fighter, npc.body.position, npc.body.velocity);
+            if (creatureView.draw(items, npc.looks, npc.pose, motion, view.toRender(at), seconds * 1000.f, &effects, &look))
+                footstep(npc.body.position, npc.body.size.z);
             actionFlames(npc.fighter, npc.looks.box.x, at);
             creatureLights(npc.fighter, {npc.body.position[0], npc.body.position[1], npc.body.position[2]},
                            at, npc.looks.box.z, npc.yaw);
@@ -3036,6 +3093,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
                 motion.lens = (f.fighter.mode & creatures::LENS) != 0; // the 0x400 pose override
+                motion.gliding = (f.fighter.mode & creatures::GLIDER) != 0;
+                motion.lantern = (f.fighter.mode & creatures::LANTERN) != 0;
                 if (other.health() <= 0) { // particles §7.2: once, and only if it passes the view test
                     const float cull = other.appearance().box.z * (uint8_t(f.fighter.action) == 106 ? 3.f : 1.f);
                     if (shattered.insert(id).second && view.lightViewAccepts(centre, cull, scene.fogDistance))
@@ -3044,8 +3103,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     continue;
                 }
                 shattered.erase(id);
-                if (creatureView.draw(items, other.appearance(), otherPoses[id], motion, p, seconds * 1000.f, &effects))
-                    footstep(centre - glm::dvec3(0, 0, other.appearance().box.z * 0.5));
+                const CreatureLook look = creatureLook(f.fighter, drawn.data(), motion.velocity);
+                if (creatureView.draw(items, other.appearance(), otherPoses[id], motion, p, seconds * 1000.f, &effects, &look))
+                    footstep(drawn.data(), other.appearance().box.z);
                 actionFlames(f.fighter, other.appearance().box.x, centre);
                 // Core fields are current and resident buffs stay on the actor.
                 creatureLights(f.fighter, {drawn[0], drawn[1], drawn[2]}, centre, other.appearance().box.z, drawnYaw);
@@ -4174,8 +4234,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 rWasDown = rDown;
                 interface.hud = hud;
                 // Missions §8.2: the small quest tag, shown inside a location's area (for a hunt,
-                // within 130 blocks of the target zone's centre), with hysteresis between 0.05
-                // and 0.1.
+                // within 130 blocks of the centre of the monster area's zone, +0x60/+0x64, which a
+                // client of a server never receives and so holds zone (0, 0)), with hysteresis
+                // between 0.05 and 0.1.
                 {
                     const worldgen::World &world = view.terrainWorld();
                     const int32_t cx = worldgen::floorDiv((int32_t)std::floor(me.x), worldgen::SUBCELL);
@@ -4185,7 +4246,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     const MissionArea m = cell ? cell->mission : MissionArea{};
                     float v = L ? locationBump(world, *L, me.x, me.y) : 0.f;
                     if (L && m.kind == 1) {
-                        const double dx = me.x - (256.0 * m.targetZoneX + 128), dy = me.y - (256.0 * m.targetZoneY + 128);
+                        const MonsterArea monster = cell ? cell->monster : MonsterArea{};
+                        const double dx = me.x - (256.0 * monster.zoneX + 128), dy = me.y - (256.0 * monster.zoneY + 128);
                         const float k = 1 - std::min((float)((dx * dx + dy * dy) / 16900.0), 1.f);
                         v = k * k;
                     }
@@ -4209,7 +4271,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         interface.questBar = m.required != 0 && m.count != 0;
                         interface.questFill = m.required ? (float)m.count / (float)m.required : 0.f;
                     } else if (m.state == 2 || v < 0.05f) {
-                        interface.questTagShown = false;
+                        interface.questTagShown = false; // step 5 hides the tag and the bar
+                        interface.questBar = false;
                     }
                 }
                 // Quests: the tag shows the tracked quest when no mission of Alpha's is shown.
@@ -4503,7 +4566,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         at = glm::rotate(at, glm::radians(k.turn.y), glm::vec3(0, 1, 0));
                         at = glm::rotate(at, glm::radians(k.turn.z), glm::vec3(0, 0, 1));
                         at = glm::scale(at, glm::vec3(k.edge)) * glm::translate(glm::mat4(1), glm::vec3(0, 0, -0.5f));
-                        items.push_back({creatureView.cubeMesh(), at, false, Shading::World, glm::vec4(k.colour, 1)});
+                        DrawItem flame{creatureView.cubeMesh(), at, false, Shading::World, glm::vec4(k.colour, 1)};
+                        flame.layer = DrawLayer::Effect;
+                        items.push_back(flame);
                     }
                 }
             }
@@ -4530,7 +4595,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     const int value = type == 13 ? 255 : type == 0 || type == 2 ? std::max<int>(view.held().light(x, y, z), 5) : 0;
                     light = std::max(value / 255.f, 0.2f);
                 }
-                items.push_back({creatureView.cubeMesh(), at, false, Shading::World, glm::vec4(glm::vec3(p.colour), light)});
+                DrawItem particle{creatureView.cubeMesh(), at, false, Shading::World, glm::vec4(glm::vec3(p.colour), light)};
+                particle.layer = DrawLayer::Effect; // rendering §1.3 step 15: depth writes off
+                items.push_back(particle);
             }
         }
         // Screens §5.2.3: under the world map only the sky is drawn.

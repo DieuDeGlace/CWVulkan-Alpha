@@ -71,8 +71,9 @@ void SectorSources::update(const worldgen::Zone &zone) {
 }
 
 void SectorSources::append(std::vector<Candidate> &out, const WorldItems &items, const ViewAdmission &view,
-                           const FixedPosition &controlled, float daylight) const {
+                           const FixedPosition &controlled, float daylight, const ViewAdmission *itemView) const {
     const SectorRange range = sectorRange(controlled, view.reach());
+    const ViewAdmission &itemGate = itemView ? *itemView : view;
     // Iterating present keys in lexicographic order skips missing lookups while
     // retaining the native X-then-Y visit order, without scanning empty space.
     for (auto it = sectors.lower_bound({range.first.x, std::numeric_limits<int32_t>::min()});
@@ -87,7 +88,7 @@ void SectorSources::append(std::vector<Candidate> &out, const WorldItems &items,
             for (const auto &item : *list) {
                 const FixedPosition at{item.position[0], item.position[1], item.position[2]};
                 if (auto light = itemSource(item.item[0], item.item[1], at, item.hideMs);
-                    light && view.accepts(light->position, 16))
+                    light && itemGate.accepts(light->position, 16))
                     out.push_back(*light);
             }
     }

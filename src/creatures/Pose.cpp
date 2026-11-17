@@ -1,4 +1,5 @@
 #include "creatures/Pose.h"
+#include "creatures/AngleStep.h"
 #include "creatures/Spirits.h"
 #include <algorithm>
 #include <bit>
@@ -54,8 +55,18 @@ glm::mat4 R(glm::mat4 m, float degrees, glm::vec3 axis) {
 glm::mat4 Rzyx(glm::mat4 m, glm::vec3 a) { return Rx(Ry(Rz(m, a.z), a.y), a.x); }
 glm::mat4 S(glm::mat4 m, float s) { return glm::scale(m, glm::vec3(s)); }
 
-// "Relax toward t at rate r per ms", dt times (§7.3).
-float relax(float x, float t, float r, float dt) { return t + (x - t) * std::pow(1.f - r, dt); }
+// "Relax toward t at rate r per ms" (0x411d40, §7.3): one single-precision step per whole
+// millisecond. Alpha's step lengths are whole milliseconds; the part of an engine frame past the
+// last whole millisecond is taken in closed form (engine extension, exact for integral dt). A
+// stall longer than a minute counts as one minute; every rate has settled long before.
+float relax(float x, float t, float r, float dt) {
+    const int32_t steps = dt > 0 ? (int32_t)std::min(dt, 60000.f) : 0;
+    for (int32_t i = 0; i < steps; i++)
+        x = (t - x) * r + x;
+    if (const float rest = dt - (float)steps; rest > 0)
+        x = (t - x) * (1.f - std::pow(1.f - r, rest)) + x;
+    return x;
+}
 // Pose selector contracts §1: the binary32 sine and cosine wrappers (argument widened, result
 // narrowed), the ordered clamps (a NaN passes) and the 32-bit wrapping clock arithmetic.
 float sinw(float x) { return (float)std::sin((double)x); }
@@ -83,13 +94,14 @@ struct Frame {
     glm::vec3 dL{0}, dR{0}, rL{0}, rR{0}, T{0}, B{0}, S{0}, K{0}, H{0}, Q{0}, U{0}, E{0};
     float Y = 0, h = 0;
     glm::vec3 L{0}, Rh{0}, armL{0}, armR{0}, footL{0}, footR{0}; // base targets
+    glm::vec3 headBase{0}, tailBase{0};                            // the head and tail offsets
     glm::vec3 lambda{0}, rho{0};                                   // hand rotations
     float legL = 0, legR = 0, F = 0, ell = 0, rate = 0.01f;
     float offScale = 1; // the off-hand weapon scale local (weapon pose contract §3)
     bool turn = false;
     uint16_t mainModel = NO_MODEL, offModel = NO_MODEL;
     bool mainOnBack = false, offOnBack = false;
-    bool curled = false; // pose 41: hands, feet and tail not drawn
+    bool curled = false; // pose 41: the head, hand, foot and tail models cleared (not drawn)
 };
 
 } // namespace
@@ -177,7 +189,8 @@ uint16_t itemModel(const Item &item) {
     case 4:
         switch (m) {
         case 5: return 2054;
-        case 6: return item.subtype <= 6 ? (uint16_t)(1229 + item.subtype) : NO_MODEL;
+        // Unique clothing by subtype; past 6 it takes the shoulder pieces' default.
+        case 6: return item.subtype <= 6 ? (uint16_t)(1229 + item.subtype) : (uint16_t)(1149 + 5 * v5 + r);
         case 7: return 2067;
         case 11: return 2062;
         case 18: return 1224;
@@ -288,8 +301,8 @@ int32_t poseOf(const Combatant &c) {
     if (c.action == 48) {
         const int m = subtypeIn(c.mainHand()), o = subtypeIn(c.offHand());
         pose = m == BOW || m == CROSSBOW ? 22 : o == SHIELD ? 9 : o >= 0 ? 35 : 34;
-    } else if (c.action == 93) {
-        pose = c.offHand().type == 0 ? 2 : 35;
+    } else if (c.action == 93) { // an empty off-hand slot as actions 61 and 66
+        pose = c.offHand().type == 0 ? 49 : 35;
     }
     return pose;
 }
@@ -389,13 +402,14 @@ void trailTriangles(const PoseState &s, const Combatant &c, glm::vec3 position, 
 bool stepWalk(PoseState &s, const Appearance &a, const Motion &m, float dt) {
     const float before = s.phase;
     const float dts = dt / 1000.f;
-    const float speed = glm::length(m.velocity);
+    const float speed2 = glm::dot(m.velocity, m.velocity), speed = std::sqrt(speed2);
     const float speedXY = glm::length(glm::vec2(m.velocity));
-    // k = sqrt(0.8 / S), S taken as the collision box width (open question M-4).
+    // k = sqrt(0.8 / S), S the collision box x (an empty box is kept off zero).
     const float k = std::sqrt(0.8f / std::max(a.box.x, 0.01f));
     const bool flyer = (a.flags & FLYER) != 0;
     const int32_t action = m.fighter ? m.fighter->action : 0;
-    if (speed * speed > 0.5f && action != 107 && (m.onGround || m.inWater || m.climbing || flyer)) {
+    bool walking = false; // an on-ground, non-climbing branch: the only ones that make footsteps
+    if (speed2 > 0.5f && action != 107 && (m.onGround || m.inWater || m.climbing || flyer)) {
         if (m.climbing) {
             s.phase += k * speed * dts * 6;
             s.amplitude += 0.2f * dts;
@@ -416,6 +430,7 @@ bool stepWalk(PoseState &s, const Appearance &a, const Motion &m, float dt) {
                 s.phase += k * speedXY * dts * 1.5f * (action == 79 ? 2.f : 1.f);
             else
                 s.phase += k * dt * 0.002f * speedXY * 1.5f;
+            walking = m.onGround;
             s.amplitude += dts;
         }
     } else if (!m.onGround && !m.inWater && !m.climbing) {
@@ -423,8 +438,15 @@ bool stepWalk(PoseState &s, const Appearance &a, const Motion &m, float dt) {
         s.amplitude += k * dts;
     }
     s.amplitude = relax(std::min(s.amplitude, 1.f), 0, 0.005f, dt);
-    const float speedXYNow = glm::length(glm::vec2(m.velocity));
-    return m.dodgeMs <= 0 && !m.inWater && speedXYNow > 5 && std::floor(s.phase / PIf) > std::floor(before / PIf);
+    // Footsteps: not dodging, not in water, faster than 5 blocks/s, and the phase passed a
+    // multiple of π (truncated binary64 quotients).
+    return walking && m.dodgeMs == 0 && !m.inWater && speedXY > 5 &&
+           std::trunc((double)before / PI) < std::trunc((double)s.phase / PI);
+}
+
+glm::ivec3 footstepCell(const int64_t position[3], float boxZ) {
+    const int64_t z = position[2] - (int64_t)(0.5f * boxZ * 65536.f) - (int64_t)(0.5f * 65536.f);
+    return {(int32_t)(position[0] >> 16), (int32_t)(position[1] >> 16), (int32_t)(z >> 16)};
 }
 
 std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion &m, float dt,
@@ -512,14 +534,17 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         const float z = (h.z - 4.1f) + amp * 6;
         f.Rh = {cq * reach, h.y + sq * reach, z};
         f.L = {-(cq * reach), h.y + -(sq * reach), z};
-        f.Rh.y = (2.1f - amp * 5) + f.Rh.y;
-        f.L.y = (2.1f - amp * 5) + f.L.y;
     }
+    // Both forms (front legs included) then move y by 2.1 - 5a.
+    f.Rh.y = (2.1f - amp * 5) + f.Rh.y;
+    f.L.y = (2.1f - amp * 5) + f.L.y;
     // Pose selectors 01-18 §1.2: the auxiliary mid-points OM (armL) and MM (armR).
     f.armL = {(h.x * -0.3f + f.L.x) * 0.5f, ((f.L.y - 8) * 0.5f) * 0.5f, (f.L.z + (h.z + 12)) * 0.5f};
     f.armR = {(f.Rh.x + h.x * 0.3f) * 0.5f, ((f.Rh.y - 8) * 0.5f) * 0.5f, (f.Rh.z + (h.z + 12)) * 0.5f};
     f.footR = a.footOffset;
     f.footL = {-a.footOffset.x, a.footOffset.y, a.footOffset.z};
+    f.headBase = a.headOffset;
+    f.tailBase = a.tailOffset;
     if (pose == 0) {
         f.rho = a.handRotation;
         f.lambda = {a.handRotation.x, -a.handRotation.y, -a.handRotation.z};
@@ -1390,17 +1415,19 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         else if (clock < R0)
             f.B.z = 200, f.H = {0, -20, 60}, f.K = {-3, 0, -2}, f.Q = {0, 0, 70};
         break;
-    case 0x29: { // 25-30 §6.1: the rest hands and feet curl toward the body offset P and back
-        // (The head and tail offset locals curl too; their consumers are not traced, so the engine
-        // keeps those parts in place: open.)
+    case 0x29: { // 25-30 §6.1, models Appendix C pose 41: the rest hands, the feet and the head
+        // and tail bases curl toward the body offset P (the head toward P - (0, 0, 2), the tail,
+        // always from the appearance tail offset, toward P + (0, 4, 4)) and back.
         const auto curl = [&](float k) {
             for (glm::vec3 *v : {&f.L, &f.Rh, &f.footL, &f.footR})
                 *v = (a.bodyOffset - *v) * k + *v;
+            f.headBase = ((a.bodyOffset - glm::vec3(0, 0, 2)) - f.headBase) * k + f.headBase;
+            f.tailBase = ((a.bodyOffset + glm::vec3(0, 4, 4)) - a.tailOffset) * k + a.tailOffset;
         };
         if (clock < B) {
             curl(t / (float)B);
         } else if (clock < add32(B, Cq)) {
-            f.curled = true; // C +0xBC, +0xCC, +0xD4, +0xD8 := 0, read here as hands, feet and tail hidden
+            f.curled = true; // C +0xBC, +0xCC, +0xD8, +0xD4 := 0: head, hand, foot and tail models
             f.S = {0, 0, -3};
         } else if (clock < R0) {
             curl(1 - (float)sub32(sub32(clock, B), Cq) / (float)Ar);
@@ -1437,12 +1464,13 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         break;
     case 0x2C: // 25-30 §6.4, 31-49 §6 0x49: the wind-up, three thirds of the strike, the return
     case 0x49: {
-        const auto ends = [&](glm::vec3 head) {
-            f.H = head, f.T = {-20, 0, 0}, f.S = {0, -1, 0}, f.K = {0, 1, 1}, f.rL.x = 20, f.rR.x = 20;
+        // Phases 1 and 5 differ in the head target and the body-offset target Y (-1, then 1).
+        const auto ends = [&](glm::vec3 head, float shiftY) {
+            f.H = head, f.T = {-20, 0, 0}, f.S = {0, shiftY, 0}, f.K = {0, 1, 1}, f.rL.x = 20, f.rR.x = 20;
             f.dL.z = 2, f.dR.z = 2, f.Q = {30, 0, 10};
         };
         if (clock < B)
-            ends({10, 0, 0});
+            ends({10, 0, 0}, -1);
         else if (clock < add32(B, Cq / 3))
             f.H = {-30, 0, 0}, f.T = {50, 0, 0}, f.S = {0, 0, 1}, f.K = {0, -4, 2}, f.rL.x = 60, f.rR.x = 70,
             f.Q = {-30, 0, 0};
@@ -1453,7 +1481,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.H = {-30, 0, 0}, f.T = {10, 0, 0}, f.S = {0, 1, 1}, f.K = {0, -2, 2}, f.rL.x = -30, f.rR.x = -40,
             f.dL = {0, 3, -2}, f.Q = {-30, 0, -10};
         else if (clock < R0)
-            ends({10, 0, -10});
+            ends({10, 0, -10}, 1);
         break;
     }
     case 0x2D: // 25-30 §7.1: no clamp on the roll
@@ -1511,7 +1539,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         f.rL = f.rR;
         break;
     }
-    case 0x31: // 31-49 §6
+    case 0x31: // 31-49 §6; rulings pose-49-50-mount §1: the first phase copies the off rest to the main
         f.U = turnLate;
         if (clock < B) {
             f.B.z = 30;
@@ -1540,7 +1568,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
         }
         f.rL = f.rR;
         break;
-    case 0x32: { // 31-49 §6 (its p × 40 scratch is never read)
+    case 0x32: { // 31-49 §6; rulings pose-49-50-mount §2: its p × 40 is the body lean ℓ
         f.rR = {60, -20, 20};
         f.dR = {0, 2, 4};
         f.rL = {60, 20, -20};
@@ -1557,6 +1585,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.B.z = p * -270;
             f.B.y = p * -40;
             f.S.z += 4;
+            f.ell = p * 40; // read unsmoothed by the feet as +ℓ / -ℓ
             kick();
             f.H.x = -30;
             f.H.z = -60;
@@ -1768,9 +1797,12 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     default: // 0x0C, 0x0D, 0x0E, 0x24, 0x40 and selectors past 0x49: no case body
         break;
     }
-    // Weapon pose contract §5: a zero selector also zeroes the clock; later selector tests see 0.
+    // §7.7 step 7, weapon pose contract §5: a zero pose id (set here or from the start) also
+    // zeroes the copied clock; later tests and the weapon glow see 0.
     if (cleared)
-        pose = 0, clock = 0, t = 0;
+        pose = 0;
+    if (pose == 0)
+        clock = 0, t = 0;
     // Step 8 (selectors 01-18 §1.2): the auxiliary mid-points average with the rest hands.
     f.armL = (f.L + f.armL) * 0.5f;
     f.armR = (f.Rh + f.armR) * 0.5f;
@@ -1813,13 +1845,16 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             f.mainOnBack = true;
     }
 
-    // Step 13: smoothing, one weight for every channel.
-    const float w = s.fresh ? 1.f : 1.f - std::pow(1.f - f.rate, dt);
+    // Step 13: smoothing, one weight for every channel: 0 relaxed toward 1 at the rate, dt
+    // times (§7.4 step 6). A fresh state takes its targets at once (engine start-up).
+    const bool first = s.fresh;
+    const float w = first ? 1.f : relax(0, 1, f.rate, dt);
     s.fresh = false;
     auto move = [&](glm::vec3 &p, glm::vec3 target) { p += (target - p) * w; };
+    // Angles by the shortest-arc step 0x423f70.
     auto turn = [&](glm::vec3 &p, glm::vec3 target) {
         for (int k = 0; k < 3; k++)
-            p[k] += (float)(std::asin(std::sin(glm::radians((double)target[k] - p[k]))) * 180.0 / PI) * w;
+            p[k] = angleStep(p[k], target[k], w);
     };
     move(s.turnR, f.rR);
     move(s.turnL, f.rL);
@@ -1837,14 +1872,20 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     move(s.headShift, f.K);
     // Step 14: composition.
     const glm::vec3 rho = f.rho + s.turnR, lambda = f.lambda + s.turnL;
-    const glm::vec3 Rhand = f.Rh + s.handR, Lhand = f.L + s.handL;
+    glm::vec3 Rhand = f.Rh + s.handR, Lhand = f.L + s.handL;
     const glm::vec3 armR = f.armR + 0.4f * s.handR, armL = f.armL + 0.4f * s.handL;
-    s.rightHand = Rhand;
-    s.leftHand = Lhand;
 
-    // §7.4 step 7: the base frame (dodge roll, displayed rotation, pivot height, lean, tilt).
-    glm::mat4 base = T(glm::mat4(1), {0, 0, s.lean.z});
-    if (m.dodgeMs > 0) {
+    // §7.4 step 7: the base frame (dodge roll, displayed rotation, pivot height, lean, tilt). The
+    // lean's z joins the 1/65536-block position, truncated.
+    glm::mat4 base = T(glm::mat4(1), {0, 0, (float)(int64_t)(s.lean.z * 65536.f) / 65536.f});
+    // Weapon pose contract §6 steps 3-4: dodging (unless a class 4, specialisation 1 creature is
+    // within action 17, 5 or 20) and gliding each raise both composed hands by 5 box z / box x,
+    // whether or not the roll itself turns.
+    const float handRaise = a.box.z * 5 / a.box.x;
+    const bool rollSpared = c && c->characterClass == 4 && c->specialization == 1 &&
+                            (c->action == 17 || c->action == 5 || c->action == 20) &&
+                            c->actionMs < duration(*c, c->action);
+    if (m.dodgeMs != 0 && !rollSpared) {
         glm::vec3 axis(m.velocity.y, -m.velocity.x, 0);
         if (c && c->type == 101)
             axis = m.velocity;
@@ -1854,7 +1895,12 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             const float inverse = 1.f / (float)std::sqrt((double)((axis.x * axis.x + axis.y * axis.y) + axis.z * axis.z));
             base = R(base, (1 - m.dodgeMs / 600) * -360, axis * inverse);
         }
+        Rhand.z += handRaise, Lhand.z += handRaise;
     }
+    if (m.gliding)
+        Rhand.z += handRaise, Lhand.z += handRaise;
+    s.rightHand = Rhand;
+    s.leftHand = Lhand;
     base = Rz(base, m.yawDegrees);
     base = T(base, {0, 0, s.pivot});
     base = T(base, {s.lean.x, s.lean.y, 0});
@@ -1907,23 +1953,51 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     const uint16_t footModel = c && c->equipment[BOOTS_SLOT].type == 6 ? itemModel(c->equipment[BOOTS_SLOT])
                                                                        : a.model(Part::Foot);
     const float b = a.bodyScale;
+    // §6.5 shimmer: each of chest, amulet, shoulders, the two weapons, the left hand and the feet
+    // takes its slot's item (whatever model is drawn); every other part draws without.
+    const auto slot = [&](int k) { return c ? &c->equipment[(size_t)k] : nullptr; };
+    // §6.5 glow: while record field 23 is positive the weapons are drawn with the frame material
+    // times 1 + 0.25 (1 + cos(0.01 t)), t the copied clock.
+    const float glow = c && c->charge > 0 ? 1.f + 0.25f * (1.f + cosw(0.01f * t)) : 1.f;
+    const auto glowFrom = [&](size_t from) {
+        for (size_t i = from; i < out.size(); i++)
+            out[i].glow = glow;
+    };
+    // The mana cube starts from the arm frame the previous call kept (a fresh state from this one's).
+    const glm::mat4 previousArm = first ? arm : s.armFrame;
+    s.armFrame = arm;
 
     // §7.5 in drawing order; §6.5 for the equipment.
+    if (c) {
+        // Slot 11, whatever model it selects: above the body while gliding, under it in action
+        // 107 (the two tests are independent); both stay level against the body's tilt.
+        const float up = a.box.z / std::max(a.box.x, 0.01f);
+        const uint16_t vehicle = itemModel(c->equipment[11]);
+        if (m.gliding)
+            part(vehicle, Rx(T(body, a.bodyOffset + glm::vec3(0, 0, 8 * up)), -s.tilt.x), glm::vec3(2 * b), centred);
+        if (action == 107)
+            part(vehicle, Rz(Rx(T(body, a.bodyOffset + glm::vec3(0, 0, -9 * up)), -s.tilt.x), -s.tilt.z), glm::vec3(2 * b),
+                 [](glm::vec3 sz) { return glm::vec3(1 - sz.x / 2, 2 - sz.y / 2, 0); });
+        if (pose == 72 && clock < 5000)
+            part(2566, Rx(Ry(Rz(T(previousArm, 0.5f * (Lhand + Rhand) + glm::vec3(0, 0, 8)), 0.02f * t), 45), 45),
+                 glm::vec3(1), centred);
+    }
     part(chestModel, Rz(T(body, a.bodyOffset), 0.5f * s.aim + sDeg / 2), glm::vec3(b), centred, false, false,
-         c && chestModel != a.model(Part::Body) ? &c->equipment[CHEST_SLOT] : nullptr);
+         slot(CHEST_SLOT));
     if (c && c->equipment[AMULET_SLOT].type == 8)
         part(itemModel(c->equipment[AMULET_SLOT]),
              Rx(Rz(T(body, a.bodyOffset + glm::vec3(0, 3, 6.05f)), sDeg / 2 + 0.5f * s.aim),
                 0.7f * swing * swing * 180.f / PIf),
-             glm::vec3(b), [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -1.5f, -sz.z); });
+             glm::vec3(b), [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -1.5f, -sz.z); }, false, false,
+             slot(AMULET_SLOT));
     if (c && c->equipment[SHOULDERS_SLOT].type == 7)
         part(itemModel(c->equipment[SHOULDERS_SLOT]), Rz(T(T(body, {0, 0, 4 + 2 * amp}), a.bodyOffset), sDeg / 2),
-             glm::vec3(a.shoulderScale * (b + 0.1f)), centred);
+             glm::vec3(a.shoulderScale * (b + 0.1f)), centred, false, false, slot(SHOULDERS_SLOT));
     if (!f.curled)
         part(a.model(Part::Tail),
-             Rzyx(Rz(Rx(T(T(body, a.bodyOffset), a.tailOffset), a.tailAngle), -sDeg), s.tail),
+             Rzyx(Rz(Rx(T(T(body, a.bodyOffset), f.tailBase), a.tailAngle), -sDeg), s.tail),
              glm::vec3(a.tailScale * b), [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -sz.y, -sz.z / 2); });
-    glm::mat4 head = T(body, a.headOffset + s.headShift + glm::vec3(0, 0, -bob / 2));
+    glm::mat4 head = T(body, f.headBase + s.headShift + glm::vec3(0, 0, -bob / 2));
     head = T(head, {0, 0, -3});
     head = Rx(head, -s.torso.x - a.bodyPitch);
     head = Ry(head, -s.torso.y);
@@ -1933,12 +2007,26 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     // drawn X rotation is zero (see Motion::headPitch).
     head = Rx(head, m.headPitch + s.head.x);
     head = T(head, {0, 0, 3});
-    part(a.model(Part::Head), head, glm::vec3(a.headScale), centred);
+    if (!f.curled)
+        part(a.model(Part::Head), head, glm::vec3(a.headScale), centred);
     part(a.model(Part::Hair), head, glm::vec3(a.headScale), centred, false, true);
-    if (!f.curled) {
-        part(a.model(Part::Arm), T(arm, armR), glm::vec3(a.armScale), centred);
-        part(a.model(Part::Arm), T(arm, armL), glm::vec3(a.armScale), centred);
+    part(a.model(Part::Arm), T(arm, armL), glm::vec3(a.armScale), centred);
+    part(a.model(Part::Arm), T(arm, armR), glm::vec3(a.armScale), centred);
+    // Between the hands: the item being drunk or eaten (actions 80, 81, within its use limit)
+    // and the pet item held out (action 82, standing on the hands' midpoint).
+    if (c) {
+        const glm::mat4 held = Rx(T(arm, 0.5f * (Lhand + Rhand)), lambda.x);
+        if ((action == 80 || action == 81) && c->actionMs < heldLimit)
+            part(itemModel(c->held), held, glm::vec3(a.handScale), centred);
+        if (action == 82)
+            part(itemModel(c->equipment[12]), held, glm::vec3(a.handScale),
+                 [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -sz.y / 2, 0); });
     }
+    // Back quivers for an off-hand, then a main-hand, bow or crossbow.
+    if (off == BOW || off == CROSSBOW)
+        part(839, Rz(Ry(T(Rz(body, sDeg / 4), {0, -7.1f, 0.1f}), 45), 90), glm::vec3(a.weaponScale + 0.01f), centred);
+    if (main == BOW || main == CROSSBOW)
+        part(839, Rz(Ry(T(Rz(body, sDeg / 4), {0, -7.1f, 0.1f}), -45), 90), glm::vec3(a.weaponScale + 0.01f), centred);
     // The weapons.
     const float wscale = a.weaponScale;
     auto mainGrip = [&](uint16_t model) -> std::function<glm::vec3(glm::vec3)> {
@@ -1983,6 +2071,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
             part(f.mainModel, R(Rzyx(T(arm, Rhand), rho), m.headPitch * 0.5f, {1, 0, 0}), glm::vec3(wscale),
                  mainGrip(f.mainModel), false, false, c ? &c->mainHand() : nullptr);
     }
+    glowFrom(beforeMain); // in the hand or on the back
     newest(beforeMain, 0);
     const size_t beforeOff = out.size();
     if (f.offModel != NO_MODEL) {
@@ -2028,20 +2117,18 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
                 part(f.offModel, S(at, f.offScale), glm::vec3(extra), grip, false, false, c ? &c->offHand() : nullptr);
             else
                 part(f.offModel, at, glm::vec3(f.offScale), grip, false, false, c ? &c->offHand() : nullptr);
+            glowFrom(beforeOff); // only in the hand
         }
     }
     newest(beforeOff, 2);
     ageTrail(s, pose, t, P, dt, base, T(glm::mat4(1), {0, 0, s.lean.z}), m.yawDegrees);
-    // Quivers on the back (§6.5).
+    // The slot-6 quiver on the back (§6.5).
     if (c && (off == QUIVER))
         part(839, Rz(Ry(T(Rz(T(body, {0.65f, -0.5f, 0.3f}), sDeg / 4), {0, -6.2f, 0}), -45), 90), glm::vec3(wscale),
              centred);
-    if (off == BOW || off == CROSSBOW)
-        part(839, Rz(Ry(T(Rz(body, sDeg / 4), {0, -7.1f, 0.1f}), 45), 90), glm::vec3(wscale + 0.01f), centred);
-    if (main == BOW || main == CROSSBOW)
-        part(839, Rz(Ry(T(Rz(body, sDeg / 4), {0, -7.1f, 0.1f}), -45), 90), glm::vec3(wscale + 0.01f), centred);
-    // §7.9.4: the hands; the right (+x) hand is drawn mirrored.
-    if (!f.curled) {
+    // §7.9.4: the left hand, the lantern with it, then the right (+x) hand, drawn mirrored. With no
+    // hand model (or pose 41's cleared one) neither hand nor the lantern is drawn.
+    if (!f.curled && handModel != NO_MODEL) {
         auto hand = [&](glm::vec3 at, glm::vec3 rot, float leg) {
             glm::mat4 mtx = arm;
             if (quadruped)
@@ -2051,43 +2138,17 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
                 mtx = Rx(mtx, leg);
             return Rx(mtx, rot.x);
         };
-        const Item *gloves = c && handModel != a.model(Part::Hand) ? &c->equipment[GLOVES_SLOT] : nullptr;
-        part(handModel, hand(Lhand, lambda, f.legR), glm::vec3(a.handScale), centred, false, false, gloves);
-        part(handModel, hand(Rhand, rho, f.legL), glm::vec3(a.handScale), centred, true, false, gloves);
+        part(handModel, hand(Lhand, lambda, f.legR), glm::vec3(a.handScale), centred, false, false, slot(GLOVES_SLOT));
+        // Slot 10 while mode 0x200 is set, without shimmer.
+        if (m.lantern && c)
+            part(itemModel(c->equipment[10]), T(arm, Lhand + glm::vec3(0, 2, -2)), glm::vec3(0.8f),
+                 [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, 1 - sz.y / 2, 2 - sz.z); });
+        // The right hand sets no shimmer of its own; the lantern step left it off.
+        part(handModel, hand(Rhand, rho, f.legL), glm::vec3(a.handScale), centred, true);
     }
-    // §6.5: between the hands, the item being drunk or eaten (actions 80, 81, within its use
-    // limit), the pet item or food held out (action 82, standing on the hands' midpoint) and
-    // the mana cube while it is used (pose 72, first 5 s).
-    if (c) {
-        const glm::vec3 between = 0.5f * (Lhand + Rhand);
-        const glm::mat4 held = Rx(T(arm, between), lambda.x);
-        const float limit = c->held.type == 1 ? (c->held.subtype == 1 ? 3000.f : 10000.f) : 0.f;
-        if ((action == 80 || action == 81) && c->actionMs < limit)
-            part(itemModel(c->held), held, glm::vec3(a.handScale), centred);
-        if (action == 82 && c->equipment[12].type != 0)
-            part(itemModel(c->equipment[12]), held, glm::vec3(a.handScale),
-                 [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, -sz.y / 2, 0); });
-        if (pose == 72 && c->actionMs < 5000)
-            part(2566, Rx(Ry(Rz(T(arm, between + glm::vec3(0, 0, 8)), 0.02f * c->actionMs), 45), 45), glm::vec3(1),
-                 centred);
-    }
-    // The lantern hangs at the left hand while lit.
-    if (m.lantern && c && c->equipment[10].type == 24)
-        part(2433, T(arm, Lhand + glm::vec3(0, 2, -2)), glm::vec3(0.8f),
-             [](glm::vec3 sz) { return glm::vec3(-sz.x / 2, 1 - sz.y / 2, 2 - sz.z); });
-    // §6.5: the glider above the body while it is open, the boat under it while sailing; both
-    // stay level against the body's tilt.
-    if (c && c->equipment[11].type == 23) {
-        const float up = a.box.z / std::max(a.box.x, 0.01f);
-        if (m.gliding && c->equipment[11].subtype != 1)
-            part(2547, Rx(T(body, a.bodyOffset + glm::vec3(0, 0, 8 * up)), -s.tilt.x), glm::vec3(2 * b), centred);
-        if (action == 107 && c->equipment[11].subtype == 1)
-            part(2548, Rz(Rx(T(body, a.bodyOffset + glm::vec3(0, 0, -9 * up)), -s.tilt.x), -s.tilt.z), glm::vec3(2 * b),
-                 [](glm::vec3 sz) { return glm::vec3(1 - sz.x / 2, 2 - sz.y / 2, 0); });
-    }
-    // §7.9.6: wings.
+    // §7.9.6: wings, the -x one first.
     if (a.model(Part::Wing) != NO_MODEL) {
-        const float flap = std::cos(s.phase / 2) * amp * 90 - 45;
+        const float flap = cosw(s.phase / 2) * amp * 90 - 45;
         for (float side : {-1.f, 1.f}) {
             glm::mat4 at = T(arm, {side * a.wingOffset.x, a.wingOffset.y, a.wingOffset.z});
             at = Rx(Rz(Ry(Rx(at, a.wingAngle), -side * flap), -90), 90);
@@ -2097,17 +2158,21 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     // §7.9.5: feet, from the base frame.
     if (!f.curled) {
         const bool lifts = !(flyer && !m.onGround);
-        auto foot = [&](glm::vec3 target, float a1, float a2, float ell, float lift, bool turned) {
+        auto foot = [&](glm::vec3 target, float a1, float a2, float ell, float lift, float leg, bool turned) {
             glm::mat4 at = Ry(Rx(Rz(base, s.aim), a1), ell);
             at = T(at, target + glm::vec3(0, 0, 3 * std::fabs(swingKept) + (lifts ? lift : 0)));
+            if (action == 79)
+                at = Rx(at, -1.5f * leg);
             at = glm::scale(at, glm::vec3(a.footScale));
             at = turned ? Rz(at, 60) : Rx(at, a2);
             return at;
         };
-        part(footModel, foot(f.footL, a.footAngle + f.F + f.legL, f.F + f.legL, f.ell, 4 * amp * s0, f.turn),
-             glm::vec3(1), centred);
-        part(footModel, foot(f.footR, f.F + f.legR, a.footAngle + f.F + f.legR, -f.ell, 4 * amp * (1 - s0), false),
-             glm::vec3(1), centred);
+        // The left foot first; both shimmer by the boots' slot.
+        part(footModel, foot(f.footL, a.footAngle + f.F + f.legL, f.F + f.legL, f.ell, 4 * amp * s0, f.legL, f.turn),
+             glm::vec3(1), centred, false, false, slot(BOOTS_SLOT));
+        part(footModel,
+             foot(f.footR, f.F + f.legR, a.footAngle + f.F + f.legR, -f.ell, 4 * amp * (1 - s0), f.legR, false),
+             glm::vec3(1), centred, false, false, slot(BOOTS_SLOT));
     }
     return out;
 }

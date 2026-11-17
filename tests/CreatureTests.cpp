@@ -28,6 +28,7 @@
 #include "creatures/Pose.h"
 #include "creatures/Projectiles.h"
 #include "worldgen/Items.h"
+#include <bit>
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -272,12 +273,277 @@ int main() {
         s.phase = (float)(3.141592653589793 / 3);
         Motion m;
         poseParts(s, a, m, 16, [](uint16_t) { return glm::vec3(10); });
-        // (The spec's 5.43 rounds 12 cos 1.0996 = 5.448 too far.)
-        same(s.rightHand.x, 5.448, "right hand x", 0.01);
-        same(s.rightHand.y, 7.80, "right hand y", 0.01);
-        same(s.rightHand.z, 1.9, "right hand z", 0.01);
-        same(s.leftHand.x, -5.448, "left hand x", 0.01);
-        same(s.leftHand.y, -13.60, "left hand y", 0.01);
+        same(s.rightHand.x, 5.448, "right hand x", 1e-3);
+        same(s.rightHand.y, 7.792, "right hand y", 1e-3);
+        same(s.rightHand.z, 1.9, "right hand z", 1e-5);
+        same(s.leftHand.x, -5.448, "left hand x", 1e-3);
+        same(s.leftHand.y, -13.592, "left hand y", 1e-3);
+    }
+
+    // Models re-certification (2026-11-15): the corrected rules.
+    {
+        // §7.2: action 93 with an empty off hand is pose 49; with an off-hand item pose 35.
+        Combatant c;
+        c.action = 93;
+        same(poseOf(c), 49, "action 93, empty off hand: pose 49");
+        c.equipment[OFF_HAND] = {9, 0, 1, 0, 1, 0};
+        same(poseOf(c), 35, "action 93 with an off-hand item: pose 35");
+        // §6.3: unique clothing past subtype 6 takes the shoulder default 1149 + 5v + r.
+        same(itemModel(Item{4, 7, 6, 2, 1, 7}), 1149 + 5 * 2 + 2, "chest material 6 subtype 7");
+        same(itemModel(Item{4, 6, 6, 2, 1, 7}), 1235, "chest material 6 subtype 6");
+
+        // §5.1: 489 slots end with key flag 0 (2550 filled, 2061 with flag 1).
+        int keyed = 0;
+        for (int k = 0; k < MODEL_SLOTS; k++)
+            keyed += keyColoursActive((uint16_t)k);
+        same(keyed, 489, "489 models with key colours active");
+        same(keyColoursActive(2414), 0, "lantern-fish-eyes keeps its colours");
+        same(keyColoursActive(329) && keyColoursActive(1252) && keyColoursActive(604), 1,
+             "skeleton-eyes, human-hair-m01 and obsidian-staff1 have keys");
+        same(keyColoursActive(613) || keyColoursActive(678) || keyColoursActive(433), 0,
+             "plain iron mace, plain wood bow and the boot have none");
+        same(keyColoursActive(614) && keyColoursActive(838), 1, "the first and last random variants have keys");
+
+        // §3.3 / Appendix B: the flags each type ORs in.
+        const auto flagsOf = [](int t) -> uint16_t {
+            if (t == 17 || t == 85) return 0x428;
+            if ((t >= 19 && t <= 23) || (t >= 25 && t <= 34) || t == 74 || t == 75 || (t >= 98 && t <= 100) ||
+                t == 102 || t == 103 || t == 105 || t == 116 || t == 119)
+                return 0x31;
+            if (t == 35 || t == 36 || (t >= 71 && t <= 73)) return 0x30;
+            if ((t >= 37 && t <= 40) || t == 104) return 0x29;
+            if (t == 41) return 0x42b;
+            if (t == 42 || t == 92) return 0x2a;
+            if (t == 50 || (t >= 63 && t <= 67) || t == 69 || t == 70 || (t >= 87 && t <= 91) || t == 93 || t == 94 ||
+                t == 96 || t == 106 || t == 107)
+                return 0x28;
+            if ((t >= 53 && t <= 62) || t == 151) return 0x32;
+            if (t == 86) return 0x10;
+            if (t == 97) return 0x402;
+            if (t == 101) return 0x33;
+            if (t == 109) return 0x420;
+            if (t == 118) return 0x2c;
+            if (t == 145 || t == 146 || t == 147 || t == 150 || (t >= 153 && t <= 155)) return 0x131;
+            if (t == 152) return 0x531;
+            if (t == 24 || t == 43 || (t >= 45 && t <= 49) || t == 51 || t == 52 || t == 68 || (t >= 76 && t <= 84) ||
+                t == 95 || t == 108 || (t >= 110 && t <= 117) || (t >= 140 && t <= 142))
+                return 0x20;
+            return 0;
+        };
+        int wrong = 0;
+        for (int t = 0; t < TYPE_COUNT; t++)
+            wrong += TYPE_RECIPES[t].flags != flagsOf(t);
+        same(wrong, 0, "every type's appearance flags");
+
+        // §4.2: boxes computed from the step-2 box in single precision.
+        const auto boxOf = [](int32_t type) {
+            Appearance a;
+            generate(type, a, nullptr, [] { return 0; });
+            return a.box;
+        };
+        const glm::vec3 base = boxOf(2);
+        same(boxOf(4) == base / 1.2f && boxOf(93) == base / 1.2f, 1, "types 4 and 93: box / 1.2");
+        same(boxOf(4).x, 0.8f, "/ 1.2 gives 0.8");
+        same(std::bit_cast<uint32_t>(boxOf(81).z), 0x404F5C2Au, "type 81 z is 3.2400002");
+        same(boxOf(88) == base * 1.1f && boxOf(90) == base * 0.7f && boxOf(91) == base * 0.9f, 1,
+             "types 88, 90, 91: x 1.1, 0.7, 0.9");
+    }
+    {
+        const auto voxels = [](uint16_t) { return glm::vec3(10); };
+        Appearance a;
+        a.box = {0.96f, 0.96f, 2.16f};
+        a.model(Part::Head) = 1248, a.model(Part::Hair) = 1259, a.model(Part::Hand) = 430;
+        a.model(Part::Foot) = 432, a.model(Part::Body) = 1, a.model(Part::Arm) = 198, a.model(Part::Tail) = 358;
+        const auto indexOf = [](const std::vector<PartDraw> &parts, uint16_t model, int nth = 0) {
+            for (size_t i = 0; i < parts.size(); i++)
+                if (parts[i].model == model && nth-- == 0)
+                    return (int)i;
+            return -1;
+        };
+        // §7.4 step 3: a quadruped's front legs also move y by 2.1 - 5a.
+        {
+            Appearance q = a;
+            q.flags = QUADRUPED;
+            PoseState s;
+            s.amplitude = 1;
+            poseParts(s, q, Motion{}, 16, voxels);
+            same(s.rightHand.y, q.handOffset.y + 2.1f - 5, "quadruped right hand y", 1e-5);
+            same(s.leftHand.x, -q.handOffset.x, "quadruped left hand x", 1e-6);
+        }
+        // §7.5: the glider first; the bow quivers before the main weapon; left hand, lantern, right
+        // hand; left foot before right. §6.5 shimmer: the right hand sets none, both feet do.
+        {
+            Combatant c;
+            c.equipment[MAIN_HAND] = {3, BOW, 2, 0, 1, 0};
+            c.equipment[OFF_HAND] = {3, CROSSBOW, 2, 0, 1, 0};
+            c.equipment[GLOVES_SLOT] = {5, 0, 1, 0, 1, 0};
+            c.equipment[BOOTS_SLOT] = {6, 0, 1, 0, 1, 0};
+            c.equipment[10] = {24, 0, 0, 0, 1, 0};
+            c.equipment[11] = {23, 0, 0, 0, 1, 0};
+            Motion m;
+            m.fighter = &c;
+            m.gliding = true, m.lantern = true;
+            PoseState s;
+            const auto parts = poseParts(s, a, m, 16, voxels);
+            const uint16_t glove = itemModel(c.equipment[GLOVES_SLOT]), boot = itemModel(c.equipment[BOOTS_SLOT]);
+            same(indexOf(parts, 2547), 0, "the glider is drawn first");
+            same(indexOf(parts, 1) > 0, 1, "the body after it");
+            const int quiver = indexOf(parts, 839), mainAt = indexOf(parts, 674), offAt = indexOf(parts, 729);
+            same(quiver >= 0 && indexOf(parts, 839, 1) > quiver && indexOf(parts, 839, 1) < mainAt && mainAt < offAt, 1,
+                 "both bow quivers, the main weapon, the off-hand weapon");
+            const int left = indexOf(parts, glove), lantern = indexOf(parts, 2433), right = indexOf(parts, glove, 1);
+            same(offAt < left && left < lantern && lantern < right, 1, "left hand, lantern, right hand");
+            same(left >= 0 && right >= 0 && !parts[(size_t)left].mirrored && parts[(size_t)right].mirrored, 1,
+                 "the right hand is the mirrored one");
+            same(left >= 0 && right >= 0 && parts[(size_t)left].shine && !parts[(size_t)right].shine, 1,
+                 "the right hand sets no shimmer");
+            const int footL = indexOf(parts, boot), footR = indexOf(parts, boot, 1);
+            same(right < footL && footL < footR && parts[(size_t)footL].shine && parts[(size_t)footR].shine, 1,
+                 "both feet shimmer from the boots");
+            same(lantern >= 0 && !parts[(size_t)lantern].shine, 1, "the lantern does not shimmer");
+            same(indexOf(parts, 198) < indexOf(parts, 674), 1, "the arms before the weapons");
+            // §6.5 glow: field 23 > 0 brightens the main weapon on the back (t = 0: 1.5), not the
+            // off-hand one there.
+            c.charge = 1;
+            PoseState g;
+            const auto glowing = poseParts(g, a, m, 16, voxels);
+            const int mainGlow = indexOf(glowing, 674), offGlow = indexOf(glowing, 729);
+            same(mainGlow >= 0 ? glowing[(size_t)mainGlow].glow : 0, 1.5, "a sheathed main weapon glows");
+            same(offGlow >= 0 ? glowing[(size_t)offGlow].glow : 0, 1, "a sheathed off-hand weapon does not");
+            // §6.4 slot 11: the boat's model drawn above while gliding (the tests are independent).
+            c.equipment[11] = {23, 1, 0, 0, 1, 0};
+            PoseState v;
+            same(indexOf(poseParts(v, a, m, 16, voxels), 2548), 0, "slot 11's model, whatever it is, while gliding");
+        }
+        // §7.4 step 7: dodging raises both hands by 5 box z / box x, gliding again; a class 4,
+        // specialisation 1 creature in action 5 is spared.
+        {
+            Combatant c;
+            Motion m;
+            m.fighter = &c;
+            PoseState still;
+            poseParts(still, a, m, 16, voxels);
+            const float raise = a.box.z * 5 / a.box.x;
+            m.dodgeMs = 300;
+            PoseState dodge;
+            poseParts(dodge, a, m, 16, voxels);
+            same(dodge.rightHand.z - still.rightHand.z, raise, "a dodge raises the hands", 1e-4);
+            m.gliding = true;
+            PoseState both;
+            poseParts(both, a, m, 16, voxels);
+            same(both.leftHand.z - still.leftHand.z, 2 * raise, "dodging while gliding raises them twice", 1e-4);
+            m.gliding = false;
+            c.characterClass = 4, c.specialization = 1, c.action = 5, c.actionMs = 0;
+            PoseState spared, spinning;
+            poseParts(spared, a, m, 16, voxels);
+            m.dodgeMs = 0;
+            poseParts(spinning, a, m, 16, voxels);
+            same(spared.rightHand.z, spinning.rightHand.z, "class 4.1 action 5: no dodge raise", 1e-6);
+        }
+        // Appendix C pose 41 (action 71): while curled the head, hand, foot and tail models are
+        // cleared; the hair and the arms stay.
+        {
+            Combatant c;
+            c.multipliers[1] = 1 / attackSpeed(c);
+            const Phases P = phases(c, 71);
+            same(P.active > 1, 1, "action 71 has an active phase");
+            c.action = 71, c.actionMs = P.windUp + P.active / 2;
+            Motion m;
+            m.fighter = &c;
+            PoseState s;
+            const auto parts = poseParts(s, a, m, 16, voxels);
+            same(indexOf(parts, 1248), -1, "curled: no head");
+            same(indexOf(parts, 1259) >= 0 && indexOf(parts, 198) >= 0, 1, "curled: hair and arms drawn");
+            same(indexOf(parts, 430) + indexOf(parts, 432) + indexOf(parts, 358), -3, "curled: no hands, feet, tail");
+        }
+        // Appendix C pose 44 (action 75), step 5: body-offset target (0, 1, 0).
+        {
+            Combatant c;
+            c.multipliers[1] = 1 / attackSpeed(c);
+            const Phases P = phases(c, 75);
+            same(P.recovery > 1, 1, "action 75 has a recovery phase");
+            c.action = 75, c.actionMs = P.windUp + P.active + P.recovery / 2;
+            Motion m;
+            m.fighter = &c;
+            PoseState s;
+            poseParts(s, a, m, 16, voxels);
+            same(s.shift.y, 1, "pose 44 step 5: S (0, 1, 0)", 1e-6);
+        }
+        // Rulings pose-49-50-mount §2: pose 50's active phase sets the body lean ℓ = 40q, which
+        // the feet take as Ry(+ℓ) and Ry(-ℓ): standing, the feet frames differ by Ry(2ℓ). The
+        // first phase writes no ℓ.
+        {
+            Combatant c;
+            c.multipliers[1] = 1 / attackSpeed(c);
+            const Phases P = phases(c, 20);
+            same(P.active > 10, 1, "action 20 has an active phase");
+            const auto spread = [&](int32_t ms) {
+                c.action = 20, c.actionMs = ms;
+                Motion m;
+                m.fighter = &c;
+                PoseState s;
+                const auto parts = poseParts(s, a, m, 16, voxels);
+                const int l = indexOf(parts, 432), r = indexOf(parts, 432, 1);
+                if (l < 0 || r < 0)
+                    return 2.0;
+                const glm::mat3 between = glm::transpose(glm::mat3(parts[(size_t)r].matrix)) * glm::mat3(parts[(size_t)l].matrix);
+                const double scale = (double)a.footScale * (a.box.x / 11.2f); // the foot and base scales
+                return (double)between[0][0] / (scale * scale);
+            };
+            same(spread(P.windUp + P.active * 9 / 10), std::cos(80 * 3.141592653589793 / 180), "pose 50: feet 2l = 80 apart",
+                 1e-4);
+            same(spread(P.windUp / 2), 1, "pose 50 wind-up: no lean", 1e-5);
+        }
+        // Rulings pose-49-50-mount §1: pose 49's first phase puts the main rest at the off rest
+        // and the off rest 2 further in x.
+        {
+            Combatant c;
+            c.multipliers[1] = 1 / attackSpeed(c);
+            c.equipment[MAIN_HAND] = {3, GREATSWORD, 1, 0, 1, 0};
+            int32_t action = 0; // an action of pose 49 with a wind-up
+            for (const int32_t k : {61, 66})
+                if (action == 0 && phases(c, k).windUp > 1)
+                    action = k;
+            same(action != 0, 1, "a pose-49 action has a wind-up");
+            c.action = action, c.actionMs = 1;
+            Motion m;
+            m.fighter = &c;
+            PoseState s;
+            poseParts(s, a, m, 16, voxels);
+            same(s.rightHand.x, -a.handOffset.x, "pose 49 W: main rest := off rest", 1e-5);
+            same(s.leftHand.x, -a.handOffset.x + 2, "pose 49 W: off rest x + 2", 1e-5);
+        }
+        // §6.5: the mana cube starts from the arm frame of the previous call.
+        {
+            Combatant c;
+            c.action = 109, c.actionMs = 10;
+            Motion m;
+            m.fighter = &c;
+            PoseState s;
+            const auto cube = [&](float pitch) {
+                m.headPitch = pitch;
+                const auto parts = poseParts(s, a, m, 0, voxels);
+                const int i = indexOf(parts, 2566);
+                return i >= 0 ? parts[(size_t)i].matrix : glm::mat4(0);
+            };
+            const glm::mat4 first = cube(0), second = cube(30), third = cube(30);
+            same(first == second, 1, "the cube keeps the previous arm frame");
+            same(second == third, 0, "and follows it one call later");
+        }
+        // §7.3: footsteps only in the on-ground, non-climbing branches.
+        {
+            Motion m;
+            m.velocity = {8, 0, 0};
+            m.climbing = true;
+            PoseState s;
+            int n = 0;
+            for (int i = 0; i < 120; i++)
+                n += stepWalk(s, a, m, 16);
+            same(n, 0, "a climber makes no footsteps");
+            const int64_t at[3] = {-65536, 3 * 65536 + 5, 10 * 65536};
+            const glm::ivec3 cell = footstepCell(at, 2.16f);
+            same(cell.x == -1 && cell.y == 3 && cell.z == 8, 1, "the footstep probe half the box and half a block down");
+        }
     }
 
     // Models §7.11 example 2: a greatsword wind-up (pose 2) at t = 200 ms, one 16 ms frame from rest.

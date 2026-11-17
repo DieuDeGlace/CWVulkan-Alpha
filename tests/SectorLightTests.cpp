@@ -191,6 +191,25 @@ static void collection() {
     collected.clear();
     sources.append(collected, items, view, point(4096, 4096), 0);
     check(collected.empty(), "controlled position determines sector gathering independently of the view reference");
+
+    // Rendering rulings §10: ground items have their own limit, 0.2 R = 128 blocks, while the
+    // statics keep F + 22.4.
+    check(itemLightReach(640) == 128.f, "item light reach is 640 x 0.2 = 128 in binary32");
+    worldgen::Zone far;
+    worldgen::StaticObject farLamp;
+    farLamp.kind = 50;
+    farLamp.x = farLamp.y = 200 * 65536;
+    farLamp.scale[2] = 0;
+    far.statics.push_back(farLamp);
+    SectorSources farSources;
+    farSources.update(far);
+    WorldItems farItems;
+    farItems.replace(0, 0, {item(200, 0), item(100, 0)});
+    const ViewAdmission itemView({}, {}, {}, itemLightReach(640));
+    collected.clear();
+    farSources.append(collected, farItems, view, {}, 1, &itemView);
+    check(collected.size() == 2 && collected[0].position == point(200, 200) && collected[1].position == point(100, 0, 3),
+          "items beyond 128 blocks are dropped while a farther static light is kept");
 }
 
 int main() {

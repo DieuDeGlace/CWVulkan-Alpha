@@ -50,11 +50,13 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
 
     FrameConstants c{};
     const projection::Inputs lens = camera.mainInputs();
-    c.viewProjection = projection::multiply(camera.mainProjection(), view);
-    // §8.4: the sky camera keeps the view's rotation, sits at the origin, and has its own lens.
+    const glm::mat4 frameProjection = camera.mainProjection();
+    c.viewProjection = projection::multiply(frameProjection, view);
+    // §8.4, §8.5: the sky camera keeps the view's rotation and sits at the origin; the frame
+    // has one projection, shared by the sky objects and every world draw.
     glm::mat4 rotation = view;
     rotation[3] = glm::vec4(0, 0, 0, 1);
-    c.skyViewProjection = projection::multiply(camera.projection(0.1f, 2000.f, alpha::SKY_LENS_DEGREES), rotation);
+    c.skyViewProjection = projection::multiply(frameProjection, rotation);
     c.camera = glm::vec4(camera.eye, 1);
     c.lightDirection = glm::vec4(alpha::sunDirection(scene.timeOfDayMs), 0);
     c.front = glm::vec4(palette.front, 1);

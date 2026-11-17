@@ -1,6 +1,7 @@
 #include "creatures/Appearance.h"
 #include <bit>
 #include <cstring>
+#include <string_view>
 
 namespace creatures {
 namespace {
@@ -40,6 +41,24 @@ float *component(Appearance &a, int v, int k) {
 float unitDraw(int d) { return (float)d / 32767.f; }
 
 } // namespace
+
+bool keyColoursActive(uint16_t slot) {
+    if (slot >= MODEL_SLOTS || !MODEL_KEYS[slot])
+        return false;
+    // Appendix A's weapon families: wood staffs, wood wands, gold and silver bracelets and the
+    // obsidian staffs (434-608) whole; of iron maces, wood bows, crossbows and boomerangs the ten
+    // groups of random variants after each family's five plain models.
+    if ((slot >= 434 && slot <= 608) || (slot >= 614 && slot <= 663) || (slot >= 679 && slot <= 728) ||
+        (slot >= 734 && slot <= 783) || (slot >= 789 && slot <= 838))
+        return true;
+    const std::string_view key = MODEL_KEYS[slot];
+    if (key.find("-hair-") != std::string_view::npos)
+        return true;
+    for (const char *eyes : {"skeleton-eyes", "imp-eyes", "dark-troll-eyes", "vampire-eyes", "frightener-eyes"})
+        if (key == eyes)
+            return true;
+    return false;
+}
 
 Appearance Appearance::parse(const uint8_t *p) {
     Appearance a;
@@ -122,6 +141,7 @@ void generate(int32_t &type, Appearance &a, const CharacterChoice *given, const 
     // (Alpha's width is the float 0x3f75c290, one step above the float nearest 0.96, as its
     // recorded creatures show.)
     a.box = {std::bit_cast<float>(0x3f75c290u), std::bit_cast<float>(0x3f75c290u), 2.16f};
+    const glm::vec3 base = a.box;
     if (type < 0 || type >= TYPE_COUNT)
         return;
     const bool copiesColour = (type >= 0 && type <= 5) || (type >= 7 && type <= 12) || type == 148 || type == 149 ||
@@ -169,6 +189,22 @@ void generate(int32_t &type, Appearance &a, const CharacterChoice *given, const 
 
     // The rules Appendix B states in words.
     switch (type) {
+    // §4.2: boxes computed from the step-2 box in single precision.
+    case 4: case 5: case 9: case 10: case 48: case 49: case 87: case 92: case 93:
+        a.box = base / 1.2f;
+        break;
+    case 81:
+        a.box = base * 1.5f;
+        break;
+    case 88: case 89:
+        a.box = base * 1.1f;
+        break;
+    case 90:
+        a.box = base * 0.7f;
+        break;
+    case 91:
+        a.box = base * 0.9f;
+        break;
     case 2:
         a.model(Part::Hand) = a.model(Part::Head) > 1248 ? 431 : 430;
         break;

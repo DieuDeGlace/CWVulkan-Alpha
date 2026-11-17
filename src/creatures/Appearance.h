@@ -12,6 +12,11 @@ namespace creatures {
 
 constexpr uint16_t NO_MODEL = 65535;
 
+// §5.1: whether the model in `slot` is loaded with key colours active (key flag 0): every hair
+// layer, five eye layers, the wood and obsidian staffs, wood wands, gold and silver bracelets,
+// and the "random" variants of iron maces, wood bows, crossbows and boomerangs.
+bool keyColoursActive(uint16_t slot);
+
 // §3.3
 enum AppearanceFlags : uint16_t {
     QUADRUPED = 0x0001,

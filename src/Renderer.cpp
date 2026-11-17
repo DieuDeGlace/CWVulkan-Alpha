@@ -57,7 +57,8 @@ struct Renderer::PipelineDesc {
     bool cull = true;
     bool depthOnly = false; // no colour target (the shadow pass)
     bool depthWrite = true; // (false: test against depth without writing it)
-    float depthBias = 0;    // slope-scaled depth bias, in units of the depth slope
+    bool colourWrite = true; // (false: depth only into a colour pass, render state 0xa8 = 0)
+    float depthBias = 0;  // slope-scaled depth bias, in units of the depth slope
     // Another depth-stencil target than the scene's (the interface's, for the corner map).
     VkFormat depthFormat = VK_FORMAT_UNDEFINED, stencilFormat = VK_FORMAT_UNDEFINED;
 };
@@ -347,7 +348,7 @@ VkPipeline Renderer::makePipeline(const PipelineDesc &desc) {
     depth.depthWriteEnable = desc.depth && desc.depthWrite;
     depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; // §1.3 step 1
     VkPipelineColorBlendAttachmentState blendAttachment{};
-    blendAttachment.colorWriteMask = 0xf;
+    blendAttachment.colorWriteMask = desc.colourWrite ? 0xf : 0;
     if (desc.blend) {
         blendAttachment.blendEnable = VK_TRUE;
         blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -489,6 +490,21 @@ bool Renderer::createScenePipelines() {
         {3, 0, VK_FORMAT_R32_SFLOAT, offsetof(ModelVertex, sway)},
     };
     modelPipeline = makePipeline(model);
+    // Rendering §11.2, §1.3 steps 15 and 18: motion-trail ghosts (blended, depth writes off),
+    // particles (depth writes off), and the translucent creatures' depth-only and colour draws.
+    PipelineDesc ghost = model;
+    ghost.blend = true;
+    ghost.depthWrite = false;
+    ghostPipeline = makePipeline(ghost);
+    PipelineDesc particle = model;
+    particle.depthWrite = false;
+    particlePipeline = makePipeline(particle);
+    PipelineDesc depthPrimer = model;
+    depthPrimer.colourWrite = false;
+    translucentDepthPipeline = makePipeline(depthPrimer);
+    PipelineDesc translucent = model;
+    translucent.blend = true;
+    translucentPipeline = makePipeline(translucent);
 
     PipelineDesc sky{spv_sky_vert, sizeof(spv_sky_vert), spv_sky_frag, sizeof(spv_sky_frag)};
     sky.depth = false;
@@ -516,6 +532,7 @@ bool Renderer::createScenePipelines() {
     cloud.vertexBytes = sizeof(spv_cloud_vert);
     cloud.fragmentCode = spv_cloud_frag;
     cloud.fragmentBytes = sizeof(spv_cloud_frag);
+    cloud.cull = false; // §1.3 step 13: culling stays off for the clouds
     cloudPipeline = makePipeline(cloud);
 
     PipelineDesc water = model;
@@ -540,7 +557,7 @@ bool Renderer::createScenePipelines() {
     depthInfo.addressModeU = depthInfo.addressModeV = depthInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     vkCreateSampler(device, &depthInfo, nullptr, &depthSampler);
     return modelPipeline && skyPipeline && spritePipeline && shadowPipeline && cloudPipeline && waterPipeline &&
-           effectPipeline;
+           effectPipeline && ghostPipeline && particlePipeline && translucentDepthPipeline && translucentPipeline;
 }
 
 uint32_t Renderer::memoryType(uint32_t bits, VkMemoryPropertyFlags flags) const {
@@ -786,34 +803,93 @@ void Renderer::recordMinimap(VkCommandBuffer cmd, uint32_t imageIndex, const Fra
 }
 
 uint32_t Renderer::drawItems(VkCommandBuffer cmd, const std::vector<DrawItem> &items, const glm::mat4 &clip,
-                             bool shadowPass, Shading only) {
+                             bool shadowPass, Shading only, DrawLayer layer) {
     const auto planes = planesOf(clip);
     uint32_t drawn = 0;
     for (const DrawItem &item : items) {
-        if (item.mesh == 0 || item.mesh > meshes.size() || (shadowPass ? !item.castsShadow : item.shading != only))
+        if (shadowPass ? !item.castsShadow : item.shading != only || item.layer != layer)
             continue;
-        const Mesh &m = meshes[item.mesh - 1];
-        if (!m.indexCount)
+        // Rulings §13: terrain and water draw with their chunk's lights; the rest of the
+        // objects pass sees the frame list (row 0). Clouds have no point lights at all
+        // (shaders/cloud.vert reads none).
+        if (drawItem(cmd, item, planes, shadowPass || item.shading == Shading::Cloud ? 0 : lightRowOf(item.mesh)))
+            drawn++;
+    }
+    return drawn;
+}
+
+bool Renderer::drawItem(VkCommandBuffer cmd, const DrawItem &item, const std::array<glm::vec4, 6> &planes,
+                        uint32_t lightRow) {
+    if (item.mesh == 0 || item.mesh > meshes.size())
+        return false;
+    const Mesh &m = meshes[item.mesh - 1];
+    if (!m.indexCount)
+        return false;
+    const glm::vec3 centre = glm::vec3(item.world * glm::vec4(m.centre, 1));
+    const float scale = std::max({glm::length(glm::vec3(item.world[0])), glm::length(glm::vec3(item.world[1])),
+                                  glm::length(glm::vec3(item.world[2]))});
+    if (!sphereInside(planes, centre, m.radius * scale))
+        return false;
+    const bool world = item.shading == Shading::World;
+    struct {
+        glm::mat4 world;
+        glm::vec4 material;
+        // x: shininess, y: point-light row (zero selects the frame list), z: white (the hit
+        // flash), w: the pixel alpha constant
+        glm::vec4 extra;
+    } constants{item.world, world ? item.material : glm::vec4(1),
+                glm::vec4(item.shine && world ? 1.f : 0.f, float(lightRow), world ? item.white : 0.f,
+                          world ? item.alpha : 1.f)};
+    vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof constants, &constants);
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &m.vertices.buffer, &offset);
+    vkCmdBindIndexBuffer(cmd, m.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cmd, m.indexCount, 1, 0, 0, 0);
+    return true;
+}
+
+uint32_t Renderer::drawObjects(VkCommandBuffer cmd, const std::vector<DrawItem> &items, const glm::mat4 &clip) {
+    const auto planes = planesOf(clip);
+    uint32_t drawn = 0;
+    // Ghosts are drawn just before their creature, in list order, so the pipeline follows
+    // the items rather than being bound once per kind.
+    VkPipeline bound = VK_NULL_HANDLE;
+    for (const DrawItem &item : items) {
+        if (item.shading != Shading::World || (item.layer != DrawLayer::Opaque && item.layer != DrawLayer::Ghost))
             continue;
-        const glm::vec3 centre = glm::vec3(item.world * glm::vec4(m.centre, 1));
-        const float scale = std::max({glm::length(glm::vec3(item.world[0])), glm::length(glm::vec3(item.world[1])),
-                                      glm::length(glm::vec3(item.world[2]))});
-        if (!sphereInside(planes, centre, m.radius * scale))
+        const VkPipeline wanted = item.layer == DrawLayer::Ghost ? ghostPipeline : modelPipeline;
+        if (wanted != bound)
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound = wanted);
+        if (drawItem(cmd, item, planes, lightRowOf(item.mesh)))
+            drawn++;
+    }
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipeline);
+    return drawn + drawItems(cmd, items, clip, false, Shading::World, DrawLayer::Effect);
+}
+
+uint32_t Renderer::drawTranslucent(VkCommandBuffer cmd, const std::vector<DrawItem> &items, const glm::mat4 &clip,
+                                   uint32_t lightRow) {
+    const auto planes = planesOf(clip);
+    uint32_t drawn = 0;
+    for (size_t first = 0; first < items.size();) {
+        const DrawItem &head = items[first];
+        if (head.shading != Shading::World || head.layer != DrawLayer::Translucent) {
+            first++;
             continue;
-        struct {
-            glm::mat4 world;
-            glm::vec4 material;
-            glm::vec4 extra; // x: shininess, y: terrain light row (zero selects the frame fallback)
-        } constants{item.world, item.shading == Shading::World ? item.material : glm::vec4(1),
-                    glm::vec4(item.shine && item.shading == Shading::World ? 1.f : 0.f,
-                              item.shading == Shading::World && item.mesh < meshLightRows.size()
-                                  ? float(meshLightRows[item.mesh]) : 0.f, 0, 0)};
-        vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof constants, &constants);
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmd, 0, 1, &m.vertices.buffer, &offset);
-        vkCmdBindIndexBuffer(cmd, m.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(cmd, m.indexCount, 1, 0, 0, 0);
-        drawn++;
+        }
+        // One creature: the run of translucent items sharing its group.
+        size_t end = first + 1;
+        while (end < items.size() && items[end].layer == DrawLayer::Translucent && items[end].shading == Shading::World &&
+               items[end].group == head.group && head.group != 0)
+            end++;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, translucentDepthPipeline);
+        for (size_t i = first; i < end; i++)
+            drawItem(cmd, items[i], planes, lightRow);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, translucentPipeline);
+        for (size_t i = first; i < end; i++)
+            if (drawItem(cmd, items[i], planes, lightRow))
+                drawn++;
+        first = end;
     }
     return drawn;
 }
@@ -869,7 +945,10 @@ void Renderer::recordScene(VkCommandBuffer cmd, const FrameConstants &frame, boo
     VkRenderingAttachmentInfo colour{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     colour.imageView = sceneColour.view;
     colour.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colour.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; // the sky covers every pixel
+    // §1.3 step 1: colour and depth are cleared, the colour to 0xFF0070FF. (The white clear
+    // needs a flag the client never sets, so it is not modelled.)
+    colour.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colour.clearValue.color = {{0.f, 112.f / 255.f, 1.f, 1.f}};
     colour.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     VkRenderingAttachmentInfo depth{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     depth.imageView = depthImages[parity].view;
@@ -902,11 +981,11 @@ void Renderer::recordScene(VkCommandBuffer cmd, const FrameConstants &frame, boo
     vkCmdDraw(cmd, 6, 1, 0, 0);
     if (frame.moonSprite.w > 0)
         vkCmdDraw(cmd, 6, 1, 0, 1); // AlphaVulkan's moon, over the stars
-    // §1.3 steps 11-12: clouds, then the world.
+    // §1.3 steps 13-15: clouds, then terrain and the objects pass (the chunk meshes lead the
+    // list), then the particles with depth writes off.
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, cloudPipeline);
     lastDrawn = drawItems(cmd, items, frame.viewProjection, false, Shading::Cloud);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, modelPipeline);
-    lastDrawn += drawItems(cmd, items, frame.viewProjection, false, Shading::World);
+    lastDrawn += drawObjects(cmd, items, frame.viewProjection);
     // Trails §1.3: the effect triangles, after the solid world and before the water.
     if (!effects.empty()) {
         const VkDeviceSize bytes = effects.size() * sizeof(EffectVertex);
@@ -925,9 +1004,13 @@ void Renderer::recordScene(VkCommandBuffer cmd, const FrameConstants &frame, boo
     // that background once, and surface depth rejects overlapping farther water.
     const bool anyWater =
         std::any_of(items.begin(), items.end(), [](const DrawItem &i) { return i.shading == Shading::Water; });
-    if (!anyWater)
+    const bool anyTranslucent = std::any_of(items.begin(), items.end(), [](const DrawItem &i) {
+        return i.shading == Shading::World && i.layer == DrawLayer::Translucent;
+    });
+    if (!anyWater && !anyTranslucent)
         return;
-    snapshotWaterBackground(cmd);
+    if (anyWater)
+        snapshotWaterBackground(cmd);
     colour.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -935,8 +1018,22 @@ void Renderer::recordScene(VkCommandBuffer cmd, const FrameConstants &frame, boo
     vkCmdSetViewport(cmd, 0, 1, &vp);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &frameSet, 0, nullptr);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, waterPipeline);
-    lastDrawn += drawItems(cmd, items, frame.viewProjection, false, Shading::Water);
+    // §1.3 step 16: the water, each sub-mesh with its own chunk's lights (rulings §13). The
+    // surface shader itself is the shared Steam one (an owner extension).
+    std::optional<uint32_t> lastWaterRow;
+    if (anyWater) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, waterPipeline);
+        const auto planes = planesOf(frame.viewProjection);
+        for (const DrawItem &item : items)
+            if (item.shading == Shading::Water && drawItem(cmd, item, planes, lightRowOf(item.mesh))) {
+                lastWaterRow = lightRowOf(item.mesh);
+                lastDrawn++;
+            }
+    }
+    // Step 17 (the far statics) is not separated in this engine; step 18: the translucent
+    // creatures, lit by whatever the last water draw left bound.
+    if (anyTranslucent)
+        lastDrawn += drawTranslucent(cmd, items, frame.viewProjection, postWaterLightRow(lastWaterRow));
     vkCmdEndRendering(cmd);
 }
 
@@ -950,11 +1047,11 @@ void Renderer::setTerrainLights(std::span<const terrain_lights::Selection> selec
     terrainLightRows.resize(selections.size());
     for (size_t i = 0; i < selections.size(); ++i) {
         terrainLightRows[i] = terrain_lights::shaderPrefix(selections[i]);
-        const uint32_t mesh = selections[i].mesh;
-        if (mesh && mesh < meshLightRows.size()) {
-            meshLightRows[mesh] = uint32_t(i + 1);
-            terrainLightMeshes.push_back(mesh);
-        }
+        for (const uint32_t mesh : {selections[i].mesh, selections[i].water})
+            if (mesh && mesh < meshLightRows.size()) {
+                meshLightRows[mesh] = uint32_t(i + 1);
+                terrainLightMeshes.push_back(mesh);
+            }
     }
 }
 
@@ -1147,7 +1244,8 @@ Renderer::~Renderer() {
     destroyPostResources();
     vkDestroySampler(device, depthSampler, nullptr);
     for (VkPipeline p :
-         {modelPipeline, skyPipeline, spritePipeline, shadowPipeline, cloudPipeline, waterPipeline, effectPipeline})
+         {modelPipeline, skyPipeline, spritePipeline, shadowPipeline, cloudPipeline, waterPipeline, effectPipeline,
+          ghostPipeline, particlePipeline, translucentDepthPipeline, translucentPipeline})
         vkDestroyPipeline(device, p, nullptr);
     vkDestroySampler(device, shadowSampler, nullptr);
     freeImage(shadowMap);

@@ -21,14 +21,18 @@ struct Candidate {
     float priority = 0;
 };
 
+// A chunk's solid mesh and its water sub-mesh: rendering rulings §13 bind the same chunk
+// lights to both.
 struct Chunk {
     glm::ivec2 coordinate{0};
     uint32_t mesh = 0;
+    uint32_t water = 0;
     bool operator==(const Chunk &) const = default;
 };
 
 struct Selection {
     uint32_t mesh = 0, count = 0;
+    uint32_t water = 0;
     std::array<glm::vec4, CAPACITY> positions{}, colours{};
 };
 

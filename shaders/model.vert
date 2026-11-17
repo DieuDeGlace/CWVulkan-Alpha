@@ -14,7 +14,9 @@ layout(location = 3) in float inSway;  // leaf sway weight (0 for everything but
 layout(push_constant) uniform Draw {
     mat4 world;    // model -> world blocks
     vec4 material; // this draw's material: rgb times the colour, a times the sun and sky term
-    vec4 extra;    // x: shininess (materials §1.2: only its sign matters)
+    // x: shininess (materials §1.2: only its sign matters), y: point-light row, z: white (§5
+    // step 9, the creature's hit flash), w: the pixel alpha constant (§6.2 step 6)
+    vec4 extra;
 } draw;
 
 layout(location = 0) centroid out vec4 lit; // floating-point colour, without a final colour clamp
@@ -24,6 +26,7 @@ layout(location = 3) out vec3 worldPosition;
 layout(location = 4) out vec3 worldNormal;
 layout(location = 5) flat out float shine;
 layout(location = 6) out vec2 doubledViewNormal;
+layout(location = 7) flat out float opacity;
 
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 // How far moonlight takes colours towards grey, so a moonlit world reads blue rather than as a
@@ -77,8 +80,11 @@ void main() {
     precise vec3 shadedProduct = clamp(Tshaded, 0.0, 1.2) * inColour.rgb;
     vec3 K = vertexProduct * material + (moonFill + moonDirect) * moonColour;
     vec3 Kshaded = shadedProduct * material + moonShaded * moonColour;
-    lit = vec4(fma(vec3(f.params.z), 1.0 - K, K), inColour.a);
-    shaded = fma(vec3(f.params.z), 1.0 - Kshaded, Kshaded);
+    // The frame's white is 0; a creature's draw carries its own flash value.
+    float white = f.params.z + draw.extra.z;
+    lit = vec4(fma(vec3(white), 1.0 - K, K), inColour.a);
+    shaded = fma(vec3(white), 1.0 - Kshaded, Kshaded);
+    opacity = draw.extra.w;
     worldPosition = world.xyz;
     worldNormal = n;
     shine = draw.extra.x;

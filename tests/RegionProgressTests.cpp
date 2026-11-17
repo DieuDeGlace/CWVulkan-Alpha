@@ -1,5 +1,7 @@
 #include "Missions.h"
 #include "creatures/Npcs.h"
+#include "worldgen/Items.h"
+#include <algorithm>
 #include <bit>
 #include <cstdio>
 #include <limits>
@@ -317,7 +319,88 @@ static void descriptorDisposal() {
           "rebuilding matches retained descriptor IDs even after taming, while preserving independent actors and the prefix");
 }
 
+// alpha-missions.md re-certification corrections 1, 3-6 and 8.
+static void dailyPassAndZonePass() {
+    // Correction 6: group-size bands of u (single-precision share, squared by pow 2.0, x 4).
+    const std::pair<int32_t, int32_t> bands[] = {{0, 0},     {16383, 0}, {16384, 1}, {23169, 1}, {23170, 2},
+                                                 {28377, 2}, {28378, 3}, {32766, 3}, {32767, 4}};
+    for (const auto &[u, n] : bands)
+        check(wanderingGroupSize(u) == n, "group size boundaries");
+
+    // Corrections 3, 4: y is drawn before x; z rises from the zone-centre column's +0x14.
+    {
+        worldgen::Zone zone(2, 3);
+        zone.column(2 * 256 + 128, 3 * 256 + 128).belowSurface = 5;
+        // srand(1): 41 then 18467, so y = 768 + 16 + 41 and x = 512 + 16 + 18467 mod 224 (99).
+        const int32_t x = 512 + 16 + 99, y = 768 + 16 + 41;
+        worldgen::Column &column = zone.column(x, y);
+        column.bottom = 0;
+        column.blocks.assign(12, worldgen::Block{90, 90, 90, worldgen::ROCK});
+        worldgen::Random random(1);
+        const auto point = wanderingRoutePoint(zone, random);
+        check(point[0] == x && point[1] == y && random.count() == 2, "route point draws y first, then x");
+        check(point[2] == 12, "route height starts at the centre column's +0x14 and stops at the first open block");
+        column.blocks.assign(300, worldgen::Block{90, 90, 90, worldgen::ROCK});
+        worldgen::Random again(1);
+        check(wanderingRoutePoint(zone, again)[2] == 105, "route height ends at start + 100 when nothing qualifies");
+        zone.column(x, y).blocks[7] = worldgen::Block{0, 0, 255, worldgen::WATER};
+        worldgen::Random water(1);
+        check(wanderingRoutePoint(zone, water)[2] == 7, "water qualifies as an open block");
+    }
+
+    // Corrections 5, 8: the cell monster stands on the centre column's top and is finished
+    // (appearance, mode-0 equipment) after its weapon and armour, in the zone pass.
+    {
+        worldgen::World world(123);
+        Missions missions;
+        auto &cell = missions.edit(4097, 4100);
+        cell.monster = {119, 2, 0, 32778, 32804};
+        cell.mission.kind = 1;
+        worldgen::Zone zone(32778, 32804);
+        worldgen::Column &centre = zone.column(32778 * 256 + 128, 32804 * 256 + 128);
+        centre.bottom = 3;
+        centre.blocks.assign(9, worldgen::Block{90, 90, 90, worldgen::ROCK});
+        worldgen::Random random(7), expected(7);
+        const auto spawns = missions.zonePass(world, zone, {}, random);
+        int32_t weaponRarity = 1;
+        weaponRarity += expected.draw() % 20 == 0;
+        weaponRarity += expected.draw() % 100 == 0;
+        worldgen::Spawn want;
+        want.type = 119, want.level = 2, want.appearanceFlags = 0x2000;
+        want.inventory.push_back(worldgen::weaponItem(expected, 2, std::min(weaponRarity, 4), -1));
+        int32_t armourRarity = 1;
+        armourRarity += expected.draw() % 100 == 0;
+        armourRarity += expected.draw() % 1000 == 0;
+        want.inventory.push_back(worldgen::armourItem(expected, 2, std::min(armourRarity, 4), -1));
+        finishSpawn(want, expected, false);
+        check(spawns.size() == 1 && spawns[0].finished && spawns[0].z == int64_t(12) * 65536,
+              "the cell monster is finished and stands at the column's top (+0x10 + +0x1c)");
+        check(random.count() == expected.count() && spawns[0].appearance == want.appearance &&
+                  (spawns[0].appearanceFlags & 0x2000),
+              "cell monster draws: weapon rarity, weapon, armour rarity, armour, appearance, equipment");
+    }
+
+    // Correction 1 (Ruling 3): the daily pass tests the owner region, not block / 16384.
+    {
+        worldgen::World world(123);
+        world.makeCells(511, 511);
+        world.makeCells(512, 512);
+        int differing = 0;
+        for (int32_t x = 8388608 - 4096; x < 8388608 + 4096; x += 64)
+            for (int32_t y : {8380000, 8390000, 8397824}) {
+                int32_t i = -1, j = -1;
+                const bool found = world.ownerIndex(x, y, i, j);
+                const auto region = missionPassRegion(world, glm::dvec3(x + 0.75, y + 0.25, 0));
+                check(found == region.has_value() && (!found || (region->first == i && region->second == j)),
+                      "the pass region is the owner index of the truncated block position");
+                differing += found && (i != x / 16384 || j != y / 16384);
+            }
+        check(differing > 0, "near a region border the owner region differs from block / 16384");
+    }
+}
+
 int main() {
+    dailyPassAndZonePass();
     spatialAndContributorGates();
     selectorAndSnapshotRules();
     cellTraversalAndPublication();

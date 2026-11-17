@@ -33,9 +33,11 @@ void main() {
     vec3 n = normalize(mat3(draw.world) * inNormal);
     vec3 d = f.lightDirection.xyz;
     vec3 T = f.ambient.rgb + max(dot(n, d), 0.0) * f.front.rgb + max(dot(n, -d), 0.0) * f.front.rgb;
+    // §4 cloud row: the material is (1, 1, 1, S), also under water (no tint); and no point
+    // lights reach the clouds (rulings §7).
     T *= f.material.a * inColour.a;
     T = clamp(T, 0.0, 1.2);
-    vec3 K = T * inColour.rgb * f.material.rgb;
+    vec3 K = T * inColour.rgb;
     vec3 darkness = (f.sky1.rgb + f.sky2.rgb) * 0.5;
     K = darkness * (1.0 - T) + K;
     lit = vec4(K, inColour.a);

@@ -1162,11 +1162,21 @@ void Server::stepWorld(float dtMs) {
             missionDay = (int32_t)clockDay;
             missions.clearGenerated();
         }
+        const auto zonePass = [&](int32_t zx, int32_t zy) {
+            if (const worldgen::Zone *zone = zones.zone(zx, zy))
+                npcs.setExtraSpawns(zx, zy, zone->spawns.size(), missions.zonePass(w, *zone, mplayers, worldRandom));
+        };
         for (const Missions::Player &p : mplayers) {
-            const int32_t rx = worldgen::floorDiv((int32_t)std::floor(p.position.x), worldgen::REGION);
-            const int32_t ry = worldgen::floorDiv((int32_t)std::floor(p.position.y), worldgen::REGION);
-            if (!w.region(rx, ry))
+            // §7: the saved cells of the player's own region (for discovery).
+            const int32_t bx = worldgen::floorDiv((int32_t)std::floor(p.position.x), worldgen::REGION);
+            const int32_t by = worldgen::floorDiv((int32_t)std::floor(p.position.y), worldgen::REGION);
+            if (w.region(bx, by))
+                readMissionRegion(bx, by);
+            // §2.1, Ruling 3: the region tested is the owner of the player's position.
+            const auto region = missionPassRegion(w, p.position);
+            if (!region || !w.region(region->first, region->second))
                 continue;
+            const auto [rx, ry] = *region;
             readMissionRegion(rx, ry);
             if (missions.generated(rx, ry))
                 continue;
@@ -1176,15 +1186,15 @@ void Server::stepWorld(float dtMs) {
                     regionZones.insert(key);
             npcs.removeTargets(regionZones);
             missions.dailyPass(w, rx, ry, mplayers, worldRandom);
-            zonesForMissions.insert(regionZones.begin(), regionZones.end());
+            // §2.6, §2.7 step 4: the driver ends with the zone pass of every loaded zone of its
+            // region, x outer, before the next player's test.
+            for (const auto &[zx, zy] : regionZones) {
+                zonesForMissions.erase({zx, zy});
+                zonePass(zx, zy);
+            }
         }
-        const auto ground = [this](int32_t x, int32_t y) {
-            const worldgen::Zone *z = zones.zoneAt(x, y);
-            return z ? (float)z->column(x, y).top() : 0.f;
-        };
         for (const auto &[zx, zy] : std::exchange(zonesForMissions, {}))
-            if (const worldgen::Zone *zone = zones.zone(zx, zy))
-                npcs.setExtraSpawns(zx, zy, zone->spawns.size(), missions.zonePass(w, zx, zy, ground, mplayers, worldRandom));
+            zonePass(zx, zy); // §2.6: newly generated zones
         for (const Missions::Player &p : mplayers)
             missions.discover(w, p.position);
         npcs.killCompletedMissionTargets(missions);

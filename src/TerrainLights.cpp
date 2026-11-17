@@ -149,6 +149,7 @@ const std::vector<Selection> &Selector::rebuild(std::span<const Candidate> order
     selections.resize(chunks.size());
     for (size_t i = 0; i < chunks.size(); ++i) {
         selections[i].mesh = chunks[i].mesh;
+        selections[i].water = chunks[i].water;
         selections[i].count = 0;
         selections[i].positions.fill(glm::vec4(0));
         selections[i].colours.fill(glm::vec4(0));

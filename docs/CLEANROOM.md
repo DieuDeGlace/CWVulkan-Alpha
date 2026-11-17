@@ -2863,3 +2863,32 @@ Not modelled: the code-made land-name and TIME/TEMP labels (visibility open); th
 item queue (it would move the pick-up pitch draw); duplicate-name messages from the update routine;
 the Direct3D device reset; the quick-item wheel. Engine adapter retained: taming progress is kept
 outside a kind-7 buff record.
+## Creature models, missions, rendering; mission rewards, pose, clouds/lights and shimmer rulings (2026-11-16)
+
+Fresh source-only authors re-certified `alpha-creatures-models.md` (7699EB2D...1051), `alpha-missions.md`
+(564B160C...1C21) and `alpha-rendering.md` (C0D58BEB...8716). Ruling authors settled the conflicts they
+raised: `alpha-rulings-mission-rewards.md` (121E72DD...9D33) (every player is rewarded for a hostile
+victim, in ascending creature id order; mission progress is gated only by the remote flag, after loot; the daily pass runs for
+the region owning the player's position); `alpha-rulings-pose-49-50-mount.md` (2EE4F64E...CB89)
+(pose 49 copies the off rest into the main rest; pose 50's 40q lean reaches the feet; only selector 0x3A reads the mount);
+`alpha-rulings-rendering-clouds-lights.md` (AE0CBBE1...2173) (cloud, star, projection,
+point-light selection and per-draw light sets; opaque creatures before water); `alpha-rulings-shimmer-phase.md`
+(871DC71A...2F1A) (the shimmer uses cosine; the terrain numerics contract wins). Fresh implementers read
+each contract whole.
+Process note: a first clouds/lights ruling author was assigned `sky-and-clouds.md` (class E, contains engine status notes).
+That ruling was withdrawn unpublished and the ruling was re-derived by a fresh author who did not open that file;
+`sky-and-clouds.md` is withheld from source authors.
+Engine changes: creature part draw order (glider/boat/mana cube first, arms, quivers, weapons, left hand, lantern, right hand),
+the lantern draws inside the left-hand step, weapon glow, key-colour set, computed boxes in single precision, shimmer slots,
+quadruped hand height, dodge and glide hand raise, shortest-arc angle steps, action 93 with an empty off hand gives pose 49,
+pose 41 visibility and curls, pose 44/73 step 5, pose 50 foot lean, footsteps (ground and non-climbing only, at the creature);
+the daily mission pass uses the owner region, route points draw y then x from the zone-centre column, zone-pass draw order,
+every player rewarded on the non-hit death path, kind-1 tag distance from the monster area; frame clear 0xFF0070FF, one
+projection for the frame, star precision, cloud gate at the player, cloud shade and rotation, opaque creatures drawn before
+water and translucent bodies after it, effect tints, five-ghost motion trail, fog distance to chunk centres, lit-water
+substitution, shaded type-3 film quad, particles without depth writes, 128-block item light limit, water lit by its own chunk
+and post-water draws by the last water row.
+Not modelled: riding and mount parts, the plaster field, the highlight colour source, far statics, a queued creature's own item
+models (the whole translucent creature is deferred), ghost pose ageing at dt 0, dropping records for unloaded regions.
+Engine adapters retained: fog window origin and start value, the water chunk visiting order, the free-camera cloud gate. The
+owner's shared water shader, swimmable water, reeds, gamepad, price fixes and quests are unchanged.

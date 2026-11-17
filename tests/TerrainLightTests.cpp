@@ -169,6 +169,14 @@ int main() {
     const auto &rejected = selector.rebuild(candidates, outside, {});
     check(rejected[0].count == 0 && rejected[1].count == 0, "native chunk bounds reject both exterior edges");
     check(selector.rebuild(candidates, {}, {}).empty(), "unloading all geometry removes its light selections");
+    // Rendering rulings §13: a chunk's water sub-mesh sees that chunk's own lights, also for a
+    // chunk with water and no solid faces.
+    const std::array<Chunk, 2> wet{{{{0, 0}, 5, 6}, {{1, 0}, 0, 11}}};
+    candidates = {light(40, 16, 1, {0, 1, 0})};
+    const auto &waterRows = selector.rebuild(candidates, wet, {});
+    check(waterRows.size() == 2 && waterRows[0].water == 6 && waterRows[0].count == 0 && waterRows[1].mesh == 0 &&
+              waterRows[1].water == 11 && waterRows[1].count == 1 && waterRows[1].colours[0] == glm::vec4(0, 1, 0, 0),
+          "water sub-meshes carry their own chunk's light selection");
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

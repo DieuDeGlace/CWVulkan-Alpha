@@ -7,6 +7,8 @@
 // now also follows the independently held alpha-terrain-shader-color-numerics.md.
 // Spatial factor generators and final display transfer remain unverified.
 #include <glm/glm.hpp>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -55,10 +57,29 @@ glm::vec4 material(float sunlight, bool underwater);
 // between straight up and the view direction (90 = level, 120 = 30 degrees down).
 float fogGradientTranslation(float zenithDegrees);
 
+// §7.1: the render radius R (a 40-chunk window times 0.5 times 32 blocks); fixed in Alpha.
+constexpr int32_t FOG_WINDOW_CHUNKS = 40;
+constexpr float RENDER_RADIUS = 640;
+// §7.1 steps 1-3: the fog target for a camera at block column (x, y) and the 40 x 40 chunk
+// window whose first chunk is `window`. Starting from R², every window chunk with both
+// coordinates in [0, 0x80000) that `loaded(i, j)` denies lowers the minimum to the squared
+// horizontal distance to its centre (32 i + 16, 32 j + 16). Returns sqrt(min) - 22.4.
+template <class Loaded> float fogTarget(glm::dvec2 camera, glm::ivec2 window, Loaded loaded) {
+    double nearest = double(RENDER_RADIUS) * RENDER_RADIUS;
+    for (int32_t i = window.x; i < window.x + FOG_WINDOW_CHUNKS; i++)
+        for (int32_t j = window.y; j < window.y + FOG_WINDOW_CHUNKS; j++) {
+            if (uint32_t(i) >= 0x80000u || uint32_t(j) >= 0x80000u || loaded(i, j))
+                continue;
+            const double dx = 32.0 * i + 16 - camera.x, dy = 32.0 * j + 16 - camera.y;
+            nearest = std::min(nearest, dx * dx + dy * dy);
+        }
+    return float(std::sqrt(nearest)) - 22.4f;
+}
+
 // §7.1: the fog distance F follows the nearest unloaded ground, smoothed over time.
 class FogDistance {
   public:
-    // Distance to the nearest missing chunk corner (or the render radius) in blocks.
+    // Distance to the nearest missing chunk centre (or the render radius) in blocks.
     static float target(float nearestMissing) { return nearestMissing - 22.4f; }
     // Moves towards `target` over `elapsedMs`: w = 1 - 0.999^ms; F <- F (1 - w) + target w.
     void update(float targetDistance, double elapsedMs);
@@ -78,8 +99,6 @@ struct Star {
 std::vector<Star> stars();
 // Stars are drawn while S < 0.5 and the camera is not under water (§8.3).
 inline bool starsVisible(float sunlight, bool underwater) { return sunlight < .5f && !underwater; }
-// The sky camera's lens (§8.4): 50 degrees from top to bottom of the screen.
-constexpr float SKY_LENS_DEGREES = 50;
 // §8.4: the sun sprite's vertex colour (0..1) for sunlight strength S.
 glm::vec4 sunSpriteColour(float sunlight);
 

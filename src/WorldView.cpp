@@ -141,11 +141,12 @@ WorldView::WorldView(Renderer &r, const Content &c, const WorldViewOptions &opti
     for (unsigned i = 0; i < n; i++)
         workers.emplace_back([this] { workerLoop(); });
 
-    // Clouds spec §1: one model, cloud02.cub.
+    // Clouds spec §1: one model, cloud02.cub, meshed with the shade (0, 100, 200) the frame
+    // gives it (rendering §11.1, rulings §1).
     if (const auto bytes = content.read("cloud02.cub")) {
         CubModel model;
         if (model.load(bytes->data(), bytes->size()))
-            cloudMesh = renderer.addMesh(model.mesh());
+            cloudMesh = renderer.addMesh(model.mesh(glm::vec3(0, 100, 200) / 255.f));
     }
     // The first zones, before the first frame.
     while (true) {
@@ -744,21 +745,41 @@ std::vector<DrawItem> WorldView::items(double clockMs) {
             const glm::mat4 sway = p.sways ? motion::plantShear(clockMs, p.phase, p.height, p.scale) : glm::mat4(1);
             out.push_back({p.mesh, p.placed * sway * p.yaw, true});
         }
-    // Clouds (clouds spec §3 step 7): turned, scaled, placed; then AlphaVulkan's drift.
+    // Clouds (clouds spec §3 step 7, rendering §11.4): centred (the mesh already is), turned,
+    // scaled, placed; then AlphaVulkan's drift. Gated at the local player's column, gridded
+    // round the camera's.
     if (cloudMesh) {
         const int32_t cx = origin.x + (int32_t)std::floor(eye.x), cy = origin.y + (int32_t)std::floor(eye.y);
+        const glm::ivec2 gate = playerColumn.value_or(glm::ivec2(cx, cy));
         const glm::vec2 drift = motionSettings.clouds
                                     ? motion::cloudDrift(clockMs / 1000.0, motionSettings.cloudDistance, motionSettings.cloudSpeed)
                                     : glm::vec2(0);
-        for (const auto &c : clouds.place(cx, cy, cx, cy)) {
+        for (const auto &c : clouds.place(gate.x, gate.y, cx, cy)) {
             const glm::vec3 at((float)(c.x - origin.x) + drift.x, (float)(c.y - origin.y) + drift.y, (float)c.z);
-            glm::mat4 m = glm::translate(glm::mat4(1), at);
-            m = glm::scale(m, glm::vec3(c.scale));
-            m = glm::rotate(m, glm::radians(c.rotation), glm::vec3(0, 0, 1));
+            // Rulings §6: the quarter turn is degrees x 0.01745329 in binary32, with binary64
+            // cosine and sine rounded to binary32; a vertex maps (x, y) -> (xc - ys, xs + yc).
+            const float angle = c.rotation * 0.01745329f;
+            const float cs = (float)std::cos((double)angle), sn = (float)std::sin((double)angle);
+            glm::mat4 m(0);
+            m[0] = glm::vec4(cs * c.scale, sn * c.scale, 0, 0);
+            m[1] = glm::vec4(-sn * c.scale, cs * c.scale, 0, 0);
+            m[2] = glm::vec4(0, 0, c.scale, 0);
+            m[3] = glm::vec4(at, 1);
             out.push_back({cloudMesh, m, true, Shading::Cloud});
         }
     }
     return out;
+}
+
+float WorldView::fogTarget() const {
+    // The window's first chunk: 20 chunks before the camera's on each axis. (The engine's
+    // window placement; the native window origin is not part of the fog contract.)
+    const glm::dvec3 at = worldPosition();
+    const glm::ivec2 camera(floorDiv((int32_t)std::floor(at.x), CHUNK), floorDiv((int32_t)std::floor(at.y), CHUNK));
+    const glm::ivec2 window = camera - glm::ivec2(alpha::FOG_WINDOW_CHUNKS / 2);
+    return alpha::fogTarget(glm::dvec2(at), window, [&](int32_t i, int32_t j) {
+        return chunks.count({i * CHUNK, j * CHUNK}) != 0;
+    });
 }
 
 Camera WorldView::camera(VkExtent2D size) const {
@@ -835,9 +856,11 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
             lightCandidates.push_back({*position, source.colour, source.radius, 0});
     }
     const terrain_lights::ViewAdmission view(*reference, shift, storedLightPlanes, reach);
+    const terrain_lights::ViewAdmission itemView(*reference, shift, storedLightPlanes,
+                                                 terrain_lights::itemLightReach(alpha::RENDER_RADIUS));
     // A flying viewer has no controlled creature; use its camera as an explicit
     // engine fallback. Playing uses the controlled body's main fixed position.
-    sectorSources.append(lightCandidates, items, view, controlled.value_or(*reference), daylight);
+    sectorSources.append(lightCandidates, items, view, controlled.value_or(*reference), daylight, &itemView);
     for (auto &candidate : lightCandidates)
         candidate.priority = terrain_lights::priority(candidate.position, *reference);
     terrain_lights::order(lightCandidates);
@@ -848,8 +871,8 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
     lightChunks.clear();
     lightChunks.reserve(chunks.size());
     for (const auto &[corner, entry] : chunks)
-        if (entry.solid)
-            lightChunks.push_back({{corner.first / 32, corner.second / 32}, entry.solid});
+        if (entry.solid || entry.water)
+            lightChunks.push_back({{corner.first / 32, corner.second / 32}, entry.solid, entry.water});
     renderer.setTerrainLights(lightSelector.rebuild(lightCandidates, lightChunks, shift));
 }
 

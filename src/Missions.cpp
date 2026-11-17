@@ -303,13 +303,46 @@ void Missions::build(const World &world, int32_t cx, int32_t cy, int32_t pMax, R
     changed.insert({cx, cy});
 }
 
-std::vector<Spawn> Missions::zonePass(const World &world, int32_t zx, int32_t zy,
-                                      const std::function<float(int32_t, int32_t)> &ground,
-                                      const std::vector<Player> &players, Random &random) const {
+std::optional<std::pair<int32_t, int32_t>> missionPassRegion(const World &world, glm::dvec3 position) {
+    // Ruling 3 step 1: the fixed-point position over 65536, toward zero (a double holding
+    // fixed / 65536 exactly truncates the same way).
+    const int32_t x = (int32_t)position.x, y = (int32_t)position.y;
+    int32_t rx = -1, ry = -1;
+    if (!world.ownerIndex(x, y, rx, ry))
+        return std::nullopt;
+    return std::pair{rx, ry};
+}
+
+int32_t wanderingGroupSize(int32_t u) {
+    // u / 32767 in single precision, squared by the double-precision power function (exponent
+    // 2.0) and narrowed back, then times 4 and truncated.
+    const float share = (float)u / 32767.f;
+    const float square = (float)std::pow((double)share, 2.0);
+    return (int32_t)(square * 4.f);
+}
+
+std::array<int32_t, 3> wanderingRoutePoint(const Zone &zone, Random &random) {
+    const int32_t y = 256 * zone.zy + 16 + random.draw() % 224;
+    const int32_t x = 256 * zone.zx + 16 + random.draw() % 224;
+    // The start is read from the zone-centre column, not from the point's own column.
+    const int32_t start = zone.column(256 * zone.zx + 128, 256 * zone.zy + 128).belowSurface;
+    int32_t z = start;
+    for (; z < start + 100; z++) {
+        const uint8_t type = zone.read(x, y, z).type();
+        if (type == AIR || type == WATER)
+            break;
+    }
+    return {x, y, z};
+}
+
+std::vector<Spawn> Missions::zonePass(const World &world, const Zone &zone, const std::vector<Player> &players,
+                                      Random &random) const {
     std::vector<Spawn> out;
+    const int32_t zx = zone.zx, zy = zone.zy;
     const auto [cx, cy] = cellOfZone(zx, zy);
     const int32_t centreX = 256 * zx + 128, centreY = 256 * zy + 128;
-    const float groundZ = ground(centreX, centreY);
+    // §3.1: the ground height, fields +0x10 + +0x1c of the zone-centre column record.
+    const float groundZ = (float)zone.column(centreX, centreY).top();
     const auto at = [&](Spawn &s, double x, double y) {
         s.x = fixed(x), s.y = fixed(y), s.z = fixed(groundZ);
     };
@@ -332,6 +365,7 @@ std::vector<Spawn> Missions::zonePass(const World &world, int32_t zx, int32_t zy
         armourRarity += random.draw() % 100 == 0;
         armourRarity += random.draw() % 1000 == 0;
         s.inventory.push_back(armourItem(random, s.level, std::min(armourRarity, 4), -1));
+        creatures::finishSpawn(s, random, false); // appearance, then mode-0 equipment (§2.7 step 4)
         out.push_back(std::move(s));
         return out;
     }
@@ -371,16 +405,12 @@ std::vector<Spawn> Missions::zonePass(const World &world, int32_t zx, int32_t zy
     at(leader, centreX, centreY);
     leader.type = variant();
     leader.level = level;
-    // The leader's 20-point route, each point on the ground of its column.
+    // The leader's 20-point route (§3.2 step 3).
     leader.behaviour = 2;
-    for (int k = 0; k < 20; k++) {
-        const int32_t x = 256 * zx + 16 + random.draw() % 224;
-        const int32_t y = 256 * zy + 16 + random.draw() % 224;
-        leader.route.push_back({x, y, (int32_t)ground(x, y)});
-    }
+    for (int k = 0; k < 20; k++)
+        leader.route.push_back(wanderingRoutePoint(zone, random));
     potions(leader);
-    const float u = (float)random.draw() / 32767.f;
-    const int32_t n = (int32_t)(u * u * 4);
+    const int32_t n = wanderingGroupSize(random.draw());
     std::vector<Spawn> members;
     for (int32_t k = 1; k <= n; k++) {
         Spawn m;
@@ -398,7 +428,11 @@ std::vector<Spawn> Missions::zonePass(const World &world, int32_t zx, int32_t zy
         members.push_back(std::move(m));
     }
     out.push_back(std::move(leader));
-    out.insert(out.end(), members.begin(), members.end());
+    out.insert(out.end(), std::make_move_iterator(members.begin()), std::make_move_iterator(members.end()));
+    // §3.2 step 7: once every spawn is made, each in list order gets its appearance and then
+    // its mode-0 equipment, the two interleaved per spawn.
+    for (Spawn &s : out)
+        creatures::finishSpawn(s, random, false);
     return out;
 }
 

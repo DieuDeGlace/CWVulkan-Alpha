@@ -19,6 +19,8 @@ SectorRange sectorRange(const FixedPosition &controlled, float reach);
 
 std::optional<Candidate> staticSource(int32_t kind, const FixedPosition &base, float height, float daylight,
                                       const ViewAdmission &view);
+// Rulings §10: the ground items' distance limit, base +0xac = R x 0.2 in binary32.
+inline float itemLightReach(float renderRadius) { return renderRadius * .2f; }
 std::optional<Candidate> itemSource(uint8_t category, uint8_t subtype, const FixedPosition &base, int32_t hidden);
 
 class SectorSources {
@@ -28,8 +30,10 @@ class SectorSources {
     void remove(int32_t x, int32_t y) { sectors.erase({x, y}); }
     // Append into the common collection after earlier source groups. Read live
     // item state once, independent of model availability or draw distance.
+    // Rendering rulings §10: static objects use `view` (reach F + 22.4, which also sizes the
+    // sector scan); ground items use `itemView` (reach 0.2 R = 128 blocks) when given.
     void append(std::vector<Candidate> &out, const WorldItems &items, const ViewAdmission &view,
-                const FixedPosition &controlled, float daylight) const;
+                const FixedPosition &controlled, float daylight, const ViewAdmission *itemView = nullptr) const;
 
   private:
     struct StaticLight {

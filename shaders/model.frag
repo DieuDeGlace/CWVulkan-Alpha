@@ -14,6 +14,7 @@ layout(location = 3) in vec3 worldPosition;
 layout(location = 4) in vec3 worldNormal;
 layout(location = 5) flat in float shine;
 layout(location = 6) in vec2 doubledViewNormal;
+layout(location = 7) flat in float opacity; // the alpha constant: 1 but for ghosts and translucent bodies
 layout(location = 0) out vec4 outColour;
 
 // Bounded ordinary terrain program from the held shader numeric contract.
@@ -80,5 +81,5 @@ void main() {
     float angle = fma(fract(turn), uintBitsToFloat(0x40c90fdbu), uintBitsToFloat(0xc0490fdbu));
     float oscillation = fma(cos(angle), 0.3, 1.0);
     c = f.params.w > 0.0 || shine > 0.0 ? c * oscillation : c;
-    outColour = vec4(c, 1.0);
+    outColour = vec4(c, opacity);
 }

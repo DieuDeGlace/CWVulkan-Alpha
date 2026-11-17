@@ -39,6 +39,19 @@ int main() {
         check(meshes.water.indices.size() == 6, "native wet ground adds one water-stream top face");
         check(!meshes.solid.indices.empty(), "native wet ground retains ordinary solid faces");
         check(nativeZone->read(10, 10, 4).type() == LAKE_BED, "native meshing does not turn wet ground into liquid");
+        // Rendering §9.1, §9.5 (correction 26): the film starts as (0, 0, 1, 1) and goes through
+        // the corner light and occlusion like any face: rg stay 0, blue lies between the
+        // shaded 0.901 and 1, alpha is the corner's light, and its corners match the solid top.
+        bool filmShaded = meshes.water.vertices.size() == 4;
+        for (const auto &vertex : meshes.water.vertices) {
+            filmShaded &= vertex.colour.r == 0 && vertex.colour.g == 0 && vertex.colour.b >= 0.9f &&
+                          vertex.colour.b <= 1.f && vertex.colour.a > 0 && vertex.colour.a <= 1.f && vertex.normal.z == 1;
+            bool matchesTop = false;
+            for (const auto &solid : meshes.solid.vertices)
+                matchesTop |= solid.normal.z == 1 && solid.position == vertex.position && solid.colour.a == vertex.colour.a;
+            filmShaded &= matchesTop;
+        }
+        check(filmShaded, "the type-3 film quad is shaded through the corner light and occlusion");
         nativeZone->column(10, 10).blocks.push_back(Block{255, 255, 255, WATER});
         const auto submerged = meshChunk(nativeMap, nativeTerrain, 0, 0);
         bool extraSubmergedTop = false;

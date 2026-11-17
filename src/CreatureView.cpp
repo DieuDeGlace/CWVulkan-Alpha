@@ -1,4 +1,5 @@
 #include "CreatureView.h"
+#include "CreatureShading.h"
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -11,11 +12,8 @@ const CreatureView::Model &CreatureView::model(uint16_t slot) {
         if (const auto bytes = content.read(std::string(creatures::MODEL_KEYS[slot]) + ".cub")) {
             CubModel cub;
             if (cub.load(bytes->data(), bytes->size())) {
-                // §5.1: hair and eye layers carry key colours. (The spec's other key-colour
-                // models, staffs, wands and bracelets, come with equipment.)
-                const std::string key = creatures::MODEL_KEYS[slot];
-                const bool keys = key.find("-hair-") != std::string::npos || key.rfind("-eyes") == key.size() - 5;
-                m.mesh = cub.mesh(glm::vec3(0), keys);
+                // §5.1: the models loaded with key colours active leave those voxels out.
+                m.mesh = cub.mesh(glm::vec3(0), creatures::keyColoursActive(slot));
                 m.size = glm::vec3(cub.sx, cub.sy, cub.sz);
                 m.cub = std::move(cub);
             }
@@ -81,11 +79,12 @@ void CreatureView::shatter(const creatures::Appearance &a, creatures::PoseState 
         const glm::vec3 centre = glm::vec3(M * glm::vec4(m->sx / 2.f, m->sy / 2.f, m->sz / 2.f, 1));
         glm::mat4 turn = M;
         turn[3] = glm::vec4(0, 0, 0, 1);
-        // Hair layers leave their key colours out (models §5.1).
+        // Models with key colours active leave those out (models §5.1).
+        const bool keyed = creatures::keyColoursActive(p.model);
         const auto filled = [&](int x, int y, int z) {
             if (!m->solid(x, y, z))
                 return false;
-            if (!p.hairTint)
+            if (!keyed)
                 return true;
             const glm::u8vec3 c = m->colour(x, y, z);
             const int bright = (c.r == 255) + (c.g == 255) + (c.b == 255), dark = (c.r == 0) + (c.g == 0) + (c.b == 0);
@@ -139,7 +138,7 @@ std::vector<std::pair<MeshId, glm::mat4>> CreatureView::parts(const creatures::A
 
 bool CreatureView::draw(std::vector<DrawItem> &items, const creatures::Appearance &a, creatures::PoseState &state,
                         const creatures::Motion &motion, glm::vec3 position, float dtMs,
-                        std::vector<EffectVertex> *effects) {
+                        std::vector<EffectVertex> *effects, const CreatureLook *look) {
     // Trails §1.3: the trail drawn this frame is the one aged in the last.
     if (effects && motion.fighter) {
         std::vector<creatures::TrailCorner> corners;
@@ -152,11 +151,35 @@ bool CreatureView::draw(std::vector<DrawItem> &items, const creatures::Appearanc
     const bool footstep = creatures::stepWalk(state, a, at, dtMs);
     const auto parts = creatures::poseParts(state, a, at, dtMs, [&](uint16_t slot) { return voxels(slot); });
     const uint32_t hair = (uint32_t)a.hairColour[0] << 16 | (uint32_t)a.hairColour[1] << 8 | a.hairColour[2];
-    const glm::mat4 place = glm::translate(glm::mat4(1), position);
-    for (const creatures::PartDraw &p : parts)
-        if (p.cube)
-            items.push_back({cubeMesh(), place * p.matrix, true, Shading::World, glm::vec4(p.colour, 1), p.shine});
-        else if (const MeshId id = mesh(p.model, p.mirrored, p.hairTint ? hair : 0xffffff))
-            items.push_back({id, place * p.matrix, true, Shading::World, glm::vec4(1), p.shine});
+    const CreatureLook plain;
+    const CreatureLook &l = look ? *look : plain;
+    // Rendering §11.2: the ghosts first (the pose of this frame, without a new ageing step),
+    // then the body, opaque or queued until after the water.
+    uint32_t group = 0;
+    for (const creature_shading::Draw &d : creature_shading::drawSequence(l.trail, l.stealth)) {
+        const bool ghost = d.kind == creature_shading::Draw::Ghost;
+        const bool deferred = d.kind == creature_shading::Draw::DeferredBody;
+        if (deferred) {
+            if (++translucentGroups == 0) // 0 means "no group"
+                ++translucentGroups;
+            group = translucentGroups;
+        }
+        const glm::mat4 place = glm::translate(glm::mat4(1), position + d.offset * l.velocity);
+        const glm::vec4 material = deferred ? l.deferredMaterial : l.material;
+        const DrawLayer layer = ghost ? DrawLayer::Ghost : deferred ? DrawLayer::Translucent : DrawLayer::Opaque;
+        const auto push = [&](MeshId id, const glm::mat4 &matrix, glm::vec4 partMaterial, bool shine) {
+            DrawItem item{id, place * matrix, !ghost, Shading::World, partMaterial * material, shine};
+            item.layer = layer;
+            item.alpha = d.alpha;
+            item.white = deferred ? 0.f : l.white;
+            item.group = group;
+            items.push_back(item);
+        };
+        for (const creatures::PartDraw &p : parts)
+            if (p.cube)
+                push(cubeMesh(), p.matrix, glm::vec4(p.colour, 1) * p.glow, p.shine);
+            else if (const MeshId id = mesh(p.model, p.mirrored, p.hairTint ? hair : 0xffffff))
+                push(id, p.matrix, glm::vec4(p.glow), p.shine);
+    }
     return footstep;
 }

@@ -1,11 +1,15 @@
 # Alpha rendering: how Cube World Alpha lights and shades the world
 
+Status: FINAL / STABLE / HELD
+
+Re-certified 2026-11-16 against the original Alpha evidence; see the "Re-certification
+(2026-11-16)" section at the end.
+
 Behavioural specification of the lighting, sky, fog and shading of the Cube World **Alpha**
 client (`Cube.exe`, SHA-256 `84a7a132…30bf`), written from the Alpha decompile
 (`disassembled alpha cube world/decompiled/client`), its assembly, the binary's constants and
-the Direct3D 9 shader bytecode embedded in the executable. CubeVulkan's default look is to
-follow this document; the Steam look stays an option (differences in the "Steam differences"
-section).
+the Direct3D 9 shader bytecode embedded in the executable. It describes the native Alpha look
+only; the "Steam differences" section is contrast material and is not re-certified here.
 
 Alpha routines are cited by their **address** in `Cube.exe` (image base 0x400000; the RVA is
 the address minus 0x400000), which is how the Alpha corpus names them. Steam routines and
@@ -93,32 +97,51 @@ frame sets a gamma ramp. There is no post-processing of the world image (§13).
 
 0x4ac260 renders one world frame. In order:
 
-1. Device state: depth test on, depth function less-or-equal (0x4ac345..0x4ac36d).
-2. **Sunlight strength S** (§2.2) is computed (0x4ac3e1..0x4ac44a).
-3. Point lights are collected and assigned to chunks (§10).
-4. Underwater test: the block at the camera position (0x42f860) has type 2 (water) →
+1. **Clear** of colour and depth (flags 3, depth 1.0, stencil 0, 0x4ac312..0x4ac343) to
+   the colour 0xFF0070FF = (0, 112/255, 1), or to white when the byte G+0x8006e6 is set.
+   G+0x8006e6 is only ever written with 0 (at 0x45a000, during start-up), so in the shipped
+   client the clear is always blue and every test of that byte in this frame takes the
+   "flag clear" branch.
+2. Device state: depth test on, depth function less-or-equal (0x4ac345..0x4ac36d); then
+   BeginScene (0x4ac392).
+3. **Sunlight strength S** (§2.2) is computed (0x4ac3e1..0x4ac44a).
+4. Point lights are collected and assigned to chunks (§10).
+5. Underwater test: the block at the camera position (0x42f860) has type 2 (water) →
    *underwater* (0x4ad6e2..0x4ad6f1).
-5. Frame constants (0x4ad684..0x4ada3d): material colour, white = 0, alpha = 1, the palette
-   (0x59d640, §3), sun direction (§2.3), camera position, lights, darkness = (0,0,0,1),
-   shininess = 0, sky colours, fogScale, fogGradientTranslation; all 10 point lights
-   cleared.
-6. **Sky gradient**: one screen-covering quad drawn with the sky pixel shader (0x4adeb1,
-   0x4aded6), unless G+0x8006e6 is set.
-7. Map mode (G+0x8006e4 set) takes a separate path and returns (§11.5).
-8. **Stars** (§8.3), when S < 0.5 and not underwater (0x4ae641..0x4aea7d).
-9. **Sun sprite** (§8.4) (0x4aea83..0x4aed61).
-10. World pass state: alpha blending on with source-alpha / inverse-source-alpha
-    (render states 0x1b = 1, 0x13 = 5, 0x14 = 6 at 0x4aedc0..0x4aee12).
-11. **Cloud models** (§11.4) with the cloud pixel shader (0x4b1489..0x4b1a65).
-12. **Terrain** chunk meshes with the world pixel shader, culling clockwise (0x4b1a6b..),
-    then particle effects.
-13. **Water** chunk meshes with the water pixel shader, culling off, depth write on
-    (0x4ba13e..0x4ba445), then back to clockwise culling and the world pixel shader.
-14. Deferred far static models/objects (0x4bd160,0x4be760), then creatures (§11,
-    from0x4ba5d0). Near static geometry already drew before water. See
-    [the focused ordering audit](alpha-far-static-ordering.md) for the shared
-    mixed far vector, thresholds, descending-distance order and retained depth.
-15. Interface drawing.
+6. Frame constants (0x4ad684..0x4ada3d): material colour, white = 0, alpha = 1, the palette
+   (0x59d640, §3), sun direction (§2.3), **culling off** (render state 0x16 = 1 at 0x4ad838;
+   it stays off for the sky, stars, sun and clouds), camera position, lights,
+   darkness = (0,0,0,1), shininess = 0, sky colours, fogScale, fogGradientTranslation; all
+   10 point lights cleared (0x4ada42..0x4adaff).
+7. **Sky gradient**: depth test turned **off** (render state 7 = 0 at 0x4adb49), then one
+   screen-covering quad drawn with the sky pixel shader (0x4adeb1, 0x4aded6). (The draw is
+   skipped only when G+0x8006e6 is set, which never happens; see step 1.)
+8. Map mode (G+0x8006e4 set) takes a separate path and returns (§11.5).
+9. Fixed-function set-up for the sky objects (0x4ae370..0x4ae63f): lighting off, vertex
+   format position + diffuse, no vertex or pixel shader, the frame projection of §8.5 built
+   and set, world and view transforms both identity.
+10. **Stars** (§8.3), when S < 0.5 and not underwater (0x4ae641..0x4aea7d).
+11. **Sun sprite** (§8.4) (0x4aea83..0x4aed61), drawn every frame of the normal path.
+12. World pass state: world shaders bound (0x4aed69), depth test back on (render state 7 = 1
+    at 0x4aedcd), alpha blending on with source-alpha / inverse-source-alpha (render states
+    0x1b = 1, 0x13 = 5, 0x14 = 6 at 0x4aedd5..0x4aee12).
+13. **Cloud models** (§11.4) with the cloud pixel shader (0x4b1489..0x4b1a65); culling still
+    off, depth test and depth writes on.
+14. **Terrain** chunk meshes with the world pixel shader, culling clockwise (render state
+    0x16 = 2 at 0x4b1b61; 0x4b1a6b..0x4b21ac).
+15. **Objects pass** (0x4b21c2..0x4b9a69): near static objects, items and **all creatures
+    whose translucency value (+0x1190) is not positive** (§11.2, drawn by the loop
+    0x4b4e1b..0x4b5db7), then particle and billboard effects with **depth writes off**
+    (render state 0xe = 0 at 0x4b8bff).
+16. **Water** chunk meshes with the water pixel shader: alpha 1, depth test on, depth writes
+    on, culling off (0x4ba13e..0x4ba199; draws to 0x4ba3df), then depth writes on and
+    clockwise culling (0x4ba432..0x4ba45a) and the world pixel shader (0x4ba462).
+17. Deferred far static models/objects (loop 0x4ba4a4..0x4ba588 calling 0x4bd160 and
+    0x4be760).
+18. **Deferred translucent creatures** (+0x1190 > 0), queued during step 15 (0x4b5d53) and
+    drawn here (loop 0x4ba5d0..0x4ba9f6, §11.2).
+19. Later world-space and interface drawing (from 0x4baa0a; includes the minimap,
+    `alpha-ui-screens.md` §5.1, and the interface 3D light set of §11.5).
 
 ---
 
@@ -184,7 +207,8 @@ All six have alpha 1, except the alpha of P4 and P5, which is never written in s
   0x59d640 through 0x42f860).
 * Four **zone factors** in 0..1 at the camera's block column (camera position ÷ 65536),
   each a distance-weighted blend over the region's zone cells within one cell (cells are
-  16384 units, ±0x4000 around the point, with a noise-distorted sample position):
+  16384 blocks; the cells covering the point ±0x4000 blocks, with a noise-distorted sample
+  position):
   * **Warmth** *Wm* = 0x5c4dd0: blends the float at zone-cell +0x10. Low values select the
     cold ambient colour (§3.7).
   * **Moisture** *Mo* = 0x5c4800: blends the float at zone-cell +0xc. High values select the
@@ -301,7 +325,9 @@ Because the shader multiplies ambient by S (§5), ambient also fades out at nigh
 | Creatures | world | §11.2 | as terrain | (0,0,0,1) | 1/F | white = flash value, shininess for some items |
 
 F is the fog distance (§7.1). The sky and cloud passes are drawn before terrain, so the
-terrain is drawn over them.
+terrain is drawn over them. The sky quad, stars and sun are drawn with the depth test off
+(they neither test nor write depth); clouds are drawn with depth test and writes on and
+culling off; terrain onwards culls clockwise except the water pass (§1.3).
 
 ---
 
@@ -363,7 +389,7 @@ view normal n.
 3. **Haze** by 3D distance: v = sat(1.5·out.z − 0.025); f2 = 0.75 · (1 − (1 − v)²).
 4. c = lerp(K, fog, f2); c = lerp(c, s, f1).
 5. **Shimmer** (only when shininess > 0): angle θ = 10·Y + 5·X + n.y + n.x (X = out.x),
-   reduced to (−π, π]; c ← c · (1 + 0.3·sin θ). The amount of shininess is ignored; only its
+   reduced to [−π, π) as frac(θ/(2π) + 0.5)·2π − π; c ← c · (1 + 0.3·sin θ). The amount of shininess is ignored; only its
    sign matters.
 6. Output = (c, alpha constant).
 
@@ -410,16 +436,21 @@ Updated each simulation step in 0x488ee0 (0x489034..0x489316):
 1. Start with m = R², where R = G+0x1d0 is the render radius: R = (window size in chunks)
    · 0.5 · 32 (0x45ab13..0x45ab36; the window is 40 chunks by default, 0x459f39, so
    R = 640 blocks).
-2. For every chunk slot in the window that is missing or not yet ready (0x4890cf,
-   0x4890f4), take the horizontal distance² from the camera to that chunk's corner (in
-   blocks) and keep the minimum in m.
+2. For every chunk coordinate (i, j) of the window (origin G+0x2ac/G+0x2b0, 40 × 40), with
+   both coordinates in [0, 0x80000), whose ring slot (i mod 40, j mod 40) holds no chunk
+   (slot +0xc is zero, 0x4890cf) or holds a chunk with other coordinates (0x4890f4), take
+   the horizontal distance² from the camera (G+0x140) to that chunk's **centre**
+   (32·i + 16, 32·j + 16 blocks; the half-chunk comes from the double −32768 at 0x702ad8,
+   0x489107..0x48915d) and keep the minimum in m.
 3. Target = √m − 22.4 (0x702a94).
 4. Smoothing weight w = 1 − 0.999ⁿ with n the step's elapsed milliseconds (0x4ac150 with
    0.001, evaluated in double by repeated (1 − v)·0.001 + v). **F ← F·(1 − w) + target·w.**
 5. If F < 0.0001 the following update steps are skipped (0x48930b).
 
 So fog closes in on the nearest unloaded chunk and opens out to the render radius as the
-world loads. The frame uses fogScale = 1/F (§4); clouds use 1/(1.5·F).
+world loads. The frame uses fogScale = 1/F (§4); clouds use 1/(1.5·F). The window size
+G+0x2dc is written only once in the client (40, at 0x459f39) and R only once (0x45ab36), so
+R is fixed at 640 blocks.
 
 ### 7.2 The gradient shift
 
@@ -449,8 +480,11 @@ normal fog colour.
 
 A two-triangle fan of world vertices (packed by 0x466650 as in §9.6, normal +Z) is drawn
 with the world vertex shader, matrices built for it at 0x4adb10..0x4adea6, and the sky pixel
-shader. Its only varying is Y (§5.2); the colour is sky(Y) (§6). It is drawn first, without
-depth writes mattering, under everything else.
+shader. Its only varying is Y (§5.2); the colour is sky(Y) (§6). Its four vertices are
+(0, 0, 100), (0, 2, 100), (2, 2, 100), (2, 0, 100) with normal +Z, drawn as a two-triangle fan
+(0x4adb51..0x4add94, 0x4aded6). It is drawn first, with the depth test disabled (render
+state 7 = 0 at 0x4adb49) and culling off, so it neither tests nor writes depth and lies
+under everything else.
 
 ### 8.2 No sun disc in the shader, no moon
 
@@ -458,63 +492,117 @@ The sky pixel shader has no sun term. The sun is a separate sprite (§8.4). Ther
 
 ### 8.3 Stars
 
-* Generated once (0x459c40 at 0x4636a8..0x463859): **3000** entries, each from four CRT
-  `rand()` draws in this order: azimuth θ = rand·2π/32767 (double), elevation
-  φ = rand·(π/2)/32767 (double), then size = rand·0.1/32767 + 0.01 (float); the position is
-  (cos θ · 100cos φ, sin θ · 100cos φ, 100 sin φ) with cos/sin of float arguments; then a
-  fifth draw: if rand % 10 == 0 the size is doubled.
-* Drawn when **S < 0.5** and the camera is not underwater, with the fixed-function pipeline
-  (FVF position + diffuse, no texture, no shader): each star direction is transformed by the
-  sky camera (§8.4) and drawn as a four-triangle fan: centre vertex opaque white
-  (0xFFFFFFFF), four corner vertices fully transparent white (0x00FFFFFF) at (±1, ±1)·size
-  around the projected centre. Stars do not fade with S: they switch on at S = 0.5
+* Generated once (0x459c40 at 0x4636a8..0x463859): **3000** entries (x, y, z, size), each
+  from exactly **four** CRT `rand()` draws in this order: (1) azimuth θ = rand·2π/32767
+  (double, rounded to float); (2) elevation φ = rand·(π/2)/32767 (double, rounded to float);
+  (3) size = rand·0.1/32767 + 0.01 (float); the position is
+  (cos θ · r, sin θ · r, 100·sin φ) with r = 100·cos φ, every cos/sin taken of the float
+  argument in double and rounded to float; (4) if rand % 10 == 0 the size is doubled. The
+  generator does not seed `rand` here; the pattern therefore depends on the CRT random state
+  at that point of start-up (see open questions).
+* Drawn when **S < 0.5**, the camera is not underwater and the list is non-empty, with the
+  fixed-function pipeline (§1.3 step 9: position + diffuse, no texture, no shader, lighting
+  off). For each star, in list order, its position is transformed on the CPU by the sky view
+  matrix (§8.4) and divided by the resulting w, giving a view-space centre c; the star is one
+  draw of a **six-vertex triangle fan** (four triangles, 16-byte vertices): c in opaque white
+  (0xFFFFFFFF), then c + size·(−1, −1, 0), c + size·(1, −1, 0), c + size·(1, 1, 0),
+  c + size·(−1, 1, 0) and the first corner again, all corners fully transparent white
+  (0x00FFFFFF) (0x4ae6b0..0x4aea7d). Because the world and view transforms are identity and
+  only the projection is applied on the GPU, the corner offsets are in **view space**: a
+  star at distance 100 has a half-width of size/100 radians (0.0001..0.0022 rad), i.e. a dot
+  of a few pixels at most. Stars do not fade with S: they switch on at S = 0.5
   (|x| = 0.5998: before about 04:48 and after about 19:12, by §2.2).
 
 ### 8.4 The sun sprite
 
-* **Sky camera** (0x4ae3ba..0x4ae624): the game's view matrix (G+0x22c) with its
-  translation recomputed so the camera sits at the origin; a perspective projection with
-  near 0.1, far 2000, aspect = width/height, vertical field of view 50° (0.872664 rad), or
-  30° (0.523599 rad) while the local player's flag 0x400 at +0x124 is set.
+* **Sky camera** (0x4ae3ba..0x4ae624): a copy of the view matrix G+0x22c whose translation
+  row is replaced by p·M₃ₓ₄ + t, with p the camera position G+0x140 in blocks (64-bit world
+  units × 1/65536, rounded to float) and t the original translation row, which places the
+  camera at the origin; used on the CPU only, for stars and the sun. The projection is the
+  frame projection of §8.5.
 * **Texture** (built once at 0x462400..0x46252f, 256×256 A8R8G8B8, G+0x8006e0): for texel
   (i, j), r = √((i − 127.5)² + (j − 127.5)²); q = clamp(1.05 − 1.05·0.0078125·r, 0, 1)⁴;
   texel = (R 255, G 255, B 100 + 155q, A 255q) (bytes truncated).
-* **Quad**: centre = sky view · (100·D); corners at centre ± (40, 40) (four corners, UV 0..1),
-  vertex colour **(R 255, G min(50 + 250·S, 255), B trunc(200·S²) & 0xFF, A 255)**,
-  modulated with the texture, alpha-blended. It is drawn whenever the frame draws the sky,
-  also at night (when D points below the horizon the sprite is below the horizon too).
+* **Quad**: centre c = sky view · (100·D) (0x4aeae0..0x4aeb10); corners, in fan order,
+  c + 40·(−1, −1, 0) UV (0, 0), c + 40·(1, −1, 0) UV (1, 0), c + 40·(1, 1, 0) UV (1, 1),
+  c + 40·(−1, 1, 0) UV (0, 1), in view space (as for stars), one two-triangle fan with 24-byte
+  vertices (position, diffuse, one UV; vertex format 0x142); vertex colour
+  **(R 255, G trunc(min(50 + 250·S, 255)), B trunc(200·S·S) & 0xFF, A 255)**; texture
+  G+0x8006e0 on stage 0 with U and V addressing set to 4 (border) (0x4aeab2, 0x4aeac9); the
+  colour is modulated with the texture and the result alpha-blended. The half-size of 40 at
+  distance 100 makes the sprite about 43.6° across (mostly transparent through the q⁴
+  falloff). It is drawn on every frame of the normal (non-map) path, also underwater and at
+  night (when D points below the horizon the sprite is below the horizon too).
 
-A second procedural texture (G+0x8006dc, white with alpha 128·max(1 − r²/16384, 0)³) is
-made alongside it; it is used by billboard effects (0x4b8c59), not by the sky.
+A second procedural texture (G+0x8006dc, white with alpha trunc(128·max(1 − r²/16384, 0)³),
+same r, 0x462231..0x462389) is made alongside it; it is used by billboard effects (0x4b8c59),
+not by the sky.
+
+### 8.5 The frame projection
+
+Built once per frame at 0x4ae4b3..0x4ae5d3 (routine 0x427910) and used for the sky objects
+**and for every world draw of the frame** (every matrix upload 0x4482a0 in the frame passes
+it, e.g. 0x4b1a1e, 0x4b1d28, 0x4ba332; it is also copied to G+0x800a90 at 0x4aed96): a
+left-handed perspective with vertical field of view 50° (0x3f5f66f4), or 30° (0x3f060a92)
+while flag 0x400 at +0x124 of the local player (G+0x8006d0) is set; near 0.1, far 2000;
+aspect a = −(width / height) from the integers G+0x11c and G+0x120 (note the sign,
+0x4ae5ab). With k = 1/tan(fov/2): x-scale k/a (negative, mirroring x), y-scale k,
+z-scale far/(far − near), z-translation −near·far/(far − near), w = view z. The world view
+matrix for all world passes is a copy of G+0x26c (0x4aedab); only stars and the sun use the
+sky view of §8.4.
 
 ---
 
 ## 9. Block shading baked into chunk meshes
 
-Chunks are 32 × 32 columns. The mesher is 0x49d910. It emits two vertex lists per chunk,
-solid and water, split vertically into sub-meshes of 250 blocks (0xfa).
+Chunks are 32 × 32 columns. The mesher is 0x49d910. It emits solid and water faces per
+chunk, split vertically into sub-meshes of 250 blocks (0xfa); the two kinds share one vertex
+list (0x76b098) and are separated into a solid index list (0x76b0a8) and a water index list
+(0x76b0b4), drawn in the terrain and water passes respectively.
+
+**Neighbour substitution** (used by face emission, light propagation and vertex light alike;
+the three default blocks are set at start-up by 0x6faad0, 0x6fab00, 0x6fab30 and their
+copies 0x6f9cc0, 0x6f9cf0, 0x6f9d20): a position whose column is missing, or that lies below
+the column's stored range, reads as a **solid** default block (colour (200, 200, 200),
+type 1); a position above the stored range reads as **open air** with light byte 255 if
+z > 0, otherwise as a **lit water** default (bytes 255, 255, 255, type byte 0x82); and a
+stored empty block at z ≤ 0 whose type byte lacks flag 0x40 also reads as that lit water
+default.
 
 ### 9.1 Which faces are emitted
 
 A face of a non-empty block is emitted unless the neighbour on that side is non-empty
 **and** (this block is water, or the neighbour is not water). So: faces towards air always;
-faces of solid blocks towards water; never water–water or solid–solid.
+faces of solid blocks towards water; never water–water or solid–solid. Neighbours follow the
+substitution above (so solid faces towards the z ≤ 0 "sea" default are emitted).
+
+**Type-3 blocks** (0x4a01f9..0x4a0573): when the +Z face of a block of type 3 is emitted and
+the block above is empty (type 0), the mesher first adds an extra quad in the same top plane
+to the **water** index list, with vertex colour (0, 0, 1, 1) and normal +Z, its four vertices
+passed through §9.3/§9.4 like any other; then it emits the block's normal +Z face into the
+solid list. The type-3 block is otherwise a solid block. Drawn in the water pass after the
+solid top (depth function less-or-equal), this quad lays a translucent water film over the
+block.
 
 ### 9.2 Light values in empty and water blocks (0x59a0e0)
 
 Empty (type 0) and water (type 2) blocks carry a light value 0..255 in their first colour
 byte. It is computed by a fixed-iteration flood:
 
-1. For every column of the region (top to bottom): empty/water blocks above the first
-   non-empty, non-water block are **sky-lit**: working value 255. Those below: working
-   value 0.
+1. For every column of the region plus border (stored range, top to bottom): empty/water
+   blocks above the first block that is neither empty nor water are **sky-lit**: working
+   value 255 (held in the block's third byte; the second byte is set to 255 too). Those
+   below: working value 0 (third and second byte 0).
 2. Repeat **16** times: for every empty/water block whose working value is not 255, take the
-   largest of its six neighbours' values, where a neighbour of type 13 counts 255, an
-   empty/water neighbour counts max(its working value, 5) and any other block counts 0;
-   store (largest × 85) / 100 (integer). After each sweep the stored values become the
-   working values.
-3. Finally the working value becomes the block's light value (only inside the region proper,
-   not its border).
+   largest of its six neighbours' values (order x−1, x+1, y−1, y+1, z−1, z+1, stopping once
+   255 is reached; the order does not change the result), where a neighbour of type 13
+   counts 255, an empty/water neighbour counts max(its working value, 5) and any other block
+   counts 0, with the neighbour substitution of §9 for positions outside stored columns;
+   store (largest × 85) / 100 (unsigned integer) in the second byte. After each sweep the
+   second byte of every empty/water block is copied to its third byte (the new working
+   values).
+3. Finally the working value (third byte) is copied into the block's first byte, the light
+   value read by §9.3 and §11.2 (only inside the region proper, not its border).
 
 It runs for the whole zone when a zone is generated (0x5e4850 → 0x5ede84), and when a chunk
 is meshed at a zone edge or flagged (chunk +0x74), over the chunk plus a 16-block border
@@ -527,12 +615,16 @@ For a vertex at integer corner (x, y, z) of a face with normal n:
 * Sample a box of blocks in front of the face: along the normal axis only the layer just
   outside the face (offset 0 if n > 0, −1 if n < 0); along each other axis the six offsets
   −3..+2 around the corner.
-* For each block: weight w = (3 − m)/3, where m = the largest of |o + 0.5| over the three
-  offsets (so 5/6, 1/2 or 1/6). Its light value v: type 13 → 255; empty or water → max(its
-  light value, 5); anything else → 5, and it counts as **closed**.
+* For each block (with the neighbour substitution of §9; positions with x or y outside
+  [0, 0xFFFFFF] read as the solid default): weight w = (3 − m)/3, where m = the largest of
+  |o + 0.5| over the three offsets (so 5/6, 1/2 or 1/6). Its light value v: type 13 → 255;
+  empty or water → max(its light value (first byte), 5); anything else → 5, and it counts as
+  **closed**.
 * light = Σ v·w / (Σw · 255); open = Σ w·[not closed] / Σw.
 
-Vertex alpha = **light**.
+Vertex alpha = **light**. (0x4c1510 also has a pass-through flag, its last argument, that
+returns the input colour unchanged; the chunk mesher passes 0 at all 28 of its calls, so it
+is never used for terrain.)
 
 ### 9.4 Per-vertex colour
 
@@ -549,8 +641,12 @@ So occlusion pulls a colour towards a darker, more saturated version of itself, 
 * **Water** blocks: colour = (1 − b)·(0.1, 0.2, 1, 1) + b·(0.3, 0.4, 1, 1), b = the block's
   third colour byte / 255 (for water this byte holds the propagated light, §9.2); then §9.3
   and §9.4 as for any block.
-* Blocks below a column's stored range are filled from a sampled colour (0x5f9620) blended
-  with the column's reference block by k = min((bottom − z)·0.1, 1) (in 0x49d910); this is content colour, not lighting.
+* Blocks below a column's stored range (which read as solid, §9) take their colour from a
+  sampled colour (0x5f9620): if the column's reference block (its +0x18 block, or white
+  type 0 for an empty column) is empty or water, the sampled colour is used as is; otherwise
+  colour = reference·(1 − k) + sampled·k with k = min((bottom − z)·0.1, 1) (in 0x49d910);
+  this is content colour, not lighting.
+* **Type-3 film quad** (§9.1): colour (0, 0, 1, 1) before §9.3/§9.4.
 
 ### 9.6 Packing (0x466650)
 
@@ -600,8 +696,13 @@ Voxel models (.cub sprites) are meshed into the same vertex format. For each emi
 occlusion factor w = (number of empty voxels) / (number sampled) over the box in front of
 the face: the layer outside the face along the normal, offsets −3..+2 along the other two
 axes (empty = colour (0, 0, 0)). **Vertex rgb = w·voxel + (1 − w)·shade**, where shade is
-the model's shade colour (bytes +0x5c..+0x5e of the sprite record; set to black by the
-constructor 0x4e6a20). Vertex alpha = 1 (models carry no baked sky light).
+the model's shade colour (bytes +0x5c, +0x5d, +0x5e = R, G, B of the sprite record, ÷ 255;
+set to black by the constructor 0x4e6a20). Vertex alpha = 1 (models carry no baked sky
+light). One model has a non-black shade: at the start of every frame (0x4ac2b0..0x4ac30f),
+if the model list G+0x300 holds more than 2568 entries and entry 2568 (`cloud02`) exists,
+its shade is set to **(0, 100, 200)**. Model meshes are built on demand after a draw request
+(0x4e6df0 sets the request byte +0x54 when no mesh exists), so the cloud mesh is built with
+this blue shade.
 
 **Key colours.** A model loaded with its key flag clear (model byte +0x55 = 0; hair
 layers, eye layers, staffs, wands, bracelets and some weapon variants — list in
@@ -611,27 +712,47 @@ three point lists (0x4e7650). Face emission toward neighbours and the occlusion 
 above still count only (0, 0, 0) as empty, so key voxels hide and darken adjacent faces.
 All other models draw those colours normally.
 
-### 11.2 Creatures (0x4ba5d0..0x4ba7e3, drawn by 0x4128f0)
+### 11.2 Creatures (opaque: 0x4b4e1b..0x4b5db7; translucent: 0x4ba5d0..0x4ba9f6; drawn by 0x4128f0)
 
+Creatures are visited in the objects pass (§1.3 step 15), with the visibility test 0x47f760.
 Material colour, componentwise products in this order:
 
 1. (1, 1, 1, l), with l = the light value of the block 0.1 above the creature position
-   (0x4718b0: type 13 → 255; empty/water → max(value, 5); otherwise 0), divided by 255;
+   (0x4718b0 on the first byte: type 13 → 255; empty/water → max(value, 5); otherwise 0),
+   divided by 255;
 2. × (0.5, 0.5, 1.5, 1) if the creature's int at +0x134 is positive;
-3. × (1, 0.5, 0.5, 1) for each entry of its effect list whose first byte is 1;
-4. × the frame material ((1, 1, 1, S) or the underwater tint);
-5. if flag 0x200 at +0x7e: averaged (×0.5 after adding) with a highlight colour (0x4460f0).
+3. for each entry of its effect list (+0x1178), in list order: × (1, 0.5, 0.5, 1) if the
+   entry's first byte is 1 or 2, and × (0.5, 1.5, 0.5, 1) if it is 4 (0x4b5420..0x4b54ba);
+4. × the frame material ((1, 1, 1, S) or the underwater tint) (0x4b5aaf..0x4b5ac6);
+5. if flag 0x200 at +0x7e: × ½·((1, 1, 1, 1) + h), h the highlight colour from 0x4460f0
+   (0x4b5ad6..0x4b5b44). The material is multiplied by the mean of white and h; it is not
+   averaged with h.
 
 So a creature's sun/sky term is scaled by S × the light where it stands, like terrain.
 Body parts that use the creature's hair colour multiply that colour into the material
 (0x4128f0).
 
-* **Hit flash**: `white` = the creature's float at +0x1184 (§5 step 9).
-* **Translucency**: if the float at +0x1190 is positive the creature is drawn twice:
-  depth only (colour writes off, render state 0xa8 = 0), then with colour writes on and
-  alpha = 1 − 0.75 × that value.
-* **Shimmer**: items whose material byte (+0xd) is 1, 11, 12 or 22 are drawn with
-  shininess 1 (0x4c7be0), others 0.
+* **Hit flash**: `white` = the creature's float at +0x1184 (§5 step 9), set before the draw
+  and reset to 0 after the creature (0x4b5b5d, 0x4b5ef3).
+* **Motion trail** (0x4b5b62..0x4b5d30): before the creature's own draw, it is drawn five
+  extra times when any of these holds: (+0x140 = 4 and +0x141 = 1 and the int at +0x6c is
+  below the value of 0x43d1a0 and the byte +0x68 is 0x11, 0x05 or 0x14); or +0x68 is 0x30 or
+  0x5D; or 0x443f10(12) or 0x443f10(3) is non-zero. Depth writes are turned off (render
+  state 0xe = 0); for k = 0..4: alpha = 0.5·(k/5), and the view matrix is pre-translated by
+  −0.07·(1 − k/5)·u, where u is the float 3-vector at creature +0x34; then alpha 1 and depth
+  writes on again. The ghost nearest the creature is the most opaque (0.4); ghost k = 0 has
+  alpha 0. The trail is drawn in the objects pass even for a creature that is then deferred
+  as translucent. (The game meaning of these fields and tests belongs to the creature
+  specifications; they are given here only as identifiers.)
+* **Translucency**: if the float at +0x1190 is positive the creature is **not** drawn in the
+  objects pass; it is queued (0x4b5d53) and drawn after water and the far statics
+  (§1.3 step 18): first depth only (colour writes off, render state 0xa8 = 0), then with
+  colour writes on (0xa8 = 0xF) and alpha = 1 − 0.75 × that value, then alpha 1. In this
+  deferred path the material repeats steps 1–5 except that only effect entries whose first
+  byte is 1 tint (0x4ba73c); kinds 2 and 4 are not applied there.
+* **Shimmer**: items whose first (type) byte is non-zero and whose material byte (+0xd) is
+  1, 11, 12 or 22 are drawn with shininess 1 (0x4c7be0), others 0; shininess is reset to 0
+  after each item (e.g. 0x41fd80..0x41fda5).
 
 ### 11.3 Other models
 
@@ -640,13 +761,48 @@ Static objects and items use the world shaders with the frame lights and materia
 
 ### 11.4 Clouds (0x4b1534..0x4b1a65)
 
-Only where the camera's moisture factor > 0.01 and fire share < 0.01: a 13 × 13 grid of
-cells around the camera (offsets −6..+6), each cell drawing a cloud model (assets
-`cloud01.cub`, `cloud02.cub`) when a noise test against the local moisture passes; position,
-scale and rotation from noise. Shading: §4 cloud row and §6.3. With darkness = the sky
-average and T usually < 1, clouds take the sky's colour in proportion to how unlit they are.
+**Gate.** Clouds are drawn only when the moisture factor (0x5c4800) at the **local player's**
+block column (G+0x8006d0 +0x10, ÷ 65536) is > 0.01 and the fire share (0x5ef040) there is
+< 0.01 (0x4b1534..0x4b15c6). (The palette, §3, samples at the camera instead.)
 
-### 11.5 Map mode and the character preview
+**Model.** Only `cloud02.cub` is used: model list entry 2568 (0xa08, registered at
+0x51bde0, key flag 1), taken at 0x4ac2e8 and drawn by 0x4e6df0. The asset `cloud01.cub` is
+not referenced by the client. Its shade colour is (0, 100, 200) (§11.1).
+
+**Noise.** The placement uses the client's 2D lattice noise 0x4c0ef0(x, y) (doubles): with
+i = trunc(x), j = trunc(y), each lattice value is h(n) = 1 − (H(n) & 0x7FFFFFFF) / 2³⁰ for
+n = i + 57·j (and the neighbours i + 1, j + 1), where n ← n XOR (n << 13) and
+H(n) = (n·(n²·60493 + 19990303) + 0xD208DD0D) in 32-bit wrap-around arithmetic; the four
+values are blended with cosine weights w = (1 − cos(π·frac))·0.5 in x and then y. All
+arguments below are integers, so the noise is simply h(i + 57·j) at that point, a value in
+(−1, 1].
+
+**Grid** (0x4b15cc..0x4b1a65). Let (bx, by) be the camera's block column (G+0x140 ÷ 65536,
+truncated) and let ÷ denote integer division truncating toward zero. For a = −6..+6 (outer
+loop) and, inside it, b = −6..+6, with cx = bx ÷ 200 + a and cy = by ÷ 200 + b:
+
+1. q = (noise(cx, cy) + 1)·0.5; skip the cell unless q < 0.8 · moisture(cx, cy), where the
+   moisture routine is called with the cell indices (cx, cy) themselves as its block
+   coordinates (as observed; the palette passes true block columns).
+2. Cloud position P (blocks) = (200·cx, 200·cy + 100·(cx rem 2), z), rem being the signed
+   remainder (−1, 0 or 1), so odd columns are shifted by half a cell.
+3. Skip the cell if moisture(P.x, P.y) < 0.3.
+4. z = 0x5c5e20(P.x, P.y, 0) + 100 · 0x5effa0(P.x, P.y, 0) (two of the region generator's
+   column routines, called in the order 0x5effa0 then 0x5c5e20; their content belongs to the
+   terrain specification and was not re-derived here), converted
+   to world units by truncation of z·65536; if negative it is set to 0; then
+   z += trunc((50·noise(17·cx, 19·cy) + 170)·65536) world units.
+5. Model matrix, applied to a model vertex v in this order: v − (0.5·sx, 0.5·sy, 0) with sx,
+   sy the model's sizes (+0x44, +0x48); rotation about +Z by (cx + cy)·90° (counter-clockwise
+   seen from above); uniform scale s = 2·noise(15·cx, 23·cy) + 7; translation to P relative
+   to the render origin (x G+0x1d8, y G+0x1e0, z 0; converted to float blocks).
+6. Upload the matrices (frame view and projection, §8.5) and draw the model.
+
+Shading: §4 cloud row and §6.3. With darkness = the sky average and T usually < 1, clouds
+take the sky's colour in proportion to how unlit they are. Culling is off and depth test and
+writes are on (§1.3).
+
+### 11.5 Map mode and the interface light set
 
 * Map mode (G+0x8006e4; full description in `alpha-ui-screens.md` §5.2): the frame runs its
   set-up and the sky gradient (with pitch 90 for the fogGradientTranslation term), then calls
@@ -658,8 +814,10 @@ average and T usually < 1, clouds take the sky's colour in proportion to how unl
   frame's constants replace them. The map's terrain, placeholders and mission/town markers
   are lit by the frame set-up lights of §4 (front P4, back P5, ambient P5, sun direction,
   set at 0x4ad957), and its creature markers by the renderer's own marker lights.
-* The character preview in the interface: front (1, 1, 1), back (0.2, 0.3, 0.4), direction
-  normalize(0.5, 0.4, −0.6), ambient (0.4, 0.4, 0.4).
+* The interface 3D light set (described before as the character preview's): front
+  (1, 1, 1), back (0.2, 0.3, 0.4), direction normalize(0.5, 0.4, −0.6), ambient
+  (0.4, 0.4, 0.4); set late in the frame at 0x4babbe..0x4bac7d, after the minimap and before
+  0x47ae10. Which interface models it lights was not re-traced in this pass.
 
 ---
 
@@ -671,7 +829,9 @@ of sky1 coloured specular power 10 around a half-vector biased upwards by (0, 0,
 by 3D distance, sky by 3D distance. Transparency 0.8 near, opaque by ~45 blocks. No
 reflection or refraction texture is used; the "reflection" is the sky-coloured glint and
 the sky blend. Faces between water and air only (water–water faces are not emitted), drawn
-after all opaque geometry, without culling, with depth writes on.
+after the terrain and objects passes (translucent creatures and far statics come later),
+without culling, with depth writes on. Type-3 blocks add a blue (0, 0, 1) film quad on their
+top face to the water mesh (§9.1), which this pass draws like any water face.
 
 ---
 
@@ -684,6 +844,10 @@ library (§1.2). Multisampling depends on the `antiAliasing` option.
 ---
 
 ## 14. Steam differences
+
+*Not re-certified on 2026-11-16: the Steam binary is outside the Alpha evidence this author
+was assigned. The section is retained unchanged as contrast; it makes no Alpha parity claim
+and must not be used as one.*
 
 Steam (`cubeworld.original.exe.unpacked.exe`, D3D11 `DXBC` blobs at file offsets 0x436fb0
 world VS, 0x438810 world PS, 0x4396a0 sky PS, 0x439f90 water PS, 0x43ae90 and 0x43b500
@@ -723,27 +887,25 @@ spec.
 
 ## 15. Checking
 
-There are **no Alpha screenshots or captured frames** in the Alpha folder: `evidence/` holds
-analysis metadata (identities, job metrics, schemas), and `resources/extracted/` holds the
-game's assets (models such as `cloud01.cub`, `cloud02.cub`, interface images, sounds). No
-recorded constant values exist either. An implementer can still check:
+There are **no Alpha screenshots or captured frames** in the Alpha folder: `resources/`
+holds asset metadata (manifest, schemas) and `resources/extracted/` the game's assets
+(models such as `cloud01.cub` and `cloud02.cub`, both 24 × 24 × 16 voxels, of which only
+`cloud02.cub` is used, §11.4; interface images, sounds). No recorded constant values exist
+either. The formulas can still be checked as follows:
 
 1. **The shader maths against the blobs.** Disassembling the six blobs of §1.1 (e.g. with
-   `D3DDisassemble`) gives the exact instruction order; the user's own mod
-   `AlphaCWShadows/build/tools/world-shaders.txt` already holds a disassembly of the world
-   shaders' constant tables for comparison.
+   `D3DDisassemble`) gives the exact instruction order and the constant tables.
 2. **The palette tables** by evaluating §2–§3 at the sample times of §3.8 and at the key
    boundaries (L = 0.4, 0.6, 0.75; S = 0.5), and for each modifier at factor values 0 and 1.
 3. **Light propagation** on hand-made columns: an open column (255 down to the first solid
    block), a one-block overhang (255·85/100 = 216 beside sky-lit air after one sweep), and a
    sealed cave (stored values settle at 5·85/100 = 4, read back as 5; open question 7).
-4. **Visual expectations** known from Alpha: very dark nights lit by torches; warm yellow
-   sides at noon; deep-blue distant haze; red skies over fire zones; a large soft yellow sun
-   sprite; white point stars only at night.
-5. Captures from a live Alpha session (not made for this spec) would be the real oracle:
-   frame constants can be read from the shader object's registers via the user's existing
-   D3D9 mod hooks (AlphaCWShadows already reads the native front/back/ambient colours and
-   sun direction).
+4. **Visual expectations** following from the formulas: very dark nights lit by torches;
+   warm yellow sides at noon; deep-blue distant haze; red skies over fire zones; a large soft
+   yellow sun sprite; tiny white point stars only at night; blue-shaded clouds on a staggered
+   200-block grid; a translucent blue film on type-3 block tops.
+5. A live native session would be the real oracle; producing and comparing such evidence
+   belongs to the separate verification role and is not part of this contract.
 
 ---
 
@@ -758,25 +920,188 @@ recorded constant values exist either. An implementer can still check:
    assume it is) was not traced.
 3. **Uninitialised alpha** of the front/back colours (§3) is harmless for the shaders but
    means recorded constants may hold garbage there.
-4. **Star projection.** The star and sun quads use the sky camera of §8.4; whether the star
-   corner offsets are in view space (tiny) or in post-projection units (screen-sized dots
-   independent of the field of view) was not settled from the assembly at 0x4ae6b0..0x4ae9b4.
-5. **Sun sprite size**: same question (corners ±40 at distance 100 in view space would
-   make a sprite about 44° across, mostly transparent given the q⁴ falloff).
+4. *(Resolved 2026-11-16: star corners are view-space offsets, §8.3.)*
+5. *(Resolved 2026-11-16: the sun corners are view-space offsets, about 43.6° across, §8.4.)*
 6. **Block type 13** counts as full light (255) both in propagation and at vertices; which
-   block that is (lava? a glowing block?) was not identified.
+   block that is (lava? a glowing block?) was not identified. **Block type 3** (§9.1, the
+   block with a water film) was likewise not named from the evidence.
 7. **Integer rounding of the 0.85 falloff**: (v·85)/100 with unsigned integers; the
-   minimum value 5 for air means even sealed air is never fully dark. Exact cave values
-   should be checked against a capture.
+   minimum value 5 for air means even sealed air is never fully dark (sealed values settle
+   at 4, read back as 5).
 8. **Light-emitting items**: item type 11 subtype 19 and type 18 subtypes 0/1 were not
    identified by name.
-9. **Cloud placement** (cell size, which model, height, rotation, the noise test at
-   0x4b1600..0x4b1a42) is only summarised.
-10. **Creature tints**: what +0x134 > 0, effect-list entries of kind 1 and the 0x200 flag
-    (with colour from 0x4460f0) represent was not traced.
-11. **Model shade colour**: whether any model sets a non-black shade (+0x5c..+0x5e) was not
-    found.
-12. **Render radius**: whether the `renderDistance` option changes the 40-chunk window
-    (G+0x2dc) and hence R and the fog distance was not traced.
+9. **Cloud placement** is now specified (§11.4) except the content of the generator column
+   routines 0x5c5e20 and 0x5effa0 used for the cloud base height, which belongs to the
+   terrain specification.
+10. **Creature tints and trail**: what +0x134 > 0, effect-list kinds 1, 2 and 4, the 0x200
+    flag (with colour from 0x4460f0), the trail conditions (+0x68, +0x6c, +0x140, +0x141,
+    0x43d1a0, 0x443f10) and the vector at +0x34 represent was not traced here.
+11. *(Resolved 2026-11-16: `cloud02` has shade (0, 100, 200), §11.1; no other writer of the
+    shade bytes was found in the frame.)*
+12. *(Resolved 2026-11-16: G+0x2dc is written only at 0x459f39, so R = 640 blocks is fixed,
+    §7.1.)*
 13. **Steam's palette routine** (its time-of-day keys and sun position) was not traced;
-    §14 compares shaders only.
+    §14 compares shaders only and is not re-certified.
+14. **Star random state.** The star generator does not seed `rand`; the seed and number of
+    earlier `rand` calls on the start-up thread were not traced, so the exact star pattern is
+    unresolved (the draw order per star is settled, §8.3).
+15. **Blend and texture-stage state of the sky objects.** Alpha blending is first set in the
+    frame after the sun (§1.3 step 12); the stars and sun rely on the state left by the
+    previous frame (blending on from the world pass, unless the interface library changes
+    it) and on texture-stage defaults (colour = texture × diffuse; alpha presumably the
+    texture alpha). Neither was traced through the interface library.
+16. **Objects-pass detail.** The order of static objects, items, creatures and effects
+    inside §1.3 step 15 (0x4b21c2..0x4b9a69), and the culling changes within it (render
+    state 0x16 at 0x4b7dc3, 0x4b8145, 0x4b99a2; lighting off at 0x4b99ba), were not
+    re-traced in this pass beyond what §1.3 and §11.2 state.
+
+---
+
+## Re-certification (2026-11-16)
+
+Re-certified by a source-side author against the original Alpha evidence only: `Cube.exe`
+(SHA-256 84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf, confirmed), its
+decompile and assembly (including the reduced-analysis decompile of 0x4ac260, whose default
+decompile timed out), the binary's constants, and fresh disassembly of the six world shader
+blobs and the two Plasma blur blobs. The held specs this document cites were consulted only
+for targeted cross-checks of passages in `alpha-creatures-models.md` (§5.1 and the model
+list) and `alpha-ui-screens.md` (the frame clear and the minimap/map references).
+
+**Verified without change:** the shader set, vertex declaration and register map (§1.1);
+every instruction-level claim of §5 and §6 (vertex shader, world, sky, cloud, water and
+unused pixel shaders, slot counts); the Plasma blur weights (§1.2); L and S and their sample
+values (§2.1, §2.2); the sun direction (§2.3); the whole palette (§3.2–§3.7: every key, fire
+target, modifier order, interpolation band and the underwater override), and the worked
+values of §3.8; the per-pass constants of §4; fogScale, fogGradientTranslation, the fog
+target, smoothing and skip (§7.1 steps 3–5, §7.2); the sun texture and the glow texture;
+face emission (§9.1 rule), the light flood's 16 sweeps and 85/100 falloff, the vertex light
+and occlusion weights and the vertex colour formula (§9.2–§9.4); water vertex colour (§9.5);
+point-light source kinds, radii, margins and item colours (§10.1); model occlusion (§11.1);
+the creature light sample, the +0x134 tint, hit flash and translucent alpha (§11.2); the
+map-mode light values (§11.5). Not re-traced in this pass and retained as written: the
+packing (§9.6), the chunk assignment and frame list of §10.2, the (1 − S) scaling path of
+§10.1, the map-mode draw sequence after 0x5fc1b0, and §13.
+
+### Corrections
+
+1. **Engine wording removed** (intro): the sentence naming the replacement engine's default
+   look was removed; the document now states its native scope. (Policy:
+   docs/CLEANROOM_AUTHOR.md.)
+2. **Frame clear added** (§1.3 step 1): colour + depth clear to 0xFF0070FF (white if
+   G+0x8006e6) and BeginScene at the start of the frame. Evidence 0x4ac312..0x4ac343,
+   0x4ac392.
+3. **G+0x8006e6 is never set** (§1.3 steps 1, 7): its only write is 0 at 0x45a000; all tests
+   (0x4ac312, 0x4adeb6, 0x4b1527, 0x4b1af4, 0x4b21c7, 0x4b4e5b, 0x4b93d5) therefore take the
+   normal branch. The old "unless G+0x8006e6 is set" read as a live condition.
+4. **Culling off for sky, stars, sun and clouds** (§1.3 step 6, §4): render state 0x16 = 1 at
+   0x4ad838, clockwise only from 0x4b1b61. Previously omitted.
+5. **Depth test off for the sky quad, stars and sun** (§1.3 step 7, §8.1): render state 7 = 0
+   at 0x4adb49, back on at 0x4aedcd. Replaces "without depth writes mattering". Sky quad
+   vertices added (0x4adb51..0x4add94).
+6. **Fixed-function state and identity world/view for stars and sun** (§1.3 step 9, §8.3,
+   §8.4): lighting off 0x4ae34d..0x4ae37f, vertex format 0x42 0x4ae387, no shaders
+   0x4ae39a/0x4ae3ad, world and view = identity 0x4ae5ed..0x4ae624, projection 0x4ae626.
+7. **Frame projection is the world projection** (new §8.5): the 50°/30°, 0.1–2000
+   perspective built at 0x4ae4b3..0x4ae5d3 (0x427910) is passed to every world matrix
+   upload of the frame (e.g. 0x4b1a1e, 0x4b1d28, 0x4ba332) and copied to G+0x800a90
+   (0x4aed96); its aspect is **negative** −width/height (0x4ae5ab); the world view is
+   G+0x26c (0x4aedab). The spec had described it only as the sky camera's projection.
+8. **Star draw count reversed** (§8.3): each star uses exactly four `rand()` draws (θ, φ,
+   size, doubling test), not "four … then a fifth". Evidence 0x4636e0..0x463822.
+9. **Star geometry** (§8.3): six-vertex fan (centre, four corners, first corner repeated by
+   0x458cf0 at 0x4aea3c), four triangles, 16-byte stride, one draw per star (0x4aea47..
+   0x4aea5e); corners are view-space offsets (resolves former open question 4).
+10. **Sun sprite** (§8.4): view-space corners and their fan/UV order (0x4aeb59..0x4aed61,
+    resolves former open question 5); sampler U/V addressing 4 (0x4aeab2, 0x4aeac9); vertex
+    format 0x142 (0x4aea89); drawn also underwater (the star skip jumps to 0x4aea83).
+11. **Sky camera described precisely** (§8.4): translation replaced by p·M + t from the
+    camera position G+0x140 (0x4ae3ba..0x4ae5b2); used on the CPU only.
+12. **Clouds gated at the local player's position**, not the camera's (§11.4): moisture and
+    fire share taken at G+0x8006d0 +0x10 (0x4b1534..0x4b15c6).
+13. **Cloud model reversed** (§11.4): only `cloud02.cub` (model 2568 = 0xa08, registered at
+    0x51bde0) is drawn; `cloud01.cub` is not referenced by the client (no such string in the
+    executable). The spec named both.
+14. **Cloud placement specified** (§11.4, former open question 9): 13 × 13 grid of 200-block
+    cells (0x4b1610..0x4b1653), noise test q < 0.8·moisture(cx, cy) with cell indices as
+    coordinates (0x4b167e..0x4b16d7), staggered position (0x4b16dd..0x4b1730), moisture ≥ 0.3
+    (0x4b1779..0x4b178f), base height and noise offset (0x4b17b4..0x4b18ad), centring,
+    90° rotation steps, scale 2n + 7 and translation (0x4b18b2..0x4b1a13), with the lattice
+    noise 0x4c0ef0 written out.
+15. **Cloud shade colour** (§11.1, former open question 11): model 2568's shade is set to
+    (0, 100, 200) every frame at 0x4ac2b0..0x4ac30f.
+16. **Opaque creatures drawn before water — draw-order reversal** (§1.3 steps 15–18,
+    §11.2): creatures with +0x1190 ≤ 0 are drawn in the objects pass (0x4b4e1b..0x4b5db7);
+    only those with +0x1190 > 0 are queued (0x4b5d53 into the list also iterated at
+    0x4ba59d) and drawn after water and far statics (0x4ba5d0..0x4ba9f6). The spec placed all
+    creatures after water.
+17. **Creature effect tints** (§11.2): in the opaque path effect entries (+0x1178) of kind 1
+    **or 2** tint (1, 0.5, 0.5, 1) and kind **4** tints (0.5, 1.5, 0.5, 1)
+    (0x4b5420..0x4b54ba); the deferred path tints kind 1 only (0x4ba73c).
+18. **Highlight formula** (§11.2): the material is multiplied by ½((1, 1, 1, 1) + h); it is not
+    averaged with h (0x4b5ad6..0x4b5b44, 0x4ba7ef..0x4ba853; 0x468f50 adds, 0x4a8f40 halves,
+    0x4127c0 multiplies).
+19. **Creature motion trail added** (§11.2): five ghost draws with alpha k/10, depth writes
+    off and a −0.07·(1 − k/5)·(+0x34 vector) offset, under the stated conditions
+    (0x4b5b62..0x4b5d30). Previously omitted.
+20. **Shimmer predicate** (§11.2): also requires the item's first byte to be non-zero
+    (0x4c7be0); shininess is reset to 0 after each item (0x41fd9b..0x41fda5).
+21. **Fog distance to chunk centres** (§7.1 step 2): distances are to (32i + 16, 32j + 16), not
+    to a corner (0x489107..0x48915d, double −32768 at 0x702ad8); a slot counts when empty or
+    holding another chunk (0x4890cf, 0x4890f4 with 0x4688a0 = "differs"); coordinates must
+    lie in [0, 0x80000) (0x489084..0x4890a6).
+22. **Render radius fixed** (§7.1, former open question 12): G+0x2dc is written only at
+    0x459f39 (40) and R only at 0x45ab36.
+23. **Neighbour substitution added** (§9 intro, §9.1–§9.3): defaults initialised at 0x6faad0,
+    0x6fab00, 0x6fab30 (flood) and 0x6f9cc0, 0x6f9cf0, 0x6f9d20 (vertex light): missing/below
+    → solid, above → air (z > 0) or lit water (z ≤ 0), and empty z ≤ 0 blocks without flag
+    0x40 → lit water. Used at 0x59a273..0x59a61a, 0x4c1732 and in 0x49d910.
+24. **Light-flood byte use** (§9.2): working value in the third byte, sweep results in the
+    second, final copy into the first byte inside the region proper (0x59a0e0).
+25. **Vertex-light pass-through flag** noted (§9.3): 0x4c1510's last argument returns the
+    colour unchanged; the mesher always passes 0 (28 calls).
+26. **Type-3 water film added** (§9.1, §9.5, §12): a (0, 0, 1, 1) top quad in the water index
+    list for type-3 blocks with empty space above (0x4a01f9..0x4a0573). Previously omitted.
+27. **Shared vertex list** (§9 intro): solid and water faces share the vertex list 0x76b098 and
+    differ by index list (0x76b0a8 / 0x76b0b4); the spec said "two vertex lists".
+28. **Below-range block colour** (§9.5): an empty/water or missing reference block yields the
+    sampled colour unblended (0x49d910, below-range branch).
+29. **Zone-cell units** (§3.1): cells are 16384 blocks (shift 14 in 0x5c4800, 0x5c4dd0,
+    0x5f0720, 0x5ef040).
+30. **Shimmer angle range** (§6.2): frac-based reduction gives [−π, π) (world pixel shader,
+    `frc` then ×2π − π), not (−π, π]; sin is unaffected.
+31. **Missing cited spec** (§1.3): `alpha-far-static-ordering.md` does not exist in docs/specs;
+    the link was replaced by the evidence addresses of the far-static loop
+    (0x4ba4a4..0x4ba588).
+32. **Particles without depth writes** (§1.3 step 15): render state 0xe = 0 at 0x4b8bff until
+    the water pass sets it to 1 (0x4ba17e).
+33. **Interface light set located** (§11.5): 0x4babbe..0x4bac7d, before 0x47ae10; its
+    "character preview" attribution is unconfirmed.
+34. **§14 and §15 scope**: §14 marked not re-certified (Steam is outside the assigned
+    evidence); §15 no longer cites an owner mod, its files or captures, and its folder
+    description was corrected (there is no `evidence/` folder; asset metadata is under
+    `resources/`).
+
+### Remaining uncertainties
+
+* Star pattern depends on the unseeded CRT `rand` state at start-up (open question 14).
+* Blend and texture-stage state for stars and sun is inherited, not set in the frame (open
+  question 15).
+* Names/meanings of block types 3 and 13, creature fields used by tints and the trail, and
+  item light subtypes (open questions 6, 8, 10).
+* The cloud base height depends on generator routines 0x5c5e20 and 0x5effa0 (open question
+  9).
+* The objects pass (§1.3 step 15) is described only coarsely (open question 16).
+* The steps of the map renderer and the interface 3D drawing are outside this pass (§11.5).
+
+### Cross-spec notes
+
+* No conflicts were found with the cited held specs. `alpha-ui-screens.md` §2 (the clear to
+  0xFF0070FF or white on G+0x8006e6) agrees with correction 2; it does not say that the byte
+  is never set (correction 3), which is an addition, not a contradiction.
+  `alpha-creatures-models.md` lists model 2568 as `cloud02`, agreeing with corrections 13
+  and 15.
+* `alpha-far-static-ordering.md`, cited by the previous text, is absent (correction 31).
+* `alpha-worldgen-clouds.md`, `sky-and-clouds.md` and `alpha-terrain-chunk-point-lights.md`
+  exist in docs/specs but are not cited by this document and were not read under this
+  task's source restrictions; a reader permitted to compare them should check them against
+  §11.4 and §10.

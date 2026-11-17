@@ -42,8 +42,11 @@ struct PoseState {
     glm::vec3 handL{0}, handR{0}, turnL{0}, turnR{0}; // ΔL, ΔR, ρL, ρR
     glm::vec3 torso{0}, tilt{0}, shift{0}, headShift{0}, head{0}, tail{0}, roll{0}, lean{0}; // T B S K H Q U E
     float aim = 0, pivot = 0; // Y, h
-    // The hand targets of the last frame, base plus channels (for tests and attachments).
+    // The hand positions of the last frame, base plus channels and the dodge / glide raise (for
+    // tests and attachments).
     glm::vec3 rightHand{0}, leftHand{0};
+    // §6.5: the arm frame of the last frame, which the mana cube starts from.
+    glm::mat4 armFrame{1};
     // Trails §1.1: four histories of 16 points, point 0 the newest: main tip, main butt, off
     // tip, off butt. In blocks from the creature's displayed position in x and y; z from
     // `trailHeight`, the height they were last moved to.
@@ -69,6 +72,7 @@ struct PartDraw {
     bool cube = false;
     glm::vec3 colour{1};
     bool shine = false; // materials §1.2: an iron, gold, silver or ice item
+    float glow = 1;     // §6.5: the factor on all four material components (a charged weapon)
 };
 
 // §6.2, §6.3: the model of an item, or NO_MODEL.
@@ -76,9 +80,13 @@ uint16_t itemModel(const Item &item);
 // §7.2: the pose of an action.
 int32_t poseOf(const Combatant &c);
 
-// §7.3: advances the walk cycle by dt milliseconds. True when a foot came down: the phase
-// passed a multiple of π while walking faster than 5 blocks/s, not dodging and not in water.
+// §7.3: advances the walk cycle by dt milliseconds. True when a foot came down: on the ground
+// and not climbing, the phase passed a multiple of π while walking faster than 5 blocks/s, not
+// dodging and not in water. (The caller sounds it only while a local player exists.)
 bool stepWalk(PoseState &state, const Appearance &a, const Motion &m, float dtMs);
+// §7.3: the block a footstep probes, from the creature position (1/65536 blocks) lowered by half
+// the box height and half a block, each converted to fixed point by truncation.
+glm::ivec3 footstepCell(const int64_t position[3], float boxZ);
 // §7.4–§7.9: the parts of this frame. `voxels(model)` gives a model's size in voxels.
 std::vector<PartDraw> poseParts(PoseState &state, const Appearance &a, const Motion &m, float dtMs,
                                 const std::function<glm::vec3(uint16_t)> &voxels);
