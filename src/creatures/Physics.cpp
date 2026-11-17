@@ -177,10 +177,11 @@ std::vector<int32_t> stepPieces(int32_t dt) {
     return out;
 }
 
-void worldStep(Body &body, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy) {
+void worldStep(Body &body, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy,
+               const OrdinaryLink *ordinaryLink) {
     for (int32_t piece : stepPieces(dt))
-        if (piece > 0) {
-            step(body, piece, block, objects, riderEnergy);
+        if (piece > 0 || (piece == 0 && ordinaryLink)) {
+            step(body, piece, block, objects, riderEnergy, nullptr, {}, ordinaryLink);
             body.separate = glm::vec3(0); // (worked out for one step: the first piece only)
         }
 }
@@ -274,8 +275,35 @@ static bool advanceWalk(Body &body, int32_t dt, float seconds) {
         int32_t(double(body.walk.phase) / pi) > int32_t(double(previous) / pi);
 }
 
+static bool followOrdinaryLink(Body &body, const OrdinaryLink &link) {
+    const auto actor = link.target(link.key); // a resident zero key resolves normally
+    if (!actor.fighter || !actor.body)
+        return false;
+    if (actor.fighter->health <= 0) {
+        link.key = 0;
+        return false;
+    }
+    if (body.controller == 5)
+        return false;
+
+    const Body &target = *actor.body;
+    const float lift = (1.5f - target.bob) * 65536.f;
+    const int64_t fixedLift = lift >= -0x1p63f && lift < 0x1p63f ? int64_t(lift) : 0;
+    body.position[0] = target.position[0];
+    body.position[1] = target.position[1];
+    body.position[2] = std::bit_cast<int64_t>(uint64_t(target.position[2]) + uint64_t(fixedLift));
+    body.velocity = glm::vec3(0);
+    body.swimPitch = 20.f + target.swimPitch;
+    body.bank = 0.f + target.bank;
+    body.yaw = 0.f + target.yaw;
+    body.intent = glm::vec3(0);
+    body.walk.amplitude = target.walk.amplitude * .5f;
+    body.walk.phase = target.walk.phase;
+    return true;
+}
+
 void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy,
-          Combatant *fighter, const SneakLight &sneakLight) {
+          Combatant *fighter, const SneakLight &sneakLight, const OrdinaryLink *ordinaryLink) {
     const float dts = (float)dt * 0.001f;
     auto blocks = [&](int32_t x, int32_t y, int32_t z) {
         const uint8_t t = block(x, y, z);
@@ -822,8 +850,9 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // §5.3: creature type 101 pitches up during the first second of action 51.
     if (b.type == 101)
         b.swimPitch = relax(b.swimPitch, b.action == 51 && t < 1000 ? 60.f : 0.f, 0.01f, dt);
-    const bool keepWalk = fighter || b.local; // Client simulation and the controlled rider's pose.
-    b.footfall = keepWalk && advanceWalk(b, dt, dts);
+    const bool keepWalk = fighter || b.local || ordinaryLink;
+    b.ordinaryAttached = ordinaryLink && followOrdinaryLink(b, *ordinaryLink);
+    b.footfall = keepWalk && !b.ordinaryAttached && advanceWalk(b, dt, dts);
     // §2 item 18, in order: the glider and lantern equipment checks, the landing bob, the dodge.
     if (!b.gliderEquipped)
         b.mode &= ~GLIDER;

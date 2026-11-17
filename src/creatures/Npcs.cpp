@@ -700,6 +700,11 @@ void Npcs::refreshActors(std::span<PlayerView> players) {
     std::erase_if(actors, [](const auto &entry) { return !entry.second.combat(); });
 }
 
+ActorBody Npcs::actorBody(uint64_t key) {
+    const auto actor = lookupActor(key, {});
+    return {actor.combat(), actor.body()};
+}
+
 Npcs::ActorEntry Npcs::lookupActor(uint64_t key, std::span<PlayerView> players) {
     if (actorLookupActive) {
         const auto entry = actors.find(key);
@@ -2539,6 +2544,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     clockMs = timeOfDayMs;
     refreshActors(players);
     FlagScope indexScope{actorLookupActive};
+    const BodyLookup liveActor = [&](uint64_t key) { return actorBody(key); };
     // Retain the active descriptor snapshots before hits. A blast can replace a
     // zone's terrain between its timer pass and activation.
     ActiveZones active;
@@ -2811,7 +2817,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.body.obstacles = obstacles, npc.body.key = c.id; // world objects §3
         const int32_t actionSent = npc.body.action;
         Body *ownerBody = c.controller == 5 ? lookupActor(c.ownerId, players).body() : nullptr;
-        worldStep(npc.body, (int32_t)dtMs, block, objects, ownerBody ? &ownerBody->ridingEnergy : nullptr);
+        const OrdinaryLink ordinaryLink{c.ordinaryLink, liveActor};
+        worldStep(npc.body, (int32_t)dtMs, block, objects, ownerBody ? &ownerBody->ridingEnergy : nullptr,
+                  clientMotion ? &ordinaryLink : nullptr);
         // Physics §2 item 4, §3.2: the step's own action changes (intent ends 83/84, 81 becomes
         // 83, the dodge cancel) reach the creature; the spin (action 72) turns it (§3.3). The
         // lunge's conversion above already wrote the fighter, so only a change made by the step

@@ -763,9 +763,12 @@ Differences from the Steam engine that shape the plan:
   (`alpha-connected-hit-consumption.md`). Run the received local-target pass,
   append the foreign-source tail, produce local labels and resource and
   auxiliary lights, and queue local-source hits and buffs in collector order.
-- [ ] Complete connected presentation bookkeeping, the other action-specific
-  hit and timer branches, the ordinary creature link, and original-client
-  acceptance.
+- [x] Ordinary creature link movement (`alpha-ordinary-creature-link.md`).
+  Resolve key zero in the live map, respect ordered target health and role
+  gates, and copy position, angles and walk before the remaining movement
+  and riding work. Core receipts preserve the resident identifier.
+- [ ] Complete connected presentation bookkeeping and the other action-specific
+  hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

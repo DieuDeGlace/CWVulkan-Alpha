@@ -364,6 +364,15 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
         f = (1.f - f) * 0.015f + f;
     const int64_t k = int64_t(f * 65536.f);
     const creatures::visibility::Scene sight{block, sightRecords};
+    const creatures::BodyLookup liveActor = [&](uint64_t key) -> creatures::ActorBody {
+        if (controlled && key == controlled->fighter.id)
+            return {&controlled->fighter, &controlled->body};
+        const auto found = fighters.find(key);
+        const auto *remote = find(key);
+        if (found != fighters.end() && remote)
+            return {&found->second.fighter, &remote->live};
+        return {};
+    };
     const auto deferredFeedback = [&](creatures::Combatant &striker) {
         if (striker.deferred.empty() && striker.counterPending.empty())
             return;
@@ -437,7 +446,8 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
                 else if (const auto owner = list.find(fighter.ownerId); owner != list.end())
                     riderEnergy = &owner->second.live.ridingEnergy;
             }
-            creatures::step(body, dtMs, block, objects, riderEnergy, &fighter, sneakLight);
+            const creatures::OrdinaryLink ordinaryLink{fighter.ordinaryLink, liveActor};
+            creatures::step(body, dtMs, block, objects, riderEnergy, &fighter, sneakLight, &ordinaryLink);
         }
         appendMovementEffects(body, block, controlled != nullptr, effects);
         creatures::faceReceivedActor(body.yaw, r.headPitch, r.drawnLook, body, fighter, dtMs);

@@ -609,6 +609,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             player->combat().setEquipment(slot, inventory.equipment[slot]);
     };
     creatures::Npcs npcs{worldRandom};
+    npcs.enableClientMotion();
     // World objects: the airships (offline this program runs them; online none arrive).
     creatures::Airships airships;
     if (const auto model = view.prefab("airship.cub"))
@@ -1753,6 +1754,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     return &npc.fighter;
         return nullptr;
     };
+    const creatures::BodyLookup liveActor = [&](uint64_t key) -> creatures::ActorBody {
+        if (player && player->combat().id == key)
+            return {&player->combat(), &player->body()};
+        if (!client.connected())
+            return npcs.actorBody(key);
+        const auto *remote = remotes.find(key);
+        return remote ? creatures::ActorBody{frameActor(key), &remote->live} : creatures::ActorBody{};
+    };
     const auto applyReceivedBuffs = [&] {
         for (const auto &event : client.takeBuffs())
             if (auto *target = frameActor(event.target))
@@ -2226,7 +2235,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
                         const creatures::TimedConsumableEvents consumables{
                             player->body().position, aggregate.emittedHits, aggregate.sounds};
-                        player->advance(actorElapsed, client.connected(), &consumables, sneakLight);
+                        player->advance(actorElapsed, client.connected(), &consumables, sneakLight, liveActor);
                         publishPlayerEffects();
                         // Keep offline launch order in the same actor output list.
                         // Online sends remain at this actor's producer boundary.
@@ -3061,6 +3070,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         for (creatures::Npc &npc : npcs.npcs()) {
             creatures::Motion motion;
+            if (npc.body.ordinaryAttached)
+                motion.walk = &npc.body.walk;
             motion.velocity = npc.body.velocity;
             motion.onGround = (npc.body.contact & creatures::ON_GROUND) != 0;
             motion.inWater = (npc.body.contact & creatures::IN_WATER) != 0;

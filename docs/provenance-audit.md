@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 43 and the rulings. The 252 tracked contracts
-comprise 194 A, 53 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 44 and the rulings. The 253 tracked contracts
+comprise 195 A, 53 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -96,6 +96,7 @@ Batch 40 covers `alpha-common-action-processing-state.md`,
 Batch 41 covers `alpha-sneak-light-inputs.md`.
 Batch 42 covers `alpha-connected-melee-candidates.md` and `alpha-connected-combo-cleanup.md`.
 Batch 43 covers `alpha-connected-hit-consumption.md`.
+Batch 44 covers `alpha-ordinary-creature-link.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -228,6 +229,7 @@ Batch 43 covers `alpha-connected-hit-consumption.md`.
 | `alpha-open-points-7.md` | A | 256 | 1 |
 | `alpha-open-points-8.md` | A | 291 | 0 |
 | `alpha-open-points-9.md` | A | 114 | 0 |
+| `alpha-ordinary-creature-link.md` | A | 148 | 0 |
 | `alpha-particles.md` | A | 607 | 0 |
 | `alpha-packet6-client-queue.md` | A | 333 | 0 |
 | `alpha-packet6-placement-producers.md` | A | 127 | 0 |

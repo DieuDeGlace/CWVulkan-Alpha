@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 using namespace creatures;
 namespace {
@@ -258,12 +259,13 @@ void checkConnectedActionClock() {
         return record;
     };
     Combatant input;
-    input.id = UINT64_MAX;
+    input.id = uint64_t(-2);
     input.action = 36;
     input.actionMs = -17;
     input.hitStun = 20;
     const auto expiredRecord = receive(input);
-    auto &expired = actors.at(input.id).fighter;
+    auto &expiredState = actors.at(input.id);
+    auto &expired = expiredState.fighter;
     expired.buffs = {{1, 0, 20, 0}};
     expired.cooldowns[99] = 20;
 
@@ -294,6 +296,7 @@ void checkConnectedActionClock() {
     const auto &inert = actors.at(3).fighter;
 
     Combatant player;
+    player.id = UINT64_MAX;
     Body body;
     const net::RemoteCreatures::Controlled controlled{player, body};
     remotes.step(actors, 20, floorBlock, {}, &controlled, [&] {
@@ -308,7 +311,7 @@ void checkConnectedActionClock() {
               inert.hitStun == 1 && inert.action == 0 && inert.actionMs == 0 && inert.cooldowns.empty(),
           "the positive lock overrides the clock and controller six skips progression after stun interruption");
 
-    remotes.updateLive(UINT64_MAX, expiredRecord, actors.at(UINT64_MAX));
+    remotes.updateLive(expired.id, expiredRecord, expiredState);
     check(expired.hitStun == 0 && expired.buffs.empty(), "a frame without a receipt retains the advanced state");
     remotes.step(actors, 3, floorBlock, {});
     check(protectedActor.actionMs == 23 && protectedActor.cooldowns.at(49) == fullCooldown - 3 &&
@@ -415,6 +418,7 @@ void checkConnectedMovementSounds() {
         return z <= 0 ? 3 : 0;
     };
     Combatant player;
+    player.id = UINT64_MAX;
     Body body;
     const net::RemoteCreatures::Controlled controlled{player, body};
     const auto walkingRecord = recordAt(8, 2.1f, {8, 0, 0});
@@ -427,7 +431,7 @@ void checkConnectedMovementSounds() {
           "the ground phase approaches the crossing over the simulated pieces");
     receive(1, walkingRecord);
     const auto falling = recordAt(2, 2.1f, {0, 0, -10}, 510);
-    receive(UINT64_MAX, falling);
+    receive(uint64_t(-2), falling);
     auto swimmer = recordAt(8389632, 3.f, {0, 0, -10});
     swimmer.setPosition(0, swimmer.position(0) + 1);
     receive(2, swimmer);
@@ -478,10 +482,11 @@ void checkConnectedActionEffects() {
     ActorMap<net::RemoteFighter> actors;
     const glm::vec3 aim(0.25f, -0.125f, 0.5f);
     constexpr int64_t origin = 8389632ll * 65536 + 1;
+    constexpr uint64_t heavyKey = uint64_t(-2);
     const auto receive = [&](uint64_t id, const Combatant &fighter) -> Combatant & {
         auto record = net::CreatureRecord::nativeDefaults();
         record.setFighter(fighter);
-        record.setPosition(0, origin + int64_t(id == UINT64_MAX ? 0 : id) * 65536);
+        record.setPosition(0, origin + int64_t(id == heavyKey ? 0 : id) * 65536);
         record.setPosition(2, 8 * 65536);
         std::memcpy(record.bytes.data() + 0x150, &aim, sizeof aim);
         remotes.receive(net::CreatureReceipt::fromRecord(id, record, true, true));
@@ -497,7 +502,7 @@ void checkConnectedActionEffects() {
     input.hitStun = 21;
     input.equipment[MAIN_HAND].type = 3;
     input.equipment[MAIN_HAND].subtype = LONGSWORD;
-    const auto &heavy = receive(UINT64_MAX, input);
+    const auto &heavy = receive(heavyKey, input);
 
     input = {};
     input.action = 5;
@@ -542,6 +547,7 @@ void checkConnectedActionEffects() {
     };
     const net::RemoteCreatures::StepEffects effects{frame, draw};
     Combatant local;
+    local.id = UINT64_MAX;
     Body body;
     const net::RemoteCreatures::Controlled controlled{local, body};
     remotes.step(actors, 20, floorBlock, {}, &controlled, [&] {
@@ -597,7 +603,7 @@ struct MeleeFixture {
         record.setPosition(0, atX);
         record.setPosition(1, atY);
         record.setPosition(2, z);
-        remotes.receive(net::CreatureReceipt::fromRecord(key, record, true, true));
+        remotes.receive(net::CreatureReceipt::fromRecord(key, record, true, !remotes.find(key)));
         auto &actor = actors[key];
         remotes.updateLive(key, record, actor);
         return actor.fighter;
@@ -760,6 +766,86 @@ void checkConnectedMeleeWindow() {
     check(draws == 3 && frame.emittedHits.size() == 1, "the resident struck set suppresses repeat draws across pieces");
 }
 
+void checkOrdinaryCreatureLink() {
+    MeleeFixture world;
+    Combatant input;
+    input.controller = 6;
+    input.health = 50.f;
+    auto &earlier = world.receive(uint64_t(-2), input);
+    auto &later = world.receive(3, input);
+    earlier.linkedId = 123;
+    later.ordinaryLink = 94;
+    world.receive(3, input);
+    check(later.ordinaryLink == 94, "a core receipt leaves the resident ordinary link intact");
+
+    input.controller = 5;
+    input.ownerId = 123;
+    auto &pet = world.receive(4, input);
+    Combatant local;
+    local.id = 0;
+    Body target;
+    target.place({11, 31, 10});
+    target.position[0] += 1;
+    target.bob = .375f;
+    target.swimPitch = -15.f;
+    target.bank = 3.f;
+    target.yaw = 34.f;
+    target.walk = {8.f, 1.6f};
+    const net::RemoteCreatures::Controlled controlled{local, target};
+    const int64_t earlierX = target.position[0];
+    const float amplitude = .8f + (0.f - .8f) * std::bit_cast<float>(0x3BA3D70Au);
+    const auto &oldFollower = world.remotes.find(uint64_t(-2))->live;
+    const auto &newFollower = world.remotes.find(3)->live;
+    world.remotes.step(world.actors, 1, floorBlock, {}, &controlled, [&] {
+        check(oldFollower.ordinaryAttached && oldFollower.position[0] == earlierX &&
+                  oldFollower.position[2] == target.position[2] + 73728 && oldFollower.swimPitch == 5.f &&
+                  oldFollower.bank == 3.f && oldFollower.yaw == 34.f && oldFollower.walk.phase == 8.f &&
+                  oldFollower.walk.amplitude == amplitude && oldFollower.velocity == glm::vec3(0) &&
+                  oldFollower.intent == glm::vec3(0) && !oldFollower.footfall,
+              "the zero-key link copies the live pose before the controlled turn, skips walk and then relaxes amplitude");
+        target.position[0] += 65536;
+        target.walk.phase = 9.f;
+        later.ordinaryLink = 0;
+    });
+    check(newFollower.ordinaryAttached && newFollower.position[0] == target.position[0] &&
+              newFollower.walk.phase == 9.f && oldFollower.position[0] == earlierX && earlier.linkedId == 123,
+          "a later zero-key lookup reads the new live pose without changing the separate pet association");
+    check(!world.remotes.find(4)->live.ordinaryAttached && pet.ownerId == 123,
+          "role five skips the ordinary copy independently of its carried-pet link");
+
+    earlier.ordinaryLink = 94;
+    later.health = 0.f;
+    pet.ordinaryLink = 3;
+    world.remotes.step(world.actors, 0, floorBlock, {}, &controlled);
+    check(earlier.ordinaryLink == 94 && !oldFollower.ordinaryAttached && pet.ordinaryLink == 0,
+          "a missing key is retained and a dead target clears even on the role-five branch");
+
+    MeleeFixture alias;
+    input = {};
+    input.controller = 6;
+    input.health = std::numeric_limits<float>::quiet_NaN();
+    alias.receive(0, input);
+    input.health = 50;
+    alias.receive(2, input);
+    alias.remotes.step(alias.actors, 0, floorBlock, {});
+    check(alias.remotes.find(0)->live.position[2] == alias.z + 98304 &&
+              alias.remotes.find(2)->live.position[2] == alias.z + 196608,
+          "a zero-key self alias is admitted with unordered health and the next actor sees its completed copy");
+
+    Npcs offline;
+    offline.enableClientMotion();
+    Npc resident = fixture(5);
+    resident.fighter.controller = 6;
+    offline.npcs().push_back(std::move(resident));
+    worldgen::WorldMap map;
+    map.add(std::make_shared<worldgen::Zone>(0, 0));
+    NpcFrame frame;
+    offline.stepInto(1, map, {{local, target, 0, 0, false, false, true}}, 1000, 0, floorBlock, frame);
+    const auto &body = offline.all().front().body;
+    check(body.ordinaryAttached && body.position[0] == target.position[0] && body.position[2] == target.position[2] + 73728,
+          "the offline client simulation uses the same live zero-key link and fixed lift");
+}
+
 void checkConnectedSneakLighting() {
     constexpr int64_t unit = 65536;
     constexpr int64_t x = 510 * unit, y = 300 * unit, z = 8 * unit;
@@ -863,6 +949,7 @@ int main() {
     checkConnectedActionEffects();
     checkConnectedMeleeOrder();
     checkConnectedMeleeWindow();
+    checkOrdinaryCreatureLink();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();
     checkRidingRefillOrder();

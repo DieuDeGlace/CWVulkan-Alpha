@@ -2104,3 +2104,20 @@ ordered bomb and melee-edit fixtures now run in a separate stack frame
 and the test passed 30 consecutive runs. Revision 11 parsed and all 34
 links resolved. Native hit counters, capture-signal details and matched
 original hit presentation remain open.
+
+## Ordinary creature link (2026-11-17)
+
+ActorOrderTests verifies that the connected and offline client paths resolve
+key zero. A received actor before the controlled turn copies the earlier live
+pose, and an actor after it copies the new pose. The checks cover raw fixed
+coordinates, the lift from target bob, angles, cleared movement, copied and
+relaxed walk, receipt preservation, missing targets, role five and dead-target
+clearing. A zero-key self match with unordered health supplies its completed
+live state to the next actor.
+
+The Windows x64 build, nine focused suites and all 60 CTests passed.
+Revision 12 parsed and all 35 links resolved. The isolated original server
+accepted this build with protocol version 3, assigned player ID 1 and supplied
+seed 41. The captured Vulkan frame showed the Lands of Gami world, player,
+HUD and minimap. Runtime comparison of ordinary link behavior with an original
+client remains open.

@@ -8,8 +8,8 @@
 // Creature separation (§4.4), static objects and voxel objects (§4.5) are in, given by the
 // caller.
 //
-// Not in yet: the attachment branches (§2 item 17, obj +0x11c0), the static-object 3 x 3
-// sector restriction and the first-sector-only scan after a z cell hit (§4.1, §4.5; the
+// Remaining: the static-object 3 x 3 sector restriction and the first-sector-only
+// scan after a z cell hit (§4.1, §4.5; the
 // caller's ObjectTest scans zones), and the debug speed (S = 20).
 #include <array>
 #include <bit>
@@ -143,6 +143,7 @@ struct Body {
     bool footfall = false; // walk phase crossed a ground step with the old roll clear
     bool rolled = false;   // the dodge passed 500 ms left (sound 26)
     bool actionDriven = false;
+    bool ordinaryAttached = false; // this piece copied its live pose from the ordinary link
 
     glm::dvec3 blocks() const {
         return glm::dvec3((double)position[0], (double)position[1], (double)position[2]) / 65536.0;
@@ -196,13 +197,24 @@ using ObjectTest =
     std::function<bool(glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const IgnoredStatics *ignored)>;
 using SneakLight = std::function<float(const Body &)>;
 
+struct ActorBody {
+    const Combatant *fighter = nullptr;
+    const Body *body = nullptr;
+};
+using BodyLookup = std::function<ActorBody(uint64_t)>;
+struct OrdinaryLink {
+    uint64_t &key;
+    const BodyLookup &target;
+};
+
 // §1: runs the world step for a frame of `dtMs`, in pieces of at most 20 ms.
 void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
-               float *riderEnergy = nullptr);
+               float *riderEnergy = nullptr, const OrdinaryLink *ordinaryLink = nullptr);
 // §2: one piece. A role-five actor can refill its resolved owner's meter during terrain contact.
 // When supplied, the fighter shares the resource and action phases inside the movement step.
 void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
-          float *riderEnergy = nullptr, Combatant *fighter = nullptr, const SneakLight &sneakLight = {});
+          float *riderEnergy = nullptr, Combatant *fighter = nullptr, const SneakLight &sneakLight = {},
+          const OrdinaryLink *ordinaryLink = nullptr);
 // Riding actor step §4. Copy the admitted owner's physical and follow pose.
 void copyRidingPose(Body &pet, const Body &rider, float riderYaw);
 

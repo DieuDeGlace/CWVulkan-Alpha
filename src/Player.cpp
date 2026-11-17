@@ -242,7 +242,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
 }
 
 void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableEvents *consumables,
-                     const creatures::SneakLight &sneakLight) {
+                     const creatures::SneakLight &sneakLight, const creatures::BodyLookup &liveActor) {
     using namespace creatures;
     replicaWorld = replica;
     const float dtMs = (float)dt;
@@ -282,8 +282,10 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
     state.maxHealth = maxHealth(fighter);
     state.stunMs = fighter.hitStun;
     state.yaw = yaw;
-    if (dt > 0)
-        worldStep(state, dt, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, objects);
+    const OrdinaryLink ordinaryLink{fighter.ordinaryLink, liveActor};
+    if (dt > 0 || (dt == 0 && liveActor))
+        worldStep(state, dt, [&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, objects,
+                  nullptr, liveActor ? &ordinaryLink : nullptr);
     yaw = state.yaw; // physics §3.3: the spin (action 72) turns the creature
     const auto u = [&] { return (float)random.draw() / 32767.f; };
     if (std::exchange(state.thudded, false)) // physics §4.2 step 1
@@ -373,6 +375,8 @@ void Player::draw(std::vector<DrawItem> &items, CreatureView &creatureView, floa
     motion.lens = (state.mode & creatures::LENS) != 0;
     motion.dodgeMs = (float)state.dodgeMs;
     motion.fighter = &fighter;
+    if (state.ordinaryAttached)
+        motion.walk = &state.walk;
     glm::dvec3 at = state.blocks();
     at.z -= state.bob;
     if (creatureView.draw(items, looks, pose, motion, view.toRender(at), dtMs, effects, look)) {

@@ -3541,3 +3541,22 @@ the frame, with serial order within each collection. Connected incoming buffs
 apply after hit state processing and before presentation. Native hit totals and
 the transient aim pointer are not modeled here. Original-client combat and
 light comparisons, the embedded host and the capture-signal details stay open.
+
+## Ordinary creature link (2026-11-17)
+
+The isolated author finalized [the ordinary link contract](specs/alpha-ordinary-creature-link.md).
+The implementer read all 147 physical lines and verified SHA-256
+`08d2f8f584f351dc01662ae4b66acfb1598c7f1a126d4f7165cb30b0f394b80b`.
+The client movement tail resolves the resident ordinary link in the live
+creature map, including numeric zero. A missing actor preserves the key. A
+resolved nonpositive target clears it even for a role-five subject. A living
+or unordered target supplies its fixed position with the documented vertical
+offset, shifted angles and half walk amplitude. The copy clears velocity and
+intent, skips ordinary walk, and keeps the later relaxation and riding passes.
+
+Connected and offline client bodies use the same movement operation. The
+controlled player and offline NPCs render the copied walk state when attached.
+Construction and actor reset default the identifier to zero, and the core
+packet copy preserves it. The dedicated server keeps its existing movement
+route. Stock nonzero producers, fresh offline production of actor key zero
+and original-client runtime acceptance remain open.

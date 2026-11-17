@@ -318,6 +318,8 @@ class Npcs {
     void reseed(uint32_t s) { random().seed(s); }
     // Engine admission adapter for the nonempty world-context maintenance gate.
     void setNamedWorld(bool named) { namedWorld = named; }
+    void enableClientMotion() { clientMotion = true; }
+    ActorBody actorBody(uint64_t key);
     // Physics §4.5: the static objects creatures collide with (left empty: none).
     ObjectTest objects;
     // World objects §3: the airships creatures collide with and stand on (null: none).
@@ -469,6 +471,7 @@ class Npcs {
     bool actorPassActive = false;
     bool actorLookupActive = false;
     bool namedWorld = false;
+    bool clientMotion = false;
     void appendNpc(Npc npc);
     void rebindNpcEntries();
     void refreshActors(std::span<PlayerView> players);
