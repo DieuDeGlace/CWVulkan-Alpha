@@ -1,4 +1,5 @@
 #include "BlockEdits.h"
+#include "SoundRules.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Npcs.h"
 #include "net/RemoteCreatures.h"
@@ -171,6 +172,7 @@ void checkConnectedRidingOrder() {
     std::copy_n(owner.position, 3, owner.follow);
     owner.yaw = 15.f;
     owner.bob = 0.25f;
+    owner.walk = {7.f, 0.5f};
     owner.ridingEnergy = 0.9999f;
     const net::RemoteCreatures::Controlled controlled{rider, owner};
     Combatant pet;
@@ -192,11 +194,13 @@ void checkConnectedRidingOrder() {
         const auto &early = *remotes.find(pet.id);
         earlierVisitVisible = owner.ridingEnergy == 1.f && early.attached &&
             early.live.position[0] == owner.position[0] && early.drawnRotation.z == 15.f &&
-            early.live.velocity == glm::vec3(0) && early.live.intent == glm::vec3(0);
+            early.live.velocity == glm::vec3(0) && early.live.intent == glm::vec3(0) &&
+            early.live.walk.phase == 7.f && early.live.walk.amplitude == 0.5f;
         owner.ridingEnergy -= 0.002f * (20.f * 0.001f);
         owner.position[0] += 65536;
         owner.yaw = 80.f;
         owner.bob = 0.125f;
+        owner.walk = {8.f, 0.75f};
     });
     check(earlierVisitVisible && controlledTurns == 1 && owner.ridingEnergy == 1.f - 0.002f * (20.f * 0.001f),
           "a received negative-key pet refills and attaches before the single rider visit");
@@ -206,7 +210,8 @@ void checkConnectedRidingOrder() {
     const auto &attached = *remotes.find(pet.id);
     check(attached.live.position[0] == owner.position[0] && attached.live.follow[0] == owner.follow[0] &&
               attached.live.position[2] == owner.position[2] + 655 && attached.live.bob == owner.bob &&
-              attached.drawnRotation.z == owner.yaw && attached.smoothing,
+              attached.drawnRotation.z == owner.yaw && attached.smoothing &&
+              attached.live.walk.phase == 8.f && attached.live.walk.amplitude == 0.75f,
           "the late attachment copies the updated pose, including bob, and keeps the receipt's smoothing flag");
     check(remotes.find(dead.id)->attached && remotes.find(dead.id)->live.position[0] == owner.position[0],
           "the late pass reaches the dead received pet");
@@ -375,11 +380,99 @@ void checkConnectedActionResources() {
     check(paused.actionMs == 0 && paused.mana == 1.f && paused.charge == 1.f,
           "a zero-duration connected turn still applies the resource ceilings");
 }
+
+void checkConnectedMovementSounds() {
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    const auto receive = [&](uint64_t id, const net::CreatureRecord &record) {
+        const bool created = !remotes.find(id);
+        remotes.receive(net::CreatureReceipt::fromRecord(id, record, created, created));
+        remotes.updateLive(id, record, actors[id]);
+    };
+    const auto recordAt = [](int32_t x, float z, glm::vec3 velocity, int32_t rollMs = 0,
+                             glm::vec3 intent = glm::vec3(0)) {
+        auto record = net::CreatureRecord::nativeDefaults();
+        Combatant fighter;
+        fighter.type = 109;
+        fighter.dodgeMs = rollMs;
+        record.setFighter(fighter);
+        Appearance appearance;
+        appearance.box = {0.8f, 0.8f, 2.f};
+        record.setAppearance(appearance);
+        record.setPosition(0, int64_t(x) * 65536);
+        record.setPosition(2, int64_t(z * 65536.f));
+        record.setMotion(velocity, 0.f, {}, intent);
+        return record;
+    };
+    const BlockType groundAndWater = [](int32_t x, int32_t, int32_t z) -> uint8_t {
+        if (x >= 24)
+            return z < 10 ? 2 : 0;
+        return z <= 0 ? 3 : 0;
+    };
+    Combatant player;
+    Body body;
+    const net::RemoteCreatures::Controlled controlled{player, body};
+    const auto walkingRecord = recordAt(8, 2.1f, {8, 0, 0});
+    for (int piece = 0; piece < 17; piece++) {
+        receive(1, walkingRecord);
+        remotes.step(actors, 16, groundAndWater, {}, &controlled);
+    }
+    const auto &walker = *remotes.find(1);
+    check(walker.live.walk.phase > 3.f && walker.live.walk.phase < 3.14159265f,
+          "the ground phase approaches the crossing over the simulated pieces");
+    receive(1, walkingRecord);
+    const auto falling = recordAt(2, 2.1f, {0, 0, -10}, 510);
+    receive(UINT64_MAX, falling);
+    auto swimmer = recordAt(8389632, 3.f, {0, 0, -10});
+    swimmer.setPosition(0, swimmer.position(0) + 1);
+    receive(2, swimmer);
+
+    constexpr std::array<int, 3> samples{32767, 5, 16384};
+    size_t draws = 0;
+    const std::function<int()> draw = [&] {
+        const size_t next = draws++;
+        return next < samples.size() ? samples[next] : 0;
+    };
+    NpcFrame frame;
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    remotes.step(actors, 16, groundAndWater, {}, &controlled, [&] {
+        check(draws == 1 && frame.sounds.size() == 2 && frame.sounds[0].sound == 32 && frame.sounds[1].sound == 26,
+              "the negative-key actor's landing draw and roll cue precede the controlled turn");
+    }, &effects);
+    check(draws == 3 && frame.sounds.size() == 4 && frame.bursts.size() == 1,
+          "landing, footfall and splash each draw once, while the roll draws nothing");
+    if (!frame.bursts.empty())
+        check(frame.bursts.front().position[0] == swimmer.position(0), "splash visuals retain the low fixed-point position bits");
+    if (frame.sounds.size() == 4) {
+        const float seconds = 16.f * 0.001f;
+        const float displacement = (-10.f - 30.f * seconds) * seconds;
+        const int64_t blockedZ = falling.position(2) + int64_t(double(displacement) * 65536.0);
+        check(frame.sounds[0].position.z == float(blockedZ) * (1.f / 65536.f) &&
+                  frame.sounds[0].volume == 0.5f && frame.sounds[0].pitch == sound::randomPitch(samples[0], 0.2f, 1.f),
+              "the landing sound retains the blocked z move and exact pitch");
+        check(frame.sounds[2].sound == 35 && frame.sounds[2].pitch == 1.f &&
+                  frame.sounds[3].sound == 31 && frame.sounds[3].pitch == sound::randomPitch(samples[2], 1.f, 0.9f),
+              "the footfall chooses its type-3 sound before the later swimmer's splash");
+    }
+    check(walker.live.walk.phase > 3.14159265f, "footfalls read the updated resident ground phase");
+
+    receive(3, recordAt(12, 2.1f, {7, 0, 0}, 1, {1, 0, 0}));
+    remotes.step(actors, 16, groundAndWater, {});
+    const auto &oldRoll = remotes.find(3)->live;
+    check(oldRoll.dodgeBeforeMs == 1 && oldRoll.dodgeMs == 0 && oldRoll.yaw == 0.f,
+          "the roll's final millisecond still gates this turn's movement facing");
+    remotes.step(actors, 16, groundAndWater, {});
+    check(oldRoll.yaw < -89.f && oldRoll.yaw > -91.f, "movement can turn on the following piece");
+
+    const int64_t support[3]{-65536, -1, 32768};
+    check(footstepCell(support, 2.f) == glm::ivec3(-2, -1, -2), "an aligned negative support sample chooses the previous block");
+}
 }
 
 int main() {
     checkConnectedActionClock();
     checkConnectedActionResources();
+    checkConnectedMovementSounds();
     checkOverlappingStrikes();
     checkRidingRefillOrder();
     checkConnectedRidingOrder();

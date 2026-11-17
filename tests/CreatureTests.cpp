@@ -554,7 +554,8 @@ int main() {
             same(n, 0, "a climber makes no footsteps");
             const int64_t at[3] = {-65536, 3 * 65536 + 5, 10 * 65536};
             const glm::ivec3 cell = footstepCell(at, 2.16f);
-            same(cell.x == -1 && cell.y == 3 && cell.z == 8, 1, "the footstep probe half the box and half a block down");
+            same(cell.x == -2 && cell.y == 3 && cell.z == 8, 1,
+                 "the footstep probe lowers z and shifts an exact negative boundary to the preceding cell");
         }
     }
 

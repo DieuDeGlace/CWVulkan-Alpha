@@ -737,8 +737,12 @@ Differences from the Steam engine that shape the plan:
   (`alpha-connected-actor-turn.md` §§3–4). Advance mana and blocking, ordinary
   lens mana, old-roll cancellation, charge, and the late stun clear. Publish
   contact, roll, modes and resources with the prior motion baseline.
-- [ ] Complete connected pre-clock action effects, action-79 lighting inputs,
-  movement-driven facing, and the sound and visual event order.
+- [x] Connected walk, facing and movement cues (`alpha-connected-walk-phases.md`).
+  Signed turns supply walk phase and amplitude, the driven facing flag, the
+  pre-decrement roll, the contact sounds and the splash visual. Carried pets
+  copy both walk fields from the live owner in both attachment passes.
+- [ ] Complete connected pre-clock action effects and their audio, action-79
+  lighting inputs, the ordinary creature link and original-client acceptance.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

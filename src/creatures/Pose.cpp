@@ -463,7 +463,8 @@ bool stepWalk(PoseState &s, const Appearance &a, const Motion &m, float dt) {
 
 glm::ivec3 footstepCell(const int64_t position[3], float boxZ) {
     const int64_t z = position[2] - (int64_t)(0.5f * boxZ * 65536.f) - (int64_t)(0.5f * 65536.f);
-    return {(int32_t)(position[0] >> 16), (int32_t)(position[1] >> 16), (int32_t)(z >> 16)};
+    const auto blockIndex = [](int64_t raw) { return int32_t(raw / 65536 - (raw < 0)); };
+    return {blockIndex(position[0]), blockIndex(position[1]), blockIndex(z)};
 }
 
 std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion &m, float dt,

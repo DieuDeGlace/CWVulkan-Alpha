@@ -197,6 +197,7 @@ void copyRidingPose(Body &pet, const Body &rider, float riderYaw) {
     pet.bank = rider.bank;
     pet.swimPitch = rider.swimPitch;
     pet.bob = rider.bob;
+    pet.walk = rider.walk;
     pet.velocity = pet.intent = glm::vec3(0);
 }
 
@@ -218,6 +219,59 @@ glm::vec3 separationPush(glm::vec3 size, const int64_t self[3], glm::vec3 other,
                          bool stunned) {
     const glm::vec3 box = enlarge ? other + glm::vec3(1, 1, 0) : other;
     return push(size, self, box, other.x, them, stunned);
+}
+
+// Connected walk phases §§3–4. No event or draw is produced until the caller
+// has checked for the local actor and sampled the support block.
+static bool advanceWalk(Body &body, int32_t dt, float seconds) {
+    const bool ground = (body.contact & ON_GROUND) != 0;
+    const bool water = (body.contact & IN_WATER) != 0;
+    const bool climb = (body.mode & CLIMB) && (body.contact & ON_WALL);
+    const auto &v = body.velocity;
+    const float horizontalSquared = v.x * v.x + v.y * v.y;
+    const float squared = horizontalSquared + v.z * v.z;
+    const auto sizeFactor = [&] {
+        // Retain a finite engine pose for a record with a missing box.
+        const float divisor = body.size.x > 0.f ? body.size.x : 0.01f;
+        return float(std::sqrt(double(0.8f / divisor)));
+    };
+    if (!(ground || water || climb || body.flyer) || !(squared > 0.5f) || body.action == 107) {
+        if (!ground && !water && !climb) {
+            body.walk.phase = 0.f;
+            body.walk.amplitude += sizeFactor() * seconds;
+        }
+        return false;
+    }
+    if (climb) {
+        const float speed = float(std::sqrt(double(squared)));
+        body.walk.phase += ((speed * seconds) * 6.f) * sizeFactor();
+        body.walk.amplitude += seconds * 0.2f;
+        return false;
+    }
+
+    const float speed = float(std::sqrt(double(horizontalSquared)));
+    const float previous = body.walk.phase;
+    float increment;
+    if (ground) {
+        const bool slow = body.action == 48 || (body.action == 54 && body.actionMs < body.durationMs) ||
+            (body.actionMs < body.windUpMs &&
+                (body.action == 6 || body.action == 7 || body.action == 10 ||
+                 (body.action >= 17 && body.action <= 20)));
+        if (slow)
+            increment = (((float(dt) * std::bit_cast<float>(0x38D1B718u)) * speed) * 1.5f) * sizeFactor();
+        else {
+            increment = ((speed * seconds) * 1.5f) * sizeFactor();
+            if (body.action == 79)
+                increment *= 2.f;
+        }
+    } else {
+        increment = (((float(dt) * std::bit_cast<float>(0x3B03126Fu)) * speed) * 1.5f) * sizeFactor();
+    }
+    body.walk.phase += increment;
+    body.walk.amplitude += seconds;
+    constexpr double pi = 3.141592653589793;
+    return ground && !water && body.dodgeMs == 0 && speed > 5.f &&
+        int32_t(double(body.walk.phase) / pi) > int32_t(double(previous) / pi);
 }
 
 void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy,
@@ -347,33 +401,51 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         b.action = 0;
     }
     // §3.3: dashes replace the acceleration with 20 along the facing (or to a side).
+    b.actionDriven = false;
     switch (b.action) {
     case 68: case 69: case 93:
         if (t <= P1)
             S = 0;
-        else if (t < P1 + X * 3 / 4)
-            a = 20.f * facing(b.yaw), S = 50;
+        else if (t < P1 + X * 3 / 4) {
+            a = 20.f * facing(b.yaw);
+            S = 50;
+            b.actionDriven = true;
+        }
+        if (t > P1 && t < b.durationMs)
+            b.actionDriven = true;
         break;
     case 76:
-        if (t > P1 && t < P1 + X)
-            a = 20.f * facing(b.yaw), S = 60;
+        if (t > P1 && t < P1 + X) {
+            a = 20.f * facing(b.yaw);
+            S = 60;
+            b.actionDriven = true;
+        }
         break;
     case 77:
-        if (t > P1 && t < P1 + X)
-            a = 20.f * turned(b.yaw, -1.f, 0.f), S = 60;
+        if (t > P1 && t < P1 + X) {
+            a = 20.f * turned(b.yaw, -1.f, 0.f);
+            S = 60;
+            b.actionDriven = true;
+        }
         break;
     case 78:
-        if (t > P1 && t < P1 + X)
-            a = 20.f * turned(b.yaw, 1.f, 0.f), S = 60;
+        if (t > P1 && t < P1 + X) {
+            a = 20.f * turned(b.yaw, 1.f, 0.f);
+            S = 60;
+            b.actionDriven = true;
+        }
         break;
     case 71:
-        if (t < b.durationMs)
+        if (t < b.durationMs) {
             S = 0;
+            b.actionDriven = true;
+        }
         break;
     case 72: // the spin
         if (t < b.durationMs) {
             S = 12;
             b.yaw += 720.f * dts;
+            b.actionDriven = true;
         }
         break;
     default:
@@ -381,8 +453,10 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     }
     if (b.controller == 4)
         S = 30;
-    if ((b.action == 57 || b.action == 74) && t >= P1 && t < b.durationMs)
-        S = 0.1f; // channelled
+    if ((b.action == 57 || b.action == 74) && t >= P1 && t < b.durationMs) {
+        S = 0.1f;
+        b.actionDriven = true;
+    }
     if (b.slowed)
         S *= 0.5f;
     if (b.hastened)
@@ -558,8 +632,10 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
             if (k == 2) {
                 // §4.2, at the moved position: the landing sound (any creature), the local
                 // player's fall damage out of the water, then the undo.
-                if (b.velocity.z < -2)
+                if (b.velocity.z < -2) {
                     b.thudded = true;
+                    std::copy_n(b.position, 3, b.thudPosition.begin());
+                }
                 const int64_t drop = fixedT(b.fallStart) - b.position[2];
                 if (b.local && !inWater && b.velocity.z < -5 && drop > fixedT(20.f)) {
                     b.fallHurt += fallDamage(drop, b.maxHealth);
@@ -728,11 +804,11 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         b.velocity = relax(b.velocity, glm::vec3(0), 0.005f, dt);
         if (b.controller != 6 && !(b.appearanceFlags & 0x0001))
             b.swimPitch = relax(b.swimPitch, -60.f, 0.01f, dt);
+        if (!(before & IN_WATER) && b.velocity.z < -3.f)
+            b.splashed = true;
     } else {
         b.swimPitch = relax(b.swimPitch, 0.f, 0.01f, dt);
     }
-    if (wet && !(before & IN_WATER) && b.velocity.z < -3)
-        b.splashed = true;
     // §3.8: over the top of a wall, the climber (mode 0x01, mode 0x10 clear) is shoved onto the
     // ledge.
     if (b.local && (b.mode & CLIMB) && !(b.mode & GLIDER) && onWall && !(b.contact & ON_WALL) &&
@@ -743,16 +819,23 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // §5.3: creature type 101 pitches up during the first second of action 51.
     if (b.type == 101)
         b.swimPitch = relax(b.swimPitch, b.action == 51 && t < 1000 ? 60.f : 0.f, 0.01f, dt);
+    const bool keepWalk = fighter || b.local; // Client simulation and the controlled rider's pose.
+    b.footfall = keepWalk && advanceWalk(b, dt, dts);
     // §2 item 18, in order: the glider and lantern equipment checks, the landing bob, the dodge.
     if (!b.gliderEquipped)
         b.mode &= ~GLIDER;
     if (!b.lanternEquipped)
         b.mode &= ~LANTERN;
+    if (keepWalk)
+        b.walk.amplitude = relax(std::min(b.walk.amplitude, 1.f), 0.f, std::bit_cast<float>(0x3BA3D70Au), dt);
     // Height §1.5: the offset approaches 0 once per millisecond of the step, each operation in
     // binary32; 0.01 when below zero, 0.02 otherwise (NaN included).
     const float bobRate = 0.f > b.bob ? 0.01f : 0.02f;
     for (int32_t elapsed = 0; elapsed < dt; elapsed++)
         b.bob = (0.f - b.bob) * bobRate + b.bob;
+    if (fighter)
+        fighter->hitFlash = relax(fighter->hitFlash, 0.f, std::bit_cast<float>(0x3BF5C28Fu), dt);
+    b.dodgeBeforeMs = b.dodgeMs;
     const int32_t remainingRoll = b.dodgeMs == 0 ? 0 : std::bit_cast<int32_t>(uint32_t(b.dodgeMs) - uint32_t(dt));
     if (b.dodgeMs > 500 && remainingRoll <= 500)
         b.rolled = true;

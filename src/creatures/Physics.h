@@ -23,6 +23,11 @@ namespace creatures {
 
 struct Combatant;
 
+struct WalkCycle {
+    float phase = 0.f;
+    float amplitude = 0.f;
+};
+
 // §5.1: contact flags.
 enum Contact : uint32_t {
     ON_GROUND = 0x01,
@@ -88,10 +93,12 @@ struct Body {
     glm::vec3 wallNormal{0};
     float fallStart = 0;  // blocks
     float bob = 0;        // landing bob, blocks (alpha-creatures-models.md §7.3)
+    WalkCycle walk;
     float bank = 0, swimPitch = 0; // orientation y and x, degrees
     float stamina = 1;
     uint32_t mode = 0;    // record field 14; actor phases refresh/commit the complete word
     int32_t dodgeMs = 0;
+    int32_t dodgeBeforeMs = 0;
     bool swimmer = false; // appearance flag 0x0100: blocked by anything but water
     bool flyer = false;   // appearance flag 0x0002: falls at a tenth of gravity
 
@@ -132,7 +139,10 @@ struct Body {
     bool splashed = false; // §5.3: water entered falling faster than 3 blocks/s (a splash, sound 31)
     // §4.2 step 1, §2 item 18.5: any creature; the sound plays only when a local player exists.
     bool thudded = false;  // landed faster than 2 blocks/s (sound 32)
+    std::array<int64_t, 3> thudPosition{}; // moved position before the z collision is undone
+    bool footfall = false; // walk phase crossed a ground step with the old roll clear
     bool rolled = false;   // the dodge passed 500 ms left (sound 26)
+    bool actionDriven = false;
 
     glm::dvec3 blocks() const {
         return glm::dvec3((double)position[0], (double)position[1], (double)position[2]) / 65536.0;

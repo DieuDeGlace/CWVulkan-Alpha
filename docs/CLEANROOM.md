@@ -3420,3 +3420,26 @@ lighting inputs remain unmodeled. Connected pre-clock action preparation,
 target outcomes, exact movement-driven facing, the sound and visual event
 sites and their draws remain separate work. Movement shares the existing body
 and collision adapters. Original-client interactive acceptance remains open.
+
+## Connected walk and movement cues (2026-11-17)
+
+The isolated author finalized [the connected walk contract](specs/alpha-connected-walk-phases.md).
+The implementer read all 316 physical lines and verified SHA-256
+`04a38ca199a5a88799f30f4a22b1e9f804300c8466fe15ffe83d6e4fa298b098`.
+Sections 2–6 close the action-driven facing flag, ordinary walk phase and
+amplitude, the late equipment and relaxation rules, the support probe and
+the roll snapshot. The [connected creature turn](specs/alpha-connected-actor-turn.md)
+supplies the blocked-landing and splash sites and their local-pointer gates.
+
+The movement step produces the phase and amplitude before the connected
+renderer reads them. It saves the blocked landing position and uses the old
+roll for footfalls and facing. The movement output uses the shared random
+stream in signed actor order. A landing consumes one draw, a splash appends
+its visual before one draw, and a ground footfall consumes one draw. The
+roll cue follows facing and consumes no draw. Carried pets copy the current
+owner's walk phase and amplitude in both existing attachment passes.
+
+The separate ordinary link at creature offset `+0x11C0`, broader action
+sounds, the resident renderer's remaining timing, and native sound playback
+acceptance remain open. A received box with a missing X dimension uses a
+finite engine divisor for its pose.

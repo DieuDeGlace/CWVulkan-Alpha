@@ -1202,14 +1202,16 @@ bool drivenByAction(const Combatant &c, int32_t clock) {
 
 // Aim-triplet contract §3.7 step 1: the heading of a nonzero horizontal vector, normalized
 // precisely (binary64 square root rounded), y clamped, arccosine rounded to binary32.
+float headingOfUnitVector(float x, float y) {
+    const float angle = float(std::acos(double(std::clamp(y, -1.f, 1.f))));
+    const float signedAngle = x > 0 ? -angle : angle;
+    return float(double(signedAngle) / PI64 * 180.0);
+}
+
 float headingOf(float x, float y) {
     const float squared = x * x + y * y;
     const float inverse = 1.f / float(std::sqrt(double(squared)));
-    x = x * inverse;
-    y = std::clamp(y * inverse, -1.f, 1.f);
-    const float angle = float(std::acos(double(y)));
-    const float signedAngle = x > 0 ? -angle : angle;
-    return float(double(signedAngle) / PI64 * 180.0);
+    return headingOfUnitVector(x * inverse, y * inverse);
 }
 
 // "Blended over the step at rate r": the held camera recurrence, one approach per millisecond.
@@ -2123,34 +2125,33 @@ void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, floa
         frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
 }
 
-void faceAfterStep(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
-                   int32_t clockBefore, int32_t milliseconds) {
-    // The "driven" flag's setters are the beam-leftovers contract §7.1 list; action 0x48 also
-    // turns yaw (the engine's spin motion supplies that yaw).
-    const bool driven = drivenByAction(c, clockBefore);
-    if (driven && c.action == 0x48)
-        yaw = body.yaw;
-    // §7.2: in the climbing state the facing block is bypassed (the original's rule from
-    // +0x11A0 is not closed; the caller's climbing turn stands in).
-    const bool climbing = (body.mode & CLIMB) && (body.contact & ON_WALL) && !(body.mode & GLIDER);
-    // Rulings walk-flag-pitch §2.2: the head-pitch rule first (climb hold: toward 45; otherwise
-    // the exp decay), then the aim blend below reads the decayed pitch.
-    headPitch = stepHeadPitch(headPitch, climbing, milliseconds);
-    if (climbing) {
-    } else if ((body.mode & AIMING) && c.hitStun <= 0) {
+static float approachFacing(float value, float target, int32_t milliseconds, float rate) {
+    for (int32_t elapsed = 0; elapsed < milliseconds; elapsed++)
+        value = (target - value) * rate + value;
+    return value;
+}
+
+static bool facesWall(const Body &body) {
+    return (body.mode & CLIMB) && (body.contact & ON_WALL) && !(body.mode & GLIDER);
+}
+
+static void faceByAimOrMovement(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body,
+                               const Combatant &c, bool driven, int32_t rollMs, int32_t milliseconds) {
+    headPitch = stepHeadPitch(headPitch, false, milliseconds);
+    if ((body.mode & AIMING) && c.hitStun <= 0) {
         const glm::vec3 drawn = drawnLook;
         if (drawn.x * drawn.x + drawn.y * drawn.y > 0.f && !driven) {
             const float heading = headingOf(drawn.x, drawn.y);
-            yaw = approach(yaw, angleStep(yaw, heading, 1.f), milliseconds, .1f);
+            yaw = approachFacing(yaw, angleStep(yaw, heading, 1.f), milliseconds, .1f);
         }
         const float squared = (drawn.x * drawn.x + drawn.y * drawn.y) + drawn.z * drawn.z;
         if (squared > 0.f) {
             const float inverse = 1.f / float(std::sqrt(double(squared)));
             const float tilt = float(std::asin(double(drawn.z * inverse)) / PI64 * 180.0);
-            headPitch = approach(headPitch, angleStep(headPitch, tilt, 1.f), milliseconds,
-                                 std::bit_cast<float>(0x3BA3D70Au));
+            headPitch = approachFacing(headPitch, angleStep(headPitch, tilt, 1.f), milliseconds,
+                                       std::bit_cast<float>(0x3BA3D70Au));
         }
-    } else if (body.dodgeMs == 0 && !driven) {
+    } else if (rollMs == 0 && !driven) {
         const glm::vec3 v = body.velocity;
         const float horizontal = v.x * v.x + v.y * v.y;
         const float along = (v.x * body.intent.x + v.y * body.intent.y) + v.z * body.intent.z;
@@ -2159,8 +2160,35 @@ void faceAfterStep(float &yaw, float &headPitch, const glm::vec3 &drawnLook, con
     }
 }
 
+void faceAfterStep(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+                   int32_t clockBefore, int32_t milliseconds) {
+    const bool driven = drivenByAction(c, clockBefore);
+    if (driven && c.action == 72)
+        yaw = body.yaw;
+    if (facesWall(body))
+        headPitch = stepHeadPitch(headPitch, true, milliseconds);
+    else
+        faceByAimOrMovement(yaw, headPitch, drawnLook, body, c, driven, body.dodgeMs, milliseconds);
+}
+
+void faceReceivedActor(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+                       int32_t milliseconds) {
+    if (facesWall(body)) {
+        headPitch = stepHeadPitch(headPitch, true, milliseconds);
+        const auto &normal = body.wallNormal;
+        const float squared = (normal.x * normal.x + normal.y * normal.y) + normal.z * normal.z;
+        if (squared > 0.f) {
+            const float inverse = 1.f / float(std::sqrt(double(squared)));
+            const float heading = headingOfUnitVector(-normal.x * inverse, -normal.y * inverse);
+            yaw = approachFacing(yaw, angleStep(yaw, heading, 1.f), milliseconds, std::bit_cast<float>(0x3BA3D70Au));
+        }
+    } else {
+        faceByAimOrMovement(yaw, headPitch, drawnLook, body, c, body.actionDriven, body.dodgeBeforeMs, milliseconds);
+    }
+}
+
 void refreshDrawnAim(glm::vec3 &drawnLook, glm::vec3 aim, const Combatant &c, int32_t actionClock, int32_t milliseconds) {
-    const float share = approach(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
+    const float share = approachFacing(0.f, 1.f, milliseconds, std::bit_cast<float>(0x3CCCCCCDu));
     for (int axis = 0; axis < 3; axis++)
         drawnLook[axis] = drawnLook[axis] + (aim[axis] - drawnLook[axis]) * share;
     if (c.action == 0 || actionClock == 0 || actionClock > duration(c, c.action))

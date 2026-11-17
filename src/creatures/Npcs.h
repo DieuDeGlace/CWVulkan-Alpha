@@ -508,6 +508,8 @@ bool hostile(const Combatant &a, const Combatant &b);
 // follows the displayed-pose pass and uses that actor's current action clock.
 void faceAfterStep(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
                    int32_t clockBefore, int32_t milliseconds);
+void faceReceivedActor(float &yaw, float &headPitch, const glm::vec3 &drawnLook, const Body &body, const Combatant &c,
+                       int32_t milliseconds);
 void refreshDrawnAim(glm::vec3 &drawnLook, glm::vec3 aim, const Combatant &c, int32_t actionClock, int32_t milliseconds);
 // Cast-point contract §4 (routine 0x046BB0): a creature's attack origin, from its body's yaw
 // and appearance flags (projectiles §2.6, the beam's sight point).

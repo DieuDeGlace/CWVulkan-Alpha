@@ -8,6 +8,10 @@
 #include "net/RemoteFighter.h"
 #include <map>
 
+namespace creatures {
+struct NpcFrame;
+}
+
 namespace net {
 
 class RemoteCreatures {
@@ -25,6 +29,10 @@ class RemoteCreatures {
         creatures::Combatant &fighter;
         creatures::Body &body;
     };
+    struct StepEffects {
+        creatures::NpcFrame &frame;
+        const std::function<int()> &draw;
+    };
     // §1.3 step 7: apply the receipt's drawn pose in message order. After
     // draining receipts, publish the latest live record once for each actor.
     void receive(const CreatureReceipt &receipt);
@@ -37,7 +45,7 @@ class RemoteCreatures {
     // by signed key. Each received actor uses its live fighter and body.
     void step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs, const creatures::BlockType &block,
               const creatures::ObjectTest &objects, const Controlled *controlled = nullptr,
-              const std::function<void()> &advanceControlled = {});
+              const std::function<void()> &advanceControlled = {}, const StepEffects *effects = nullptr);
     // Riding actor step §4: revisit attachments after the actor and object passes.
     void finishStep(creatures::ActorMap<RemoteFighter> &fighters, const Controlled *controlled = nullptr);
     const Remote *find(uint64_t id) const;

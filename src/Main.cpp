@@ -1061,7 +1061,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
     };
     const creatures::BlockType worldBlock = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
-    const auto worldDraw = [&] { return worldRandom.draw(); };
+    const std::function<int()> worldDraw = [&] { return worldRandom.draw(); };
     const auto useStaticRequest = [&](const std::array<int32_t, 3> &target, bool authoritative, creatures::NpcFrame &frame) {
         auto &fighter = player->combat();
         const auto [x, y, index] = target;
@@ -2308,6 +2308,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         }
                         advanceStaticState(elapsed, {});
                         const net::RemoteCreatures::Controlled controlled{player->combat(), player->body()};
+                        const net::RemoteCreatures::StepEffects remoteEffects{aggregate, worldDraw};
                         remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, &controlled,
                             [&] {
                                 for (const auto &target : client.pendingStaticRequests())
@@ -2317,7 +2318,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     player->body().mountValid = pet && pet->health >= 0 && creatures::rideable(pet->type);
                                 }
                                 advancePlayer(elapsed);
-                            });
+                            }, &remoteEffects);
                         stepAirships(elapsed);
                         remotes.finishStep(otherFighters, &controlled);
                     }
@@ -2739,6 +2740,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         }
                     for (const auto &sound : aggregate.sounds)
                         playAt(sound.sound, sound.position, sound.volume, sound.pitch);
+                    if (client.connected())
+                        bursts.insert(bursts.end(), aggregate.bursts.begin(), aggregate.bursts.end());
                     if (std::exchange(input.dropOne, false))
                         if (const auto item = inventory.dropOne())
                             queueItemRequest({ItemRequest::Drop, *item});
@@ -2771,9 +2774,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     else
                         refreshAirships();
                     worldItems.step(elapsed, !client.connected(), worldBlock, worldDraw, aggregate.sounds);
-                    if (client.connected())
-                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects);
-                    else
+                    if (client.connected()) {
+                        const net::RemoteCreatures::StepEffects remoteEffects{aggregate, worldDraw};
+                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, nullptr, {}, &remoteEffects);
+                    } else
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, worldBlock, aggregate);
                     stepAirships(elapsed);
                     if (client.connected())
@@ -3254,6 +3258,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 motion.yawDegrees = drawnYaw;
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
+                if (remote)
+                    motion.walk = &remote->live.walk;
                 motion.lens = (f.fighter.mode & creatures::LENS) != 0; // the 0x400 pose override
                 motion.gliding = (f.fighter.mode & creatures::GLIDER) != 0;
                 motion.lantern = (f.fighter.mode & creatures::LANTERN) != 0;
@@ -3266,8 +3272,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 }
                 shattered.erase(id);
                 const CreatureLook look = creatureLook(f.fighter, drawn, motion.velocity);
-                if (creatureView.draw(items, other.appearance(), otherPoses[id], motion, p, seconds * 1000.f, &effects, &look))
-                    footstep(drawn, other.appearance().box.z);
+                creatureView.draw(items, other.appearance(), otherPoses[id], motion, p, seconds * 1000.f, &effects, &look);
                 actionFlames(f.fighter, other.appearance().box.x, centre);
                 // Core fields are current and resident buffs stay on the actor.
                 creatureLights(f.fighter, {drawn[0], drawn[1], drawn[2]}, centre, other.appearance().box.z, drawnYaw);

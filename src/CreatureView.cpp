@@ -1,5 +1,6 @@
 #include "CreatureView.h"
 #include "CreatureShading.h"
+#include "creatures/Physics.h"
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -145,7 +146,13 @@ bool CreatureView::draw(std::vector<DrawItem> &items, const creatures::Appearanc
     at.height = position.z;
     if (l.camera) // trails §1.1: the per-call shift of the histories' point 0
         at.cameraOffset = glm::vec2(*l.camera) - glm::vec2(position);
-    const bool footstep = creatures::stepWalk(state, a, at, dtMs);
+    bool footstep = false;
+    if (at.walk) {
+        state.phase = at.walk->phase;
+        state.amplitude = at.walk->amplitude;
+    } else {
+        footstep = creatures::stepWalk(state, a, at, dtMs);
+    }
     // Trails §1.2, rulings rendering §16: each draw of the creature is a pose call. The motion
     // ghosts and a translucent body's colour draw pass dt 0; the opaque body and a translucent
     // body's depth-only draw pass the frame's dt.

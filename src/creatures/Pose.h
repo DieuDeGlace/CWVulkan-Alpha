@@ -11,6 +11,8 @@
 
 namespace creatures {
 
+struct WalkCycle;
+
 // §7.1: what the pose is made from.
 struct Motion {
     glm::vec3 velocity{0}; // blocks per second
@@ -36,6 +38,7 @@ struct Motion {
     // The creature's action, equipment and class; without one the creature only stands and
     // walks.
     const Combatant *fighter = nullptr;
+    const WalkCycle *walk = nullptr; // supplied by a simulated actor
 };
 
 // §7.3, §7.7: the state kept from frame to frame.

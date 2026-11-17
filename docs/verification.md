@@ -2003,3 +2003,17 @@ The Windows x64 build, all nine focused suites, and all 60 CTest suites
 passed. Revision 6 parsed and all 26 links resolved. The isolated original
 Alpha process did not expose a game window, so native menu, gameplay and
 hardware acceptance remain open.
+
+## Connected walk and movement cues (2026-11-17)
+
+ActorOrderTests observes a negative-key actor's landing and roll before
+the controlled turn, followed by a ground footfall and a splash from
+later actors. It verifies three draws, the blocked landing's exact
+position and pitch, the splash visual's low fixed-point bits, and the
+phase crossing before the footfall. It also checks the old roll gate
+for facing and the copied phases in both pet attachment passes.
+CreatureTests and ActorOrderTests cover exact negative support sampling.
+
+The Windows x64 build, nine focused suites and all 60 CTest suites passed.
+Revision 7 parsed and all 27 links resolved. Native playback and the
+ordinary creature link remain open.

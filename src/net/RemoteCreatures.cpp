@@ -1,10 +1,12 @@
 #include "net/RemoteCreatures.h"
+#include "SoundRules.h"
 #include "creatures/Abilities.h"
 #include "creatures/AngleStep.h"
 #include "creatures/Npcs.h"
 #include "creatures/Strike.h"
 #include <algorithm>
 #include <bit>
+#include <utility>
 
 namespace net {
 
@@ -12,6 +14,38 @@ namespace {
 
 glm::vec3 rotationOf(const creatures::Body &body) {
     return {body.swimPitch, body.bank, body.yaw};
+}
+
+glm::dvec3 soundPosition(const int64_t *position) {
+    const glm::vec3 blocks{float(position[0]), float(position[1]), float(position[2])};
+    return glm::dvec3(blocks * (1.f / 65536.f));
+}
+
+void appendMovementEffects(creatures::Body &body, const creatures::BlockType &block,
+                          bool hasControlledActor, const RemoteCreatures::StepEffects *effects) {
+    const bool thudded = std::exchange(body.thudded, false);
+    const bool splashed = std::exchange(body.splashed, false);
+    const bool footfall = std::exchange(body.footfall, false);
+    if (!effects)
+        return;
+    auto &frame = effects->frame;
+    if (thudded && hasControlledActor)
+        frame.sounds.push_back({soundPosition(body.thudPosition.data()), 32,
+                                sound::randomPitch(effects->draw(), 0.2f, 1.f), 0.5f});
+    if (splashed) {
+        const auto at = soundPosition(body.position);
+        auto burst = creatures::splashBurst(glm::dvec3(0));
+        std::copy_n(body.position, 3, burst.position);
+        frame.bursts.push_back(burst);
+        frame.sounds.push_back({at, 31, sound::randomPitch(effects->draw(), 1.f, 0.9f), 1.f});
+    }
+    if (footfall && hasControlledActor) {
+        const auto below = creatures::footstepCell(body.position, body.size.z);
+        const bool softGround = block(below.x, below.y, below.z) == 3;
+        const int32_t draw = effects->draw();
+        frame.sounds.push_back({soundPosition(body.position), softGround ? 33 + draw % 3 : 32,
+                                softGround ? 1.f : sound::randomPitch(draw, 0.2f, 1.f), 1.f});
+    }
 }
 
 const creatures::Combatant *fighterAt(uint64_t id, const creatures::ActorMap<RemoteFighter> &fighters,
@@ -117,7 +151,8 @@ bool RemoteCreatures::attach(Remote &pet, const creatures::Combatant &fighter,
 
 void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs,
                            const creatures::BlockType &block, const creatures::ObjectTest &objects,
-                           const Controlled *controlled, const std::function<void()> &advanceControlled) {
+                           const Controlled *controlled, const std::function<void()> &advanceControlled,
+                           const StepEffects *effects) {
     // §2.2: the fraction f approaches 1 at 0.015 once per millisecond of the step.
     float f = 0.f;
     for (int32_t ms = 0; ms < dtMs; ms++)
@@ -144,7 +179,7 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
         const auto timing = creatures::phases(fighter, fighter.action);
         body.windUpMs = timing.windUp;
         body.activeMs = timing.active;
-        body.durationMs = creatures::duration(fighter, fighter.action);
+        body.durationMs = timing.total();
         body.useLimitMs = fighter.action == 81 ? creatures::consumableDuration(fighter.held) : -1;
         body.contact = fighter.contact;
         body.dodgeMs = fighter.dodgeMs;
@@ -162,8 +197,10 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
             }
             creatures::step(body, dtMs, block, objects, riderEnergy, &fighter);
         }
-        const int32_t clock = fighter.actionMs;
-        creatures::faceAfterStep(body.yaw, r.headPitch, r.drawnLook, body, fighter, clock, dtMs);
+        appendMovementEffects(body, block, controlled != nullptr, effects);
+        creatures::faceReceivedActor(body.yaw, r.headPitch, r.drawnLook, body, fighter, dtMs);
+        if (std::exchange(body.rolled, false) && effects && controlled)
+            effects->frame.sounds.push_back({soundPosition(body.position), 26, 1.f, 1.f});
         if (!attach(r, fighter, fighters, controlled)) {
             const glm::vec3 rotation = rotationOf(body);
             if (!r.smoothing) {
@@ -183,7 +220,7 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
                 body.bob = 0.f;
             }
         }
-        creatures::refreshDrawnAim(r.drawnLook, body.look, fighter, clock, dtMs);
+        creatures::refreshDrawnAim(r.drawnLook, body.look, fighter, fighter.actionMs, dtMs);
     };
     if (controlled) {
         creatures::visitReceivedActors(fighters, controlled->fighter.id, [&] {
