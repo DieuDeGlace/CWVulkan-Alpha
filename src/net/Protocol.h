@@ -84,6 +84,8 @@ struct CreatureRecord {
     float yaw() const { return orientation().z; }
     float headPitch() const { return floats(0x48).x; } // field 5, creature +0x58
     void setHeadPitch(float value) { std::memcpy(&bytes[0x48], &value, sizeof value); }
+    uint32_t contactFlags() const;
+    void setContactFlags(uint32_t flags);
     glm::vec3 look() const { return floats(0x150); }  // field 26, creature +0x160: the aim
     void setMotion(glm::vec3 velocity, float yaw, glm::vec3 response = {}, glm::vec3 intent = {}) {
         glm::vec3 rotation = orientation();
@@ -112,6 +114,8 @@ struct CreatureRecord {
     // The resident actor retains fields and item padding outside the core copy.
     void updateFighter(creatures::Combatant &c) const;
     void setActionTimers(const creatures::Combatant &c);
+    void setMovementModes(const creatures::Combatant &c);
+    void setCombatResources(const creatures::Combatant &c);
     void setFighter(const creatures::Combatant &c);
     std::string name() const;
     void setName(const std::string &name);

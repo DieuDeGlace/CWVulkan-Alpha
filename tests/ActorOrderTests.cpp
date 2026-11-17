@@ -304,10 +304,82 @@ void checkConnectedActionClock() {
     check(protectedActor.actionMs == 23 && protectedActor.cooldowns.at(49) == fullCooldown - 3 &&
               protectedActor.buffs.empty(), "a second world piece advances the resident state by its own duration");
 }
+
+void checkConnectedActionResources() {
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    const auto receive = [&](uint64_t id, const Combatant &fighter, glm::vec3 intent = {}) -> Combatant & {
+        auto record = net::CreatureRecord::nativeDefaults();
+        record.setFighter(fighter);
+        record.setMotion({}, 0.f, {}, intent);
+        record.setPosition(0, int64_t(id) * 4 * 65536);
+        record.setPosition(2, 8 * 65536);
+        remotes.receive(net::CreatureReceipt::fromRecord(id, record, true, true));
+        auto &state = actors[id];
+        remotes.updateLive(id, record, state);
+        return state.fighter;
+    };
+    Combatant input;
+    input.action = 24;
+    input.actionMs = 10000;
+    input.mana = 0.2f;
+    input.mode = LENS;
+    auto &charging = receive(1, input);
+    charging.buffs = {{3, 0, 21, 0}, {10, 0, 21, 0}};
+
+    input.action = 8;
+    input.mode = 0;
+    input.blockGauge = 0.5f;
+    input.equipment[OFF_HAND].type = 3;
+    input.equipment[OFF_HAND].subtype = SHIELD;
+    const auto &blocking = receive(2, input);
+
+    input.action = 71;
+    input.actionMs = 40;
+    input.dodgeMs = 1;
+    input.mana = 0.7f;
+    input.charge = 0.25f;
+    input.characterClass = 4;
+    input.specialization = 1;
+    const auto &assassin = receive(3, input);
+    input.characterClass = 1;
+    const auto &ordinary = receive(4, input);
+
+    input.action = 83;
+    input.mode = LENS | GLIDER;
+    input.dodgeMs = 0;
+    const auto &sitting = receive(5, input, {1, 0, 0});
+    input.action = 36;
+    input.hitStun = 21;
+    input.mode = CLIMB | GLIDER;
+    const auto &stunned = receive(6, input);
+
+    remotes.step(actors, 20, floorBlock, {});
+    check(charging.mana == 0.2f + (20.f * 0.00025f) && charging.charge == charging.mana && charging.stealth == 1.f,
+          "buff 3 contributes to mana before surviving buff 10 samples it during charging");
+    check(blocking.blockGauge == 0.5f - 20.f / 1200.f, "the shield halves blocking drain in a received actor turn");
+    check(assassin.action == 0 && ordinary.action == 0 && assassin.actionMs == 60 && ordinary.actionMs == 60 &&
+              assassin.dodgeMs == 0 && ordinary.dodgeMs == 0 && assassin.charge == 0.25f && ordinary.charge == 0.f,
+          "roll cancellation uses the old nonzero timer, keeps the clock and keeps only the assassin's charge");
+    check(sitting.action == 0 && sitting.actionMs == 60 && sitting.mode == 0 && sitting.stealth == 0.f,
+          "intent ends sitting without resetting the clock and clears the lens bit before the meter");
+    check(stunned.action == 0 && stunned.actionMs == 20 && stunned.hitStun == 1 &&
+              stunned.charge == 0.f && (stunned.mode & (CLIMB | GLIDER)) == 0,
+          "late movement stun clears charge and movement toggles without interrupting the clock again");
+
+    input = {};
+    input.mana = 1.25f;
+    input.charge = 2.f;
+    const auto &paused = receive(7, input);
+    remotes.step(actors, 0, floorBlock, {});
+    check(paused.actionMs == 0 && paused.mana == 1.f && paused.charge == 1.f,
+          "a zero-duration connected turn still applies the resource ceilings");
+}
 }
 
 int main() {
     checkConnectedActionClock();
+    checkConnectedActionResources();
     checkOverlappingStrikes();
     checkRidingRefillOrder();
     checkConnectedRidingOrder();

@@ -1988,3 +1988,18 @@ selects a living actor with a spawn identifier before testing contact. The
 Windows x64 build, all nine focused suites and all 60 CTest suites passed.
 Revision 5 of the HTML specification parsed and all 25 links resolved.
 The action-specific effects and full original-client timing remain open.
+
+## Connected resource and movement fields (2026-11-17)
+
+ActorOrderTests exercises shield blocking drain, the surviving type-3
+meter before type-10 charge, roll cancellation on the last millisecond,
+the assassin charge exception, intent-driven sitting cancellation, and
+late stun. A zero-duration piece still applies resource ceilings.
+RemoteFighterTests checks an exact signed roll value beyond binary32 integer
+precision. NetTests checks the additional contact, mode and resource baselines
+and byte equality outside the modeled fields.
+
+The Windows x64 build, all nine focused suites, and all 60 CTest suites
+passed. Revision 6 parsed and all 26 links resolved. The isolated original
+Alpha process did not expose a game window, so native menu, gameplay and
+hardware acceptance remain open.

@@ -205,7 +205,7 @@ void chargeSound(const Combatant &c, int32_t before, int32_t dtMs, glm::dvec3 at
         out.sounds.push_back({at, 55, 1 + 0.5f * c.charge, 1});
 }
 
-void advanceCharge(Combatant &c, float dtMs) {
+void cancelActionForRoll(Combatant &c) {
     if (c.dodgeMs != 0) {
         const bool volley = (c.action == 50 || c.action == 96) && c.actionMs <= duration(c, c.action);
         const bool assassin = c.characterClass == 4 && c.specialization == 1;
@@ -216,6 +216,9 @@ void advanceCharge(Combatant &c, float dtMs) {
                 c.charge = 0;
         }
     }
+}
+
+void growCharge(Combatant &c, float dtMs) {
     switch (c.action) {
     case 36:
         c.charge += (dtMs * 0.0005f) * attackSpeed(c);
@@ -239,6 +242,11 @@ void advanceCharge(Combatant &c, float dtMs) {
         break;
     }
     c.charge = std::min(c.charge, c.mana);
+}
+
+void advanceCharge(Combatant &c, float dtMs) {
+    cancelActionForRoll(c);
+    growCharge(c, dtMs);
     // Movement's later gate observes the remaining stun, after this tick's gain.
     if (c.hitStun > 0)
         c.charge = 0, c.mode &= ~0x11u;

@@ -88,6 +88,8 @@ std::array<int32_t, 3> CreatureRecord::homeSpawn() const { return get<std::array
 void CreatureRecord::setHomeSpawn(const std::array<int32_t, 3> &home) { put(bytes, 0x1a0, home); }
 int32_t CreatureRecord::manaCubeCounter() const { return get<int32_t>(bytes, 0x1154); }
 void CreatureRecord::setManaCubeCounter(int32_t counter) { put(bytes, 0x1154, counter); }
+uint32_t CreatureRecord::contactFlags() const { return get<uint32_t>(bytes, 0x04c); }
+void CreatureRecord::setContactFlags(uint32_t flags) { put(bytes, 0x04c, flags); }
 
 CreatureRecord CreatureRecord::nativeDefaults() {
     // alpha-network-creature-state-defaults.md. No stat queries or random draws.
@@ -142,6 +144,7 @@ void CreatureRecord::updateFighter(creatures::Combatant &c) const {
 
 void CreatureRecord::readFighter(creatures::Combatant &c, bool retainItemPadding) const {
     c.appearanceFlags = get<uint16_t>(bytes, 0x06e); // appearance field13, flags at +6
+    c.contact = contactFlags();
     c.mode = get<uint16_t>(bytes, 0x114);
     c.controller = bytes[0x050];
     c.type = get<int32_t>(bytes, 0x054);
@@ -149,7 +152,7 @@ void CreatureRecord::readFighter(creatures::Combatant &c, bool retainItemPadding
     c.actionMs = get<int32_t>(bytes, 0x05c);
     c.combo = get<int32_t>(bytes, 0x060);
     c.comboElapsedMs = get<int32_t>(bytes, 0x064);
-    c.dodgeMs = (float)get<int32_t>(bytes, 0x118);
+    c.dodgeMs = get<int32_t>(bytes, 0x118);
     c.hitStun = get<int32_t>(bytes, 0x11c);
     c.actionLockMs = get<int32_t>(bytes, 0x120);
     c.slowMs = get<int32_t>(bytes, 0x124);
@@ -207,24 +210,32 @@ void CreatureRecord::setActionTimers(const creatures::Combatant &c) {
     put<float>(bytes, 0x12c, c.recoveryPenalty);
 }
 
+void CreatureRecord::setMovementModes(const creatures::Combatant &c) {
+    put<uint16_t>(bytes, 0x114, uint16_t(c.mode));
+    put<int32_t>(bytes, 0x118, c.dodgeMs);
+}
+
+void CreatureRecord::setCombatResources(const creatures::Combatant &c) {
+    put<float>(bytes, 0x134, c.charge);
+    put<float>(bytes, 0x160, c.mana);
+    put<float>(bytes, 0x164, c.blockGauge);
+}
+
 void CreatureRecord::setFighter(const creatures::Combatant &c) {
     setActionTimers(c);
-    put<uint16_t>(bytes, 0x114, uint16_t(c.mode));
+    setMovementModes(c);
+    setCombatResources(c);
     bytes[0x050] = c.controller;
     put<int32_t>(bytes, 0x054, c.type);
     put<int32_t>(bytes, 0x060, c.combo);
     put<int32_t>(bytes, 0x064, c.comboElapsedMs);
-    put<int32_t>(bytes, 0x118, (int32_t)c.dodgeMs);
     bytes[0x130] = c.characterClass;
     bytes[0x131] = c.specialization;
-    put<float>(bytes, 0x134, c.charge);
     for (int axis = 0; axis < 3; axis++) {
         put<float>(bytes, 0x138 + 4 * axis, c.handTurnLate[axis]);
         put<float>(bytes, 0x144 + 4 * axis, c.handTurnEarly[axis]);
     }
     put<float>(bytes, 0x15c, c.health);
-    put<float>(bytes, 0x160, c.mana);
-    put<float>(bytes, 0x164, c.blockGauge);
     for (int i = 0; i < 5; i++)
         put<float>(bytes, 0x168 + 4 * i, c.multipliers[i]);
     put<int32_t>(bytes, 0x180, c.level);

@@ -3396,3 +3396,27 @@ stun, action lock, both movement timers, recovery and capped health as well
 as the previously published motion fields. Per-action effects, resource and
 movement inputs, the native movement-driven facing flag and native timing
 remain open.
+
+## Connected resources and movement fields (2026-11-17)
+
+The isolated author finalized [the connected creature turn](specs/alpha-connected-actor-turn.md).
+The implementer read all 462 physical lines and verified SHA-256
+`fba882762680c0eebbd31fd768d561728f83d27337e5c841579c4959d3ce8e5c`.
+The held [physics contract](specs/alpha-physics-camera.md) supplies field 6,
+the signed roll, and contact and motion inputs. Section 6 of the new contract
+confirms that drawn aim reads the late live action clock.
+
+Received bodies now use the action clock and phase lengths as signed integers,
+the received roll timer and modes, equipment checks, skills and prior contact.
+Action 54's vertical override precedes mana and blocking. Intent then clears
+the lens bit and can end sitting without clearing the clock. The ordinary lens
+meter updates before charge. The roll gate uses the still-current timer and
+applies the class/specialization exemptions. Charge is capped to the resulting
+mana. Late stun clears charge and the glider and climb toggles. Contact, modes,
+roll, mana, blocking and charge now join the receiver's movement baseline.
+
+Action 79 still uses the existing meter approximation while its ordered native
+lighting inputs remain unmodeled. Connected pre-clock action preparation,
+target outcomes, exact movement-driven facing, the sound and visual event
+sites and their draws remain separate work. Movement shares the existing body
+and collision adapters. Original-client interactive acceptance remains open.

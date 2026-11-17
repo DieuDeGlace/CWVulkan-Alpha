@@ -3244,6 +3244,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
 
                 creatures::Motion motion;
                 motion.velocity = remote ? remote->live.velocity : other.velocity();
+                motion.intent = remote ? remote->live.intent : other.intent();
+                motion.onGround = (f.fighter.contact & creatures::ON_GROUND) != 0;
+                motion.inWater = (f.fighter.contact & creatures::IN_WATER) != 0;
+                motion.climbing = (f.fighter.contact & creatures::ON_WALL) && (f.fighter.mode & creatures::CLIMB);
+                motion.running = (f.fighter.mode & creatures::RUN) != 0;
+                motion.dodgeMs = float(f.fighter.dodgeMs);
+                motion.knockedDown = f.fighter.hitStun > 0;
                 motion.yawDegrees = drawnYaw;
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;

@@ -1,4 +1,5 @@
 #include "creatures/Physics.h"
+#include "creatures/Projectiles.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -219,7 +220,8 @@ glm::vec3 separationPush(glm::vec3 size, const int64_t self[3], glm::vec3 other,
     return push(size, self, box, other.x, them, stunned);
 }
 
-void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy) {
+void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects, float *riderEnergy,
+          Combatant *fighter) {
     const float dts = (float)dt * 0.001f;
     auto blocks = [&](int32_t x, int32_t y, int32_t z) {
         const uint8_t t = block(x, y, z);
@@ -230,11 +232,14 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     const uint32_t before = b.contact;
     const bool onGround = before & ON_GROUND, inWater = before & IN_WATER, onWall = before & ON_WALL;
     const glm::vec3 oldNormal = b.wallNormal;
-    const float t = b.actionMs, P1 = b.windUpMs, X = b.activeMs;
-    const bool intending = glm::dot(b.intent, b.intent) > 0;
+    const int32_t t = b.actionMs, P1 = b.windUpMs, X = b.activeMs;
+    const int32_t initialAction = b.action;
+    const bool intending = (b.intent.x * b.intent.x + b.intent.y * b.intent.y) + b.intent.z * b.intent.z > 0.f;
     // §2 item 2: the ground slam drives down while P1 < time < duration and time < P1 + X.
-    if (b.action == 54 && t > P1 && t < b.durationMs && t < P1 + X)
+    if (b.controller != 6 && b.action == 54 && t >= 0 && t > P1 && t < b.durationMs && t < P1 + X)
         b.velocity.z = -60;
+    if (fighter)
+        updateManaAndBlock(*fighter, dt);
     // §2 item 4: any action folds the glider; any intent clears the lens bit (0x400) and,
     // separately, ends sitting or sleeping (actions 83, 84).
     if (b.action != 0)
@@ -304,6 +309,11 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         else if (!onGround)
             S *= g;
     }
+    if (fighter) {
+        fighter->action = b.action;
+        fighter->mode = b.mode;
+        updateLensMeter(*fighter, dt);
+    }
     if (b.action == 79) { // sneaking; a non-player without the skill uses its fallback
         const int32_t n = b.skills[7] == 0 && b.controller != 0 ? b.skillFallback : b.skills[7];
         S *= 0.5f + 0.4f * skillFactor(n);
@@ -328,17 +338,20 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         else
             b.action = 83;
     }
-    // A dodge cancels the action, except a dodge attack (50, 96) within its duration. (The
-    // exception for bytes obj +0x140/+0x141 = 4/1 keeping actions 5, 17 and 20 is unresolved
-    // and not modelled.)
-    if (b.dodgeMs != 0 && !((b.action == 50 || b.action == 96) && t <= b.durationMs))
+    // Read the original roll timer and the action surviving movement's earlier gates.
+    if (fighter) {
+        fighter->action = b.action;
+        cancelActionForRoll(*fighter);
+        b.action = fighter->action;
+    } else if (b.dodgeMs != 0 && !((b.action == 50 || b.action == 96) && t <= b.durationMs)) {
         b.action = 0;
+    }
     // §3.3: dashes replace the acceleration with 20 along the facing (or to a side).
     switch (b.action) {
     case 68: case 69: case 93:
         if (t <= P1)
             S = 0;
-        else if (t < P1 + (float)((int32_t)X * 3 / 4))
+        else if (t < P1 + X * 3 / 4)
             a = 20.f * facing(b.yaw), S = 50;
         break;
     case 76:
@@ -390,6 +403,8 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
             S *= dot * 0.5f + 1.f;
         }
     }
+    if (fighter)
+        growCharge(*fighter, float(dt));
     // §3.6: stamina. Climbing with a key held costs it by the climbing skill; lifting the
     // glider costs it; hanging on a wall or gliding without the lift keeps it; anything else
     // refills it.
@@ -455,10 +470,16 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     }
     // §2 item 12: a stunned creature, or one inside a running action, lets go of the wall and
     // the glider.
-    if (b.stunMs > 0)
+    if (b.stunMs > 0) {
         b.mode &= ~(GLIDER | CLIMB);
-    if (b.action != 0 && t < b.durationMs)
-        b.mode &= ~(GLIDER | CLIMB);
+        if (fighter)
+            fighter->charge = 0.f;
+    }
+    if (b.action != 0) {
+        const int32_t durationMs = fighter && initialAction != b.action ? duration(*fighter, b.action) : b.durationMs;
+        if (t < durationMs)
+            b.mode &= ~(GLIDER | CLIMB);
+    }
 
     // §4.1 step 1, open points 4 §9: unstick first, once a step. A box overlapping any solid
     // block, even at head height, has its bottom set 1.1 blocks above the floor of the block
@@ -732,9 +753,15 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     const float bobRate = 0.f > b.bob ? 0.01f : 0.02f;
     for (int32_t elapsed = 0; elapsed < dt; elapsed++)
         b.bob = (0.f - b.bob) * bobRate + b.bob;
-    if (b.dodgeMs > 500 && b.dodgeMs - dt <= 500)
+    const int32_t remainingRoll = b.dodgeMs == 0 ? 0 : std::bit_cast<int32_t>(uint32_t(b.dodgeMs) - uint32_t(dt));
+    if (b.dodgeMs > 500 && remainingRoll <= 500)
         b.rolled = true;
-    b.dodgeMs = std::max(0, b.dodgeMs - dt);
+    b.dodgeMs = std::max(0, remainingRoll);
+    if (fighter) {
+        fighter->mode = b.mode;
+        fighter->dodgeMs = b.dodgeMs;
+        fighter->contact = b.contact;
+    }
 }
 
 } // namespace creatures

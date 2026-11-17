@@ -10,8 +10,7 @@
 //
 // Not in yet: the attachment branches (§2 item 17, obj +0x11c0), the static-object 3 x 3
 // sector restriction and the first-sector-only scan after a z cell hit (§4.1, §4.5; the
-// caller's ObjectTest scans zones), the debug speed (S = 20) and the dodge-cancel exception
-// bytes (§3.2, unresolved).
+// caller's ObjectTest scans zones), and the debug speed (S = 20).
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -21,6 +20,8 @@
 #include <vector>
 
 namespace creatures {
+
+struct Combatant;
 
 // §5.1: contact flags.
 enum Contact : uint32_t {
@@ -105,13 +106,13 @@ struct Body {
     // §3.2, §3.3: what the speed limit and the action motions read of the creature.
     int32_t controller = 0, type = 2;
     uint16_t appearanceFlags = 0;
-    float actionMs = 0, windUpMs = 0, activeMs = 0, durationMs = 0; // the action's time, P1, X (P2), duration
+    int32_t actionMs = 0, windUpMs = 0, activeMs = 0, durationMs = 0; // signed action and phase clocks
     float haste = 1; // the haste buff's factor (buff kind 12), 1 without it
     // §3.2 sneak: a non-player's skill when its own is 0 (obj +0x190 / 2 + tier + 1).
     int32_t skillFallback = 0;
     // §3.2 action 81: the use length (RVA 0xc6b80 on obj +0x1e8); negative when not supplied,
     // which leaves the rule out.
-    float useLimitMs = -1;
+    int32_t useLimitMs = -1;
     // §2 item 18.2: equipment byte +0xf08/+0xf09 holds the glider (0x17, 0) and +0xdf0 the
     // lantern (0x18). Callers that do not supply them keep the modes.
     bool gliderEquipped = true, lanternEquipped = true;
@@ -188,8 +189,9 @@ using ObjectTest =
 void worldStep(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
                float *riderEnergy = nullptr);
 // §2: one piece. A role-five actor can refill its resolved owner's meter during terrain contact.
+// When supplied, the fighter shares the resource and action phases inside the movement step.
 void step(Body &body, int32_t dtMs, const BlockType &block, const ObjectTest &objects = {},
-          float *riderEnergy = nullptr);
+          float *riderEnergy = nullptr, Combatant *fighter = nullptr);
 // Riding actor step §4. Copy the admitted owner's physical and follow pose.
 void copyRidingPose(Body &pet, const Body &rider, float riderYaw);
 

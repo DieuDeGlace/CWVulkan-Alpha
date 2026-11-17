@@ -1,4 +1,5 @@
 #include "net/RemoteCreatures.h"
+#include "creatures/Abilities.h"
 #include "creatures/AngleStep.h"
 #include "creatures/Npcs.h"
 #include "creatures/Strike.h"
@@ -60,8 +61,10 @@ void RemoteCreatures::updateLive(uint64_t id, const CreatureRecord &record, Remo
     b.swimmer = (b.appearanceFlags & 0x0100) != 0;
     b.flyer = (b.appearanceFlags & 0x0002) != 0;
     b.replica = true;
-    b.mode = fighter.mode;
-    b.dodgeMs = int32_t(fighter.dodgeMs);
+    b.skills = fighter.skills;
+    b.skillFallback = fighter.level / 2 + fighter.powerTier + 1;
+    b.gliderEquipped = fighter.equipment[11].type == 23 && fighter.equipment[11].subtype == 0;
+    b.lanternEquipped = fighter.equipment[10].type == 24;
     b.look = record.look();
     const glm::vec3 rotation = record.orientation();
     b.swimPitch = rotation.x;
@@ -79,8 +82,11 @@ void RemoteCreatures::writeLive(uint64_t id, CreatureRecord &record, const Remot
         record.setPosition(axis, body.position[axis]);
     record.setMotion(body.velocity, rotationOf(body), body.push, body.intent);
     record.setHeadPitch(remote->headPitch);
+    record.setContactFlags(state.fighter.contact);
     record.setActionTimers(state.fighter);
     record.setHealth(state.fighter.health);
+    record.setMovementModes(state.fighter);
+    record.setCombatResources(state.fighter);
 }
 
 void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {
@@ -132,8 +138,21 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
         creatures::updateSwingCount(fighter, fighter.actionMs, dtMs);
         creatures::advanceActionClock(fighter, dtMs, false);
         auto &body = r.live;
+        body.mode = fighter.mode;
+        body.action = fighter.action;
+        body.actionMs = fighter.actionMs;
+        const auto timing = creatures::phases(fighter, fighter.action);
+        body.windUpMs = timing.windUp;
+        body.activeMs = timing.active;
+        body.durationMs = creatures::duration(fighter, fighter.action);
+        body.useLimitMs = fighter.action == 81 ? creatures::consumableDuration(fighter.held) : -1;
+        body.contact = fighter.contact;
+        body.dodgeMs = fighter.dodgeMs;
         body.stunMs = fighter.hitStun;
-        if (dtMs > 0) {
+        body.slowed = fighter.slowMs > 0;
+        body.hastened = fighter.hasteMs > 0;
+        body.haste = fighter.hasBuff(12) ? 1.f + creatures::abilityValue(fighter, 100) : 1.f;
+        if (dtMs >= 0) {
             float *riderEnergy = nullptr;
             if (fighter.controller == 5) { // riding actor step §3: a reverse link may resolve key zero
                 if (controlled && controlled->fighter.id == fighter.ownerId)
@@ -141,7 +160,7 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
                 else if (const auto owner = list.find(fighter.ownerId); owner != list.end())
                     riderEnergy = &owner->second.live.ridingEnergy;
             }
-            creatures::step(body, dtMs, block, objects, riderEnergy);
+            creatures::step(body, dtMs, block, objects, riderEnergy, &fighter);
         }
         const int32_t clock = fighter.actionMs;
         creatures::faceAfterStep(body.yaw, r.headPitch, r.drawnLook, body, fighter, clock, dtMs);

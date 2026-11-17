@@ -120,7 +120,7 @@ struct Combatant {
     int32_t actionMs = 0;
     int32_t combo = 0;
     int32_t comboElapsedMs = 0;
-    float dodgeMs = 0;
+    int32_t dodgeMs = 0;
     int32_t hitStun = 0;
     int32_t actionLockMs = 0;
     float recoveryPenalty = 0;
@@ -277,6 +277,8 @@ void advanceActionTimers(Combatant &c, int32_t dtMs);
 void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *events = nullptr);
 void advanceActionClock(Combatant &c, int32_t dtMs, bool authoritative,
                         const std::function<void(const Buff &)> &periodic = {});
+void updateManaAndBlock(Combatant &c, int32_t dtMs);
+void updateLensMeter(Combatant &c, int32_t dtMs);
 // Periodic callbacks run before expired-node cleanup and stun progression. They
 // may inspect buffs/update other state, but must not mutate the buff collection.
 void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},

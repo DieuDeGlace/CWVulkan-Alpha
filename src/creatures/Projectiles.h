@@ -58,6 +58,8 @@ struct ShotEffects {
 // charging sound samples charge before this call's gain.
 void stepCharge(Combatant &c, int32_t beforeMs, int32_t dtMs, glm::dvec3 at, ShotEffects &out);
 void chargeSound(const Combatant &c, int32_t beforeMs, int32_t dtMs, glm::dvec3 at, ShotEffects &out);
+void cancelActionForRoll(Combatant &c);
+void growCharge(Combatant &c, float dtMs);
 void advanceCharge(Combatant &c, float dtMs);
 
 // Audio §6.2: the swing sounds of a creature's action this step (`beforeMs` as above), at `at`,

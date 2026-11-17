@@ -733,8 +733,12 @@ Differences from the Steam engine that shape the plan:
   Each living signed turn applies preliminary timers, cooldown decay, buff
   expiration, stun interruption and the action increment. The client publishes
   these fields and capped health to the receiver's packet baseline.
-- [ ] Complete connected action effects, resources and movement inputs, and
-  verify their event and random-draw order against the original client.
+- [x] Connected ordinary resources and action movement inputs
+  (`alpha-connected-actor-turn.md` §§3–4). Advance mana and blocking, ordinary
+  lens mana, old-roll cancellation, charge, and the late stun clear. Publish
+  contact, roll, modes and resources with the prior motion baseline.
+- [ ] Complete connected pre-clock action effects, action-79 lighting inputs,
+  movement-driven facing, and the sound and visual event order.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3

@@ -320,6 +320,10 @@ static void checkCreatureReceiptPoses() {
     latestFighter.slowMs = 20;
     latestFighter.hasteMs = 21;
     latestFighter.recoveryPenalty = -0.25f;
+    latestFighter.mode = 0x8400;
+    latestFighter.mana = 0.2f;
+    latestFighter.charge = 0.3f;
+    latestFighter.blockGauge = 0.4f;
     latest.setFighter(latestFighter);
     std::thread peer([&] {
         Socket socket = listener.accept();
@@ -462,23 +466,30 @@ static void checkCreatureReceiptPoses() {
             const auto &body = advanced.live;
             const std::array<int64_t, 3> position{body.position[0], body.position[1], body.position[2]};
             const glm::vec3 orientation(body.swimPitch, body.bank, body.yaw);
-            const size_t motionEnd = CREATURE_FIELDS[6].offset;
+            const size_t motionEnd = CREATURE_FIELDS[7].offset;
             const auto liveFighter = motion.fighter();
+            const auto inputFighter = record.fighter();
             // Restore the modeled fields and ensure the rest of the record is untouched.
             CreatureRecord restored = motion;
             std::copy_n(record.bytes.begin(), motionEnd, restored.bytes.begin());
-            restored.setActionTimers(record.fighter());
+            restored.setActionTimers(inputFighter);
+            restored.setMovementModes(inputFighter);
+            restored.setCombatResources(inputFighter);
             restored.setHealth(record.health());
             check(motion.position(0) != latest.position(0) && motion.position(0) != body.follow[0] &&
                       motion.position(0) == position[0] && motion.position(1) == position[1] && motion.position(2) == position[2] &&
                       motion.orientation() == orientation && motion.velocity() == body.velocity &&
                       motion.intent() == body.intent && motion.response() == body.push && motion.headPitch() == advanced.headPitch &&
+                      motion.contactFlags() == body.contact &&
                       restored.bytes == record.bytes,
                   "frame publication only updates the modeled fields, using the live motion rather than the drawn pose");
             check(liveFighter.action == 59 && liveFighter.actionMs == 16777237 && liveFighter.hitStun == 0 &&
                       liveFighter.slowMs == 0 && liveFighter.hasteMs == 1 &&
                       liveFighter.recoveryPenalty == -0.25f + (20.f * 0.001f) / 180.f,
                   "live action, stun and recovery use the duration of the signed actor's world turn");
+            check(liveFighter.mode == 0x8000 && liveFighter.mana == 0.2f && liveFighter.charge == 0.2f &&
+                      liveFighter.blockGauge == 0.4f + 20.f / 2000.f,
+                  "movement clears the intended toggle and publishes the resource cap and blocking recovery");
             sendPartial = true;
             const bool partial = waitFor([&] {
                 const auto actors = client.others();
@@ -492,8 +503,10 @@ static void checkCreatureReceiptPoses() {
                 check(current.health() == 240.f &&
                           std::equal(motion.bytes.begin(), motion.bytes.begin() + motionEnd, current.bytes.begin()) &&
                           currentFighter.actionMs == liveFighter.actionMs && currentFighter.hitStun == liveFighter.hitStun &&
-                          currentFighter.hasteMs == liveFighter.hasteMs && currentFighter.recoveryPenalty == liveFighter.recoveryPenalty,
-                      "both packet forms preserve advanced motion and action clocks when their masks omit them");
+                          currentFighter.hasteMs == liveFighter.hasteMs && currentFighter.recoveryPenalty == liveFighter.recoveryPenalty &&
+                          currentFighter.mode == liveFighter.mode && currentFighter.charge == liveFighter.charge &&
+                          currentFighter.mana == liveFighter.mana && currentFighter.blockGauge == liveFighter.blockGauge,
+                      "both packet forms preserve advanced motion, resources and action clocks omitted by their masks");
                 const auto receipts = client.takeReceipts();
                 check(receipts.size() == 2 && !receipts[0].snap && receipts[1].snap &&
                           receipts[1].snap->position == position && receipts[1].snap->rotation == orientation,

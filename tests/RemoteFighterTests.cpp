@@ -25,11 +25,13 @@ static void currentState() {
     snapshot.id = 42;
     snapshot.action = 37;
     snapshot.actionMs = 100;
+    snapshot.dodgeMs = 16777217;
     snapshot.health = 90;
     record.setFighter(snapshot);
     remote.receive(snapshot.id, record);
-    check(remote.fighter.actionMs == 100 && remote.fighter.health == 90 && remote.fighter.id == 42,
-          "the first snapshot publishes the received clock and key");
+    check(remote.fighter.actionMs == 100 && remote.fighter.dodgeMs == 16777217 &&
+              remote.fighter.health == 90 && remote.fighter.id == 42,
+          "the first snapshot publishes the exact signed action and roll clocks and the key");
     snapshot.health = 17;
     snapshot.combo = 23;
     snapshot.multipliers[1] = .75f;

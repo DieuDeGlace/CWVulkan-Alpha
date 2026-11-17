@@ -889,19 +889,8 @@ void advanceActionClock(Combatant &c, int32_t milliseconds, bool authoritative,
     }
 }
 
-void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
-                     const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent,
-                     const TimedConsumableEvents *consumables) {
-    const float dtMs = (float)milliseconds;
-    if (!role.replica || role.local) {
-        c.comboElapsedMs += milliseconds;
-        if (c.comboElapsedMs > 4000) {
-            const float speed = attackSpeed(c);
-            c.combo = 0;
-            c.actionMs = (int32_t)((speed / attackSpeed(c)) * (float)c.actionMs);
-        }
-    }
-    advanceActionClock(c, milliseconds, !role.replica, periodic);
+void updateManaAndBlock(Combatant &c, int32_t milliseconds) {
+    const float dtMs = float(milliseconds);
     bool drift = true;
     if (isMagicUser(c)) {
         switch (c.action) {
@@ -929,15 +918,11 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     } else
         c.blockGauge += dtMs / 2000.f;
     c.blockGauge = std::min(c.blockGauge, 1.f);
-    // The intent clear precedes the action-99 meter read. Keep the separate,
-    // untraced action-79 branch's existing growth rate when its bit remains set.
-    if (c.mode & LENS) {
-        const float intentSquared = (intent.x * intent.x + intent.y * intent.y) + intent.z * intent.z;
-        if (intentSquared > 0.f)
-            c.mode &= ~LENS;
-    }
-    if ((c.action == 80 || c.action == 81) && (role.local || (!role.replica && c.controller != 0)))
-        tickConsumable(c, milliseconds, consumables);
+}
+
+void updateLensMeter(Combatant &c, int32_t milliseconds) {
+    const float dtMs = float(milliseconds);
+    // Action 79's environmental light and movement route still uses the engine adapter.
     if (c.mode & LENS) {
         const float skillRate = c.action == 79 ? 0.f : abilityValue(c, 99) * 0.0005f;
         const float rate = skillRate + 0.00001f;
@@ -948,8 +933,33 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     if (c.hasBuff(3))
         c.stealth = 1.f;
     c.mana = std::min(1.f, c.mana + (dtMs * 0.00025f) * c.stealth);
-    c.dodgeMs = std::max(0.f, c.dodgeMs - dtMs);
-    c.hitFlash = std::max(0.f, c.hitFlash - dtMs * 0.001f * 4.f); // fade rate: ours (the renderer's is unspecified)
+}
+
+void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
+                     const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent,
+                     const TimedConsumableEvents *consumables) {
+    if (!role.replica || role.local) {
+        c.comboElapsedMs += milliseconds;
+        if (c.comboElapsedMs > 4000) {
+            const float speed = attackSpeed(c);
+            c.combo = 0;
+            c.actionMs = (int32_t)((speed / attackSpeed(c)) * (float)c.actionMs);
+        }
+    }
+    advanceActionClock(c, milliseconds, !role.replica, periodic);
+    updateManaAndBlock(c, milliseconds);
+    // The intent clear precedes the action-99 meter read. Keep the separate,
+    // untraced action-79 branch's existing growth rate when its bit remains set.
+    if (c.mode & LENS) {
+        const float intentSquared = (intent.x * intent.x + intent.y * intent.y) + intent.z * intent.z;
+        if (intentSquared > 0.f)
+            c.mode &= ~LENS;
+    }
+    if ((c.action == 80 || c.action == 81) && (role.local || (!role.replica && c.controller != 0)))
+        tickConsumable(c, milliseconds, consumables);
+    updateLensMeter(c, milliseconds);
+    c.dodgeMs = std::max(0, std::bit_cast<int32_t>(uint32_t(c.dodgeMs) - uint32_t(milliseconds)));
+    c.hitFlash = std::max(0.f, c.hitFlash - float(milliseconds) * 0.001f * 4.f); // engine fade rate
 }
 
 void stepAction(Combatant &c, float dtMs) {

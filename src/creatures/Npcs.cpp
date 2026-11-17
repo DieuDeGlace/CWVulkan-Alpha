@@ -2688,9 +2688,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             }
         }
         c.mode = npc.body.mode;
-        c.dodgeMs = (float)npc.body.dodgeMs;
+        c.dodgeMs = npc.body.dodgeMs;
         beginActionUpdate(c, milliseconds, &frame.buffs);
-        npc.body.dodgeMs = (int32_t)c.dodgeMs;
+        npc.body.dodgeMs = c.dodgeMs;
         const int32_t before = c.actionMs;
         // Projectiles §2: ranged actions charge and launch; the rest strike at their moment.
         // Aim-triplet contract §3, §4: shots, beams and close spells read the aim as the
@@ -2748,9 +2748,9 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         {
             const Phases timing = phases(c, c.action);
             Body &b = npc.body;
-            b.action = c.action, b.actionMs = c.actionMs, b.windUpMs = (float)timing.windUp, b.activeMs = (float)timing.active;
-            b.durationMs = (float)duration(c, c.action);
-            b.useLimitMs = float(consumableDuration(c.held));
+            b.action = c.action, b.actionMs = c.actionMs, b.windUpMs = timing.windUp, b.activeMs = timing.active;
+            b.durationMs = duration(c, c.action);
+            b.useLimitMs = consumableDuration(c.held);
             b.controller = c.controller, b.type = c.type, b.appearanceFlags = npc.looks.flags;
             b.stunMs = c.hitStun;
             b.yaw = npc.yaw;

@@ -249,7 +249,7 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
         return;
     state.mode = fighter.mode;
     beginActionUpdate(fighter, dt, &abilityEffects.buffs);
-    state.dodgeMs = (int32_t)fighter.dodgeMs;
+    state.dodgeMs = fighter.dodgeMs;
     actionMsBefore = fighter.actionMs;
     if (onActionEffects)
         onActionEffects(actionMsBefore, dt);
@@ -264,12 +264,12 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
     state.controller = fighter.controller, state.type = fighter.type, state.appearanceFlags = looks.flags;
     {
         const Phases p = phases(fighter, fighter.action);
-        state.actionMs = fighter.actionMs, state.windUpMs = (float)p.windUp, state.activeMs = (float)p.active;
-        state.durationMs = (float)duration(fighter, fighter.action);
+        state.actionMs = fighter.actionMs, state.windUpMs = p.windUp, state.activeMs = p.active;
+        state.durationMs = duration(fighter, fighter.action);
         state.haste = fighter.hasBuff(12) ? 1 + skillFactor(fighter.skills[8]) : 1.f;
         state.slowed = fighter.slowMs > 0, state.hastened = fighter.hasteMs > 0;
         // Timed consumables §4. Movement reads the same duration as the heal tick.
-        state.useLimitMs = float(consumableDuration(fighter.held));
+        state.useLimitMs = consumableDuration(fighter.held);
     }
     // Physics §2 item 18.2: the glider (Special slot, type 23 subtype 0) and the lantern (slot 10,
     // type 24) must be equipped to keep their modes.
@@ -311,7 +311,7 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
         state.crashed = false;
         state.fallHurt = 0;
     }
-    fighter.dodgeMs = (float)state.dodgeMs;
+    fighter.dodgeMs = state.dodgeMs;
     fighter.mode = state.mode;
     advanceCharge(fighter, dtMs);
     state.mode = fighter.mode;
