@@ -2210,3 +2210,19 @@ re-certified critical and haste contracts matched their complete hashes.
 The recertification checks the client and dedicated arithmetic against
 their original image bytes. Connected projectile receipt and stepping,
 native playback and imported power's last-bit match remain open.
+
+## Original Alpha desktop startup (2026-11-17)
+
+An independent x86 diagnostic sent the original initial Direct3D 9
+presentation values, including a null device window and the hidden focus
+window. On the same 1920 × 1080 adapter the call returned `0x8876086C`
+under sandboxed execution and `0x00000000` with normal desktop access.
+XAudio2.7 COM activation, DirectInput8 initialization and system mouse
+creation all returned zero. Microsoft documents the initialization call
+and its return values. [Direct3D 9 CreateDevice](https://learn.microsoft.com/en-us/windows/win32/api/d3d9helper/nf-d3d9helper-idirect3d9-createdevice)
+
+The exact original `Cube.exe` opened a responsive window in a fresh
+isolated directory without imported saves or mods. Accessibility tools
+identified the native window and its title bar. Three window capture
+attempts timed out before menu pixels were available. The original-client
+menu, gameplay and visual acceptance therefore remain open.

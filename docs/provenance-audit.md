@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 49 and the rulings. The 260 tracked contracts
-comprise 204 A, 51 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 50 and the rulings. The 262 tracked contracts
+comprise 206 A, 51 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -105,6 +105,8 @@ Batch 48 covers `alpha-connected-melee-actions-30-through-33.md` and
 `alpha-rulings-connected-melee-30-through-33-stats.md`.
 Batch 49 covers `alpha-connected-ranged-dispatch.md` and the re-certified
 `alpha-critical-and-haste-stat-numerics.md`.
+Batch 50 covers `alpha-native-startup-window-input-boundary.md` and
+`alpha-native-initial-direct3d9-device.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -222,6 +224,8 @@ Batch 49 covers `alpha-connected-ranged-dispatch.md` and the re-certified
 | `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
 | `alpha-missions.md` | A | 1062 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
+| `alpha-native-initial-direct3d9-device.md` | A | 66 | 0 |
+| `alpha-native-startup-window-input-boundary.md` | A | 132 | 1 |
 | `alpha-net-packets.md` | A | 642 | 0 |
 | `alpha-net-server.md` | A | 501 | 0 |
 | `alpha-net-transport.md` | A | 450 | 8 |

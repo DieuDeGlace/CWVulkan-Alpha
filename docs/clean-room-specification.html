@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 17 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 18 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -320,6 +320,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
       <p>Creature packet baselines include locally advanced motion, contact, modes, health, action, timers, combo, mana, charge and blocking. When a packet omits those fields, the receive keeps them from its starting record. A received clock field replaces that value even when it equals the value in an earlier packet.</p>
       <p>The <a href="specs/alpha-visibility-ray-geometry.md">visibility ray contract</a> has been independently re-certified for the original client. Native unloaded-column and loader acceptance remain open.</p>
       <p>The revision 12 and revision 16 Vulkan builds joined the original Alpha server over loopback using protocol 3, received creature ID 1, adopted seed 41 and rendered the Lands of Gami with the HUD and minimap. The original game client, combat timing and longer sessions still need acceptance.</p>
+      <p>The <a href="specs/alpha-native-startup-window-input-boundary.md">original client startup trace</a> identifies the hidden window, <a href="specs/alpha-native-initial-direct3d9-device.md">initial Direct3D 9 device request</a>, XAudio2.7 activation and input setup. The isolated original opened a responsive desktop window with normal Windows access. Desktop capture timed out before the menu could be inspected. Original menu, gameplay and visual comparisons remain open.</p>
       <p>The engine read the original server's world clock record. The original server then advertised the clock the engine wrote into a separate copy of that save. Wider zone, character and map save interchange remains open.</p>
       <p>The dedicated server handles mixed item requests at the sender's turn and answers zone requests in their received order, including duplicates. Connected clients replace placed-object lists at the zone-content boundary.</p>
       <p>The <a href="specs/alpha-stock-blueprint-placement.md">offline blueprint consumer</a> processes queued kind-7 requests using live selection, rotation, position and aim. Cells are visited in stencil order with live protection checks. It removes unsupported ground-resting plants and sprites in the admitted zones. Colored edits enter their loaded zone's history, and the anchor zone keeps the placement list. An owned-content Vulkan diagnostic placed and rendered all 600 cells of the wooden floor. Stock build-mode activation, local model selection, placement save interchange and original-client comparisons remain open.</p>
@@ -375,8 +376,8 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
     <section id="library">
       <h3><span class="num">C2</span>Specification library</h3>
       <div class="stats">
-        <div><b>260</b>tracked contracts</div>
-        <div><b>204</b>held with recorded hashes</div>
+        <div><b>262</b>tracked contracts</div>
+        <div><b>206</b>held with recorded hashes</div>
         <div><b>51</b>held awaiting hash records</div>
         <div><b>5</b>engine, guidance and superseded records</div>
       </div>

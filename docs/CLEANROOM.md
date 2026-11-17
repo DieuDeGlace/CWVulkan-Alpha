@@ -3686,3 +3686,22 @@ The shared phase helper reuses the pure speed result across scaled legs
 of an unchanged actor state. Critical rolls still sample the probability
 before the draw. Imported power runtime behavior, exceptional arithmetic
 and the full action schedules remain open.
+
+## Original client desktop startup (2026-11-17)
+
+The isolated author finalized [the native startup contract](specs/alpha-native-startup-window-input-boundary.md)
+and [the first device request](specs/alpha-native-initial-direct3d9-device.md).
+The implementer read their complete 131 and 65 physical lines and verified
+SHA-256 `ca67ff1c8e230ceeee711bf5d85d8339b55cb7ce7b0d36fbb1fc031ab739b692`
+and `e0a4670c79f6013a9b9afc4045204c8ee050eeafb4099206f527c33bb816e5fb`, respectively.
+The original constructs its first windowed Direct3D 9 device before reading
+the display options and shows the window only after graphics, XAudio2.7,
+input and game initialization. A handled startup failure can exit with zero.
+
+The private x86 diagnostic matched the initial presentation parameters. Its
+Direct3D 9 request returned `0x8876086C` under sandboxed execution and zero
+with normal desktop access. XAudio2.7 activation, the DirectInput8 factory
+and system mouse creation returned zero. A fresh isolated copy of the exact
+original executable opened a responsive native window in a normal visible
+desktop launch. The window capture tools timed out. Original menu contents,
+interactive gameplay and matched image comparisons remain open.

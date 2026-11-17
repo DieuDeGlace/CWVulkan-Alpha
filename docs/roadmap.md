@@ -1089,6 +1089,13 @@ Differences from the Steam engine that shape the plan:
   On 2026-11-17 the rebuilt Vulkan client joined an isolated original Alpha server
   over loopback, adopted seed 41 and rendered the world and HUD. The current
   original-client direction and sustained combat acceptance remain open.
+- [x] Original client startup (`alpha-native-startup-window-input-boundary.md`,
+  `alpha-native-initial-direct3d9-device.md`). The isolated original image
+  opened a responsive native window with normal desktop access. The private
+  x86 diagnostic reproduced the first graphics request under sandboxed and
+  normal desktop execution.
+- [ ] Capture the original client's menu and gameplay. Compare the original
+  and Vulkan interfaces and verify the original client against the current server.
 - [x] Remote presentation data flow: current semantic snapshots replace health,
   stats, equipment and flags even when action/clock are equal. A core record is
   applied when pending receipts reach the frame. Resident combat state survives
