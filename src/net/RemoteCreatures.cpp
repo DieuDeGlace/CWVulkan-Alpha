@@ -1,6 +1,7 @@
 #include "net/RemoteCreatures.h"
 #include "creatures/AngleStep.h"
 #include "creatures/Npcs.h"
+#include "creatures/Strike.h"
 #include <algorithm>
 #include <bit>
 
@@ -36,13 +37,15 @@ void RemoteCreatures::receive(const CreatureReceipt &receipt) {
     r.needsLiveSnapshot = true;
 }
 
-void RemoteCreatures::updateLive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter) {
+void RemoteCreatures::updateLive(uint64_t id, const CreatureRecord &record, RemoteFighter &state) {
     const auto found = list.find(id);
     if (found == list.end() || !found->second.needsLiveSnapshot)
         return;
     auto &r = found->second;
     r.needsLiveSnapshot = false;
     // §1.6: every received field lands on the live state (the whole-record copy).
+    state.receive(id, record);
+    const auto &fighter = state.fighter;
     creatures::Body &b = r.live;
     for (int axis = 0; axis < 3; axis++)
         b.position[axis] = record.position(axis);
@@ -67,7 +70,7 @@ void RemoteCreatures::updateLive(uint64_t id, const CreatureRecord &record, cons
     r.headPitch = record.headPitch();
 }
 
-void RemoteCreatures::writeLiveMotion(uint64_t id, CreatureRecord &record) const {
+void RemoteCreatures::writeLive(uint64_t id, CreatureRecord &record, const RemoteFighter &state) const {
     const auto *remote = find(id);
     if (!remote || remote->needsLiveSnapshot)
         return;
@@ -76,6 +79,8 @@ void RemoteCreatures::writeLiveMotion(uint64_t id, CreatureRecord &record) const
         record.setPosition(axis, body.position[axis]);
     record.setMotion(body.velocity, rotationOf(body), body.push, body.intent);
     record.setHeadPitch(remote->headPitch);
+    record.setActionTimers(state.fighter);
+    record.setHealth(state.fighter.health);
 }
 
 void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {
@@ -114,15 +119,18 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
     const int64_t k = int64_t(f * 65536.f);
     const auto advance = [&](uint64_t id, RemoteFighter &state) {
         auto &fighter = state.fighter;
-        if (fighter.health > 0.f)
-            creatures::tickBuffs(fighter, dtMs, false);
         const auto found = list.find(id);
         if (found == list.end())
             return;
         Remote &r = found->second;
         r.attached = false;
-        if (!(fighter.health > 0.f))
+        if (!creatures::admitCreatureUpdate(fighter))
             return;
+        // The common timers run inside each received actor's living turn.
+        // Replica actors skip combo timeout and world-authoritative periodic hits.
+        creatures::advanceActionTimers(fighter, dtMs);
+        creatures::updateSwingCount(fighter, fighter.actionMs, dtMs);
+        creatures::advanceActionClock(fighter, dtMs, false);
         auto &body = r.live;
         body.stunMs = fighter.hitStun;
         if (dtMs > 0) {
@@ -135,7 +143,7 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
             }
             creatures::step(body, dtMs, block, objects, riderEnergy);
         }
-        const int32_t clock = state.recordClock(); // the existing received-clock adapter
+        const int32_t clock = fighter.actionMs;
         creatures::faceAfterStep(body.yaw, r.headPitch, r.drawnLook, body, fighter, clock, dtMs);
         if (!attach(r, fighter, fighters, controlled)) {
             const glm::vec3 rotation = rotationOf(body);

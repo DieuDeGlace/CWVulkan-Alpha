@@ -171,6 +171,7 @@ struct Combatant {
     ItemRecord equipmentRecord(size_t slot) const;
     void setEquipment(size_t slot, const ItemRecord &record);
     // Semantic field assignment retains each destination record's five gaps.
+    void copyEquipment(size_t slot, const ItemRecord &record);
     void copyEquipmentFrom(const Combatant &source);
     ItemRecord heldRecord() const;
     void setHeld(const ItemRecord &record); // complete imported storage
@@ -272,7 +273,10 @@ struct ActionTickRole {
     bool local = true;
     bool replica = false;
 };
+void advanceActionTimers(Combatant &c, int32_t dtMs);
 void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *events = nullptr);
+void advanceActionClock(Combatant &c, int32_t dtMs, bool authoritative,
+                        const std::function<void(const Buff &)> &periodic = {});
 // Periodic callbacks run before expired-node cleanup and stun progression. They
 // may inspect buffs/update other state, but must not mutate the buff collection.
 void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},

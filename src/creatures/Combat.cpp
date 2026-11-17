@@ -80,12 +80,14 @@ void Combatant::setEquipment(size_t slot, const ItemRecord &record) {
     equipment[slot] = Item::parse(record.data());
 }
 
+void Combatant::copyEquipment(size_t slot, const ItemRecord &record) {
+    copyItemFields(record, equipmentSource(slot));
+    equipment[slot] = Item::parse(equipmentSource(slot).data());
+}
+
 void Combatant::copyEquipmentFrom(const Combatant &source) {
-    for (size_t slot = 0; slot < equipment.size(); slot++) {
-        const auto record = source.equipmentRecord(slot);
-        copyItemFields(record, equipmentSource(slot));
-        equipment[slot] = Item::parse(equipmentSource(slot).data());
-    }
+    for (size_t slot = 0; slot < equipment.size(); slot++)
+        copyEquipment(slot, source.equipmentRecord(slot));
 }
 
 ItemRecord Combatant::heldRecord() const {
@@ -721,15 +723,18 @@ void landHit(Combatant &c) {
     c.comboElapsedMs = 0;
 }
 
-void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
-    const float dtMs = (float)milliseconds;
-    c.actionLockMs = std::max(0, c.actionLockMs - milliseconds);
+void advanceActionTimers(Combatant &c, int32_t milliseconds) {
+    c.actionLockMs = std::max(0, std::bit_cast<int32_t>(uint32_t(c.actionLockMs) - uint32_t(milliseconds)));
     if (c.actionLockMs > 0)
         c.actionMs = duration(c, c.action) + 1;
     c.slowMs = std::max(0, std::bit_cast<int32_t>((uint32_t)c.slowMs - (uint32_t)milliseconds));
     c.hasteMs = std::max(0, std::bit_cast<int32_t>((uint32_t)c.hasteMs - (uint32_t)milliseconds));
     if (c.recoveryPenalty < 0)
-        c.recoveryPenalty = std::min(0.f, c.recoveryPenalty + (dtMs * 0.001f) / 180.f);
+        c.recoveryPenalty = std::min(0.f, c.recoveryPenalty + (float(milliseconds) * 0.001f) / 180.f);
+}
+
+void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
+    advanceActionTimers(c, milliseconds);
     // Healing and projectile bodies have separate resource boundaries: action 0x5F pays at its
     // first crossing in the ray case (beam-leftovers §1.3), action 0x22 at each heal pulse
     // (head-pitch-and-pick §3.1).
@@ -866,6 +871,24 @@ static void tickConsumable(Combatant &c, int32_t milliseconds, const TimedConsum
         sound(44);
 }
 
+void advanceActionClock(Combatant &c, int32_t milliseconds, bool authoritative,
+                        const std::function<void(const Buff &)> &periodic) {
+    // The supported image's cooldown-refresh policy is constant false.
+    for (auto &[id, ms] : c.cooldowns)
+        ms = std::max(0, std::bit_cast<int32_t>(uint32_t(ms) - uint32_t(milliseconds)));
+    tickBuffs(c, milliseconds, authoritative, periodic);
+    c.hitStun = std::bit_cast<int32_t>(uint32_t(c.hitStun) - uint32_t(milliseconds));
+    if (c.hitStun > 0)
+        c.action = 0, c.actionMs = 0;
+    // The held scheduling contract keeps completed action IDs for chain decisions.
+    // Controller 6 has no general clock increment; a negative active clock waits.
+    if (c.controller != 6 && (c.actionMs >= 0 || c.action == 0)) {
+        if (c.actionMs == 0)
+            c.cooldowns[c.action] = cooldownLength(c, c.action);
+        c.actionMs = std::bit_cast<int32_t>(uint32_t(c.actionMs) + uint32_t(milliseconds));
+    }
+}
+
 void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
                      const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent,
                      const TimedConsumableEvents *consumables) {
@@ -878,20 +901,7 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
             c.actionMs = (int32_t)((speed / attackSpeed(c)) * (float)c.actionMs);
         }
     }
-    // The supported image's cooldown-refresh policy is constant false.
-    for (auto &[id, ms] : c.cooldowns)
-        ms = std::max(0, std::bit_cast<int32_t>(uint32_t(ms) - uint32_t(milliseconds)));
-    tickBuffs(c, milliseconds, !role.replica, periodic);
-    c.hitStun -= milliseconds;
-    if (c.hitStun > 0)
-        c.action = 0, c.actionMs = 0;
-    // The held scheduling contract keeps completed action IDs for chain decisions.
-    // Controller 6 has no general clock increment; a negative active clock waits.
-    if (c.controller != 6 && (c.actionMs >= 0 || c.action == 0)) {
-        if (c.actionMs == 0)
-            c.cooldowns[c.action] = cooldownLength(c, c.action);
-        c.actionMs = std::bit_cast<int32_t>(uint32_t(c.actionMs) + uint32_t(milliseconds));
-    }
+    advanceActionClock(c, milliseconds, !role.replica, periodic);
     bool drift = true;
     if (isMagicUser(c)) {
         switch (c.action) {

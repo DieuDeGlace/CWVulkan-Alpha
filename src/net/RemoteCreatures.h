@@ -28,9 +28,9 @@ class RemoteCreatures {
     // §1.3 step 7: apply the receipt's drawn pose in message order. After
     // draining receipts, publish the latest live record once for each actor.
     void receive(const CreatureReceipt &receipt);
-    void updateLive(uint64_t id, const CreatureRecord &record, const creatures::Combatant &fighter);
+    void updateLive(uint64_t id, const CreatureRecord &record, RemoteFighter &state);
     // Store the locally advanced live fields that are also in the wire record.
-    void writeLiveMotion(uint64_t id, CreatureRecord &record) const;
+    void writeLive(uint64_t id, CreatureRecord &record, const RemoteFighter &state) const;
     // §1.5: creatures no longer listed are gone.
     void retain(const std::map<uint64_t, CreatureRecord> &listed);
     // §3.2 then §2, one world piece. Visit the controlled and received actors

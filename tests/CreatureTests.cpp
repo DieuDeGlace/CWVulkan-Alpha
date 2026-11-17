@@ -1664,10 +1664,9 @@ int main() {
         ActorMap<net::RemoteFighter> received;
         const auto applyReceipt = [&](uint64_t id, bool snap) {
             auto &state = received[id];
-            state.refresh(record.fighter(), 0);
             const bool created = !remotes.find(id);
             remotes.receive(net::CreatureReceipt::fromRecord(id, record, snap, created));
-            remotes.updateLive(id, record, state.fighter);
+            remotes.updateLive(id, record, state);
         };
         applyReceipt(7, true);
         same(remotes.find(7)->live.follow[0], 100ll << 16, "a snap draws at the record");

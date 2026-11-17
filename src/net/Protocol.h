@@ -109,11 +109,15 @@ struct CreatureRecord {
     // controller, action and its time, combo, class, charge, health, mana, level, experience,
     // the stat multipliers and the equipment (models spec §6.4).
     creatures::Combatant fighter() const;
+    // The resident actor retains fields and item padding outside the core copy.
+    void updateFighter(creatures::Combatant &c) const;
+    void setActionTimers(const creatures::Combatant &c);
     void setFighter(const creatures::Combatant &c);
     std::string name() const;
     void setName(const std::string &name);
 
   private:
+    void readFighter(creatures::Combatant &c, bool retainItemPadding) const;
     glm::vec3 floats(size_t at) const {
         glm::vec3 v;
         std::memcpy(&v, &bytes[at], sizeof v);

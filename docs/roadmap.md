@@ -718,7 +718,7 @@ Differences from the Steam engine that shape the plan:
   `alpha-riding-actor-step.md`). The controlled and received bodies advance in
   one signed-key pass. Terrain refill and both attachment passes use the live
   owner. Rendering and interaction read the resulting drawn pose.
-  Remote action-clock inputs, renderer walk state and native
+  Remote action-driven movement inputs, renderer walk state and native
   multiplayer acceptance remain open.
 - [x] Creature receipt publication (`alpha-creature-receipt-order.md`).
   Keep each snap pose through frame publication, reset state when an ID is
@@ -729,6 +729,12 @@ Differences from the Steam engine that shape the plan:
   publishes advanced motion before the receiver can take its next copy.
   Partial updates preserve the modeled motion, including on a snap.
   Remaining live fields and native timing still require acceptance.
+- [x] Connected common clock and stun progression (`alpha-creature-update-phases.md`).
+  Each living signed turn applies preliminary timers, cooldown decay, buff
+  expiration, stun interruption and the action increment. The client publishes
+  these fields and capped health to the receiver's packet baseline.
+- [ ] Complete connected action effects, resources and movement inputs, and
+  verify their event and random-draw order against the original client.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3
@@ -1025,10 +1031,11 @@ Differences from the Steam engine that shape the plan:
   back to it. On 2026-11-05 it also received our creatures and fought them (see Strikes above).
   (Done: loot, world items, pick-up and drop, static objects, the inn rest request.)
 - [x] Remote presentation data flow: current semantic snapshots replace health,
-  stats, equipment and flags even when action/clock are equal. Resident buff
-  state stays separate and the engine action-clock adapter keeps its reset/advance
-  policy. Existing two-byte mode transfer and partial-delta retention are covered;
-  native interpolation, frame scheduling and wider multiplayer acceptance stay open.
+  stats, equipment and flags even when action/clock are equal. A core record is
+  applied when pending receipts reach the frame. Resident combat state survives
+  the copy and the actor's own world turn advances its action clock. Two-byte
+  mode transfer and partial-delta retention are covered. Native frame timing
+  and wider multiplayer acceptance stay open.
 - [ ] Mod SDK hooks for each system as it arrives (world generation, creatures, items, UI, net).
 - [x] Mod SDK v3: `getPlayer`, `onPlayerHit`, `onLevelUp` (docs/modding.md has a table per version).
 - [x] Mod SDK v4: `showText`, `showBanner`, `getStaticCount`/`getStatic`, `onHitSeen`.

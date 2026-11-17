@@ -463,7 +463,7 @@ void referenceAndWander() {
     check(mask == (uint64_t(1) << 40) && net::applyDelta(net::encodeDelta(19, changed, mask), wire) == 19,
           "a raw reference edit uses only existing delta field40");
     net::RemoteFighter remote;
-    remote.refresh(wire.fighter(), 0);
+    remote.receive(19, wire);
     check(remote.fighter.behaviorReference == actor.behaviorReference,
           "the supplied raw reference survives actual core refresh rather than being replaced with main position");
 

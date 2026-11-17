@@ -1972,3 +1972,19 @@ the first run. The spectator now holds the required zone through the
 order check after witnessing the distant broadcast. The final Windows x64
 build, six focused suites and all 60 CTest suites passed. Revision 4 of the
 HTML specification parsed and the three added contract links resolve.
+
+## Connected common timers (2026-11-17)
+
+ActorOrderTests checks the earlier signed actor's state from the controlled
+turn, the surviving and expiring type-1 buff boundaries, the positive-lock
+clock override, role 6, a negative clock and a second world piece. It also
+checks that a frame without a receipt keeps resident state. RemoteFighterTests
+checks equal-clock receipt replacement, item gaps and retained actor-local
+state. NetTests checks signed clock precision and the partial packet-0 and
+packet-1 baselines, including byte equality outside the modeled fields.
+
+The older drop fixture now waits for Alice's destination zone to be held and
+selects a living actor with a spawn identifier before testing contact. The
+Windows x64 build, all nine focused suites and all 60 CTest suites passed.
+Revision 5 of the HTML specification parsed and all 25 links resolved.
+The action-specific effects and full original-client timing remain open.

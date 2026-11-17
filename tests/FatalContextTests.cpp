@@ -49,7 +49,7 @@ int main() {
               "explicit group deltas publish supplied values and later unrelated deltas retain them");
         net::RemoteFighter remote;
         remote.fighter.linkedId = UINT64_MAX;
-        remote.refresh(decoded, 20);
+        remote.receive(77, record);
         check(remote.fighter.linkedId == UINT64_MAX && remote.fighter.ownerId == original.ownerId &&
               remote.fighter.backing.x == INT32_MIN && remote.fighter.backing.index == -17,
               "core presentation refresh updates association/reverse ID while preserving the independent forward link");

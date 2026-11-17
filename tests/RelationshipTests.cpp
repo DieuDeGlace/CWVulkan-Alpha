@@ -2,6 +2,7 @@
 #include "creatures/Names.h"
 #include "net/Protocol.h"
 #include "net/RemoteFighter.h"
+#include "net/Protocol.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -246,7 +247,9 @@ int main() {
         snapshot.health = 17;
         snapshot.relations.contact = 999;
         snapshot.relations.threats[8] = 100;
-        remote.refresh(snapshot, 20);
+        net::CreatureRecord wire;
+        wire.setFighter(snapshot);
+        remote.receive(99, wire);
         check(remote.fighter.health == 17 && remote.fighter.relations.contact == 123 &&
               remote.fighter.relations.counts.at(0) == 16777216.f &&
               std::bit_cast<uint32_t>(remote.fighter.relations.threats.at(UINT64_MAX)) == 0x80000000 &&

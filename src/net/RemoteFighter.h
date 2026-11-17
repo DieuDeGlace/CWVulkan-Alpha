@@ -1,17 +1,14 @@
 #pragma once
-// Engine presentation state for a received actor. Native interpolation and
-// timing remain separate; every decoded core snapshot still replaces its fields.
+// Resident actor state with a separate receive boundary for the wire fields.
 #include "creatures/Combat.h"
 
 namespace net {
 
+struct CreatureRecord;
+
 struct RemoteFighter {
     creatures::Combatant fighter;
-    void refresh(creatures::Combatant snapshot, int32_t elapsedMs);
-    int32_t recordClock() const { return receivedClock; }
-
-  private:
-    int32_t receivedAction = -1, receivedClock = 0;
+    void receive(uint64_t id, const CreatureRecord &record);
 };
 
 } // namespace net

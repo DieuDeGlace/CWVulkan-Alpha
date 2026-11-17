@@ -6,6 +6,7 @@
 // the server sends about it are ignored (packets §2.3).
 #include "net/Protocol.h"
 #include "net/Socket.h"
+#include "creatures/ActorMap.h"
 #include "creatures/Credits.h"
 #include <atomic>
 #include <array>
@@ -18,6 +19,7 @@
 namespace net {
 
 class RemoteCreatures;
+struct RemoteFighter;
 
 class Client {
   public:
@@ -65,8 +67,8 @@ class Client {
     using Receipt = CreatureReceipt;
     std::vector<Receipt> takeReceipts();
     // Call under lockFrame after simulation. Receiver snapshots then start
-    // from the live movement record, including when a packet omits those fields.
-    void publishReceivedMotion(const RemoteCreatures &remotes);
+    // from the locally advanced fields, including when a packet omits them.
+    void publishReceivedState(const RemoteCreatures &remotes, const ::creatures::ActorMap<RemoteFighter> &fighters);
     // Frame-side credit cleanup, under lockFrame. Later network deltas may
     // replace this field; unrelated received core bytes remain untouched.
     void setReceivedHealth(uint64_t key, float health);

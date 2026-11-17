@@ -158,13 +158,10 @@ void checkConnectedRidingOrder() {
         record.setPosition(1, 30 * 65536);
         record.setPosition(2, 8 * 65536);
         record.setMotion({3, 4, 0}, yaw, {}, {1, 0, 0});
-        auto snapshot = record.fighter();
-        snapshot.id = fighter.id;
         auto &entry = actors[fighter.id];
-        entry.refresh(std::move(snapshot), 0);
         const bool created = !remotes.find(fighter.id);
         remotes.receive(net::CreatureReceipt::fromRecord(fighter.id, record, snap, created));
-        remotes.updateLive(fighter.id, record, entry.fighter);
+        remotes.updateLive(fighter.id, record, entry);
     };
     Combatant rider;
     rider.id = 2;
@@ -239,9 +236,78 @@ void checkConnectedRidingOrder() {
               attached.drawnRotation == zeroKey.drawnRotation && attached.live.yaw == zeroKey.live.yaw,
           "an owner at remote key zero supplies distinct record and smoothed poses");
 }
+
+void checkConnectedActionClock() {
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    const auto receive = [&](const Combatant &fighter) {
+        auto record = net::CreatureRecord::nativeDefaults();
+        record.setFighter(fighter);
+        remotes.receive(net::CreatureReceipt::fromRecord(fighter.id, record, true, true));
+        remotes.updateLive(fighter.id, record, actors[fighter.id]);
+        return record;
+    };
+    Combatant input;
+    input.id = UINT64_MAX;
+    input.action = 36;
+    input.actionMs = -17;
+    input.hitStun = 20;
+    const auto expiredRecord = receive(input);
+    auto &expired = actors.at(input.id).fighter;
+    expired.buffs = {{1, 0, 20, 0}};
+    expired.cooldowns[99] = 20;
+
+    input.id = 1;
+    input.action = 49;
+    input.actionMs = 0;
+    input.hitStun = 200;
+    receive(input);
+    auto &protectedActor = actors.at(1).fighter;
+    protectedActor.buffs = {{1, 0, 21, 0}};
+    protectedActor.cooldowns[49] = 10;
+    const int32_t fullCooldown = cooldownLength(protectedActor, 49);
+
+    input.id = 2;
+    input.actionMs = -12;
+    input.hitStun = -20;
+    input.actionLockMs = 21;
+    receive(input);
+    auto &locked = actors.at(2).fighter;
+    const int32_t lockedClock = duration(locked, 49) + 1 + 20;
+
+    input.id = 3;
+    input.controller = 6;
+    input.actionMs = 110;
+    input.hitStun = 21;
+    input.actionLockMs = 0;
+    receive(input);
+    const auto &inert = actors.at(3).fighter;
+
+    Combatant player;
+    Body body;
+    const net::RemoteCreatures::Controlled controlled{player, body};
+    remotes.step(actors, 20, floorBlock, {}, &controlled, [&] {
+        check(expired.action == 36 && expired.actionMs == -17 && expired.hitStun == 0 && expired.buffs.empty() &&
+                  expired.cooldowns.at(99) == 0 && protectedActor.actionMs == 0,
+              "stun equality and the negative active clock are visible at the earlier signed turn only");
+    });
+    check(protectedActor.action == 49 && protectedActor.hitStun == -20 && protectedActor.actionMs == 20 &&
+              protectedActor.buffs.front().timeMs == 1 && protectedActor.cooldowns.at(49) == fullCooldown,
+          "a surviving buff clears stun before interruption and a fresh cooldown follows decay");
+    check(locked.actionMs == lockedClock && locked.actionLockMs == 1 && locked.hitStun == -40 &&
+              inert.hitStun == 1 && inert.action == 0 && inert.actionMs == 0 && inert.cooldowns.empty(),
+          "the positive lock overrides the clock and controller six skips progression after stun interruption");
+
+    remotes.updateLive(UINT64_MAX, expiredRecord, actors.at(UINT64_MAX));
+    check(expired.hitStun == 0 && expired.buffs.empty(), "a frame without a receipt retains the advanced state");
+    remotes.step(actors, 3, floorBlock, {});
+    check(protectedActor.actionMs == 23 && protectedActor.cooldowns.at(49) == fullCooldown - 3 &&
+              protectedActor.buffs.empty(), "a second world piece advances the resident state by its own duration");
+}
 }
 
 int main() {
+    checkConnectedActionClock();
     checkOverlappingStrikes();
     checkRidingRefillOrder();
     checkConnectedRidingOrder();

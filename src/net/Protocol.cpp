@@ -132,6 +132,15 @@ CreatureRecord CreatureRecord::nativeDefaults() {
 
 creatures::Combatant CreatureRecord::fighter() const {
     creatures::Combatant c;
+    readFighter(c, false);
+    return c;
+}
+
+void CreatureRecord::updateFighter(creatures::Combatant &c) const {
+    readFighter(c, true);
+}
+
+void CreatureRecord::readFighter(creatures::Combatant &c, bool retainItemPadding) const {
     c.appearanceFlags = get<uint16_t>(bytes, 0x06e); // appearance field13, flags at +6
     c.mode = get<uint16_t>(bytes, 0x114);
     c.controller = bytes[0x050];
@@ -168,35 +177,44 @@ creatures::Combatant CreatureRecord::fighter() const {
         c.behaviorReference[axis] = get<int64_t>(bytes, 0x1b0 + 8 * axis);
     creatures::ItemRecord held;
     std::memcpy(held.data(), bytes.data() + 0x1d8, ITEM_SIZE);
-    c.setHeld(held);
+    if (retainItemPadding)
+        c.copyHeld(held);
+    else
+        c.setHeld(held);
     for (size_t slot = 0; slot < c.equipment.size(); slot++) {
         creatures::ItemRecord record;
         std::memcpy(record.data(), bytes.data() + EQUIPMENT + ITEM_SIZE * slot, ITEM_SIZE);
-        c.setEquipment(slot, record);
+        if (retainItemPadding)
+            c.copyEquipment(slot, record);
+        else
+            c.setEquipment(slot, record);
     }
     for (size_t i = 0; i < c.skills.size(); i++)
         c.skills[i] = get<int32_t>(bytes, 0x1128 + 4 * i);
-    return c;
 }
 
 void CreatureRecord::setLinkedItem(const creatures::ItemRecord &item) {
     std::memcpy(bytes.data() + EQUIPMENT + ITEM_SIZE * 12, item.data(), ITEM_SIZE);
 }
 
-void CreatureRecord::setFighter(const creatures::Combatant &c) {
-    put<uint16_t>(bytes, 0x114, uint16_t(c.mode));
-    bytes[0x050] = c.controller;
-    put<int32_t>(bytes, 0x054, c.type);
+void CreatureRecord::setActionTimers(const creatures::Combatant &c) {
     bytes[0x058] = (uint8_t)c.action;
     put<int32_t>(bytes, 0x05c, c.actionMs);
-    put<int32_t>(bytes, 0x060, c.combo);
-    put<int32_t>(bytes, 0x064, c.comboElapsedMs);
-    put<int32_t>(bytes, 0x118, (int32_t)c.dodgeMs);
     put<int32_t>(bytes, 0x11c, c.hitStun);
     put<int32_t>(bytes, 0x120, c.actionLockMs);
     put<int32_t>(bytes, 0x124, (int32_t)c.slowMs);
     put<int32_t>(bytes, 0x128, (int32_t)c.hasteMs);
     put<float>(bytes, 0x12c, c.recoveryPenalty);
+}
+
+void CreatureRecord::setFighter(const creatures::Combatant &c) {
+    setActionTimers(c);
+    put<uint16_t>(bytes, 0x114, uint16_t(c.mode));
+    bytes[0x050] = c.controller;
+    put<int32_t>(bytes, 0x054, c.type);
+    put<int32_t>(bytes, 0x060, c.combo);
+    put<int32_t>(bytes, 0x064, c.comboElapsedMs);
+    put<int32_t>(bytes, 0x118, (int32_t)c.dodgeMs);
     bytes[0x130] = c.characterClass;
     bytes[0x131] = c.specialization;
     put<float>(bytes, 0x134, c.charge);

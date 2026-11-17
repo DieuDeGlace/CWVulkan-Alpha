@@ -313,6 +313,14 @@ static void checkCreatureReceiptPoses() {
     auto latest = poseRecord(500000, 50.f, {5, 0, 0});
     latest.setMotion({6, 4, 0}, glm::vec3(15, 5, 50), {0.05f, 0, 0}, {4, 2, 0});
     latest.setHeadPitch(12.f);
+    auto latestFighter = latest.fighter();
+    latestFighter.action = 59;
+    latestFighter.actionMs = 16777217;
+    latestFighter.hitStun = 20;
+    latestFighter.slowMs = 20;
+    latestFighter.hasteMs = 21;
+    latestFighter.recoveryPenalty = -0.25f;
+    latest.setFighter(latestFighter);
     std::thread peer([&] {
         Socket socket = listener.accept();
         socket.setReadTimeout(3000);
@@ -400,7 +408,8 @@ static void checkCreatureReceiptPoses() {
                 net::RemoteCreatures remotes;
                 for (const auto &receipt : receipts)
                     remotes.receive(receipt);
-                remotes.updateLive(actor, record, record.fighter());
+                RemoteFighter state;
+                remotes.updateLive(actor, record, state);
                 const auto &remote = *remotes.find(actor);
                 check(remote.live.follow[0] == 400000 && remote.drawnRotation.z == 40.f &&
                           remote.drawnLook == recreated.look() && remote.smoothing &&
@@ -438,29 +447,38 @@ static void checkCreatureReceiptPoses() {
             const auto record = client.others().at(actor);
             creatures::ActorMap<RemoteFighter> fighters;
             auto &state = fighters[actor];
-            state.refresh(record.fighter(), 0);
             RemoteCreatures remotes;
             remotes.receive(CreatureReceipt::fromRecord(actor, recreated, true, true));
             remotes.receive(CreatureReceipt::fromRecord(actor, latest, false, false));
-            remotes.updateLive(actor, record, state.fighter);
+            remotes.updateLive(actor, record, state);
             const creatures::BlockType air = [](int32_t, int32_t, int32_t) { return uint8_t(0); };
             remotes.step(fighters, 20, air, {});
             const auto &advanced = *remotes.find(actor);
             {
                 auto frame = client.lockFrame();
-                client.publishReceivedMotion(remotes);
+                client.publishReceivedState(remotes, fighters);
             }
             const auto motion = client.others().at(actor);
             const auto &body = advanced.live;
             const std::array<int64_t, 3> position{body.position[0], body.position[1], body.position[2]};
             const glm::vec3 orientation(body.swimPitch, body.bank, body.yaw);
             const size_t motionEnd = CREATURE_FIELDS[6].offset;
+            const auto liveFighter = motion.fighter();
+            // Restore the modeled fields and ensure the rest of the record is untouched.
+            CreatureRecord restored = motion;
+            std::copy_n(record.bytes.begin(), motionEnd, restored.bytes.begin());
+            restored.setActionTimers(record.fighter());
+            restored.setHealth(record.health());
             check(motion.position(0) != latest.position(0) && motion.position(0) != body.follow[0] &&
                       motion.position(0) == position[0] && motion.position(1) == position[1] && motion.position(2) == position[2] &&
                       motion.orientation() == orientation && motion.velocity() == body.velocity &&
                       motion.intent() == body.intent && motion.response() == body.push && motion.headPitch() == advanced.headPitch &&
-                      std::equal(motion.bytes.begin() + motionEnd, motion.bytes.end(), record.bytes.begin() + motionEnd),
-                  "the next receive starts from the advanced live motion fields");
+                      restored.bytes == record.bytes,
+                  "frame publication only updates the modeled fields, using the live motion rather than the drawn pose");
+            check(liveFighter.action == 59 && liveFighter.actionMs == 16777237 && liveFighter.hitStun == 0 &&
+                      liveFighter.slowMs == 0 && liveFighter.hasteMs == 1 &&
+                      liveFighter.recoveryPenalty == -0.25f + (20.f * 0.001f) / 180.f,
+                  "live action, stun and recovery use the duration of the signed actor's world turn");
             sendPartial = true;
             const bool partial = waitFor([&] {
                 const auto actors = client.others();
@@ -470,9 +488,12 @@ static void checkCreatureReceiptPoses() {
             check(partial, "the partial packet 0 and packet 1 records both arrive");
             if (partial) {
                 const auto current = client.others().at(actor);
+                const auto currentFighter = current.fighter();
                 check(current.health() == 240.f &&
-                          std::equal(motion.bytes.begin(), motion.bytes.begin() + motionEnd, current.bytes.begin()),
-                      "both packet forms preserve the advanced motion when their masks omit it");
+                          std::equal(motion.bytes.begin(), motion.bytes.begin() + motionEnd, current.bytes.begin()) &&
+                          currentFighter.actionMs == liveFighter.actionMs && currentFighter.hitStun == liveFighter.hitStun &&
+                          currentFighter.hasteMs == liveFighter.hasteMs && currentFighter.recoveryPenalty == liveFighter.recoveryPenalty,
+                      "both packet forms preserve advanced motion and action clocks when their masks omit them");
                 const auto receipts = client.takeReceipts();
                 check(receipts.size() == 2 && !receipts[0].snap && receipts[1].snap &&
                           receipts[1].snap->position == position && receipts[1].snap->rotation == orientation,
@@ -1232,25 +1253,20 @@ int main() {
     ra.setPosition(1, (int64_t)8396928 << 16);
     ra.setPosition(2, (int64_t)80 << 16);
     a.setOwn(ra);
-    uint64_t npc = 0;
-    check(waitFor(
-              [&] {
-                  for (const auto &[id, r] : a.others())
-                      if (r.controller() != 0)
-                          npc = id;
-                  return npc != 0;
-              },
-              120000),
-          "creatures come alive round Alice");
-    check(npc >= ((uint64_t)32700 << 24), "with a spawn id");
-    {
-        uint64_t target = 0;
-        for (const auto &[id, record] : a.others())
-            if (record.controller() != 0 && record.health() > 0) {
+    const int32_t aliceX = int32_t(ra.position(0) / 65536), aliceY = int32_t(ra.position(1) / 65536);
+    check(waitFor([&] { return server.block(aliceX, aliceY, 80).has_value(); }, 120000),
+          "the server holds Alice's destination zone before its drop fixture");
+    uint64_t target = 0;
+    check(waitFor([&] {
+        for (const auto &[id, record] : a.others()) {
+            if (id >= (uint64_t(32700) << 24) && record.controller() != 0 && record.health() > 0) {
                 target = id;
-                break;
+                return true;
             }
-        check(target != 0, "relationship fixture finds a living mapped NPC");
+        }
+        return false;
+    }, 120000), "a living zone spawn reaches Alice with its spawn id");
+    {
         if (target) {
             a.takeRelationships();
             b.takeRelationships();

@@ -60,7 +60,7 @@ static void storageAndWire() {
         remote.fighter.linkedItem.source.fill(0xa7);
         remote.fighter.linkedItem.retained.item.fill(0xa6);
         remote.fighter.linkedItem.retained.word = 0x12345678;
-        remote.refresh(actor, 0);
+        remote.receive(19, record);
         for (size_t i = 0; i < source.size(); i++)
             check(remote.fighter.linkedItem.source[i] == (gap(i) ? 0xa7 : source[i]),
                   "core assignment copies every selected source byte and retains the destination's five source alignment bytes");

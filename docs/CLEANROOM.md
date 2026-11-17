@@ -3371,3 +3371,28 @@ take its pose from that advanced baseline. Each receive retains its
 separate temporary copy through decoding. The publication writes the
 six motion fields and leaves the other fields to their current producers.
 Native timing and complete non-motion live fields remain open.
+
+## Connected common timers (2026-11-17)
+
+Read the held [living-creature update phases](specs/alpha-creature-update-phases.md)
+and [remote interpolation](specs/alpha-remote-creature-interpolation.md) in full.
+Their verified SHA-256 values are
+`ee9014f2b73a0414e81551ae2f4c164564485e7cf558d89bde1b97f1cc87ed3a`
+and `24f15463d3d297d05b196b0e23538c0ed0320c1a0dfe29bb7cb9a574cd369551`.
+
+The frame applies a core snapshot to a resident actor when a receipt is
+pending. The core-field copy preserves the destination's item gaps and
+actor-resident state. Each received creature runs the common preliminary
+timers and clock logic at its signed living turn. A surviving type-1 buff
+can clear stun before the signed subtraction. Only a positive result clears
+the action and clock. Role 6 skips general clock progression, and a negative
+clock waits while its action stays active. A zero clock initializes its
+cooldown after that turn's cooldown and buff decay. The received turn skips
+combo timeout and world-authoritative type-4 hits.
+
+Drawn aim reads the advanced clock and the renderer uses the live actor's
+velocity and health. The next packet baseline includes the action, its clock,
+stun, action lock, both movement timers, recovery and capped health as well
+as the previously published motion fields. Per-action effects, resource and
+movement inputs, the native movement-driven facing flag and native timing
+remain open.

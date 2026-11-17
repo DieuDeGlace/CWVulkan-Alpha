@@ -217,10 +217,11 @@ std::vector<Client::Receipt> Client::takeReceipts() {
     return std::exchange(receipts, {});
 }
 
-void Client::publishReceivedMotion(const RemoteCreatures &remotes) {
+void Client::publishReceivedState(const RemoteCreatures &remotes, const ::creatures::ActorMap<RemoteFighter> &fighters) {
     std::lock_guard guard(lock);
     for (auto &[id, record] : creatures)
-        remotes.writeLiveMotion(id, record);
+        if (const auto fighter = fighters.find(id); fighter != fighters.end())
+            remotes.writeLive(id, record, fighter->second);
 }
 
 void Client::setReceivedHealth(uint64_t key, float health) {

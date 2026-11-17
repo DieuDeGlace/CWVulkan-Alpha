@@ -1702,10 +1702,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (const auto &event : out.buffs) {
                             sendBuff(event);
                             auto [resident, created] = otherFighters.try_emplace(event.target);
-                            if (created) {
-                                resident->second.fighter = other.fighter();
-                                resident->second.fighter.id = id;
-                            }
+                            if (created)
+                                resident->second.receive(id, other);
                             creatures::applyBuff(resident->second.fighter, event.record);
                         }
                         for (const creatures::HitRecord &r : out.records) {
@@ -1846,13 +1844,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
             remotes.receive(receipt);
         }
-        for (const auto &[id, record] : receivedActors) {
-            auto snapshot = record.fighter();
-            snapshot.id = id;
-            auto &state = otherFighters[id];
-            state.refresh(std::move(snapshot), frameElapsedMs);
-            remotes.updateLive(id, record, state.fighter);
-        }
+        for (const auto &[id, record] : receivedActors)
+            remotes.updateLive(id, record, otherFighters[id]);
         mods.frame(seconds);
         auto held = [&](int key) { return glfwGetKey(window, key) == GLFW_PRESS ? 1.f : 0.f; };
         if (player) {
@@ -3250,14 +3243,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 net::RemoteFighter &f = otherFighters[id];
 
                 creatures::Motion motion;
-                motion.velocity = remote && remote->attached ? remote->live.velocity : other.velocity();
+                motion.velocity = remote ? remote->live.velocity : other.velocity();
                 motion.yawDegrees = drawnYaw;
                 motion.headPitch = remote ? remote->headPitch : other.headPitch(); // aim §3.7
                 motion.fighter = &f.fighter;
                 motion.lens = (f.fighter.mode & creatures::LENS) != 0; // the 0x400 pose override
                 motion.gliding = (f.fighter.mode & creatures::GLIDER) != 0;
                 motion.lantern = (f.fighter.mode & creatures::LANTERN) != 0;
-                if (other.health() <= 0) { // particles §7.2: once, and only if it passes the view test
+                if (f.fighter.health <= 0) { // particles §7.2: once, and only if it passes the view test
                     const float cull = other.appearance().box.z * (uint8_t(f.fighter.action) == 106 ? 3.f : 1.f);
                     if (shattered.insert(id).second && view.lightViewAccepts(centre, cull, scene.fogDistance))
                         creatureView.shatter(other.appearance(), otherPoses[id], motion, centre,
@@ -3348,12 +3341,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         creatures::applyBuff(player->combat(), event.record);
                     } else if (const auto target = currentRecords.find(event.target); target != currentRecords.end()) {
                         auto [entry, created] = otherFighters.try_emplace(event.target);
-                        if (created) {
-                            auto &state = entry->second;
-                            auto snapshot = target->second.fighter();
-                            snapshot.id = event.target;
-                            state.refresh(std::move(snapshot), 0);
-                        }
+                        if (created)
+                            entry->second.receive(event.target, target->second);
                         creatures::applyBuff(entry->second.fighter, event.record);
                     }
                 }
@@ -4812,7 +4801,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         if (networkFrame.owns_lock()) {
             if (client.connected())
-                client.publishReceivedMotion(remotes);
+                client.publishReceivedState(remotes, otherFighters);
             networkFrame.unlock();
         }
         renderer.setEffects(effects);
