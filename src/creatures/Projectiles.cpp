@@ -207,7 +207,7 @@ void chargeSound(const Combatant &c, int32_t before, int32_t dtMs, glm::dvec3 at
 
 void advanceCharge(Combatant &c, float dtMs) {
     if (c.dodgeMs != 0) {
-        const bool volley = (c.action == 50 || c.action == 96) && c.actionMs <= (float)duration(c, c.action);
+        const bool volley = (c.action == 50 || c.action == 96) && c.actionMs <= duration(c, c.action);
         const bool assassin = c.characterClass == 4 && c.specialization == 1;
         const bool retained = assassin && (c.action == 5 || c.action == 20 || c.action == 17);
         if (!volley && !retained) {
@@ -216,16 +216,18 @@ void advanceCharge(Combatant &c, float dtMs) {
                 c.charge = 0;
         }
     }
-    const float S = attackSpeed(c);
-    if (c.action == 36) {
-        c.charge += (dtMs * 0.0005f) * S;
-    }
     switch (c.action) {
+    case 36:
+        c.charge += (dtMs * 0.0005f) * attackSpeed(c);
+        break;
     case 8: case 24: case 25: case 27: case 59: case 63: case 64:
-        if (c.actionMs >= (float)phases(c, c.action).windUp) {
-            float q = (dtMs * 0.00075f) * S;
-            if (c.characterClass == 2 && c.specialization == 0)
-                q *= 1 + std::min((float)c.combo / comboMax(c), 4.f);
+        if (c.actionMs >= phases(c, c.action).windUp) {
+            float q = (dtMs * 0.00075f) * attackSpeed(c);
+            if (c.characterClass == 2 && c.specialization == 0) {
+                const float ratio = (float)c.combo / comboMax(c);
+                const float scale = ratio > 4.f ? 4.f : (float)c.combo / comboMax(c);
+                q *= 1.f + scale;
+            }
             if (c.hasBuff(2))
                 q *= 1 + 9 * abilityValue(c, 102);
             c.charge += q;

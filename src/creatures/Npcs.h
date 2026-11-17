@@ -85,7 +85,7 @@ struct Npc {
     float headPitch = 0;
 
     // §13: behaviour state.
-    float thinkMs = 0;         // accumulated until a decision (every ≥ 32 ms)
+    int32_t thinkMs = 0;       // accumulated until a decision (every ≥ 32 ms)
     int32_t specialMs = 20000, chaseMs = 0, cooldownMs = 0;
     float targetRange = 20; // supplied selection range; producer parity remains bounded
     int32_t walkMs = 0; // RandomWalk's signed counter (behaviour §11.6)
@@ -391,7 +391,7 @@ class Npcs {
     void activate(const worldgen::WorldMap &map, const ActiveZones &active, const std::vector<PlayerView> &players,
                   double timeOfDayMs, int32_t day);
     void processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame);
-    void think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block,
+    void think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &players, const BlockType &block,
                NpcFrame &frame, const worldgen::WorldMap &map);
     // Companion (client 0x03ACE0, held alpha-created-companion-navigation.md): follow the actor
     // with key `followed`. Pets (owner), created actors and wildlife followers all run it.

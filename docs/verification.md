@@ -1754,3 +1754,16 @@ The Windows x64 build compiles the revised world shader. All 60 CTests pass,
 including the live Vulkan water suite. The player/controller diagnostic and five
 actual-client flows pass, including the town render. The town frame uses a
 different elapsed world time than the prior frame. Native pixel parity remains open.
+
+## Living update timings (2026-11-17)
+
+ActionPhaseTests verify integer cooldown subtraction beyond binary32 unit
+precision, zero-entry retention, mana gain at the updated duration boundary,
+and buff 10 at and below anticipation and on action 36. ActorOrderTests verify
+that a stunned actor retains the exact integer behavior time and that an inert
+actor resets its accumulator on an admitted turn. SimulationFrameTests,
+DescriptorRefreshTests and the signed actor tests continue to pass.
+
+The Windows x64 build, all 60 CTests, the player/controller diagnostic and five
+actual-client flows pass. Original-client RNG histories and runtime acceptance
+remain separate verification work.

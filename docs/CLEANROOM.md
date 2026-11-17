@@ -3016,3 +3016,29 @@ ten-light accumulation and the specified order of the cubic, haze and sky blends
 Release checks still cover broader equal-key sort witnesses, untraced source and
 device state, Vulkan transform and interpolation differences, and native raster
 and display output. Explicit lighting extensions continue through their own settings.
+
+## Living phases, frame calls and shared randomness (2026-11-17)
+
+A fresh source-only author re-certified `alpha-creature-update-phases.md`
+(`ee9014f2b73a0414e81551ae2f4c164564485e7cf558d89bde1b97f1cc87ed3a`),
+`alpha-client-frame-world-step-order.md`
+(`06e3b9cd4c29085a0daf0b6e2a9104a9e4c78b0f88da48965d4f3360a791dc65`) and
+`alpha-world-random-stream-boundaries.md`
+(`8669fc47147ad7f479113574b01eec67ce77d2a9179434986065719e5fa23a4a`). The clean team
+verified the hashes and read the held contracts in full.
+
+The engine stores cooldown and behavior accumulators as signed integer milliseconds.
+The common resource and charge gates compare signed action clocks directly, and the
+charge path reads attack speed only when its gain is admitted. The grouped charge
+already confines buff 10's assignment to anticipation or later. Combo charge
+follows the held cap and repeat-read order. The frame splitter already uses one
+output aggregate, issues the final signed piece including zero and negative calls,
+and reaches the normal primary-input pass after all admitted pieces.
+
+Descriptor activation uses the shared seed and generator before the signed actor
+walk. The re-certified inventory covers 47 direct world draw sites, including
+the 33 newly traced sites in action dispatch. Action-specific call equivalence,
+transitive draw counts, the original clock-scaling and admission producers, the
+action-105 input mapping, and charge placement relative to late physics still need
+verification and reconciliation. The GLFW elapsed adapter and synthesized client
+input remain engine paths.

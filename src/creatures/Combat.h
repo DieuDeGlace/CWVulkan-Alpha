@@ -150,7 +150,7 @@ struct Combatant {
     uint32_t contact = 0; // contact flags of the physics step
     std::vector<Buff> buffs;
     std::vector<int32_t> specials; // special actions an NPC may use (§9.3, §13.2)
-    std::map<int32_t, float> cooldowns; // §16.1: ability id -> remaining ms (entries stay at 0)
+    std::map<int32_t, int32_t> cooldowns; // §16.1: ability id -> remaining ms (entries stay at 0)
     Relations relations;
     EquipmentSources equipmentSources;
     ItemRecord heldSource = [] {

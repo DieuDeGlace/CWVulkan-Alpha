@@ -182,7 +182,7 @@ void buff(Combatant &c, int32_t id, AbilityEffects &out) {
     if (id == 101 && c.hitStun > 0)
         c.hitStun = 0;
     out.buffs.push_back({c.id, c.id, b});
-    c.cooldowns[id] = (float)cooldownLength(c, id);
+    c.cooldowns[id] = cooldownLength(c, id);
 }
 
 void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &out) {
@@ -226,7 +226,7 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
             push.z = 12.f * v + 5.f;
         }
         body.push = push;
-        c.cooldowns[50] = (float)cooldownLength(c, 50);
+        c.cooldowns[50] = cooldownLength(c, 50);
         break;
     }
     case 54: {
@@ -260,7 +260,7 @@ void press(Combatant &c, Body &body, int32_t id, glm::vec3 aim, AbilityEffects &
         // Engine choice: ability 99 sets the lens bit. No native setter of 0x400 is known
         // (rulings camera-lens-pan §2.2); native only reads the bit and clears it on intent.
         body.mode |= LENS;
-        c.cooldowns[99] = (float)cooldownLength(c, 99);
+        c.cooldowns[99] = cooldownLength(c, 99);
         break;
     default:
         if (c.mana >= manaCost(c, id))

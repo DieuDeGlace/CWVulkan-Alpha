@@ -968,20 +968,21 @@ void Npcs::removeTargets(const std::set<std::pair<int32_t, int32_t>> &zones) {
 // §13.1: the sequence Combat, LookAtPlayer, RandomWalk; the first that handles the moment
 // wins (which of them report "handled" is open, A-1: here Combat with a target, LookAtPlayer
 // with a player near, RandomWalk always).
-void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block,
+void Npcs::think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &players, const BlockType &block,
                  NpcFrame &frame, const worldgen::WorldMap &map) {
     if (npc.fighter.controller == 6)
         return;
+    const float dtMs = (float)milliseconds;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
         if (!combat(npc, dtMs, players, block, frame, map))
-            companion(npc, npc.fighter.ownerId, players, int32_t(dtMs), block, map);
+            companion(npc, npc.fighter.ownerId, players, milliseconds, block, map);
         return;
     }
     if (npc.behaviour == 7) { // created root: retry Combat, Companion, Wander in that order
-        if (!combat(npc, dtMs, players, block, frame, map) && !companion(npc, npc.follows, players, int32_t(dtMs), block, map)) {
+        if (!combat(npc, dtMs, players, block, frame, map) && !companion(npc, npc.follows, players, milliseconds, block, map)) {
             npc.fighter.mode = npc.body.mode;
             created::wander(npc.fighter, npc.body, npc.fighter.behaviorReference, npc.createdWalkMs,
-                            int32_t(dtMs), [&] { return draw(); });
+                            milliseconds, [&] { return draw(); });
             npc.body.mode = npc.fighter.mode;
         }
         return;
@@ -1022,7 +1023,7 @@ void Npcs::think(Npc &npc, float dtMs, std::vector<PlayerView> &players, const B
     if (npc.behaviour == 2 || npc.behaviour == 3) {
         if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players))
             return;
-        if (npc.behaviour == 3 && companion(npc, npc.follows, players, int32_t(dtMs), block, map))
+        if (npc.behaviour == 3 && companion(npc, npc.follows, players, milliseconds, block, map))
             return;
         if (!walkPath(npc, dtMs, block, map))
             randomWalk(npc, dtMs);
@@ -2568,14 +2569,14 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.fatalRegionApplied = false;
         npc.fatalRecipientsApplied = false;
         npc.fatalBackingApplied = false;
-        // §13.1: decide every 32 ms of accumulated time while not stunned.
-        npc.thinkMs += dtMs;
-        // The native behavior gate observes the incoming stun. Expiring this
-        // update permits later movement, but must not admit an early decision.
-        const bool canThink = c.hitStun <= 0;
-        if (canThink && npc.thinkMs >= 32) {
-            think(npc, npc.thinkMs, players, block, frame, map);
-            npc.thinkMs = 0;
+        // Behavior observes incoming stun. Expiry during this update permits
+        // later movement. The accumulator still carries across stunned turns.
+        if (c.controller != 0) {
+            npc.thinkMs = std::bit_cast<int32_t>(uint32_t(npc.thinkMs) + uint32_t(milliseconds));
+            if (c.hitStun <= 0 && npc.thinkMs >= 32) {
+                think(npc, npc.thinkMs, players, block, frame, map);
+                npc.thinkMs = 0;
+            }
         }
         // The authoritative path phase sees incoming stun, before lock/action
         // dispatch and the later common countdown.

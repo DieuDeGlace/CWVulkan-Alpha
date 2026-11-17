@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 27 and the rulings. The 234 tracked contracts
-comprise 170 A, 59 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 28 and the rulings. The 234 tracked contracts
+comprise 173 A, 56 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -76,6 +76,8 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 
 Batch 27 covers `alpha-terrain-chunk-point-lights.md` and
 `alpha-terrain-shader-color-numerics.md`.
+Batch 28 covers `alpha-creature-update-phases.md`,
+`alpha-client-frame-world-step-order.md` and `alpha-world-random-stream-boundaries.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -103,7 +105,7 @@ Batch 27 covers `alpha-terrain-chunk-point-lights.md` and
 | `alpha-client-buff-action-boundaries.md` | A | 183 | 3 |
 | `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
-| `alpha-client-frame-world-step-order.md` | B | 78 | 2 |
+| `alpha-client-frame-world-step-order.md` | A | 84 | 1 |
 | `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
 | `alpha-client-incoming-hit-mutations.md` | B | 102 | 2 |
 | `alpha-client-primary-start-boundary.md` | B | 186 | 3 |
@@ -130,7 +132,7 @@ Batch 27 covers `alpha-terrain-chunk-point-lights.md` and
 | `alpha-created-companion-navigation.md` | B | 120 | 2 |
 | `alpha-creature-light-attachment-producers.md` | A | 91 | 1 |
 | `alpha-creature-map-key-order.md` | B | 70 | 1 |
-| `alpha-creature-update-phases.md` | B | 170 | 2 |
+| `alpha-creature-update-phases.md` | A | 172 | 0 |
 | `alpha-creature-yaw-light-gates.md` | A | 125 | 1 |
 | `alpha-creatures-behaviour.md` | A | 986 | 0 |
 | `alpha-creatures-models.md` | A | 1920 | 0 |
@@ -296,7 +298,7 @@ Batch 27 covers `alpha-terrain-chunk-point-lights.md` and
 | `alpha-world-item-list-population.md` | A | 163 | 0 |
 | `alpha-world-items.md` | A | 547 | 0 |
 | `alpha-world-objects.md` | A | 249 | 0 |
-| `alpha-world-random-stream-boundaries.md` | B | 116 | 2 |
+| `alpha-world-random-stream-boundaries.md` | A | 123 | 1 |
 | `alpha-world-relationship-record-delivery.md` | B | 115 | 2 |
 | `alpha-worldgen-caves.md` | A | 491 | 0 |
 | `alpha-worldgen-clouds.md` | A | 91 | 0 |

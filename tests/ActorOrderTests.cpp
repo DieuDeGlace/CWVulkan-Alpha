@@ -119,6 +119,22 @@ int main() {
               "the following pass refreshes mappings and visits the surviving inserted actor");
     }
     {
+        worldgen::WorldMap world;
+        world.add(std::make_shared<worldgen::Zone>(0, 0));
+        Npcs npcs;
+        Npc inert = fixture(2);
+        inert.fighter.controller = 6;
+        inert.fighter.hitStun = 10;
+        inert.thinkMs = 16777216;
+        npcs.npcs().push_back(std::move(inert));
+        npcs.step(1, world, {}, 1000, 0, floorBlock);
+        check(npcs.all().size() == 1 && npcs.all().front().thinkMs == 16777217,
+              "the stunned world actor keeps integer behavior time past float precision");
+        npcs.npcs().front().fighter.hitStun = 0;
+        npcs.step(0, world, {}, 1000, 0, floorBlock);
+        check(npcs.all().front().thinkMs == 0, "the admitted behavior accumulator resets even for an inert actor");
+    }
+    {
         ActorMap<uint64_t> received{{3, 3}, {UINT64_MAX, UINT64_MAX}, {minimum, minimum}};
         std::vector<uint64_t> visited;
         visitReceivedActors(received, 0, [&] { visited.push_back(0); },

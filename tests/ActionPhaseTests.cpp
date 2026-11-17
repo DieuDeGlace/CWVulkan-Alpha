@@ -587,6 +587,27 @@ int main() {
         stepAction(actor, 16);
         check(actor.cooldowns[54] == cooldownLength(actor, 54) - 16, "existing cooldown entry subsequently decays");
     }
+    {
+        Combatant actor;
+        actor.actionMs = 10;
+        actor.cooldowns[54] = 16777217;
+        actor.cooldowns[88] = 1;
+        endActionUpdate(actor, 1);
+        check(actor.cooldowns[54] == 16777216 && actor.cooldowns.at(88) == 0,
+              "cooldown subtraction retains a millisecond beyond float precision and keeps expired entries");
+    }
+    {
+        Combatant actor;
+        actor.characterClass = 3;
+        actor.action = 37;
+        const int32_t total = duration(actor, actor.action);
+        actor.actionMs = total - 2;
+        actor.mana = 0.25f;
+        endActionUpdate(actor, 1);
+        check(actor.actionMs == total - 1 && actor.mana == 0.25f, "caster mana gain waits while the updated clock is below duration");
+        endActionUpdate(actor, 1);
+        check(actor.actionMs == total && actor.mana == 0.25f + 0.0001f, "caster mana gain uses the updated clock at duration equality");
+    }
     for (int lifetime : {1, 400, 401}) {
         Combatant actor;
         actor.actionMs = 100;
@@ -658,6 +679,23 @@ int main() {
         actor.action = 5;
         advanceCharge(actor, 16);
         check(actor.action == 5 && actor.charge == .4f, "assassin's exempt action survives the roll gate");
+    }
+    {
+        Combatant actor;
+        actor.action = 24;
+        actor.actionMs = phases(actor, actor.action).windUp - 1;
+        actor.charge = .25f;
+        actor.mana = .75f;
+        actor.buffs.push_back({10, 0, 100});
+        advanceCharge(actor, 0);
+        check(actor.charge == .25f, "buff 10 waits for grouped-action anticipation");
+        actor.actionMs++;
+        advanceCharge(actor, 0);
+        check(actor.charge == actor.mana, "eligible buff 10 assigns current mana at anticipation equality");
+        actor.action = 36;
+        actor.charge = .25f;
+        advanceCharge(actor, 0);
+        check(actor.charge == .25f, "action 36 bypasses the grouped buff 10 assignment");
     }
     {
         Combatant actor;

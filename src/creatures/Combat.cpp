@@ -832,7 +832,7 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     }
     // The supported image's cooldown-refresh policy is constant false.
     for (auto &[id, ms] : c.cooldowns)
-        ms = std::max(0.f, ms - dtMs);
+        ms = std::max(0, std::bit_cast<int32_t>(uint32_t(ms) - uint32_t(milliseconds)));
     tickBuffs(c, milliseconds, !role.replica, periodic);
     c.hitStun -= milliseconds;
     if (c.hitStun > 0)
@@ -842,7 +842,7 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
     const int32_t before = c.actionMs;
     if (c.controller != 6 && (c.actionMs >= 0 || c.action == 0)) {
         if (c.actionMs == 0)
-            c.cooldowns[c.action] = (float)cooldownLength(c, c.action);
+            c.cooldowns[c.action] = cooldownLength(c, c.action);
         c.actionMs += milliseconds;
     }
     // Item names §9: drinking (80) or eating (81) heals once per 200 ms of the action, a life
@@ -865,7 +865,7 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
         switch (c.action) {
         case 28: drift = false; break;
         case 95: case 37: case 46: case 45: case 31: case 33: case 43: case 34:
-            drift = c.actionMs >= (float)duration(c, c.action); break;
+            drift = c.actionMs >= duration(c, c.action); break;
         default: break;
         }
         if (drift)
