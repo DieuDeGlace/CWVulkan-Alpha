@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 41 and the rulings. The 249 tracked contracts
-comprise 191 A, 53 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 42 and the rulings. The 251 tracked contracts
+comprise 193 A, 53 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -94,6 +94,7 @@ Batch 39 covers `alpha-connected-walk-phases.md`.
 Batch 40 covers `alpha-common-action-processing-state.md`,
 `alpha-connected-action-audio.md` and `alpha-rulings-channel36-cadence.md`.
 Batch 41 covers `alpha-sneak-light-inputs.md`.
+Batch 42 covers `alpha-connected-melee-candidates.md` and `alpha-connected-combo-cleanup.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -143,6 +144,8 @@ Batch 41 covers `alpha-sneak-light-inputs.md`.
 | `alpha-companion-direct-route-geometry.md` | A | 109 | 1 |
 | `alpha-connected-action-audio.md` | A | 315 | 0 |
 | `alpha-connected-actor-turn.md` | A | 463 | 0 |
+| `alpha-connected-combo-cleanup.md` | A | 88 | 0 |
+| `alpha-connected-melee-candidates.md` | A | 452 | 0 |
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
 | `alpha-crafting.md` | A | 649 | 2 |

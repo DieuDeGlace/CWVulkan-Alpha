@@ -215,6 +215,11 @@ void CreatureRecord::setMovementModes(const creatures::Combatant &c) {
     put<int32_t>(bytes, 0x118, c.dodgeMs);
 }
 
+void CreatureRecord::setComboState(const creatures::Combatant &c) {
+    put<int32_t>(bytes, 0x060, c.combo);
+    put<int32_t>(bytes, 0x064, c.comboElapsedMs);
+}
+
 void CreatureRecord::setCombatResources(const creatures::Combatant &c) {
     put<float>(bytes, 0x134, c.charge);
     put<float>(bytes, 0x160, c.mana);
@@ -223,12 +228,11 @@ void CreatureRecord::setCombatResources(const creatures::Combatant &c) {
 
 void CreatureRecord::setFighter(const creatures::Combatant &c) {
     setActionTimers(c);
+    setComboState(c);
     setMovementModes(c);
     setCombatResources(c);
     bytes[0x050] = c.controller;
     put<int32_t>(bytes, 0x054, c.type);
-    put<int32_t>(bytes, 0x060, c.combo);
-    put<int32_t>(bytes, 0x064, c.comboElapsedMs);
     bytes[0x130] = c.characterClass;
     bytes[0x131] = c.specialization;
     for (int axis = 0; axis < 3; axis++) {

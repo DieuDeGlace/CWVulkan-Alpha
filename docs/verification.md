@@ -2061,3 +2061,22 @@ opened that copy and advertised day 5 and 36,009,230 ms over loopback.
 The input database hash was unchanged. This covers the dedicated world's
 clock record in both directions. Interactive character, zone and map save
 interchange remain open.
+
+## Connected action-1 melee production (2026-11-17)
+
+ActorOrderTests exercises the signed creature walk with local rejection,
+protection, guard, ward and ordinary results. It checks the exact order of
+16 draws through damage variation, defensive pitch, critical voice and stun.
+The local target consumes caller rolls and occupies a struck slot before the
+helper rejects it. An accepted first hit increments the combo without a mana
+reward draw or local application of target damage. The fixture also checks
+the saved window after rescaling, counter expiry at its upper boundary,
+idle cleanup and the updated packet baseline.
+
+VisibilityTests exercises the resident object's position, rotation, shape
+and state from a section-six record and verifies that a moved closed window
+no longer occludes its old position. The Windows x64 build, eight focused
+suites and all 60 CTest suites passed. Revision 10 parsed and all 33 links
+resolved. The held candidate and cleanup contracts matched their recorded
+hashes. Connected output presentation, action-specific candidates beyond
+action 1, and original-client combat comparisons remain open.

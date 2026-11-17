@@ -50,14 +50,17 @@ void StaticStates::visibilityRecords(const worldgen::WorldMap &map, int32_t zx, 
     if (!source)
         return;
     const auto *states = zone(zx, zy);
-    size_t index = 0;
-    for (const auto &object : source->statics) {
-        const uint8_t state = states && index < states->size() ? (*states)[index].state : object.state;
-        const creatures::visibility::Record record{
+    for (size_t index = 0; index < source->statics.size(); index++) {
+        const auto &object = source->statics[index];
+        const auto *state = states && index < states->size() ? &(*states)[index] : nullptr;
+        if (state && state->receivedPlacement) {
+            const auto &placement = *state->receivedPlacement;
+            visit({placement.kind, placement.position, placement.scale, placement.rotation, state->state});
+            continue;
+        }
+        visit({
             object.kind, {object.x, object.y, object.z}, {object.scale[0], object.scale[1], object.scale[2]},
-            object.rotation, state};
-        visit(record);
-        index++;
+            object.rotation, state ? state->state : object.state});
     }
 }
 
@@ -135,6 +138,8 @@ std::optional<StaticStates::Key> StaticStates::apply(const uint8_t *r, const wor
     auto &placement = s.receivedPlacement.emplace();
     std::memcpy(&placement.kind, r + 0x10, 4);
     std::memcpy(placement.position.data(), r + 0x18, 24);
+    std::memcpy(&placement.rotation, r + 0x30, 4);
+    std::memcpy(placement.scale.data(), r + 0x34, 12);
     s.state = r[0x40];
     std::memcpy(&s.timerMs, r + 0x44, 4);
     std::memcpy(&s.stateWord, r + 0x48, 4);

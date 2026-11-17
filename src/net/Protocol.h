@@ -114,6 +114,7 @@ struct CreatureRecord {
     // The resident actor retains fields and item padding outside the core copy.
     void updateFighter(creatures::Combatant &c) const;
     void setActionTimers(const creatures::Combatant &c);
+    void setComboState(const creatures::Combatant &c);
     void setMovementModes(const creatures::Combatant &c);
     void setCombatResources(const creatures::Combatant &c);
     void setFighter(const creatures::Combatant &c);

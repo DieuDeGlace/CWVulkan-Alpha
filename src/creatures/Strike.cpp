@@ -176,15 +176,19 @@ void updateSwingCount(Combatant &c, int32_t t, int32_t dt) {
         c.swingCount = c.combo;
 }
 
+StrikeBounds ordinaryStrikeBounds(const Phases &timing) {
+    const int32_t midpoint = timing.windUp + timing.active / 2;
+    return {std::max(timing.windUp, midpoint - 100),
+            std::min(midpoint, timing.windUp + timing.active - 1)};
+}
+
 StrikeWindow strikeWindow(Combatant &c, float tMs, float dtMs) {
     // Strike-call-sites contract S5-S9 (integer clock arithmetic, truncating division).
     const Phases p = phases(c, c.action);
     const int32_t B = p.windUp, C = p.active, t = int32_t(tMs), dt = int32_t(dtMs);
     StrikeWindow out;
     // S5: the window, with the variants of actions 0x44/0x45 and 0x5D.
-    int32_t start = std::max(C / 2 - 100 + B, B), end = C / 2 + B;
-    if (end >= B + C)
-        end = B + C - 1;
+    auto [start, end] = ordinaryStrikeBounds(p);
     if (c.action == 0x44 || c.action == 0x45)
         start = C / 3 + B;
     if (c.action == 0x5D)

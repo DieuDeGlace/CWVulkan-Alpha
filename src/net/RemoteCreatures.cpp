@@ -28,7 +28,7 @@ glm::dvec3 soundPosition(const int64_t *position) {
 template<class Visit>
 void visitBodies(const RemoteCreatures &remotes, creatures::ActorMap<RemoteFighter> &fighters,
                  const RemoteCreatures::Controlled *controlled, const Visit &visit) {
-    const auto received = [&](uint64_t id, const RemoteFighter &state) {
+    const auto received = [&](uint64_t id, RemoteFighter &state) {
         if (const auto *remote = remotes.find(id))
             visit(state.fighter, remote->live);
     };
@@ -37,7 +37,7 @@ void visitBodies(const RemoteCreatures &remotes, creatures::ActorMap<RemoteFight
             visit(controlled->fighter, controlled->body);
         }, received);
     } else {
-        for (const auto &[id, actor] : fighters)
+        for (auto &[id, actor] : fighters)
             received(id, actor);
     }
 }
@@ -51,34 +51,90 @@ float lightDistanceSquared(const int64_t *from, const int64_t *to) {
     return (offset[0] * offset[0] + offset[1] * offset[1]) + offset[2] * offset[2];
 }
 
-void prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
-                           const RemoteCreatures::StepEffects *effects) {
+template<class Feedback>
+bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
+                           const RemoteCreatures::StepEffects *effects, const Feedback &deferredFeedback) {
     if (effects)
         creatures::receivedActionEffects(fighter, body, dt, soundPosition(body.position), effects->draw,
                                          effects->frame.sounds, effects->frame.bursts);
     if (!creatures::meleeAction(fighter.action))
-        return;
+        return false;
 
     const int32_t before = fighter.actionMs;
-    // Action 31 tests the live clock after preparation against bounds saved
-    // from the earlier signed repeat window.
-    int32_t lower = 0, upper = 0;
+    const auto timing = creatures::phases(fighter, fighter.action);
+    auto window = creatures::ordinaryStrikeBounds(timing);
+    // The live clock after preparation uses these earlier signed bounds.
     if (fighter.action == 31) {
-        const auto timing = creatures::phases(fighter, fighter.action);
         const int32_t start = timing.windUp, period = timing.active / 12;
-        lower = upper = start;
+        window = {start, start};
         if (period > 0 && before >= start && before < start + timing.active) {
-            lower = start + ((before - start) / period) * period;
-            upper = lower + 100;
+            window.lower = start + ((before - start) / period) * period;
+            window.upper = window.lower + 100;
         }
     }
     creatures::updateSwingCount(fighter, before, dt);
+    if (before <= timing.windUp) {
+        deferredFeedback(fighter);
+        fighter.struck.clear();
+        fighter.deferred.clear();
+    } else if (fighter.action == 1 && before >= window.upper) {
+        // Equality expires the old set before the current candidates are tried.
+        deferredFeedback(fighter);
+        fighter.deferred.clear();
+    }
     creatures::prepareCommonAction(fighter, dt, effects ? &effects->frame.buffs : nullptr);
-    if (fighter.action == 31 && lower < fighter.actionMs && fighter.actionMs <= upper &&
+    if (fighter.action == 31 && window.admits(fighter.actionMs) &&
         fighter.actionMs >= creatures::phases(fighter, fighter.action).windUp) {
         if (const auto consumed = creatures::consumeBuff(fighter, 9); consumed && effects)
             effects->frame.buffs.push_back(*consumed);
     }
+    return fighter.action == 1 && window.admits(fighter.actionMs);
+}
+
+template<class Visit>
+void strikeReceivedMelee(creatures::Combatant &attacker, const creatures::Body &body,
+                         const creatures::Combatant *local, const creatures::visibility::Scene &sight,
+                         const RemoteCreatures::StepEffects &effects, const Visit &visit) {
+    using namespace creatures;
+    const StrikeGeometry geometry = strikeGeometry(attacker, body, body.yaw);
+    visit([&](Combatant &target, const Body &targetBody) {
+        const uint64_t key = target.id;
+        if (target.health <= 0 || std::find(attacker.struck.begin(), attacker.struck.end(), key) != attacker.struck.end())
+            return;
+        if (!strikeReaches(geometry, body, targetBody))
+            return;
+        const visibility::Position end{targetBody.position[0], targetBody.position[1], targetBody.position[2]};
+        if (!visibility::visible(geometry.start, end, sight) || !hostilityTest(attacker, target))
+            return;
+        if (target.dodgeMs != 0) {
+            if (std::find(attacker.deferred.begin(), attacker.deferred.end(), key) == attacker.deferred.end())
+                attacker.deferred.push_back(key);
+            return;
+        }
+
+        const HitInput input = strikeInput(attacker, body, targetBody, effects.draw);
+        const bool first = attacker.struck.empty() && attacker.hitStun <= 0;
+        attacker.struck.push_back(key);
+        attacker.hitLanded = true;
+        if (&target == local)
+            return;
+
+        // Connected production writes the helper's resident effects and keeps
+        // the hit records for the client collector. Authority applies damage.
+        const HitOutcome outcome = resolveHit(target, targetBody.velocity, &attacker, input, effects.draw);
+        auto &frame = effects.frame;
+        frame.emittedHits.insert(frame.emittedHits.end(), outcome.records.begin(), outcome.records.end());
+        frame.sounds.insert(frame.sounds.end(), outcome.sounds.begin(), outcome.sounds.end());
+        frame.bursts.insert(frame.bursts.end(), outcome.bursts.begin(), outcome.bursts.end());
+        if (!outcome.hitAccepted)
+            return;
+        if (first) {
+            attacker.combo = std::bit_cast<int32_t>(uint32_t(attacker.combo) + 1u);
+            attacker.comboElapsedMs = 0;
+        }
+        if (input.area && attacker.characterClass == 4 && attacker.specialization == 0)
+            attacker.stealth = std::min(attacker.stealth + input.power, 1.f);
+    });
 }
 
 void appendMovementEffects(creatures::Body &body, const creatures::BlockType &block,
@@ -178,6 +234,7 @@ void RemoteCreatures::writeLive(uint64_t id, CreatureRecord &record, const Remot
     record.setHeadPitch(remote->headPitch);
     record.setContactFlags(state.fighter.contact);
     record.setActionTimers(state.fighter);
+    record.setComboState(state.fighter);
     record.setHealth(state.fighter.health);
     record.setMovementModes(state.fighter);
     record.setCombatResources(state.fighter);
@@ -299,12 +356,43 @@ bool RemoteCreatures::attach(Remote &pet, const creatures::Combatant &fighter,
 void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs,
                            const creatures::BlockType &block, const creatures::ObjectTest &objects,
                            const Controlled *controlled, const std::function<void()> &advanceControlled,
-                           const StepEffects *effects, const creatures::SneakLight &sneakLight) {
+                           const StepEffects *effects, const creatures::SneakLight &sneakLight,
+                           const creatures::visibility::RecordLookup &sightRecords) {
     // §2.2: the fraction f approaches 1 at 0.015 once per millisecond of the step.
     float f = 0.f;
     for (int32_t ms = 0; ms < dtMs; ms++)
         f = (1.f - f) * 0.015f + f;
     const int64_t k = int64_t(f * 65536.f);
+    const creatures::visibility::Scene sight{block, sightRecords};
+    const auto deferredFeedback = [&](creatures::Combatant &striker) {
+        if (striker.deferred.empty() && striker.counterPending.empty())
+            return;
+        creatures::deferredPass(striker);
+        for (const uint64_t key : std::exchange(striker.counterPending, {})) {
+            creatures::Combatant *target = nullptr;
+            const creatures::Body *body = nullptr;
+            if (controlled && key == controlled->fighter.id) {
+                target = &controlled->fighter;
+                body = &controlled->body;
+            } else if (const auto found = fighters.find(key); found != fighters.end()) {
+                if (const auto *remote = find(key)) {
+                    target = &found->second.fighter;
+                    body = &remote->live;
+                }
+            }
+            if (!target)
+                continue;
+            creatures::counterDodge(*target, effects ? &effects->frame.buffs : nullptr);
+            if (effects) {
+                creatures::HitRecord feedback;
+                feedback.attacker = striker.id;
+                feedback.target = target->id;
+                feedback.kind = creatures::HIT_COUNTER;
+                std::copy_n(body->position, feedback.position.size(), feedback.position.begin());
+                effects->frame.emittedHits.push_back(feedback);
+            }
+        }
+    };
     const auto advance = [&](uint64_t id, RemoteFighter &state) {
         auto &fighter = state.fighter;
         const auto found = list.find(id);
@@ -317,8 +405,15 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
         // The common timers run inside each received actor's living turn.
         // Replica actors skip combo timeout and world-authoritative periodic hits.
         creatures::advanceActionTimers(fighter, dtMs);
-        prepareReceivedAction(fighter, r.live, dtMs, effects);
+        if (prepareReceivedAction(fighter, r.live, dtMs, effects, deferredFeedback) && effects)
+            strikeReceivedMelee(fighter, r.live, controlled ? &controlled->fighter : nullptr, sight, *effects,
+                               [&](const auto &visit) { visitBodies(*this, fighters, controlled, visit); });
         creatures::advanceActionClock(fighter, dtMs, false);
+        if (fighter.action == 0) {
+            deferredFeedback(fighter);
+            fighter.struck.clear();
+            fighter.deferred.clear();
+        }
         auto &body = r.live;
         body.mode = fighter.mode;
         body.action = fighter.action;

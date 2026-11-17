@@ -3490,3 +3490,32 @@ type-3 meter override and final mana gain. The implementation uses its own
 resident zone addresses and the existing world cell and material adapters.
 Offline and dedicated action-79 meter inputs, broader section-six placement
 consumers, and matched native lighting and resource comparisons remain open.
+
+## Connected action-1 melee production (2026-11-17)
+
+The isolated author finalized and read back each contract. The implementer
+read both complete files and verified their SHA-256 values.
+
+- [Connected melee candidates](specs/alpha-connected-melee-candidates.md), 451 physical lines, `bb60a4bc5b05292744f36d4b814883c85c0320779858391778ecd3d895f8e76a`.
+- [Connected combo and idle cleanup](specs/alpha-connected-combo-cleanup.md), 87 physical lines, `d0fc5bcd2066343ba0ce619f48587a8e3760d95bc22e52a04e031899e91fbf13`.
+
+The received action-1 branch evaluates its saved clock bounds after common
+preparation and before general clock progression. The candidate walk uses
+resident bodies, signed map order, fixed reach, world visibility, hostility
+and live roll. The local creature is rejected after the caller rolls and
+struck insertion. The shared resolver provides defensive and ordinary records,
+equipment effects and audio. Live guard, flash and source changes occur in the
+producer. The branch leaves target damage, record stun and knockback to the
+authority path. On success it updates eligible combo and lens state without
+the local-owner mana draws. Combo and its timer join the packet baseline.
+
+Anticipation and the action-1 upper bound can send deferred feedback before
+the hit window. The post-clock idle cleanup runs for every admitted controller
+kind and clears both sets while keeping the hit latch. Counter benefit uses
+the live target, including the controlled creature. The cooldown-tree walk
+between combo writes has no observable effect and is omitted. The engine uses
+its existing stat, item presentation and world visibility adapters. The
+visibility adapter reads received static type, position, rotation, dimensions
+and state when present. Geometry outside the engine's fixed conversion range
+is skipped. Other action-specific candidates, output consumers and native
+client acceptance remain open.

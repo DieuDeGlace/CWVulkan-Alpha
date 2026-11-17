@@ -4,6 +4,7 @@
 // by the movement step from its last received record (§3.2), and a separate drawn pose (§2).
 #include "creatures/ActorMap.h"
 #include "creatures/Physics.h"
+#include "creatures/Visibility.h"
 #include "net/Protocol.h"
 #include "net/RemoteFighter.h"
 #include <map>
@@ -57,7 +58,8 @@ class RemoteCreatures {
     void step(creatures::ActorMap<RemoteFighter> &fighters, int32_t dtMs, const creatures::BlockType &block,
               const creatures::ObjectTest &objects, const Controlled *controlled = nullptr,
               const std::function<void()> &advanceControlled = {}, const StepEffects *effects = nullptr,
-              const creatures::SneakLight &sneakLight = {});
+              const creatures::SneakLight &sneakLight = {},
+              const creatures::visibility::RecordLookup &sightRecords = {});
     // Riding actor step §4: revisit attachments after the actor and object passes.
     void finishStep(creatures::ActorMap<RemoteFighter> &fighters, const Controlled *controlled = nullptr);
     const Remote *find(uint64_t id) const;

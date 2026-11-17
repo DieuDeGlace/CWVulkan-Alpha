@@ -26,13 +26,15 @@ struct StaticState {
     struct Placement {
         int32_t kind = 0;
         std::array<int64_t, 3> position{};
+        int32_t rotation = 0;
+        std::array<float, 3> scale{};
     };
     uint8_t state = 1;     // +0x30: 1 closed, 0 open, 2 a closed chest with contents
     int32_t timerMs = 0;   // +0x34: ms since the last change
     uint64_t occupant = 0; // +0x40: who sits or sleeps on it
     std::vector<creatures::ItemRecord> contents; // +0x48: a chest's loot
     uint32_t stateWord = 0; // uninterpreted common-state word +0x38
-    std::optional<Placement> receivedPlacement; // live section-six type and position
+    std::optional<Placement> receivedPlacement; // live section-six placement and shape
 };
 
 // §6.3: how far a moving static is open (0 closed … 1 open) for the drawing of §4.4.
@@ -63,7 +65,7 @@ class StaticStates {
     // 22:59, beds otherwise.
     creatures::Npcs::Seats seats(const worldgen::WorldMap &map, glm::ivec3 block, double timeOfDayMs) const;
     bool free(const creatures::Seat &seat) const;
-    // Current state byte plus the retained spatial metadata, in source order.
+    // Current state and shape, in resident object order.
     void visibilityRecords(const worldgen::WorldMap &map, int32_t zx, int32_t zy,
                            const creatures::visibility::RecordVisitor &visit) const;
     void routeRecords(const worldgen::WorldMap &map, int32_t cellX, int32_t cellY,

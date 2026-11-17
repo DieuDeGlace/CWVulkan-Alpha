@@ -2321,7 +2321,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                     player->body().mountValid = pet && pet->health >= 0 && creatures::rideable(pet->type);
                                 }
                                 advancePlayer(elapsed);
-                            }, &remoteEffects, sneakLight);
+                            }, &remoteEffects, sneakLight, npcs.sightRecords);
                         stepAirships(elapsed);
                         remotes.finishStep(otherFighters, &controlled);
                     }
@@ -2784,7 +2784,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         const net::RemoteCreatures::StepEffects remoteEffects{aggregate, worldDraw};
                         const auto sneakLight = remotes.makeSneakLight(view.held(), statics, worldItems,
                             std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)), otherFighters);
-                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, nullptr, {}, &remoteEffects, sneakLight);
+                        remotes.step(otherFighters, elapsed, worldBlock, npcs.objects, nullptr, {}, &remoteEffects,
+                                     sneakLight, npcs.sightRecords);
                     } else
                         npcs.stepInto((float)elapsed, view.held(), {}, scene.timeOfDayMs, scene.day, worldBlock, aggregate);
                     stepAirships(elapsed);

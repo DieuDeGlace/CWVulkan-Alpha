@@ -67,6 +67,10 @@ struct FaceQuery {
         Direction dimensions = record.dimensions;
         if (uint32_t(record.selector) & 1u)
             std::swap(dimensions[0], dimensions[1]);
+        const auto fixedRepresentable = [](float blocks) { return blocks >= -0x1p47f && blocks < 0x1p47f; };
+        if (!fixedRepresentable(dimensions[0] * .5f) || !fixedRepresentable(dimensions[1] * .5f) ||
+            !fixedRepresentable(dimensions[2]))
+            return;
         for (size_t axis = 0; axis < 2; axis++) {
             if (direction[axis] == 0)
                 continue;

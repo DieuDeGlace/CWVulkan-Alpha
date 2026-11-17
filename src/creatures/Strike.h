@@ -24,6 +24,12 @@ float magicBase(const Combatant &c);
 // order; the second is empty when one is enough.
 void strikingWeapons(const Combatant &c, const Item *(&first), const Item *(&second));
 
+struct StrikeBounds {
+    int32_t lower = 0, upper = 0;
+    bool admits(int32_t clock) const { return lower < clock && clock <= upper; }
+};
+StrikeBounds ordinaryStrikeBounds(const Phases &timing);
+
 // Strike-call-sites contract S5-S9: whether the action strikes in the step that starts at
 // action time `t` and lasts `dtMs`, and whether the area-heal flag is set. Also clears the
 // struck and deferred sets when due and runs the deferred-key pass (Combatant::counterPending).

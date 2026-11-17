@@ -293,7 +293,7 @@ void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},
 // Convenience for callers with no action effects to dispatch.
 void stepAction(Combatant &c, float dtMs);
 // Strike-call-sites S7/S9: the deferred-key pass. Deferred keys not struck since go to
-// counterPending (ascending key) for the world to run the counter callback on.
+// counterPending (ascending signed key) for the world to run the counter callback on.
 void deferredPass(Combatant &c);
 // The counter callback (0x03CF20 / 0x008230) on a creature that dodged a strike.
 void counterDodge(Combatant &target, std::vector<BuffEvent> *events);
@@ -331,7 +331,7 @@ struct HitOutcome {
 // response and velocity changes belong to the separate application phase.
 // emit preserves producer boundaries. Mode-zero callers apply target emissions
 // there so later calculation sees earlier mutations; source gains are record-only.
-HitOutcome resolveHit(Combatant &target, glm::vec3 &targetVelocity, Combatant *attacker, const HitInput &hit,
+HitOutcome resolveHit(Combatant &target, const glm::vec3 &targetVelocity, Combatant *attacker, const HitInput &hit,
                       const std::function<int()> &draw,
                       const std::function<void(const HitEmission &)> &emit = {});
 

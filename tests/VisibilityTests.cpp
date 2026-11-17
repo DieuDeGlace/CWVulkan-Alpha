@@ -4,6 +4,8 @@
 #include <array>
 #include <bit>
 #include <cstdio>
+#include <cstring>
+#include <limits>
 #include <vector>
 
 using namespace creatures;
@@ -185,6 +187,33 @@ void production() {
     world.stepInto(0, map, {{player, body, 0, 0, false, false, true}}, 1000, 0, floor, frame);
     check(world.all().size() == 1 && world.all()[0].target == 1,
           "a current state change removes occlusion without changing the baked object or ray callbacks");
+
+    auto snapshot = states.record(*zone, 0);
+    snapshot[0x40] = 1;
+    const int64_t moved = 20 * 65536;
+    std::memcpy(snapshot.data() + 0x20, &moved, sizeof moved);
+    const int32_t turned = 2;
+    std::memcpy(snapshot.data() + 0x30, &turned, sizeof turned);
+    const float resized = 1.5f;
+    std::memcpy(snapshot.data() + 0x34, &resized, sizeof resized);
+    check(states.apply(snapshot.data(), &map).has_value(), "a connected static snapshot replaces the ray input");
+    int received = 0;
+    world.sightRecords(0, 0, [&](const visibility::Record &current) {
+        received++;
+        check(current.position[1] == moved && current.selector == turned && current.dimensions[0] == resized &&
+                  current.kind == 3 && current.state == 1,
+              "position, rotation, dimensions and state come from the current static snapshot");
+    });
+    check(received == 1 &&
+              visibility::visible(position(10.5, 10.5, 3.5), position(15.5, 10.5, 3.5), {floor, world.sightRecords}),
+          "the moved closed window no longer occludes its generated position");
+    const int64_t originalY = window.y;
+    const float invalidHeight = std::numeric_limits<float>::infinity();
+    std::memcpy(snapshot.data() + 0x20, &originalY, sizeof originalY);
+    std::memcpy(snapshot.data() + 0x3c, &invalidHeight, sizeof invalidHeight);
+    states.apply(snapshot.data(), &map);
+    check(visibility::visible(position(10.5, 10.5, 3.5), position(15.5, 10.5, 3.5), {floor, world.sightRecords}),
+          "an invalid received extent is excluded from fixed ray geometry");
 }
 }
 

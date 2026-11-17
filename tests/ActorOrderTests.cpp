@@ -5,6 +5,7 @@
 #include "creatures/Abilities.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Npcs.h"
+#include "creatures/Strike.h"
 #include "net/RemoteCreatures.h"
 #include <algorithm>
 #include <array>
@@ -580,6 +581,185 @@ void checkConnectedActionEffects() {
           "staff visuals use the live aim offset and explosion visuals use the actor's exact fixed position");
 }
 
+struct MeleeFixture {
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    static constexpr int64_t x = 10 * 65536 + 1;
+    static constexpr int64_t y = 20 * 65536;
+    static constexpr int64_t z = 8 * 65536;
+
+    Combatant &receive(uint64_t key, const Combatant &input, int64_t atX = x, int64_t atY = y + 65536) {
+        auto record = net::CreatureRecord::nativeDefaults();
+        record.setFighter(input);
+        Appearance appearance;
+        appearance.box = {1.f, 1.f, 2.f};
+        record.setAppearance(appearance);
+        record.setPosition(0, atX);
+        record.setPosition(1, atY);
+        record.setPosition(2, z);
+        remotes.receive(net::CreatureReceipt::fromRecord(key, record, true, true));
+        auto &actor = actors[key];
+        remotes.updateLive(key, record, actor);
+        return actor.fighter;
+    }
+};
+
+void checkConnectedMeleeOrder() {
+    MeleeFixture world;
+    Combatant input;
+    input.health = 50;
+    input.characterClass = 4;
+    input.combo = 7;
+    input.comboElapsedMs = 4096;
+    input.charge = .4f;
+    input.mode = 0x20;
+    input.action = 1;
+    const auto timing = phases(input, 1);
+    input.actionMs = timing.windUp + timing.active / 2;
+    auto &striker = world.receive(uint64_t(-5), input, world.x, world.y);
+
+    Combatant local;
+    local.id = uint64_t(-4);
+    Body localBody;
+    localBody.size = {1, 1, 2};
+    localBody.place({10, 21, 8});
+    const net::RemoteCreatures::Controlled controlled{local, localBody};
+
+    Combatant target;
+    target.health = 50;
+    target.controller = 1;
+    target.mode = 0x80;
+    world.receive(uint64_t(-3), target);
+    target.mode = 0;
+    target.action = 8;
+    target.blockGauge = .95f;
+    target.mana = .3f;
+    auto &guard = world.receive(uint64_t(-2), target);
+    target.action = 0;
+    target.characterClass = 4;
+    target.specialization = 1;
+    target.dodgeMs = 530;
+    auto &negativeRoll = world.receive(UINT64_MAX, target);
+    auto &positiveRoll = world.receive(8, target);
+    striker.deferred = {8, 99, UINT64_MAX};
+    target.dodgeMs = 0;
+    auto &ward = world.receive(2, target);
+    ward.buffs.push_back({6, 100.f, 200, 0});
+    target.hitStun = -3001;
+    target.action = 84;
+    target.type = 2;
+    auto &ordinary = world.receive(3, target);
+    world.receive(6, target, world.x + 2 * 65536);
+    target.health = 0;
+    world.receive(4, target);
+
+    // Local rejection, protection, guard, ward, then critical ordinary plus voice and stun.
+    constexpr std::array samples{32767, 11, 32767, 19, 101, 32767, 29, 102, 32767, 37, 103,
+                                 0, 16384, 104, 105, 0};
+    size_t draws = 0;
+    const std::function<int()> draw = [&] {
+        const size_t next = draws++;
+        return next < samples.size() ? samples[next] : 32767;
+    };
+    const BlockType withWall = [](int32_t x, int32_t, int32_t z) { return uint8_t(x == 11 || z <= 0 ? 1 : 0); };
+    NpcFrame frame;
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    world.remotes.step(world.actors, 0, withWall, {}, &controlled, [&] {
+        check(draws == samples.size() && striker.hitLanded,
+              "the signed attacker turn completes its rolls before the controlled actor advances");
+    }, &effects);
+
+    std::vector<std::pair<uint64_t, uint8_t>> emitted;
+    for (const auto &hit : frame.emittedHits)
+        emitted.emplace_back(hit.target, hit.kind);
+    const std::vector<std::pair<uint64_t, uint8_t>> expected{{UINT64_MAX, HIT_COUNTER}, {8, HIT_COUNTER},
+        {uint64_t(-3), HIT_IMMUNE}, {uint64_t(-2), HIT_BLOCKED}, {2, HIT_ABSORBED}, {3, HIT_DAMAGE}};
+    check(emitted == expected, "old roll feedback is signed and precedes protection, guard, ward and ordinary hit");
+    check(striker.struck == std::vector<uint64_t>{local.id, uint64_t(-3), uint64_t(-2), 2, 3} &&
+              striker.deferred == std::vector<uint64_t>{UINT64_MAX, 8},
+          "the local target occupies a struck slot while rolls defer anew and wall and dead targets stay out");
+    check(draws == samples.size() && striker.combo == 7 && striker.comboElapsedMs == 4096 && striker.stealth == .8f,
+          "local rejection spends its caller draws and occupies the first slot without a reward draw");
+    check(frame.buffs.size() == 2 && frame.buffs[0].source == UINT64_MAX && frame.buffs[1].source == 8 &&
+              frame.buffs[0].record.source == 0 && frame.buffs[1].record.timeMs == 30000 &&
+              negativeRoll.mana == .55f && positiveRoll.mana == .55f,
+          "both live rolling targets get the type-11 benefit before later action phases");
+    check(guard.mana == 1.f && guard.charge == .95f && guard.blockGauge < 0 && ordinary.health == 50.f &&
+              ordinary.hitStun == -3001 && ordinary.hitFlash == 1.f,
+          "guard mutates live resources and the ordinary result flashes without applying damage or stun");
+    if (emitted == expected) {
+        const auto &hit = frame.emittedHits.back();
+        check(hit.position == std::array<int64_t, 3>{world.x, world.y + 65536, world.z} && hit.critical &&
+                  hit.area && hit.stun == 3000 && hit.knockBack.z == 10.f,
+              "the ordinary record keeps raw position, charged critical and stun payload");
+    }
+    std::vector<int32_t> sounds;
+    for (const auto &sound : frame.sounds)
+        sounds.push_back(sound.sound);
+    check(sounds == std::vector<int32_t>{24, 24, 91, 6, 62, 23}, "defensive, ordinary, voice and stun audio order");
+    if (sounds.size() == 6)
+        check(frame.sounds[0].pitch == 101.f * .3f / 32767.f + 1.f &&
+                  frame.sounds[3].pitch == 104.f * .2f / 32767.f + .9f &&
+                  frame.sounds[4].pitch == 105.f * .1f / 32767.f + 1.f,
+              "the order-sensitive audio draws use their own samples");
+
+    frame.reset();
+    striker.action = 0;
+    striker.struck.push_back(8);
+    world.remotes.step(world.actors, 0, withWall, {}, &controlled, {}, &effects);
+    check(striker.struck.empty() && striker.deferred.empty() && striker.hitLanded && draws == samples.size() &&
+              frame.emittedHits.size() == 1 && frame.emittedHits[0].target == UINT64_MAX &&
+              negativeRoll.mana == .8f && positiveRoll.mana == .55f,
+          "idle cleanup excludes struck IDs, clears both sets and preserves the hit latch without drawing");
+}
+
+void checkConnectedMeleeWindow() {
+    MeleeFixture world;
+    Combatant input;
+    input.health = 50;
+    input.mode = 0x20;
+    input.action = 1;
+    input.combo = 400;
+    input.multipliers[1] = 8.f;
+    const auto timing = phases(input, 1);
+    input.actionMs = timing.windUp + timing.active / 2;
+    auto &striker = world.receive(1, input, world.x, world.y);
+    Combatant receiver;
+    receiver.health = 50;
+    receiver.controller = 6;
+    auto &target = world.receive(2, receiver);
+    NpcFrame frame;
+    int draws = 0;
+    const std::function<int()> draw = [&] { ++draws; return 32767; };
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    const int32_t elapsed = timing.windUp + timing.active - input.actionMs;
+    Combatant reset = input;
+    reset.combo = 0;
+    const auto changed = phases(reset, 1);
+    const int32_t scaled = int32_t(float(input.actionMs) * (attackSpeed(input) / attackSpeed(reset)));
+    check(changed.windUp < scaled && scaled <= changed.windUp + changed.active / 2,
+          "the fixture's post-reset clock would be admitted by fresh bounds");
+    world.remotes.step(world.actors, elapsed, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 0 && striker.combo == 0 && striker.actionMs == scaled + elapsed,
+          "post-reset clock outside the saved window draws nothing even if admitted by the new timing");
+
+    input.combo = 0;
+    input.comboElapsedMs = 700;
+    input.multipliers[1] = 1.f;
+    input.actionMs = phases(input, 1).windUp + 1;
+    world.receive(1, input, world.x, world.y);
+    world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 3 && frame.emittedHits.size() == 1 && striker.combo == 1 && striker.comboElapsedMs == 0 &&
+              striker.mana == 0 && target.health == 50.f,
+          "a first accepted target increments combo without the local-owner mana draws");
+    net::CreatureRecord baseline;
+    world.remotes.writeLive(1, baseline, world.actors.at(1));
+    check(baseline.fighter().combo == 1 && baseline.fighter().comboElapsedMs == 0,
+          "locally advanced combo fields reach the receiving baseline");
+    world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+    check(draws == 3 && frame.emittedHits.size() == 1, "the resident struck set suppresses repeat draws across pieces");
+}
+
 void checkConnectedSneakLighting() {
     constexpr int64_t unit = 65536;
     constexpr int64_t x = 510 * unit, y = 300 * unit, z = 8 * unit;
@@ -681,6 +861,8 @@ int main() {
     checkConnectedActionResources();
     checkConnectedMovementSounds();
     checkConnectedActionEffects();
+    checkConnectedMeleeOrder();
+    checkConnectedMeleeWindow();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();
     checkRidingRefillOrder();

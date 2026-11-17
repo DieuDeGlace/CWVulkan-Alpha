@@ -1,6 +1,7 @@
 #include "creatures/Strike.h"
 #include "creatures/Combat.h"
 #include "creatures/Abilities.h"
+#include "creatures/ActorMap.h"
 #include "creatures/Names.h"
 #include "creatures/Physics.h"
 #include <algorithm>
@@ -811,7 +812,7 @@ void deferredPass(Combatant &c) {
         if (std::find(c.struck.begin(), c.struck.end(), key) == c.struck.end() &&
             std::find(c.counterPending.begin(), c.counterPending.end(), key) == c.counterPending.end())
             c.counterPending.push_back(key);
-    std::sort(c.counterPending.begin(), c.counterPending.end());
+    std::sort(c.counterPending.begin(), c.counterPending.end(), ActorKeyLess{});
 }
 
 void counterDodge(Combatant &target, std::vector<BuffEvent> *events) {
@@ -1019,7 +1020,7 @@ HitInput trapHitInput(glm::dvec3 targetAt, float damage, glm::vec3 push, bool re
     return in;
 }
 
-HitOutcome resolveHit(Combatant &target, glm::vec3 &, Combatant *attacker, const HitInput &in,
+HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker, const HitInput &in,
                       const std::function<int()> &draw, const std::function<void(const HitEmission &)> &emit) {
     HitOutcome out;
     if (target.health <= 0)

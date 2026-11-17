@@ -5,7 +5,7 @@
 
 namespace creatures {
 
-enum HitKind : uint8_t { HIT_DAMAGE = 0, HIT_BLOCKED = 1, HIT_IMMUNE = 3, HIT_ABSORBED = 5 };
+enum HitKind : uint8_t { HIT_DAMAGE = 0, HIT_BLOCKED = 1, HIT_IMMUNE = 3, HIT_COUNTER = 4, HIT_ABSORBED = 5 };
 
 struct HitRecord {
     uint64_t attacker = 0, target = 0;
