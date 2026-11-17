@@ -165,6 +165,7 @@ void CreatureRecord::readFighter(creatures::Combatant &c, bool retainItemPadding
         c.handTurnLate[axis] = get<float>(bytes, 0x138 + 4 * axis);
         c.handTurnEarly[axis] = get<float>(bytes, 0x144 + 4 * axis);
     }
+    c.aim = look();
     c.health = get<float>(bytes, 0x15c);
     c.mana = get<float>(bytes, 0x160);
     c.blockGauge = get<float>(bytes, 0x164);
@@ -240,6 +241,7 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     for (int axis = 0; axis < 3; axis++) {
         put<float>(bytes, 0x138 + 4 * axis, c.handTurnLate[axis]);
         put<float>(bytes, 0x144 + 4 * axis, c.handTurnEarly[axis]);
+        put<float>(bytes, 0x150 + 4 * axis, c.aim[axis]);
     }
     put<float>(bytes, 0x15c, c.health);
     for (int i = 0; i < 5; i++)

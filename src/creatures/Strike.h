@@ -75,11 +75,13 @@ HitInput beamInput(const Combatant &attacker, bool critical, const std::function
 
 // Strike-call-sites §5: the work after an accepted strike. `first`: the struck set was empty
 // and the striker not stunned; `hitAny`: the frame's earlier success (updated here).
+// Only the local and authoritative paths grant mana on the first success.
 struct StrikeAftermath {
     std::optional<BuffEvent> buff; // action 0x1E's kind-9 effect notice
     bool upgradeSound = false;      // record 47 at the striker
 };
-StrikeAftermath afterStrike(Combatant &attacker, bool first, bool &hitAny, const std::function<int()> &draw);
+StrikeAftermath afterStrike(Combatant &attacker, bool first, bool &hitAny, const std::function<int()> &draw,
+                            bool grantMana = true);
 
 // §6: the area heal record of actions 0x20/0x21 (two draws: the roll, then the critical).
 HitRecord areaHealRecord(const Combatant &attacker, uint64_t target, const std::array<int64_t, 3> &position,

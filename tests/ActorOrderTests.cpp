@@ -1002,6 +1002,144 @@ void checkConnectedMeleePulseAndEffect() {
           "the later target ages the appended damage-over-time effect without applying periodic damage locally");
 }
 
+void checkStaffStatSelectors() {
+    Combatant actor;
+    actor.action = 32;
+    actor.controller = 3;
+    actor.powerTier = 8;
+    actor.appearanceFlags = 0x18;
+    actor.multipliers[2] = .625f;
+    auto &primary = actor.equipment[MAIN_HAND];
+    auto &secondary = actor.equipment[OFF_HAND];
+    primary.type = secondary.type = 3;
+    primary.subtype = 5;
+    secondary.subtype = 12;
+    primary.level = secondary.level = 1;
+    secondary.rarity = 4;
+    check(magicBase(actor) == 12.625f, "staff attack adds the full primary and secondary bracelet in order");
+    secondary.subtype = 6;
+    check(magicBase(actor) == 16.625f, "a qualifying secondary bow replaces the default equipment list");
+    primary.type = secondary.type = 0;
+    check(magicBase(actor) == 40.625f, "both unarmed flags add actual-rank terms to the rank-zero base");
+
+    actor.controller = 0;
+    actor.appearanceFlags = 0x20;
+    actor.multipliers[4] = .25f;
+    constexpr std::array slots{CHEST_SLOT, BOOTS_SLOT, GLOVES_SLOT, SHOULDERS_SLOT};
+    constexpr std::array types{4, 6, 5, 7}, materials{1, 26, 19, 27};
+    for (size_t i = 0; i < slots.size(); ++i) {
+        auto &piece = actor.equipment[slots[i]];
+        piece.type = uint8_t(types[i]);
+        piece.material = uint8_t(materials[i]);
+        piece.level = 1;
+    }
+    check(resistance(actor) == (((4.5f + .85f) + .375f) + .425f) + .375f,
+          "staff defense preserves the common actual-rank term and the ordered resistance weights");
+}
+
+void checkConnectedStaffHit() {
+    for (bool ward : {false, true}) {
+        MeleeFixture world;
+        Combatant input;
+        input.action = 30;
+        input.characterClass = 3;
+        input.aim = {2, 0, 0};
+        input.actionMs = phases(input, 30).windUp + 1;
+        auto &attacker = world.receive(1, input, world.x, world.y);
+        Combatant defender;
+        defender.controller = 6;
+        defender.health = 50;
+        defender.multipliers[4] = 0;
+        defender.multipliers[3] = 100;
+        auto &target = world.receive(2, defender, world.x + 4 * 65536, world.y);
+        if (ward)
+            target.buffs.push_back({ABSORB, 5, 200});
+        NpcFrame frame;
+        int draws = 0;
+        const std::function<int()> draw = [&] { return draws++ >= (ward ? 3 : 2) ? 0 : 32767; };
+        const net::RemoteCreatures::StepEffects effects{frame, draw};
+        world.remotes.step(world.actors, 0, floorBlock, {}, nullptr, {}, &effects);
+        check(draws == (ward ? 4 : 3) && frame.emittedHits.size() == 1 && frame.sounds.size() == 2 &&
+                  frame.buffs.size() == 1 && attacker.combo == 1 && target.health == 50,
+              "connected action thirty grants its own proc after either ordinary success or a fully absorbed ward");
+        if (frame.emittedHits.size() == 1 && frame.sounds.size() == 2 && frame.buffs.size() == 1) {
+            const auto &hit = frame.emittedHits.front();
+            check(hit.kind == (ward ? HIT_ABSORBED : HIT_DAMAGE) && hit.amount == .4f * .75f &&
+                      hit.knockBack == glm::vec3(0) && frame.sounds[0].sound == (ward ? 91 : 39) &&
+                      frame.sounds[1].sound == 47 && frame.buffs[0].record.kind == 9 &&
+                      frame.buffs[0].record.timeMs == 30000 && frame.buffs[0].source == 1,
+                  "staff uses received aim, resistance and fixed magic impact before the single proc draw");
+        }
+    }
+}
+
+void checkConnectedStaffAreaHeal() {
+    for (const int32_t action : {32, 33}) {
+        MeleeFixture world;
+        Combatant input;
+        input.action = action;
+        input.characterClass = 3;
+        input.specialization = 1;
+        input.combo = 7;
+        input.aim = {2.5f, 0, 0};
+        const auto timing = phases(input, action);
+        input.actionMs = timing.windUp + 99;
+        auto &attacker = world.receive(1, input, world.x, world.y);
+        attacker.hitLanded = true;
+        attacker.criticalLatched = true;
+        attacker.struck = {88};
+        Combatant other;
+        other.health = 50;
+        other.dodgeMs = 200;
+        const auto &ally = world.receive(uint64_t(-3), other, world.x, world.y);
+        Combatant local;
+        local.id = 2;
+        local.health = 40;
+        Body localBody;
+        localBody.size = {1, 1, 2};
+        localBody.place({action == 32 ? 15.f : 17.f, 20, 8});
+        const net::RemoteCreatures::Controlled controlled{local, localBody};
+        constexpr std::array samples{23, 32767, 0, 0, 32767, 16384, 0};
+        size_t draws = 0;
+        NpcFrame frame;
+        const std::function<int()> draw = [&] {
+            const size_t next = draws++;
+            return next < samples.size() ? samples[next] : 32767;
+        };
+        const net::RemoteCreatures::StepEffects effects{frame, draw};
+        world.remotes.step(world.actors, 1, floorBlock, {}, &controlled, {}, &effects);
+        check(draws == samples.size() && frame.emittedHits.size() == 3 && frame.sounds.size() == 4 &&
+                  ally.dodgeMs > 0 && ally.health == 50 && local.health == 40 && attacker.combo == 7 &&
+                  attacker.struck.empty() && attacker.deferred.empty() && attacker.hitLanded,
+              "nonfinal upper equality opens the alternate route for a rolling ally, self and the controlled ally");
+        if (frame.emittedHits.size() == 3 && frame.sounds.size() == 4) {
+            constexpr std::array targets{uint64_t(-3), uint64_t(1), uint64_t(2)};
+            for (size_t i = 0; i < targets.size(); ++i) {
+                const auto &hit = frame.emittedHits[i];
+                const float variation = 1.25f - float(samples[1 + 2 * i]) * .5f / 32767.f;
+                check(hit.target == targets[i] && hit.attacker == 1 && hit.kind == HIT_DAMAGE &&
+                          hit.amount == variation * -.1f && hit.critical == (i != 1) &&
+                          hit.knockBack == glm::vec3(0) && hit.stun == 0 && frame.sounds[1 + i].sound == 42,
+                      "each alternate heal takes variation then critical without scaling the signed amount or latching");
+            }
+            check(frame.sounds[0].sound == 15 && frame.sounds[0].pitch == sound::randomPitch(23, .25f, 1.f),
+                  "the active boundary sound draws before any alternate healing");
+        }
+
+        // The final pulse can heal on a strict overrun even though it has no successor.
+        attacker.actionMs = timing.windUp + timing.active - 1;
+        frame.reset();
+        draws = 0;
+        world.remotes.step(world.actors, 1, floorBlock, {}, &controlled, {}, &effects);
+        check(draws == 1 && frame.emittedHits.empty(), "final pulse equality produces its sound without an alternate heal");
+        attacker.actionMs = timing.windUp + timing.active - 1;
+        frame.reset();
+        draws = 0;
+        world.remotes.step(world.actors, 2, floorBlock, {}, &controlled, {}, &effects);
+        check(draws == samples.size() && frame.emittedHits.size() == 3, "final pulse overrun independently admits alternate heals");
+    }
+}
+
 void checkOrdinaryCreatureLink() {
     MeleeFixture world;
     Combatant input;
@@ -1188,6 +1326,9 @@ int main() {
     checkConnectedMeleeFamily();
     checkConnectedMeleeActionsNineThroughTwentyOne();
     checkConnectedMeleePulseAndEffect();
+    checkStaffStatSelectors();
+    checkConnectedStaffHit();
+    checkConnectedStaffAreaHeal();
     checkOrdinaryCreatureLink();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();

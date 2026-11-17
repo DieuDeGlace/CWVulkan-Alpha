@@ -1040,7 +1040,6 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         std::copy(in.targetRecordPosition.begin(), in.targetRecordPosition.end(), sparks.position);
         out.bursts.push_back(sparks);
     }
-    auto sound = [&](int32_t id, float pitch) { out.sounds.push_back({in.targetPosition, id, pitch, 1}); };
     const auto targetPresentation = [&](int32_t kind, float scalar) {
         glm::dvec3 at;
         for (int axis = 0; axis < 3; axis++)
@@ -1049,6 +1048,7 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         // outside the held producer contract.
         return SoundEvent{at, kind, scalar, 1};
     };
+    const auto sound = [&](int32_t id, float pitch) { out.sounds.push_back(targetPresentation(id, pitch)); };
     const auto earlyPresentation = [&](int32_t kind) {
         auto event = targetPresentation(kind, 1);
         const float scaledDraw = (float)draw() * .3f;

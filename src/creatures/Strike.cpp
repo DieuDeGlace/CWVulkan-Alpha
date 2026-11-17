@@ -121,8 +121,8 @@ void strikingWeapons(const Combatant &c, const Item *(&first), const Item *(&sec
 
 float magicBase(const Combatant &c) {
     const float P = levelPower(c.level);
-    const float rank = (float)std::pow(2.0, 0.0);
-    float base = c.multipliers[2] * (rank * P);
+    // The initial attack term always uses rank zero, even for a nonplayer.
+    float base = c.multipliers[2] * P;
     const Item *first, *second;
     weaponsOf(c, first, second);
     const auto &worth = itemBonuses().damage;
@@ -408,7 +408,7 @@ HitInput beamInput(const Combatant &a, bool critical, const std::function<int()>
     return in;
 }
 
-StrikeAftermath afterStrike(Combatant &a, bool first, bool &hitAny, const std::function<int()> &draw) {
+StrikeAftermath afterStrike(Combatant &a, bool first, bool &hitAny, const std::function<int()> &draw, bool grantMana) {
     // Strike-call-sites §5, only when the attack routine returned 1.
     StrikeAftermath out;
     // 1. Action 0x1E: Cw(0.25); class pair (_, 0) gains a kind-9 effect and record 47.
@@ -420,7 +420,7 @@ StrikeAftermath afterStrike(Combatant &a, bool first, bool &hitAny, const std::f
     }
     // 2. The swing count, when this was the swing's first target.
     if (first) {
-        a.combo += 1;
+        a.combo = std::bit_cast<int32_t>(uint32_t(a.combo) + 1u);
         a.comboElapsedMs = 0;
     }
     // 3. The crit charge (+0x1190) of class pair (4, 0).
@@ -431,7 +431,7 @@ StrikeAftermath afterStrike(Combatant &a, bool first, bool &hitAny, const std::f
             a.stealth = 1.f;
     }
     // 4. Mana on the frame's first success, unless charged or a heal action.
-    if (!hitAny && !B3 && a.action != 0x1E && a.action != 0x20) {
+    if (grantMana && !hitAny && !B3 && a.action != 0x1E && a.action != 0x20) {
         float g = (1.f - ((float)draw() * 2.f) / 32767.f) * 0.05f + 0.1f;
         g = ((float)duration(a, a.action) / 500.f) * g;
         if (draw() % 8 == 0)
@@ -453,7 +453,8 @@ HitRecord areaHealRecord(const Combatant &a, uint64_t target, const std::array<i
     heal.attacker = a.id;
     heal.target = target;
     heal.amount = ((magicBase(a) * roll) * (0.f + 1.f)) * -0.1f;
-    heal.critical = (float)draw() / 32767.f < criticalChance(a);
+    const float probability = criticalChance(a);
+    heal.critical = (float)draw() / 32767.f < probability;
     heal.position = position;
     return heal;
 }

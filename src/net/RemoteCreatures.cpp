@@ -51,28 +51,35 @@ float lightDistanceSquared(const int64_t *from, const int64_t *to) {
     return (offset[0] * offset[0] + offset[1] * offset[1]) + offset[2] * offset[2];
 }
 
+struct ReceivedStrike {
+    bool admitted = false;
+    bool areaHeal = false;
+};
+
 template<class Feedback>
-bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
-                           const RemoteCreatures::StepEffects *effects, const Feedback &deferredFeedback) {
+ReceivedStrike prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
+                                     const RemoteCreatures::StepEffects *effects, const Feedback &deferredFeedback) {
     creatures::startMeleeRoll(fighter);
     if (effects)
         creatures::receivedActionEffects(fighter, body, dt, soundPosition(body.position), effects->draw,
                                          effects->frame.sounds, effects->frame.bursts);
     const int32_t action = fighter.action;
     if (!creatures::meleeAction(action))
-        return false;
+        return {};
 
     const int32_t before = fighter.actionMs;
     const auto timing = creatures::phases(fighter, action);
     auto window = creatures::ordinaryStrikeBounds(timing);
-    const bool strikes = (action >= 1 && action <= 7) || (action >= 9 && action <= 21);
-    const bool repeating = action == 5 || action == 11;
+    const bool staff = action >= 30 && action <= 33;
+    const bool strikes = (action >= 1 && action <= 7) || (action >= 9 && action <= 21) || staff;
+    bool areaHeal = false;
     if (!strikes)
         creatures::updateSwingCount(fighter, before, dt);
     // The live clock after preparation uses these earlier signed bounds.
-    if (repeating || action == 31) {
+    if (action == 5 || action == 11 || staff) {
         const int32_t start = timing.windUp, end = start + timing.active;
-        const int32_t period = timing.active / (repeating ? 3 : 12);
+        const int32_t intervals = staff ? ((action & 1) ? 12 : 6) : 3;
+        const int32_t period = timing.active / intervals;
         window = {start, start};
         if (period > 0 && before >= start && before < end) {
             const auto pulseIndex = [&](int32_t clock) {
@@ -81,19 +88,19 @@ bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body 
             const int32_t current = pulseIndex(before);
             const int32_t lower = start + current * period;
             window = {lower, lower + 100};
-            if (repeating) {
-                const int32_t projected = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(dt));
-                const int32_t next = pulseIndex(projected);
-                if (next != current && start + next * period < end) {
-                    fighter.swingCount = fighter.combo;
-                    fighter.struck.clear();
-                    fighter.deferred.clear();
-                }
-                const int32_t previous = std::bit_cast<int32_t>(uint32_t(before) - uint32_t(dt));
-                if (action == 11 && effects && (previous < start || next != current))
-                    effects->frame.sounds.push_back({soundPosition(body.position), 15,
-                                                     sound::randomPitch(effects->draw(), .25f, 1.f), 1.f});
+            const int32_t projected = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(dt));
+            const int32_t next = pulseIndex(projected);
+            const bool advance = next != current && start + next * period < end;
+            if (advance) {
+                fighter.swingCount = fighter.combo;
+                fighter.struck.clear();
+                fighter.deferred.clear();
             }
+            areaHeal = staff && action >= 32 && (advance || projected > window.upper);
+            const int32_t previous = std::bit_cast<int32_t>(uint32_t(before) - uint32_t(dt));
+            if (action != 5 && effects && (previous < start || next != current))
+                effects->frame.sounds.push_back({soundPosition(body.position), 15,
+                                                 sound::randomPitch(effects->draw(), .25f, 1.f), 1.f});
         }
     }
     if (before <= timing.windUp) {
@@ -112,15 +119,17 @@ bool prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body 
         if (const auto consumed = creatures::consumeBuff(fighter, 9); consumed && effects)
             effects->frame.buffs.push_back(*consumed);
     }
-    return strikes && window.admits(fighter.actionMs);
+    return {strikes && window.admits(fighter.actionMs), areaHeal};
 }
 
 template<class Visit>
 void strikeReceivedMelee(creatures::Combatant &attacker, const creatures::Body &body,
                          const creatures::Combatant *local, const creatures::visibility::Scene &sight,
-                         const RemoteCreatures::StepEffects &effects, const Visit &visit) {
+                         const RemoteCreatures::StepEffects &effects, bool areaHeal, const Visit &visit) {
     using namespace creatures;
     const StrikeGeometry geometry = strikeGeometry(attacker, body, body.yaw);
+    auto &frame = effects.frame;
+    bool hitAny = false;
     visit([&](Combatant &target, const Body &targetBody) {
         const uint64_t key = target.id;
         if (target.health <= 0 || std::find(attacker.struck.begin(), attacker.struck.end(), key) != attacker.struck.end())
@@ -128,37 +137,43 @@ void strikeReceivedMelee(creatures::Combatant &attacker, const creatures::Body &
         if (!strikeReaches(geometry, body, targetBody))
             return;
         const visibility::Position end{targetBody.position[0], targetBody.position[1], targetBody.position[2]};
-        if (!visibility::visible(geometry.start, end, sight) || !hostilityTest(attacker, target))
+        if (!visibility::visible(geometry.start, end, sight))
             return;
-        if (target.dodgeMs != 0) {
+        const bool hostile = hostilityTest(attacker, target);
+        if (hostile && target.dodgeMs != 0) {
             if (std::find(attacker.deferred.begin(), attacker.deferred.end(), key) == attacker.deferred.end())
                 attacker.deferred.push_back(key);
             return;
         }
 
-        const HitInput input = strikeInput(attacker, body, targetBody, effects.draw);
-        const bool first = attacker.struck.empty() && attacker.hitStun <= 0;
-        attacker.struck.push_back(key);
-        attacker.hitLanded = true;
-        if (&target == local)
-            return;
-
-        // Connected production writes the helper's resident effects and keeps
-        // the hit records for the client collector. Authority applies damage.
-        const HitOutcome outcome = resolveHit(target, targetBody.velocity, &attacker, input, effects.draw);
-        auto &frame = effects.frame;
-        frame.emittedHits.insert(frame.emittedHits.end(), outcome.records.begin(), outcome.records.end());
-        frame.sounds.insert(frame.sounds.end(), outcome.sounds.begin(), outcome.sounds.end());
-        frame.bursts.insert(frame.bursts.end(), outcome.bursts.begin(), outcome.bursts.end());
-        frame.buffs.insert(frame.buffs.end(), outcome.buffs.begin(), outcome.buffs.end());
-        if (!outcome.hitAccepted)
-            return;
-        if (first) {
-            attacker.combo = std::bit_cast<int32_t>(uint32_t(attacker.combo) + 1u);
-            attacker.comboElapsedMs = 0;
+        if (hostile) {
+            const HitInput input = strikeInput(attacker, body, targetBody, effects.draw);
+            const bool first = attacker.struck.empty() && attacker.hitStun <= 0;
+            attacker.struck.push_back(key);
+            attacker.hitLanded = true;
+            if (&target != local) {
+                // Publish helper outputs before the next live candidate. Damage
+                // and healing records still go through the connected collector.
+                const HitOutcome outcome = resolveHit(target, targetBody.velocity, &attacker, input, effects.draw);
+                frame.emittedHits.insert(frame.emittedHits.end(), outcome.records.begin(), outcome.records.end());
+                frame.sounds.insert(frame.sounds.end(), outcome.sounds.begin(), outcome.sounds.end());
+                frame.bursts.insert(frame.bursts.end(), outcome.bursts.begin(), outcome.bursts.end());
+                frame.buffs.insert(frame.buffs.end(), outcome.buffs.begin(), outcome.buffs.end());
+                if (outcome.hitAccepted) {
+                    const auto success = afterStrike(attacker, first, hitAny, effects.draw, false);
+                    if (success.buff)
+                        frame.buffs.push_back(*success.buff);
+                    if (success.upgradeSound)
+                        frame.sounds.push_back({soundPosition(body.position), 47, 1.f, 1.f});
+                }
+            }
         }
-        if (input.area && attacker.characterClass == 4 && attacker.specialization == 0)
-            attacker.stealth = std::min(attacker.stealth + input.power, 1.f);
+        // The alternate pass performs a fresh relationship check. It can admit
+        // a rolling ally, the attacker itself or a friendly controlled actor.
+        if (areaHeal && !hostilityTest(attacker, target) && attacker.specialization == 1) {
+            frame.emittedHits.push_back(areaHealRecord(attacker, key, end, effects.draw));
+            frame.sounds.push_back({soundPosition(body.position), 42, 1.f, 1.f});
+        }
     });
 }
 
@@ -439,9 +454,10 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
         // The common timers run inside each received actor's living turn.
         // Replica actors skip combo timeout and world-authoritative periodic hits.
         creatures::advanceActionTimers(fighter, dtMs);
-        if (prepareReceivedAction(fighter, r.live, dtMs, effects, deferredFeedback) && effects)
+        const auto strike = prepareReceivedAction(fighter, r.live, dtMs, effects, deferredFeedback);
+        if (strike.admitted && effects)
             strikeReceivedMelee(fighter, r.live, controlled ? &controlled->fighter : nullptr, sight, *effects,
-                               [&](const auto &visit) { visitBodies(*this, fighters, controlled, visit); });
+                               strike.areaHeal, [&](const auto &visit) { visitBodies(*this, fighters, controlled, visit); });
         creatures::advanceActionClock(fighter, dtMs, false);
         if (fighter.action == 0) {
             deferredFeedback(fighter);

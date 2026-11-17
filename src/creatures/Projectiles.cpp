@@ -318,7 +318,7 @@ void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at
             const int32_t sound = explosion ? 81 : c.specialization == 1 ? 41 : 38;
             out.push_back({at, sound, 1, 1});
             if (channel)
-                appendChannelBurst(c, channel->body, channel->body.look, channel->out);
+                appendChannelBurst(c, channel->body, c.aim, channel->out);
         }
     }
     if (crosses(P1)) {
@@ -383,8 +383,9 @@ void receivedActionEffects(const Combatant &c, const Body &body, int32_t dt, glm
             sounds.push_back({at, 14, sound::randomPitch(draw(), 0.25f, 1.f), 1.f});
     } else if (meleeAction(c.action)) {
         const ChannelBursts channel{body, bursts};
-        // The received action-11 pulse sounds after its candidate reset.
-        appendActionSounds(c, c.actionMs, dt, at, draw, sounds, &channel, c.action != 11);
+        // These received pulse sounds follow the corresponding candidate reset.
+        const bool timedInActorTurn = c.action == 11 || (c.action >= 30 && c.action <= 33);
+        appendActionSounds(c, c.actionMs, dt, at, draw, sounds, &channel, !timedInActorTurn);
     }
 }
 

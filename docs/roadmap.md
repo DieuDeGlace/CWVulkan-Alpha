@@ -776,6 +776,11 @@ Differences from the Steam engine that shape the plan:
   Use exact signed windows, pulse and per-target draws, action-specific resource
   and impulse selectors, and the timed action-17 buff append before the target's
   own turn. Original-client combat acceptance remains open.
+- [x] Connected staff actions 30–33 (`alpha-connected-melee-actions-30-through-33.md`,
+  `alpha-rulings-connected-melee-30-through-33-stats.md`). Use the received aim,
+  saved pulse, selected attack and defense stats, and the alternating sound and
+  draw order for hostile hits and the friendly heal route. Verify matched
+  original-client combat and numeric runtime behavior separately.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species

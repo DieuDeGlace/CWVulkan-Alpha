@@ -2173,3 +2173,25 @@ The Windows x64 build, nine focused suites and all 60 CTest suites passed.
 Revision 15 parsed
 and all 44 links resolved. The held contract's full hash and line count
 matched. Original-client combat and the zero-period action-11 case remain open.
+
+## Connected staff actions 30–33 (2026-11-17)
+
+ActorOrderTests verifies the attack reader's weapon priority, full item
+contributions and both unarmed flags. It checks the defense reader's role-zero
+base, retained tier term and four equipment weights. A nonzero aim received
+in field 26 moves the test's strike centre into range. Action 30 orders its
+fixed magic sound or ward sound before the proc and its type-9 record. The
+ordinary outcome uses resistance, and a fully absorbed ward still reaches
+the proc. The connected target's health remains under authority.
+
+The action-32 and action-33 fixtures check the rolling ally, self and
+controlled ally in signed actor order. Each target uses variation followed
+by a fresh critical draw that leaves the signed amount unchanged. The
+fixtures distinguish a successor pulse at upper equality, a final pulse
+at equality and a final pulse overrun. The Windows x64 build, ten focused
+suites and all 60 CTest suites passed. Revision 16 parsed and all 46 links
+resolved. Both independent contracts matched their complete hashes and
+saved line counts. The original Alpha dedicated server accepted the new
+client with protocol version 3 and assigned creature ID 1. The Vulkan
+capture confirmed seed 41's Lands of Gami scene, HUD and minimap.
+Original-client combat and last-bit math comparisons remain open.

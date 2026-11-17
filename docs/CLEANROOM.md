@@ -3640,3 +3640,27 @@ record before the next actor. The connected actor's own buff pass ages the
 resident effect. Finite nonlocal living actors with positive stat divisors are
 covered. Original-client combat, the zero-period case, other action families
 and the wider stat and presentation acceptance gates remain open.
+
+## Connected staff actions 30–33 (2026-11-17)
+
+The isolated author finalized [the connected staff contract](specs/alpha-connected-melee-actions-30-through-33.md).
+The implementer read all 393 physical lines and verified SHA-256
+`49c71dcdbf245c9c15383fe18eaaa34ba14b65b03d958fc441cd364024cf814e`.
+A separate source author finalized [the stat ruling](specs/alpha-rulings-connected-melee-30-through-33-stats.md).
+The implementer read all 216 physical lines and verified SHA-256
+`5ad1be59e12ca5a59ac781fecbc195de26423a663ec8fa423cfc45ba7e47a168`.
+The ruling identifies the attack reader at RVA `0x046E80` for both hostile
+and healing amounts and defense at `0x0467A0` for continuing hostile hits.
+The shared stat helpers provide the held rank, equipment order and factors.
+The rank-zero term reduces to its exact unit multiplier.
+
+The four actions save their 100 ms pulse bounds before retiming. A projected
+successor clears both ID lists before the pulse cue. Action 31 consumes the
+first resident type 9 before geometry and candidate handling. Field 26 supplies
+the live aim to both geometry and release visuals, and baseline hit sounds
+use the native binary32 conversion of the target's fixed position. The
+hostile route keeps hit-helper and action-30 proc draws in order and bypasses
+local mana rewards. The alternate route rechecks the relationship and emits
+its signed heal after a variation draw and an independent critical draw. It
+keeps the target's local health intact in this nonlocal turn. Nonfinite state,
+original-client combat and imported power's last-bit runtime match remain open.
