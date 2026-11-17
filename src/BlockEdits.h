@@ -4,7 +4,7 @@
 // expiry (§5), stamping a blueprint (§6), the natural ground a bomb or a big creature's blow
 // takes away (§8, §9), and each zone's list of edits.
 #include "CubModel.h"
-#include "worldgen/Zone.h"
+#include "worldgen/WorldMap.h"
 #include <array>
 #include <functional>
 #include <map>
@@ -56,6 +56,16 @@ std::array<int32_t, 3> placementBase(const int64_t position[3], glm::vec3 aim);
 // `read` gives it. Blocks the world protects (flag 0x40) are left alone.
 std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int32_t, 3> base, int32_t quarterTurns,
                                         const ReadBlock &read);
+// Offline kind 7 stages live world changes while retaining an ordered stream
+// of colored records for the subsequent history update.
+struct BlueprintPlacement {
+    std::map<worldgen::WorldMap::ZoneKey, std::shared_ptr<worldgen::Zone>> zones;
+    std::set<std::pair<int32_t, int32_t>> changedColumns;
+    std::vector<BlockEdit> records;
+};
+BlueprintPlacement stageBlueprint(const worldgen::WorldMap &world, const CubModel &model,
+                                  const std::array<int32_t, 3> &base, int8_t rotation, int32_t day,
+                                  const GapFill &gapFill);
 // §6.2: the blueprint models by object number.
 const char *blueprintKey(int32_t number); // nullptr for numbers with no blueprint
 
@@ -82,6 +92,7 @@ class BlockEditLists {
     using Key = std::pair<int32_t, int32_t>;
     // §3 step 3: appends a record to the list of the zone holding its column.
     void add(const BlockEdit &edit);
+    void add(Key key, const BlockEdit &edit);
     // §4.2: a zone's saved list, filtered by the 3-day rule; the kept records.
     const std::vector<BlockEdit> &restore(int32_t zx, int32_t zy, const std::vector<std::array<uint8_t, 20>> &saved,
                                           int32_t today);

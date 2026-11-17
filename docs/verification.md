@@ -2138,3 +2138,21 @@ An isolated mod-launcher run started the original 32-bit client and
 loaded Direct3D 9, DirectInput and the Visual C++ runtime. It exposed no
 targetable game window. The desktop launch produced the same window
 outcome. Original-client interactive comparison is still open.
+
+## Offline queued blueprint placement (2026-11-17)
+
+WorldgenTests checks the exact ordered colored records, signed truncation
+at world zero, live protection, keep bits, interior air, positional gap fill
+and unloaded columns. In the admitted zones the fixture removes unsupported
+flagged sprites and terrain plants. The retained lily uses its submerged
+fixed height, and the retained reed has its ground-resting flag clear.
+NetTests checks separate signed model and rotation bytes at receipt and
+serialization, and exercises the existing dedicated placement path.
+
+The production WorldView diagnostic used the owner's wooden floor model.
+It verified 600 live cells and matching color records at a signed rotation of
+minus three quarter turns. The repeated stamp produced an empty colored
+history and a second anchor entry. The remesh completed and the Vulkan
+capture showed the placed floor in the generated terrain. The Windows x64
+build, nine focused suites and all 60 CTest suites passed. Stock input
+activation, native preview and the placement save boundary remain open.

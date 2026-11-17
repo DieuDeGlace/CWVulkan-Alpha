@@ -870,6 +870,18 @@ static void checkCombatTransport() {
 }
 
 int main() {
+    {
+        auto record = CreatureRecord::nativeDefaults();
+        auto actor = record.fighter();
+        check(actor.blueprintRotation == 0 && actor.blueprintModel == 0, "fresh blueprint fields are zero");
+        actor.blueprintRotation = -7;
+        actor.blueprintModel = -128;
+        record.setFighter(actor);
+        const auto decoded = record.fighter();
+        check(record.bytes[0x17c] == 249 && record.bytes[0x17d] == 128 &&
+                  decoded.blueprintRotation == -7 && decoded.blueprintModel == -128,
+              "the two signed blueprint fields round-trip independently through the core record");
+    }
     checkIdentityAdoption();
     checkClientPackets();
     checkCreatureReceiptPoses();

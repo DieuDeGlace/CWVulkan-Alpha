@@ -134,6 +134,10 @@ class WorldView {
     // the changed zones again and re-meshes the 3 x 3 chunks round each record. Records for
     // zones not held are dropped.
     void applyEdits(const std::vector<BlockEdit> &edits, bool saved);
+    // Offline kind 7 consumes the actor's live placement fields and returns
+    // only the colored history records, in stencil order.
+    std::vector<BlockEdit> placeQueuedBlueprint(int8_t number, int8_t rotation, const int64_t position[3],
+                                               glm::vec3 aim, int32_t day);
     std::string status() const;
     // The base height H of a column (terrain spec §4), for places not generated yet.
     float groundHeight(int32_t x, int32_t y) const { return terrain.height(x, y); }
@@ -175,6 +179,8 @@ class WorldView {
   private:
     using Key = std::pair<int32_t, int32_t>;
     void refreshPlantsNear(Key zone);
+    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits, const std::set<Key> &remesh);
+    std::map<int8_t, CubModel> blueprintModels;
     // A placed plant model: placed = translate x scale, the yaw after the sway.
     struct PlantInstance {
         MeshId mesh;

@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 13 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 14 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -318,7 +318,8 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
       <p>The <a href="specs/alpha-visibility-ray-geometry.md">visibility ray contract</a> has been independently re-certified for the original client. Native unloaded-column and loader acceptance remain open.</p>
       <p>The revision 12 Vulkan client joined the original Alpha server over loopback, received creature ID 1, adopted seed 41 and rendered a Lands of Gami frame with its HUD. The original game client, combat timing and longer sessions still need acceptance.</p>
       <p>The engine read the original server's world clock record. The original server then advertised the clock the engine wrote into a separate copy of that save. Wider zone, character and map save interchange remains open.</p>
-      <p>The dedicated server handles mixed item requests at the sender's turn and answers zone requests in their received order, including duplicates. Connected clients replace received placed-object lists at the zone-content boundary. Stock build-mode activation, model selection and offline blueprint placement remain open.</p>
+      <p>The dedicated server handles mixed item requests at the sender's turn and answers zone requests in their received order, including duplicates. Connected clients replace placed-object lists at the zone-content boundary.</p>
+      <p>The <a href="specs/alpha-stock-blueprint-placement.md">offline blueprint consumer</a> processes queued kind-7 requests using live selection, rotation, position and aim. Cells are visited in stencil order with live protection checks. It removes unsupported ground-resting plants and sprites in the admitted zones. Colored edits enter their loaded zone's history, and the anchor zone keeps the placement list. An owned-content Vulkan diagnostic placed and rendered all 600 cells of the wooden floor. Stock build-mode activation, local model selection, placement save interchange and original-client comparisons remain open.</p>
       <p>Open behaviour questions stay in each contract's unresolved section and in <span class="mono">docs/roadmap.md</span>. An unproved point stays open and is never filled in by guessing.</p>
     </section>
 

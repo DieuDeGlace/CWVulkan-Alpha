@@ -922,8 +922,12 @@ Differences from the Steam engine that shape the plan:
   complete placed-object lists, acknowledge valid zone data, and request only
   the current held pending zone. The sender retains the ordered lists across
   timed turns and the dedicated server answers each request in arrival order.
-- [ ] Complete offline blueprint placement and trace the stock mode and
-  selection producers. Original-client acceptance remains open.
+- [x] Offline queued blueprint placement (`alpha-stock-blueprint-placement.md`).
+  Resolve the signed model at the actor turn, stamp the live world, remove
+  unsupported flagged plants and sprites, and append the anchor and colored
+  histories. The owned wooden floor was remeshed and rendered in Vulkan.
+- [ ] Trace the stock build-mode and local model-selection producers. Verify
+  original-client placement and the full persistence boundary.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

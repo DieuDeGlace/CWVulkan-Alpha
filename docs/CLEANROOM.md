@@ -3204,6 +3204,29 @@ ray kernel already uses the specified step and face order. Current world
 storage supplies cell and object callbacks. Native unloaded-column and
 loader equivalence, and the original server's ray path, remain open.
 
+## Offline queued blueprint placement (2026-11-17)
+
+The isolated author finalized [the stock placement contract](specs/alpha-stock-blueprint-placement.md).
+The implementer read all 252 physical lines and verified SHA-256
+`a49cd4a2d877da5315166f0f9a3478543608386a1c46192d14935731871d3f24`.
+The original local writer audit covers the mode and signed selection
+fields, the conditional R producer and the offline world's kind-7 arm.
+The stock route into enabled mode and the local model-selection writer
+remain untraced.
+
+The offline actor turn resolves the cached owned model with the live
+selection, rotation, aim and position. Placement uses the shared stencil
+arithmetic with signed fixed-point conversion and truncation after adding
+the anchor. It reads earlier writes in the same stencil, writes protected
+interior air, retains the original keep bit, and emits only the admitted
+colored records. Unsupported ground-resting plants and sprites are removed across
+the loaded unrotated rectangle. The anchor zone retains the model and
+position entry. Each colored record enters the existing edit history for
+its own loaded zone. The terrain and light renderer use the published
+copies. The verified path runs with a local actor. Native preview activation,
+lighting without a local actor, placed-object persistence and original-client
+acceptance remain open.
+
 ## Quick-item wheel and ordered confirmation (2026-11-17)
 
 An isolated source author finalized [the quick-wheel contract](specs/alpha-packet6-quick-wheel.md)

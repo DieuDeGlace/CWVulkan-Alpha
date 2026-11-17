@@ -170,6 +170,8 @@ void CreatureRecord::readFighter(creatures::Combatant &c, bool retainItemPadding
     c.blockGauge = get<float>(bytes, 0x164);
     for (int i = 0; i < 5; i++)
         c.multipliers[i] = get<float>(bytes, 0x168 + 4 * i);
+    c.blueprintRotation = get<int8_t>(bytes, 0x17c);
+    c.blueprintModel = get<int8_t>(bytes, 0x17d);
     c.level = get<int32_t>(bytes, 0x180);
     c.experience = get<int32_t>(bytes, 0x184);
     c.ownerId = get<uint64_t>(bytes, 0x188);
@@ -242,6 +244,8 @@ void CreatureRecord::setFighter(const creatures::Combatant &c) {
     put<float>(bytes, 0x15c, c.health);
     for (int i = 0; i < 5; i++)
         put<float>(bytes, 0x168 + 4 * i, c.multipliers[i]);
+    put<int8_t>(bytes, 0x17c, c.blueprintRotation);
+    put<int8_t>(bytes, 0x17d, c.blueprintModel);
     put<int32_t>(bytes, 0x180, c.level);
     put<int32_t>(bytes, 0x184, c.experience);
     put<uint64_t>(bytes, 0x188, c.ownerId);

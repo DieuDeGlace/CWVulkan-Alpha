@@ -36,7 +36,98 @@ static void same(double got, double want, const std::string &what, double tolera
     }
 }
 
+static void checkOfflineBlueprint() {
+    WorldMap world;
+    auto west = std::make_shared<Zone>(0, 0);
+    auto east = std::make_shared<Zone>(1, 0);
+    auto far = std::make_shared<Zone>(2, 0);
+    west->place(253, 10, 10, {1, 2, 3, ROCK});
+    west->place(254, 10, 5, {1, 2, 3, PLACED_BLOCK});
+    west->place(254, 10, 6, {1, 2, 3, PLACED_BLOCK});
+    west->place(255, 10, 5, {1, 2, 3, uint8_t(ROCK | KEEP)});
+    west->place(255, 10, 6, {1, 2, 3, uint8_t(ROCK | KEEP)});
+    Sprite unsupported;
+    unsupported.x = 300 * 65536ll;
+    unsupported.y = 40 * 65536ll;
+    unsupported.z = 8 * 65536ll;
+    unsupported.flags = 2;
+    east->sprites.push_back(unsupported);
+    unsupported.x = 600 * 65536ll;
+    far->sprites.push_back(unsupported);
+    unsupported.x = 300 * 65536ll;
+    unsupported.flags = 0;
+    east->sprites.push_back(unsupported);
+    east->plants.push_back({301, 40, 8, .1f, 0, 1, 2});
+    east->plants.push_back({301, 41, 8, .1f, 0, 22, 4});
+    east->place(302, 41, 6, {1, 2, 3, ROCK});
+    east->plants.push_back({302, 41, 8, .1f, 0, 31, 2, true});
+    world.add(west);
+    world.add(east);
+    world.add(far);
+
+    CubModel model;
+    model.sx = 4;
+    model.sy = 2;
+    model.sz = 3;
+    model.rgb.resize(4 * 2 * 3 * 3);
+    for (size_t cell = 0; cell < 8; cell++) {
+        model.rgb[3 * cell] = 31;
+        model.rgb[3 * (cell + 16) + 2] = 93;
+    }
+    const auto fill = [](int32_t, int32_t, int32_t) { return Block{71, 72, 73, ROCK}; };
+    const auto placed = stageBlueprint(world, model, {255, 11, 5}, 0, 17, fill);
+    same(placed.records.size(), 15, "offline blueprint emits only admitted colored records");
+    if (!placed.records.empty()) {
+        const auto &first = placed.records.front(), &last = placed.records.back();
+        same(first == BlockEdit{253, 10, 5, 31, 0, 0, PLACED_BLOCK, 17} &&
+                  last == BlockEdit{256, 11, 7, 0, 0, 93, PLACED_BLOCK, 17},
+              1, "ordered blueprint edit stream crosses the anchor zone with the current day");
+    }
+    const auto left = placed.zones.find({0, 0}), right = placed.zones.find({1, 0});
+    same(left != placed.zones.end() && right != placed.zones.end() && !placed.zones.contains({2, 0}),
+          1, "the placement changes the held footprint and only cleans the specified zone rectangle");
+    if (left != placed.zones.end()) {
+        const auto &zone = *left->second;
+        same(zone.read(254, 10, 5).r == 1 && zone.read(254, 10, 6).typeByte == DRY_AIR &&
+                  zone.read(255, 10, 5).typeByte == uint8_t(PLACED_BLOCK | KEEP) &&
+                  zone.read(255, 10, 6).typeByte == uint8_t(ROCK | KEEP) && zone.read(253, 10, 8).r == 71,
+              1, "colored protection, interior clearing, keep-bit and positional gap fill use the live writer");
+    }
+    if (right != placed.zones.end()) {
+        same(right->second->sprites.size() == 1 && right->second->sprites.front().flags == 0 &&
+                  placed.changedColumns.contains({300, 40}) && east->sprites.size() == 2,
+              1, "ground-resting sprite cleanup spans the admitted zone and preserves the earlier snapshot");
+        const auto &plants = right->second->plants;
+        same(plants.size() == 2 && plants.front().kind == 22 && plants.back().kind == 31 &&
+                  placed.changedColumns.contains({301, 40}) && east->plants.size() == 3,
+              1, "the same list cleanup removes ground plants and uses the lily's actual fixed support height");
+    }
+
+    WorldMap partial;
+    partial.add(west);
+    const auto withoutEast = stageBlueprint(partial, model, {255, 11, 5}, 0, 17, fill);
+    same(withoutEast.records == placed.records && !withoutEast.zones.contains({1, 0}),
+          1, "a missing column still yields its original colored edit payload");
+
+    CubModel edge;
+    edge.sx = edge.sy = 2;
+    edge.sz = 1;
+    edge.rgb = {17, 0, 0, 0, 19, 0, 17, 0, 0, 0, 19, 0};
+    const auto zero = stageBlueprint(partial, edge, {0, 20, 5}, 0, 17, fill);
+    same(zero.records.size() == 2 && zero.records[0].x == 0 && zero.records[0].r == 17 &&
+              zero.records[1].x == 0 && zero.records[1].r == 17,
+          1, "signed truncation can map two columns to zero and later colors see live protection");
+
+    world.appendPlacedObject({0, 0}, {2, 255, 11, 5});
+    world.appendPlacedObject({0, 0}, {4, 20, 21, 22});
+    world.appendPlacedObject({3, 0}, {4, 800, 21, 22});
+    const WorldMap::PlacedObjects expected{{2, 255, 11, 5}, {4, 20, 21, 22}};
+    same(world.placedObjects({0, 0}) && *world.placedObjects({0, 0}) == expected && !world.placedObjects({3, 0}),
+          1, "an admitted anchor zone keeps placement records in append order");
+}
+
 int main() {
+    checkOfflineBlueprint();
     // Extractor §B5.2: the clean-up keeps a disc of squared zone distance < 16 and runs only
     // when more than 1000 ms have passed.
     {

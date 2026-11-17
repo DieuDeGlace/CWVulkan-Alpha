@@ -1109,6 +1109,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             case ItemRequest::CallPet:
                 npcs.callPetFixed(fighter, body.position);
                 break;
+            case ItemRequest::PlaceObject:
+                for (const auto &edit : view.placeQueuedBlueprint(fighter.blueprintModel, fighter.blueprintRotation,
+                                                                  body.position, fighter.aim, scene.day)) {
+                    const worldgen::WorldMap::ZoneKey zone{edit.x / worldgen::Zone::SIZE, edit.y / worldgen::Zone::SIZE};
+                    if (view.held().containsNetworkZone(zone))
+                        blockEdits.add(zone, edit);
+                }
+                break;
             default:
                 break;
             }

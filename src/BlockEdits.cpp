@@ -1,5 +1,6 @@
 #include "BlockEdits.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <optional>
@@ -74,15 +75,26 @@ bool dropFloating(Zone &zone) {
 
 std::array<int32_t, 3> placementBase(const int64_t position[3], glm::vec3 aim) {
     std::array<int32_t, 3> base{};
-    for (int k = 0; k < 3; k++)
-        base[k] = (int32_t)((position[k] + (int64_t)(aim[k] * 65536.0f) + 32768) / 65536);
+    for (int k = 0; k < 3; k++) {
+        const int64_t offset = int64_t(aim[k] * 65536.f);
+        const int64_t raw = std::bit_cast<int64_t>(uint64_t(position[k]) + uint64_t(offset) + 32768u);
+        base[k] = std::bit_cast<int32_t>(uint32_t(raw / 65536));
+    }
     return base;
 }
 
-std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int32_t, 3> base, int32_t quarterTurns,
-                                        const ReadBlock &read) {
-    std::vector<BlueprintBlock> out;
-    const int32_t q = ((quarterTurns % 4) + 4) % 4;
+namespace {
+
+template<class Visit>
+void visitBlueprint(const CubModel &model, const std::array<int32_t, 3> &base, int32_t rotation,
+                    const ReadBlock &read, const Visit &write) {
+    const float angle = (float(rotation) * 90.f) * 0.0174532924f;
+    const float cosine = float(std::cos(double(angle))), sine = float(std::sin(double(angle)));
+    const float x0 = -.5f * float(model.sx), y0 = -.5f * float(model.sy);
+    const float tx = cosine * x0 - sine * y0, ty = sine * x0 + cosine * y0;
+    const auto column = [](int32_t anchor, float offset) {
+        return std::bit_cast<int32_t>(uint32_t((int64_t(anchor) * 65536 + int64_t(offset * 65536.f)) / 65536));
+    };
     for (int i = 0; i < model.sx; i++)
         for (int j = 0; j < model.sy; j++) {
             // The column's lowest and highest filled voxels.
@@ -92,25 +104,115 @@ std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int
                     zlo = std::min(zlo, k);
                     zhi = std::max(zhi, k);
                 }
-            // The voxel's centre about the model's middle, turned by quarter turns (exact for
-            // the even sizes every blueprint has).
-            const float u = (float)i + 0.5f - (float)model.sx / 2, v = (float)j + 0.5f - (float)model.sy / 2;
-            const float tx[4] = {u, -v, -u, v}, ty[4] = {v, u, -v, -u};
-            const int32_t X = base[0] + (int32_t)std::floor(tx[q]), Y = base[1] + (int32_t)std::floor(ty[q]);
+            const float x = float(i) + .5f, y = float(j) + .5f;
+            const int32_t X = column(base[0], (cosine * x - sine * y) + tx);
+            const int32_t Y = column(base[1], (sine * x + cosine * y) + ty);
             for (int k = 0; k < model.sz; k++) {
-                const int32_t Z = base[2] + k;
+                const int32_t Z = column(base[2], float(k) + .5f);
                 if (!model.solid(i, j, k)) {
                     if (zlo < k && k < zhi)
-                        out.push_back({X, Y, Z, Block{0, 0, 0, worldgen::DRY_AIR}, false});
+                        write(BlueprintBlock{X, Y, Z, Block{0, 0, 0, worldgen::DRY_AIR}, false});
                     continue;
                 }
                 if (read(X, Y, Z).typeByte & worldgen::DRY_AIR)
                     continue; // structures and earlier placements win
                 const glm::u8vec3 c = model.colour(i, j, k);
-                out.push_back({X, Y, Z, Block{c.r, c.g, c.b, PLACED_BLOCK}, true});
+                write(BlueprintBlock{X, Y, Z, Block{c.r, c.g, c.b, PLACED_BLOCK}, true});
             }
         }
+}
+
+} // namespace
+
+std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int32_t, 3> base, int32_t quarterTurns,
+                                          const ReadBlock &read) {
+    std::vector<BlueprintBlock> out;
+    visitBlueprint(model, base, quarterTurns, read, [&](const auto &cell) { out.push_back(cell); });
     return out;
+}
+
+BlueprintPlacement stageBlueprint(const worldgen::WorldMap &world, const CubModel &model,
+                                  const std::array<int32_t, 3> &base, int8_t rotation, int32_t day,
+                                  const GapFill &gapFill) {
+    using Key = worldgen::WorldMap::ZoneKey;
+    constexpr int32_t lastZone = 65535;
+    constexpr uint32_t worldWidth = (lastZone + 1u) * Zone::SIZE;
+    BlueprintPlacement placement;
+    const auto copyZone = [&](Key key, const Zone &source) -> Zone & {
+        auto &copy = placement.zones[key];
+        if (!copy)
+            copy = std::make_shared<Zone>(source);
+        return *copy;
+    };
+    const ReadBlock read = [&](int32_t x, int32_t y, int32_t z) {
+        if (uint32_t(x) >= worldWidth || uint32_t(y) >= worldWidth)
+            return worldgen::IMPLICIT_SOLID;
+        const Key key{x / Zone::SIZE, y / Zone::SIZE};
+        if (const auto found = placement.zones.find(key); found != placement.zones.end())
+            return found->second->read(x, y, z);
+        const auto *zone = world.zone(key.first, key.second);
+        return zone ? zone->read(x, y, z) : worldgen::IMPLICIT_SOLID;
+    };
+    visitBlueprint(model, base, rotation, read, [&](const BlueprintBlock &cell) {
+        const auto &b = cell.block;
+        const BlockEdit edit{cell.x, cell.y, cell.z, b.r, b.g, b.b, b.typeByte, day};
+        if (uint32_t(cell.x) < worldWidth && uint32_t(cell.y) < worldWidth) {
+            const Key key{cell.x / Zone::SIZE, cell.y / Zone::SIZE};
+            if (const auto *zone = world.zone(key.first, key.second)) {
+                applySaved(copyZone(key, *zone), edit, gapFill);
+                placement.changedColumns.emplace(cell.x, cell.y);
+            }
+        }
+        if (cell.recorded)
+            placement.records.push_back(edit);
+    });
+
+    const auto zoneOf = [](int64_t block) { return int32_t(std::max(block, int64_t(0)) / Zone::SIZE); };
+    const auto block = [](int64_t raw) { return std::bit_cast<int32_t>(uint32_t(raw / 65536 - (raw < 0 ? 1 : 0))); };
+    const auto support = [&](int64_t x, int64_t y, int64_t z) {
+        const int64_t below = std::bit_cast<int64_t>(uint64_t(z) - 65536u);
+        return std::array{block(x), block(y), block(below)};
+    };
+    const int32_t lastX = std::min(lastZone, zoneOf(int64_t(base[0]) + model.sx));
+    const int32_t lastY = std::min(lastZone, zoneOf(int64_t(base[1]) + model.sy));
+    for (int32_t x = zoneOf(base[0]); x <= lastX; x++)
+        for (int32_t y = zoneOf(base[1]); y <= lastY; y++) {
+            const Key key{x, y};
+            const auto *zone = world.zone(x, y);
+            if (!zone)
+                continue;
+            const auto prune = [&](auto entries, const auto &supportCell) {
+                const auto &original = zone->*entries;
+                const auto discard = [&](const auto &entry) {
+                    if (!(entry.flags & 2))
+                        return false;
+                    const auto [sx, sy, sz] = supportCell(entry);
+                    if (read(sx, sy, sz).type() != worldgen::AIR)
+                        return false;
+                    placement.changedColumns.emplace(sx, sy);
+                    return true;
+                };
+                const auto first = std::find_if(original.begin(), original.end(), discard);
+                if (first == original.end())
+                    return;
+                auto &current = copyZone(key, *zone).*entries;
+                const auto start = current.begin() + (first - original.begin());
+                auto out = start;
+                for (auto entry = start + 1; entry != current.end(); ++entry)
+                    if (!discard(*entry))
+                        *out++ = std::move(*entry);
+                current.erase(out, current.end());
+            };
+            // The original zone keeps both terrain plants and prefab sprites in this list.
+            prune(&Zone::plants, [&](const worldgen::Plant &plant) {
+                return support(int64_t(plant.x) * 65536 + 32768, int64_t(plant.y) * 65536 + 32768,
+                               int64_t(plant.z) * 65536 - (plant.sink ? 6553 : 0));
+            });
+            prune(&Zone::sprites, [&](const worldgen::Sprite &sprite) {
+                return support(sprite.x, sprite.y, sprite.z);
+            });
+        }
+    return placement;
 }
 
 const char *blueprintKey(int32_t n) {
@@ -190,7 +292,10 @@ std::vector<BlockEdit> removals(const std::vector<BrokenCell> &cells) {
 }
 
 void BlockEditLists::add(const BlockEdit &e) {
-    const Key key{floorDiv(e.x, Zone::SIZE), floorDiv(e.y, Zone::SIZE)};
+    add({floorDiv(e.x, Zone::SIZE), floorDiv(e.y, Zone::SIZE)}, e);
+}
+
+void BlockEditLists::add(Key key, const BlockEdit &e) {
     lists[key].push_back(e);
     changed.insert(key);
 }

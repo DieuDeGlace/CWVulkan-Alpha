@@ -41,6 +41,7 @@ class WorldMap {
     bool needsZoneContents(ZoneKey key) const;
     void acknowledgeZoneContents(ZoneKey key);
     void replacePlacedObjects(ZoneKey key, PlacedObjects records);
+    void appendPlacedObject(ZoneKey key, const std::array<int32_t, 4> &record);
     const PlacedObjects *placedObjects(ZoneKey key) const;
 
   private:

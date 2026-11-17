@@ -17,6 +17,12 @@ double nowSeconds() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+void remeshColumn(std::set<std::pair<int32_t, int32_t>> &chunks, int32_t x, int32_t y) {
+    for (int32_t i = -1; i <= 1; i++)
+        for (int32_t j = -1; j <= 1; j++)
+            chunks.emplace((floorDiv(x, CHUNK) + i) * CHUNK, (floorDiv(y, CHUNK) + j) * CHUNK);
+}
+
 // Vegetation spec §1.1: plant kind -> model (the kinds the plant pass places).
 const char *plantModelName(int32_t kind) {
     static const char *const NAMES[] = {
@@ -277,6 +283,7 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, bool saved) {
         if (map.zoneAt(e.x, e.y))
             byZone[{floorDiv(e.x, Zone::SIZE), floorDiv(e.y, Zone::SIZE)}].push_back(&e);
     std::set<Key> remesh;
+    std::map<Key, std::shared_ptr<Zone>> replacements;
     for (const auto &[key, list] : byZone) {
         auto zone = std::make_shared<Zone>(*map.zone(key.first, key.second));
         const GapFill rock = [&](int32_t x, int32_t y, int32_t z) { return terrain.gapBlock(x, y, z, *zone); };
@@ -285,19 +292,56 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, bool saved) {
                 applySaved(*zone, *e, rock);
             else
                 applyLive(*zone, *e, rock);
-            for (int32_t i = -1; i <= 1; i++)
-                for (int32_t j = -1; j <= 1; j++)
-                    remesh.insert({(floorDiv(e->x, CHUNK) + i) * CHUNK, (floorDiv(e->y, CHUNK) + j) * CHUNK});
+            remeshColumn(remesh, e->x, e->y);
         }
         dropFloating(*zone);
+        replacements.emplace(key, std::move(zone));
+    }
+    publishEditedZones(std::move(replacements), remesh);
+}
+
+void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, const std::set<Key> &remesh) {
+    for (auto &[key, zone] : edits) {
         terrain.relight(*zone);
+        sectorSources.update(*zone);
         map.add(std::move(zone));
     }
-    for (const auto &[key, list] : byZone)
+    for (const auto &[key, zone] : edits)
         refreshPlantsNear(key);
     for (const Key &corner : remesh)
         if (map.zoneAt(corner.first, corner.second))
             requestChunk(corner.first, corner.second);
+}
+
+std::vector<BlockEdit> WorldView::placeQueuedBlueprint(int8_t number, int8_t rotation, const int64_t position[3],
+                                                       glm::vec3 aim, int32_t day) {
+    const char *key = blueprintKey(number);
+    if (!key)
+        return {};
+    auto model = blueprintModels.find(number);
+    if (model == blueprintModels.end()) {
+        const auto source = prefab(key);
+        if (!source || source->sx <= 0 || source->sy <= 0 || source->sz <= 0)
+            return {};
+        CubModel decoded;
+        decoded.sx = source->sx;
+        decoded.sy = source->sy;
+        decoded.sz = source->sz;
+        decoded.rgb = source->rgb;
+        model = blueprintModels.emplace(number, std::move(decoded)).first;
+    }
+    const auto base = placementBase(position, aim);
+    auto placed = stageBlueprint(map, model->second, base, rotation, day, [&](int32_t x, int32_t y, int32_t z) {
+        if (const auto *zone = map.zoneAt(x, y))
+            return terrain.gapBlock(x, y, z, *zone);
+        return IMPLICIT_SOLID;
+    });
+    std::set<Key> remesh;
+    for (const auto &[x, y] : placed.changedColumns)
+        remeshColumn(remesh, x, y);
+    publishEditedZones(std::move(placed.zones), remesh);
+    map.appendPlacedObject({base[0] / Zone::SIZE, base[1] / Zone::SIZE}, {number, base[0], base[1], base[2]});
+    return std::move(placed.records);
 }
 
 void WorldView::dropZone(Key key) {

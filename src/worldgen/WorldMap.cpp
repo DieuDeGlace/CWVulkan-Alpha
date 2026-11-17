@@ -31,6 +31,11 @@ void WorldMap::replacePlacedObjects(ZoneKey key, PlacedObjects records) {
         zoneContents.insert_or_assign(key, std::move(records));
 }
 
+void WorldMap::appendPlacedObject(ZoneKey key, const std::array<int32_t, 4> &record) {
+    if (containsNetworkZone(key))
+        zoneContents[key].push_back(record);
+}
+
 const WorldMap::PlacedObjects *WorldMap::placedObjects(ZoneKey key) const {
     const auto found = zoneContents.find(key);
     return found == zoneContents.end() ? nullptr : &found->second;

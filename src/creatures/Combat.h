@@ -109,6 +109,7 @@ struct Combatant {
     int32_t level = 1;
     int32_t experience = 0;
     uint8_t powerTier = 0;
+    int8_t blueprintRotation = 0, blueprintModel = 0; // independent signed core bytes 31 and 32
     float multipliers[5] = {100, 1, 1, 1, 1}; // health, attack speed, damage, armour, resistance (§8.4)
     uint16_t appearanceFlags = 0;
     std::array<Item, SLOT_COUNT> equipment{};

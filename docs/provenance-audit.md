@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 45 and the rulings. The 255 tracked contracts
-comprise 198 A, 52 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 46 and the rulings. The 256 tracked contracts
+comprise 199 A, 52 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -99,6 +99,7 @@ Batch 43 covers `alpha-connected-hit-consumption.md`.
 Batch 44 covers `alpha-ordinary-creature-link.md`.
 Batch 45 covers `alpha-connected-melee-actions-2-through-7.md`,
 `alpha-rulings-connected-melee-scalar-selectors.md` and `alpha-visibility-ray-geometry.md`.
+Batch 46 covers `alpha-stock-blueprint-placement.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -306,6 +307,7 @@ Batch 45 covers `alpha-connected-melee-actions-2-through-7.md`,
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |
 | `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
 | `alpha-spawn-objects.md` | A | 590 | 1 |
+| `alpha-stock-blueprint-placement.md` | A | 253 | 0 |
 | `alpha-specialized-vendor-stock.md` | A | 106 | 0 |
 | `alpha-strike-call-sites.md` | A | 277 | 0 |
 | `alpha-strike-cell-helpers.md` | A | 280 | 0 |
