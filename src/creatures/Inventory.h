@@ -113,6 +113,9 @@ struct Inventory {
     // §8.1.8, a right (`middle` false) or middle press on a bag slot with no window open.
     UseOutcome useSlot(int bag, size_t index, bool middle, int32_t level, int32_t characterClass, bool canAct,
                        const std::function<void(const ItemRecord &)> &applyConsumable = {});
+    // Shared type-1 use after the caller's inventory or quick-item level check.
+    std::optional<ItemRecord> useConsumable(int bag, size_t index, bool canAct,
+                                            const std::function<void(const ItemRecord &)> &apply);
     // §8.1.8, a right press on an equipment box: the item goes to the bags.
     int32_t unequip(int box);
     // §8.1.8, a left press over nothing: one item leaves the hand to be dropped in the world.

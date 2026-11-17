@@ -2709,9 +2709,10 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 strike(c, npc.body, npc.yaw, players, false, window.areaHeal, frame, block, npc.target,
                        npc.questRole == 3);
         }
+        const TimedConsumableEvents consumables{npc.body.position, frame.emittedHits, frame.sounds};
         endActionUpdate(c, milliseconds, {false, false}, [&](const Buff &buff) {
             periodicHit(c, npc.body, buff, players, frame);
-        }, npc.body.intent);
+        }, npc.body.intent, &consumables);
         npc.body.mode = c.mode;
         // Physics §4.4: overlapping creatures push each other apart (not bombs, nor creatures
         // in actions 83 and 84). The overlap uses the other box grown by (1, 1, 0) unless it is
@@ -2736,6 +2737,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             Body &b = npc.body;
             b.action = c.action, b.actionMs = c.actionMs, b.windUpMs = (float)timing.windUp, b.activeMs = (float)timing.active;
             b.durationMs = (float)duration(c, c.action);
+            b.useLimitMs = float(consumableDuration(c.held));
             b.controller = c.controller, b.type = c.type, b.appearanceFlags = npc.looks.flags;
             b.stunMs = c.hitStun;
             b.yaw = npc.yaw;

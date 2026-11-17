@@ -819,8 +819,56 @@ void counterDodge(Combatant &target, std::vector<BuffEvent> *events) {
     }
 }
 
+// Timed consumables §§2–3. Both client and server use the same clock and effects.
+static void tickConsumable(Combatant &c, int32_t milliseconds, const TimedConsumableEvents *events) {
+    const int32_t elapsed = c.actionMs;
+    const int32_t previous = std::bit_cast<int32_t>(uint32_t(elapsed) - uint32_t(milliseconds));
+    const int32_t limit = consumableDuration(c.held);
+    if (previous >= limit || previous / 200 == elapsed / 200)
+        return;
+
+    float fraction = 200.f / float(limit);
+    if (c.controller != 0)
+        fraction *= 0.5f;
+    const float heal = itemHeal(c.held) * fraction;
+    if (heal > 0.f) {
+        if (events) {
+            HitRecord hit;
+            hit.attacker = TIMED_CONSUMABLE_SOURCE;
+            hit.target = c.id;
+            hit.amount = -heal;
+            std::copy_n(events->position, 3, hit.position.begin());
+            events->hits.push_back(hit);
+        }
+        c.health += heal;
+        c.health = std::min(c.health, maxHealth(c));
+    }
+
+    const auto sound = [&](int32_t id) {
+        if (events) {
+            const auto &p = events->position;
+            const glm::vec3 at = glm::vec3(float(p[0]), float(p[1]), float(p[2])) * (1.f / 65536.f);
+            events->sounds.push_back({glm::dvec3(at), id});
+        }
+    };
+    float recovery = 0.f;
+    if (c.held.type == 1 && (c.held.subtype == 4 || c.held.subtype == 6))
+        recovery = (itemLevelFactor(float(c.held.level), c.held.rarity) / 8.f) * 1.5f;
+    const float levelScale = float(std::pow(2.0, double(0.25f * float(c.level))));
+    const float increment = (recovery / levelScale) * fraction;
+    c.recoveryPenalty += increment;
+    if (c.recoveryPenalty >= 0.f) {
+        if (c.recoveryPenalty - increment < 0.f)
+            sound(47);
+        c.recoveryPenalty = 0.f;
+    }
+    if (previous / 400 != elapsed / 400)
+        sound(44);
+}
+
 void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
-                     const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent) {
+                     const std::function<void(const Buff &)> &periodic, const glm::vec3 &intent,
+                     const TimedConsumableEvents *consumables) {
     const float dtMs = (float)milliseconds;
     if (!role.replica || role.local) {
         c.comboElapsedMs += milliseconds;
@@ -839,26 +887,10 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
         c.action = 0, c.actionMs = 0;
     // The held scheduling contract keeps completed action IDs for chain decisions.
     // Controller 6 has no general clock increment; a negative active clock waits.
-    const int32_t before = c.actionMs;
     if (c.controller != 6 && (c.actionMs >= 0 || c.action == 0)) {
         if (c.actionMs == 0)
             c.cooldowns[c.action] = cooldownLength(c, c.action);
-        c.actionMs += milliseconds;
-    }
-    // Item names §9: drinking (80) or eating (81) heals once per 200 ms of the action, a life
-    // potion over 3 s and other food over 10 s; creatures other than players at half speed.
-    // Gate: the local player, or (context flag +0xB4 == 0) any creature whose controller kind
-    // is non-zero. Engine mapping (N-5 leaves the flag's meaning open): +0xB4 == 0 is read as
-    // "not a network replica". Ticks use signed integer division truncating toward zero.
-    const bool healGate = role.local || (!role.replica && c.controller != 0);
-    if (healGate && (c.action == 80 || c.action == 81) && c.held.type == 1) {
-        const float limit = c.held.subtype == 1 ? 3000.f : 10000.f;
-        if (before < limit && before / 200 != c.actionMs / 200) {
-            const float share = 200 / limit * (c.controller != 0 ? 0.5f : 1.f);
-            const float amount = itemHeal(c.held) * share;
-            if (amount > 0)
-                c.health = std::min(c.health + amount, maxHealth(c));
-        }
+        c.actionMs = std::bit_cast<int32_t>(uint32_t(c.actionMs) + uint32_t(milliseconds));
     }
     bool drift = true;
     if (isMagicUser(c)) {
@@ -894,6 +926,8 @@ void endActionUpdate(Combatant &c, int32_t milliseconds, ActionTickRole role,
         if (intentSquared > 0.f)
             c.mode &= ~LENS;
     }
+    if ((c.action == 80 || c.action == 81) && (role.local || (!role.replica && c.controller != 0)))
+        tickConsumable(c, milliseconds, consumables);
     if (c.mode & LENS) {
         const float skillRate = c.action == 79 ? 0.f : abilityValue(c, 99) * 0.0005f;
         const float rate = skillRate + 0.00001f;

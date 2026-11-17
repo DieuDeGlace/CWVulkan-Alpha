@@ -1,5 +1,6 @@
 #include "ui/Screens.h"
 #include "ui/Widgets.h"
+#include "creatures/Hits.h"
 #include "creatures/Names.h"
 #include "creatures/Physics.h"
 #include "worldgen/Regions.h"
@@ -467,6 +468,16 @@ std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, b
     // only for damage to others with the +0x14 flag; −100 otherwise.
     t.rise = toPlayer ? 100.f : critical && damage >= 0 ? -200.f : -100.f;
     return t;
+}
+
+std::optional<FloatingText> timedHealText(const creatures::HitRecord &hit, float recipientHeight) {
+    const glm::dvec3 at = glm::dvec3(hit.position[0], hit.position[1], hit.position[2]) / 65536.0;
+    auto text = hitText(hit.amount, hit.kind, false, false, true, at);
+    if (text) {
+        const int64_t heightOffset = int64_t((1.f - 0.5f * recipientHeight) * 65536.f);
+        text->anchor.z = at.z + 1.0 + double(heightOffset) / 65536.0;
+    }
+    return text;
 }
 
 FloatingText levelUpText(glm::dvec3 player) {

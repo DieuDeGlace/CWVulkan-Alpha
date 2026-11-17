@@ -199,6 +199,12 @@ float itemCritical(const Item &item);
 float itemRegeneration(const Item &item);
 // Screens §8.1.7 (0x4c6e10): what a consumable heals in all, the tooltip's "HP +".
 float itemHeal(const Item &item);
+// Timed consumables §2. The same held item drives effects, movement and pose.
+inline constexpr int32_t consumableDuration(const Item &item) {
+    if (item.type != 1)
+        return 0;
+    return item.subtype == 1 ? 3000 : 10000;
+}
 
 // §4: derived stats.
 float levelGrowth(int32_t level);          // g
@@ -246,6 +252,20 @@ int32_t secondaryAttack(const Combatant &c); // §3.2
 bool startPrimaryAttack(Combatant &c);
 // Secondary returns true when its readiness, roll and mana gates start an action.
 bool startSecondaryAttack(Combatant &c);
+struct SoundEvent {
+    glm::dvec3 position{0};
+    int32_t sound = 0;
+    float pitch = 1, volume = 1;
+};
+
+// Timed consumables §3. The hit reports a health change already made by the actor.
+inline constexpr uint64_t TIMED_CONSUMABLE_SOURCE = UINT64_MAX;
+struct TimedConsumableEvents {
+    const int64_t (&position)[3];
+    std::vector<HitRecord> &hits;
+    std::vector<SoundEvent> &sounds;
+};
+
 // Dispatch action effects between these common native phases. Charge growth
 // belongs later, after movement; replica-other actors skip combo timeout work.
 struct ActionTickRole {
@@ -256,7 +276,8 @@ void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *event
 // Periodic callbacks run before expired-node cleanup and stun progression. They
 // may inspect buffs/update other state, but must not mutate the buff collection.
 void endActionUpdate(Combatant &c, int32_t dtMs, ActionTickRole role = {},
-                     const std::function<void(const Buff &)> &periodic = {}, const glm::vec3 &intent = glm::vec3(0));
+                     const std::function<void(const Buff &)> &periodic = {}, const glm::vec3 &intent = glm::vec3(0),
+                     const TimedConsumableEvents *consumables = nullptr);
 // Convenience for callers with no action effects to dispatch.
 void stepAction(Combatant &c, float dtMs);
 // Strike-call-sites S7/S9: the deferred-key pass. Deferred keys not struck since go to
@@ -270,11 +291,6 @@ void landHit(Combatant &c);
 bool hitMoment(const Combatant &c, float beforeMs);
 bool hitMoment(const Combatant &c, float beforeMs, float dtMs);
 
-struct SoundEvent {
-    glm::dvec3 position{0};
-    int32_t sound = 0;
-    float pitch = 1, volume = 1;
-};
 
 struct HitInput {
     float amount = 0;

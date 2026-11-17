@@ -789,11 +789,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             return;
         }
         auto &fighter = player->combat();
+        fighter.copyHeld(item);
         fighter.action = subtype == 1 || subtype == 2 ? 80 : 81;
         fighter.actionMs = 0;
         fighter.dodgeMs = 0;
         player->body().dodgeMs = 0;
-        fighter.copyHeld(item);
     };
     const auto playInterfaceSound = [&](int32_t id) {
         if (const char *key = creatures::soundKey(id))
@@ -806,7 +806,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             playInterfaceSound(creatures::SOUND_REFUSED);
             return false;
         }
-        inventory.useSlot(bag, slot, false, fighter.level, fighter.characterClass, fighter.hitStun < 1, useConsumable);
+        inventory.useConsumable(bag, slot, fighter.hitStun <= 0, useConsumable);
         return true;
     };
     // Interaction §2.4: the world item E would pick up, (zone x, zone y, index).
@@ -961,6 +961,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     if (const auto bytes = content.read("dict_en.xml"))
         dictionary.parse(std::string(bytes->begin(), bytes->end()));
     ui::Interface interface;
+    const auto presentTimedHeal = [&](const creatures::HitRecord &hit) {
+        if (hit.target == player->combat().id)
+            if (auto text = ui::timedHealText(hit, player->appearance().box.z))
+                interface.floating.push_back(*text);
+    };
     activeInterface = &interface;
     interface.speechDraw = [&] { return worldRandom.draw(); }; // talk §0: the one shared stream
     // The engine screens that stand in for the native front-end rotation state.
@@ -2140,7 +2145,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         }
                         player->body().obstacles = &airships, player->body().key = player->combat().id;
                         player->body().targetInContact = npcs.hostileInContact(player->combat(), player->body());
-                        player->advance(actorElapsed, client.connected());
+                        const creatures::TimedConsumableEvents consumables{
+                            player->body().position, aggregate.emittedHits, aggregate.sounds};
+                        player->advance(actorElapsed, client.connected(), &consumables);
                         publishPlayerEffects();
                         // Keep offline launch order in the same actor output list.
                         // Online sends remain at this actor's producer boundary.
@@ -2739,6 +2746,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (const glm::vec3 intent = player->body().intent; glm::dot(intent, intent) > 0)
                         interface.inventoryOpen = interface.craftingOpen = interface.skillsOpen = false;
                     updatePlayerInterface();
+                    for (const auto &hit : aggregate.emittedHits)
+                        if (hit.attacker == creatures::TIMED_CONSUMABLE_SOURCE) {
+                            presentTimedHeal(hit);
+                            mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
+                        }
                     for (const auto &sound : aggregate.sounds)
                         playAt(sound.sound, sound.position, sound.volume, sound.pitch);
                     if (std::exchange(input.dropOne, false))
@@ -3297,9 +3309,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         player->receiveHit(hit, &incomingHitUpdates);
                     }
                     if (hit.attacker != c.id) {
-                        const glm::dvec3 at = glm::dvec3(hit.position[0], hit.position[1], hit.position[2]) / 65536.0;
-                        if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.area, hit.target == c.id, at))
-                            interface.floating.push_back(*text);
+                        if (hit.attacker == creatures::TIMED_CONSUMABLE_SOURCE && hit.kind == 0 && hit.amount < 0) {
+                            presentTimedHeal(hit);
+                        } else {
+                            const glm::dvec3 at = glm::dvec3(hit.position[0], hit.position[1], hit.position[2]) / 65536.0;
+                            if (auto text = ui::hitText(hit.amount, hit.kind, hit.critical, hit.area, hit.target == c.id, at))
+                                interface.floating.push_back(*text);
+                        }
                         mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
                     }
                 }

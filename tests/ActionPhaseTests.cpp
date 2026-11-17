@@ -1,5 +1,6 @@
 // Common phase ordering from the held original-only update contract.
 #include "creatures/Abilities.h"
+#include "creatures/Inventory.h"
 #include "creatures/Strike.h"
 #include "creatures/Projectiles.h"
 #include "creatures/Npcs.h"
@@ -19,9 +20,151 @@ void check(bool value, const char *description) {
         failures++;
     }
 }
+
+void checkTimedConsumables() {
+    const int64_t position[3] = {((int64_t)8396933 << 16) + 1, -65537, 81922};
+    std::vector<HitRecord> hits;
+    std::vector<SoundEvent> sounds;
+    const TimedConsumableEvents events{position, hits, sounds};
+    Combatant actor;
+    actor.id = 0xfedcba9800000015;
+    actor.action = 80;
+    actor.actionMs = 199;
+    actor.held = {1, 1};
+    actor.health = maxHealth(actor);
+
+    endActionUpdate(actor, 1, {true, true}, {}, {}, &events);
+    HitRecord expected;
+    expected.attacker = UINT64_MAX;
+    expected.target = actor.id;
+    expected.amount = -200.f * (200.f / 3000.f);
+    std::copy_n(position, 3, expected.position.begin());
+    check(hits.size() == 1 && hits.front().serialize() == expected.serialize() &&
+              actor.health == maxHealth(actor) && sounds.empty(),
+          "connected local potion at 200 ms reports the full capped heal with signed source and raw position");
+
+    hits.clear();
+    actor.actionMs = 2999;
+    endActionUpdate(actor, 1, {true, false}, {}, {}, &events);
+    endActionUpdate(actor, 400, {true, false}, {}, {}, &events);
+    check(actor.actionMs == 3400 && hits.size() == 1 && sounds.empty(),
+          "life potion includes the 3000 ms endpoint and skips later clock boundaries");
+
+    hits.clear();
+    actor.actionMs = 100;
+    actor.controller = 3;
+    actor.health = 50.f;
+    endActionUpdate(actor, 1, {false, false}, {}, {}, &events);
+    check(hits.empty(), "authority does not tick at 100 ms");
+    endActionUpdate(actor, 400, {false, false}, {}, {}, &events);
+    check(hits.size() == 1 && hits.front().amount == expected.amount * 0.5f && sounds.size() == 1 &&
+              sounds.front().sound == 44 && actor.health == 50.f - expected.amount * 0.5f,
+          "authority ticks once at half amount across several boundaries");
+
+    hits.clear();
+    sounds.clear();
+    actor.actionMs = 399;
+    endActionUpdate(actor, 1, {false, true}, {}, {}, &events);
+    actor.controller = 0;
+    actor.actionMs = 399;
+    endActionUpdate(actor, 1, {false, false}, {}, {}, &events);
+    actor.actionMs = 399;
+    actor.hitStun = 2;
+    endActionUpdate(actor, 1, {true, true}, {}, {}, &events);
+    check(hits.empty() && sounds.empty() && actor.action == 0 && actor.hitStun == 1,
+          "replicas, authority role zero and surviving stun suppress timed outputs");
+
+    actor.hitStun = 0;
+    actor.action = 81;
+    actor.actionMs = 399;
+    actor.held = {1, 4};
+    actor.recoveryPenalty = -0.001f;
+    endActionUpdate(actor, 1, {true, false}, {}, {}, &events);
+    const glm::dvec3 soundPosition{float(position[0]) / 65536.f, float(position[1]) / 65536.f,
+                                  float(position[2]) / 65536.f};
+    check(hits.size() == 1 && actor.recoveryPenalty == 0 && sounds.size() == 2 && sounds[0].sound == 47 &&
+              sounds[1].sound == 44 && sounds[0].position == soundPosition && sounds[1].position == soundPosition &&
+              sounds[0].pitch == 1 && sounds[0].volume == 1 && sounds[1].pitch == 1 && sounds[1].volume == 1,
+          "food clears the penalty and appends recovery before the recurring sound at binary32 position");
+
+    hits.clear();
+    sounds.clear();
+    actor.actionMs = 399;
+    actor.recoveryPenalty = -1e-12f;
+    endActionUpdate(actor, 1, {true, false}, {}, {}, &events);
+    check(actor.recoveryPenalty == 0 && sounds.size() == 1 && sounds[0].sound == 44,
+          "recovery detection subtracts the increment from the rounded sum");
+
+    hits.clear();
+    sounds.clear();
+    actor.actionMs = 400;
+    actor.controller = 6;
+    actor.held = {1, 0};
+    actor.recoveryPenalty = -0.2f;
+    endActionUpdate(actor, 1, {false, false}, {}, {}, &events);
+    check(actor.actionMs == 400 && hits.empty() && sounds.size() == 1 && sounds[0].sound == 44 &&
+              actor.recoveryPenalty == -0.2f,
+          "the prior clock is reconstructed even when the action clock does not advance and the item heals zero");
+
+    Inventory inventory;
+    ItemRecord item{};
+    item[0] = item[1] = 1;
+    setItemLevel(item, -20);
+    inventory.add(item);
+    const auto selection = inventory.quickItems(1);
+    check(selection.size() == 1, "quick-item admission compares the signed level directly");
+    if (!selection.empty()) {
+        const auto [bag, slot] = selection.front();
+        const auto refused = inventory.useSlot(bag, slot, false, 1, 1, true);
+        const auto &stack = inventory.bags[bag][slot];
+        check(refused.sound == SOUND_REFUSED && stack.count == 1, "inventory admission still compares transformed levels");
+        int callbackCount = 0;
+        const auto apply = [&](const ItemRecord &selected) {
+            check(selected == item && stack.count == 1, "quick-item use runs before stack decrement");
+            callbackCount++;
+        };
+        inventory.useConsumable(bag, slot, false, apply);
+        inventory.useConsumable(bag, slot, true, apply);
+        check(callbackCount == 1 && stack.empty() && itemType(stack.item) == 0 && itemSubtype(stack.item) == 0,
+              "only the unstunned quick-item use consumes the signed-level item");
+    }
+}
+
+void checkResidentConsumable() {
+    worldgen::Random random(71);
+    Npcs world(random);
+    worldgen::WorldMap map;
+    map.add(std::make_shared<worldgen::Zone>());
+    Npc &resident = world.npcs().emplace_back();
+    resident.fighter.id = 17;
+    resident.fighter.controller = 3;
+    resident.fighter.action = 81;
+    resident.fighter.actionMs = 9999;
+    resident.fighter.held = {1, 4};
+    resident.fighter.health = maxHealth(resident.fighter) * 0.5f;
+    resident.fighter.recoveryPenalty = -0.2f;
+    resident.body.place({2, 3, 80});
+    const float initialHealth = resident.fighter.health;
+    const auto air = [](int32_t, int32_t, int32_t) { return uint8_t(0); };
+
+    const NpcFrame endpoint = world.step(1, map, {}, 43200000, 0, air);
+    check(world.all().size() == 1 && world.all().front().fighter.action == 81 &&
+              world.all().front().fighter.health == initialHealth + 2 && endpoint.emittedHits.size() == 1 &&
+              endpoint.emittedHits.front().target == 17 && endpoint.emittedHits.front().attacker == UINT64_MAX &&
+              endpoint.emittedHits.front().amount == -2 && endpoint.playerHits.empty() && endpoint.sounds.size() == 1 &&
+              endpoint.sounds.front().sound == 44,
+          "resident endpoint publishes one authority hit and sound without applying the hit again");
+    const NpcFrame after = world.step(1, map, {}, 43200000, 0, air);
+    check(world.all().size() == 1 && world.all().front().fighter.action == 83 &&
+              world.all().front().fighter.actionMs == 10001 && world.all().front().fighter.held.subtype == 4 &&
+              after.emittedHits.empty() && after.sounds.empty() && random.count() == 0,
+          "the first strictly later step sits with the same held item and clock, with no timed draws");
+}
 }
 
 int main() {
+    checkTimedConsumables();
+    checkResidentConsumable();
     {
         const auto saved = itemBonuses().health;
         const auto controlled = [] {

@@ -20,6 +20,7 @@
 struct CubModel;
 namespace creatures {
 struct Body;
+struct HitRecord;
 }
 
 namespace ui {
@@ -109,6 +110,7 @@ struct FloatingText {
 // is the hit record's kind (1 block, 3 miss, 5 absorb, 4 and 6 not shown); `critical` and `area`
 // are its +0x14 and +0x44 flags.
 std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, bool area, bool toPlayer, glm::dvec3 at);
+std::optional<FloatingText> timedHealText(const creatures::HitRecord &hit, float recipientHeight);
 FloatingText levelUpText(glm::dvec3 player);
 FloatingText experienceText(int32_t gain, glm::dvec3 player);
 

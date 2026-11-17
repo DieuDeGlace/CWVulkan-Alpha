@@ -496,7 +496,7 @@ std::vector<PartDraw> poseParts(PoseState &s, const Appearance &a, const Motion 
     // Combat helper tables: B (wind-up), Cq (active), Ar (recovery) and R0, their wrapping sum.
     const int32_t B = P.windUp, Cq = P.active, Ar = P.recovery, R0 = add32(add32(B, Cq), Ar);
     // Pose selectors 31-49 §8 (0x0C6B80): the use limit of the item being eaten or drunk.
-    const int32_t heldLimit = c && c->held.type == 1 ? (c->held.subtype == 1 ? 3000 : 10000) : 0;
+    const int32_t heldLimit = c ? consumableDuration(c->held) : 0;
     const int main = c ? subtypeIn(c->mainHand()) : -1, off = c ? subtypeIn(c->offHand()) : -1;
     const bool offShield = off == SHIELD;
 

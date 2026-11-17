@@ -7,6 +7,7 @@
 #include "ui/Interaction.h"
 #include "ui/LandNames.h"
 #include "ui/Screens.h"
+#include "creatures/Hits.h"
 #include "creatures/Physics.h"
 #include "Loot.h"
 #include <cmath>
@@ -651,6 +652,16 @@ int main(int argc, char **argv) {
         check(hitText(-10, 0, true, false, false, glm::dvec3(0))->rise == -100 &&
                   hitText(-10, 0, true, false, true, glm::dvec3(0))->rise == 100,
               "flagged heals never rise by 200");
+        creatures::HitRecord timed;
+        timed.amount = -0.46f;
+        timed.position = {65537, -65537, 32769};
+        const auto heal = timedHealText(timed, 2.25f);
+        check(heal && heal->text == u"0.4" && heal->colour == glm::vec4(0.4f, 1, 0.5f, 1) &&
+                  heal->anchor == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
+                  heal->size == 20 && heal->lifeMs == 1000 && heal->rise == 100 && heal->flags == 1,
+              "timed heal uses the fixed recipient-size offset and local display fields");
+        timed.amount = -0.09f;
+        check(!timedHealText(timed, 2.25f), "timed heal display respects the magnitude threshold");
         check(levelUpText(glm::dvec3(0)).lifeMs == 3000 && experienceText(12, glm::dvec3(0)).text == u"XP +12", "level and XP");
     }
     {

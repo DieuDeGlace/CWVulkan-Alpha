@@ -374,13 +374,7 @@ UseOutcome Inventory::useSlot(int b, size_t index, bool middle, int32_t level, i
         out.clearAction = true;
         break;
     case 1:
-        if (canAct) {
-            if (applyConsumable)
-                applyConsumable(item);
-            else
-                out.consume = item;
-            take();
-        }
+        out.consume = useConsumable(b, index, canAct, applyConsumable);
         break;
     case 2: {
         // Crafting §1.1: the recipe key is the formula with its product as the type.
@@ -413,6 +407,23 @@ int32_t Inventory::unequip(int box) {
     clearItem(slot);
     add(old);
     return SOUND_PUT_DOWN;
+}
+
+std::optional<ItemRecord> Inventory::useConsumable(int bag, size_t index, bool canAct,
+                                                   const std::function<void(const ItemRecord &)> &apply) {
+    if (!canAct || bag < 0 || bag >= (int)bags.size() || index >= bags[bag].size())
+        return std::nullopt;
+    const Stack &stack = bags[bag][index];
+    if (stack.empty() || itemType(stack.item) != 1)
+        return std::nullopt;
+    const ItemRecord item = stack.item;
+    std::optional<ItemRecord> consumed;
+    if (apply)
+        apply(item);
+    else
+        consumed = item;
+    takeOne(bags[bag][index]);
+    return consumed;
 }
 
 std::optional<ItemRecord> Inventory::dropOne() {

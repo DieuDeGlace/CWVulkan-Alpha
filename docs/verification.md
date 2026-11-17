@@ -1853,3 +1853,20 @@ The initial replay fixture missed its deadline on the placing client.
 The final loopback fixture passed with a single request from the second peer.
 The Windows x64 build and all 60 CTest suites passed, including the live
 Vulkan water and owner-content zone comparison suites.
+
+## Timed consumables (2026-11-17)
+
+ActionPhaseTests checks the local and authority gates, signed elapsed
+boundaries, the complete heal payload and the health cap. It checks that
+recovery sound 47 precedes sound 44 and that rounding can suppress 47.
+The resident fixture verifies one reported heal at the 10,000 ms food
+endpoint, the next-step transition to sitting and zero random draws.
+The signed-level fixture uses the inventory refusal and quick-use paths
+on the same stack and verifies callback-before-decrement.
+
+UiTests checks the fixed recipient-height adjustment, displayed amount,
+colour and threshold. SimulationFrameTests retains the mixed-request
+order and its 18-draw witness. All seven focused suites passed on the
+Windows x64 build.
+All 60 CTest suites passed, including network loopback, live Vulkan
+water and owner-content zone comparison.

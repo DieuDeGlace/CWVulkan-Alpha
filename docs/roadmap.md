@@ -817,8 +817,8 @@ Differences from the Steam engine that shape the plan:
   equip and use, unequip; bags, money, platinum and recipes saved with the character. `--loot N`,
   `--inventory` and `--cursor X Y` for captures. Item names (`ItemNames.h`, spec
   `alpha-item-names.md`: word, material, rarity adjective, seed names, formulas, pets, quest items,
-  coins in chat; ContentTests check every worked example). Consumables heal in 200 ms ticks while
-  drinking or eating (names spec §9). The compare panel (`alpha-open-points-2.md` §3): "Currently equipped" and the
+  coins in chat; ContentTests check every worked example). The compare panel
+  (`alpha-open-points-2.md` §3): "Currently equipped" and the
   equipped items of the same type (weapons and rings as pairs), left of the tooltip.
 - [x] World items (`WorldItems.h`, spec `alpha-world-items.md`): each zone's list from the generator's
   ground items and loot, replaced by the zone save (drops older than three days left out); drawn in
@@ -850,6 +850,10 @@ Differences from the Steam engine that shape the plan:
   selector, Q uses the retained selection, and R/E confirmation appends after
   the earlier frame inputs. Neutral admission and independent repeat timers
   govern A/D navigation.
+- [x] Timed consumables (`alpha-timed-consumables.md`). Both client and
+  authority use the 200 ms health and recovery ticks and 400 ms recurring
+  sounds. Local timed healing reports a floating number without sending a
+  hit request. NPCs publish their results through the dedicated world update.
 - [ ] Complete offline blueprint placement and trace the stock mode and
   selection producers. Original-client acceptance remains open.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the

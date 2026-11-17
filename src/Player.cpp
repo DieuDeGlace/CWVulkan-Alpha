@@ -231,7 +231,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
         if (!busy && !slotsHeld[1]) {
             if (fighter.equipment[12].type == 20 && fighter.actionMs > (float)duration(fighter, fighter.action) + 500)
                 fighter.action = 82;
-            else if (fighter.actionMs > 10000)
+            else if (fighter.action != 80 && fighter.action != 81 && fighter.actionMs > 10000)
                 fighter.action = 0, fighter.actionMs = 0;
         }
     }
@@ -241,7 +241,7 @@ void Player::readInput(GLFWwindow *window, int32_t milliseconds, bool controls, 
     fighter.mode = state.mode;
 }
 
-void Player::advance(int32_t dt, bool replica) {
+void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableEvents *consumables) {
     using namespace creatures;
     replicaWorld = replica;
     const float dtMs = (float)dt;
@@ -253,7 +253,7 @@ void Player::advance(int32_t dt, bool replica) {
     actionMsBefore = fighter.actionMs;
     if (onActionEffects)
         onActionEffects(actionMsBefore, dt);
-    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit, state.intent);
+    endActionUpdate(fighter, dt, {true, replica}, onPeriodicHit, state.intent, consumables);
 
     // The physics on whole milliseconds.
     state.mode = fighter.mode;
@@ -268,9 +268,8 @@ void Player::advance(int32_t dt, bool replica) {
         state.durationMs = (float)duration(fighter, fighter.action);
         state.haste = fighter.hasBuff(12) ? 1 + skillFactor(fighter.skills[8]) : 1.f;
         state.slowed = fighter.slowMs > 0, state.hastened = fighter.hasteMs > 0;
-        // Physics §3.2 action 81: the use length of the held item, as item names §9 (and the
-        // heal ticks) read it: a life potion 3 s, other food 10 s; no length otherwise.
-        state.useLimitMs = fighter.held.type == 1 ? (fighter.held.subtype == 1 ? 3000.f : 10000.f) : -1.f;
+        // Timed consumables §4. Movement reads the same duration as the heal tick.
+        state.useLimitMs = float(consumableDuration(fighter.held));
     }
     // Physics §2 item 18.2: the glider (Special slot, type 23 subtype 0) and the lantern (slot 10,
     // type 24) must be equipped to keep their modes.

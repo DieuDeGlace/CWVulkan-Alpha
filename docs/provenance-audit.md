@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 33 and the rulings. The 240 tracked contracts
-comprise 181 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 34 and the rulings. The 241 tracked contracts
+comprise 182 A, 54 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -85,6 +85,7 @@ Batch 30 covers `alpha-packet6-sender-turn.md` and
 Batch 31 covers `alpha-packet6-client-queue.md`.
 Batch 32 covers `alpha-packet6-placement-producers.md`.
 Batch 33 covers `alpha-packet6-quick-wheel.md`.
+Batch 34 covers `alpha-timed-consumables.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -291,6 +292,7 @@ Batch 33 covers `alpha-packet6-quick-wheel.md`.
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
 | `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
+| `alpha-timed-consumables.md` | A | 263 | 0 |
 | `alpha-trails-poses-schedules.md` | A | 900 | 2 |
 | `alpha-trap-generation.md` | A | 255 | 1 |
 | `alpha-travel.md` | A | 641 | 0 |

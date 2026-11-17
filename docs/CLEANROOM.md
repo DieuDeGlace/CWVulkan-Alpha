@@ -3206,3 +3206,25 @@ terrain writes.
 The engine retains its affected-zone batching, lighting and floating
 sprite cleanup. Matching the original footprint passes, the offline
 placement path and the stock mode and selection producers remain open.
+
+## Timed consumable actions (2026-11-17)
+
+The isolated source author finalized `alpha-timed-consumables.md`. The
+implementer read the whole contract and verified SHA-256
+`584e4b408304e36c4eae764c8f982f2b3379260f20b18b0c3e5e90db742b74d3`.
+Both images use signed 200 ms effect buckets and 400 ms sound buckets.
+This supersedes the earlier cadence in `alpha-pets-bombs.md` §6.
+
+The common actor update emits a signed-source heal record before adding
+and capping health. The secondary accumulator uses the rounded sum for
+its recovery sound test. Recovery sound 47 precedes recurring sound 44.
+Client presentation consumes the local heal record without reapplying it
+or queuing packet 7. Dedicated NPC output uses the existing hit and sound
+sections. The movement and pose code share the same item duration. Quick
+use follows the signed level check while inventory presses retain their
+transformed level check. The immediate kind-1 handler remains a separate
+request path.
+
+NPC potion admission uses two draws in X/Y order. The timed actor
+effects use zero draws. Exact item attachment transforms, native frame
+presentation timing and original multiplayer acceptance remain open.
