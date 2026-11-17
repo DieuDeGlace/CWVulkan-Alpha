@@ -741,8 +741,14 @@ Differences from the Steam engine that shape the plan:
   Signed turns supply walk phase and amplitude, the driven facing flag, the
   pre-decrement roll, the contact sounds and the splash visual. Carried pets
   copy both walk fields from the live owner in both attachment passes.
-- [ ] Complete connected pre-clock action effects and their audio, action-79
-  lighting inputs, the ordinary creature link and original-client acceptance.
+- [x] Connected common preparation and bounded action audio
+  (`alpha-connected-action-audio.md`, `alpha-rulings-channel36-cadence.md`).
+  Opening and repeat draws, fixed-position releases, ordinary and pending
+  spending, type-11 zero-duration replacement and the saved action-31
+  type-9 window run before general clock progression.
+- [ ] Complete connected candidate traversal, hit outcomes, stored candidate
+  cleanup, other action effects, action-79 lighting inputs, the ordinary
+  creature link and original-client acceptance.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
   picker by climate, height and fire (water, people, fire, shore, temperate, hot and dry, hot and
   wet and cold lists) and the zone pass between the tree grid and the plant sprites: a 3 x 3
@@ -1038,6 +1044,9 @@ Differences from the Steam engine that shape the plan:
   player in the world and in its party list (name, class, level, health), and its chat comes
   back to it. On 2026-11-05 it also received our creatures and fought them (see Strikes above).
   (Done: loot, world items, pick-up and drop, static objects, the inn rest request.)
+  On 2026-11-17 the rebuilt Vulkan client joined an isolated original Alpha server
+  over loopback, adopted seed 41 and rendered the world and HUD. The current
+  original-client direction and sustained combat acceptance remain open.
 - [x] Remote presentation data flow: current semantic snapshots replace health,
   stats, equipment and flags even when action/clock are equal. A core record is
   applied when pending receipts reach the frame. Resident combat state survives

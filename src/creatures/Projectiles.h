@@ -68,6 +68,10 @@ void advanceCharge(Combatant &c, float dtMs);
 // has only the default handler's.
 void actionSounds(const Combatant &c, float beforeMs, float dtMs, glm::dvec3 at, const std::function<int()> &draw,
                   std::vector<SoundEvent> &out);
+// The original client admits these action effects for a received actor.
+void receivedActionEffects(const Combatant &c, const Body &body, int32_t dtMs, glm::dvec3 at,
+                           const std::function<int()> &draw, std::vector<SoundEvent> &sounds,
+                           std::vector<Burst> &bursts);
 
 // §2.3-§2.6: the projectiles a creature's action makes this step (`beforeMs` as above; `aim`
 // is record field 26, from the creature to what it aims at). `block` finds how far a healer's

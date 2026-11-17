@@ -3443,3 +3443,29 @@ The separate ordinary link at creature offset `+0x11C0`, broader action
 sounds, the resident renderer's remaining timing, and native sound playback
 acceptance remain open. A received box with a missing X dimension uses a
 finite engine divisor for its pose.
+
+## Connected common preparation and action audio (2026-11-17)
+
+The isolated author finalized and read back the following contracts. The
+implementer read each complete file and verified its SHA-256.
+
+- [Common action processing](specs/alpha-common-action-processing-state.md), 140 physical lines, `c9b766cecf21490200846d4b2526039f0c20df14214160b884d96aa3e06029da`.
+- [Connected action audio and preparation](specs/alpha-connected-action-audio.md), 314 physical lines, `67117f9a23e81064b3b3487b17f4ec7d4ca100436eff97ede6a58029dc20f502`.
+- [Sound 36 cadence ruling](specs/alpha-rulings-channel36-cadence.md), 65 physical lines, `cb3c5457f146bd2ed872558e3d9a26bfaf81d68b80a852141e51e7b0f4b8f7ad`.
+
+The cadence ruling settles the earlier conflicting divisor at 200 ms for
+both client modes. The connected actor appends its opening, shared swing,
+repeat and midpoint sounds at its own signed turn. The shared audio path
+uses signed clocks and truncating bucket arithmetic. Staff and explosion
+records preserve their fixed position and are appended after the release
+sound and before later swing draws. The engine initializes unassigned FIRE
+colour bytes to zero and uses the existing consumer palette.
+
+The received actor uses the existing common preparation for ordinary and
+pending spending, action-31 and 33 crossing debits, and the action-5/17/20
+type-11 replacement and class-four roll. The valid action-31 saved interval
+can also produce the type-9 replacement before ordinary buff expiration.
+The frame applies the usual local-source filter when promoting these buff
+records to transport. Full candidate traversal, hit outcomes, stored
+candidate cleanup and its ordering against all cues, and original-client
+playback remain open.

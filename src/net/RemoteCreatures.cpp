@@ -3,6 +3,7 @@
 #include "creatures/Abilities.h"
 #include "creatures/AngleStep.h"
 #include "creatures/Npcs.h"
+#include "creatures/Projectiles.h"
 #include "creatures/Strike.h"
 #include <algorithm>
 #include <bit>
@@ -19,6 +20,36 @@ glm::vec3 rotationOf(const creatures::Body &body) {
 glm::dvec3 soundPosition(const int64_t *position) {
     const glm::vec3 blocks{float(position[0]), float(position[1]), float(position[2])};
     return glm::dvec3(blocks * (1.f / 65536.f));
+}
+
+void prepareReceivedAction(creatures::Combatant &fighter, const creatures::Body &body, int32_t dt,
+                           const RemoteCreatures::StepEffects *effects) {
+    if (effects)
+        creatures::receivedActionEffects(fighter, body, dt, soundPosition(body.position), effects->draw,
+                                         effects->frame.sounds, effects->frame.bursts);
+    if (!creatures::meleeAction(fighter.action))
+        return;
+
+    const int32_t before = fighter.actionMs;
+    // Action 31 tests the live clock after preparation against bounds saved
+    // from the earlier signed repeat window.
+    int32_t lower = 0, upper = 0;
+    if (fighter.action == 31) {
+        const auto timing = creatures::phases(fighter, fighter.action);
+        const int32_t start = timing.windUp, period = timing.active / 12;
+        lower = upper = start;
+        if (period > 0 && before >= start && before < start + timing.active) {
+            lower = start + ((before - start) / period) * period;
+            upper = lower + 100;
+        }
+    }
+    creatures::updateSwingCount(fighter, before, dt);
+    creatures::prepareCommonAction(fighter, dt, effects ? &effects->frame.buffs : nullptr);
+    if (fighter.action == 31 && lower < fighter.actionMs && fighter.actionMs <= upper &&
+        fighter.actionMs >= creatures::phases(fighter, fighter.action).windUp) {
+        if (const auto consumed = creatures::consumeBuff(fighter, 9); consumed && effects)
+            effects->frame.buffs.push_back(*consumed);
+    }
 }
 
 void appendMovementEffects(creatures::Body &body, const creatures::BlockType &block,
@@ -170,7 +201,7 @@ void RemoteCreatures::step(creatures::ActorMap<RemoteFighter> &fighters, int32_t
         // The common timers run inside each received actor's living turn.
         // Replica actors skip combo timeout and world-authoritative periodic hits.
         creatures::advanceActionTimers(fighter, dtMs);
-        creatures::updateSwingCount(fighter, fighter.actionMs, dtMs);
+        prepareReceivedAction(fighter, r.live, dtMs, effects);
         creatures::advanceActionClock(fighter, dtMs, false);
         auto &body = r.live;
         body.mode = fighter.mode;

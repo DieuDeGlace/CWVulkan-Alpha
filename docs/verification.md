@@ -2017,3 +2017,27 @@ CreatureTests and ActorOrderTests cover exact negative support sampling.
 The Windows x64 build, nine focused suites and all 60 CTest suites passed.
 Revision 7 parsed and all 27 links resolved. Native playback and the
 ordinary creature link remain open.
+
+## Connected common preparation and action audio (2026-11-17)
+
+ActorOrderTests checks resource debits before stun interruption in a
+negative-key actor, the class-four roll and type-11 replacement, and the
+type-9 replacement's strict lower boundary. The same fixture checks the
+200 ms sound bucket, deterministic staff and explosion releases, exact
+fixed visual positions, and six draws in order across the admitted actions.
+The explosion record is present before its shared swing draw.
+
+The Windows x64 build, eight focused suites and all 60 CTest suites passed.
+Revision 8 parsed, all 30 links resolved and the three held hashes matched.
+Native candidate selection, stored-candidate feedback and original playback
+remain open.
+
+## Original Alpha server loopback (2026-11-17)
+
+An isolated copy of the supported original Server.exe was launched with
+seed 41 and a fresh save directory. Its console logged client version 3
+and a player join. AlphaVulkan reported the connection and adopted seed
+41. The captured Vulkan frame showed the Lands of Gami world, player,
+HUD and minimap. This test covers original-server startup, the client
+handshake and a rendered connected frame. Original-client gameplay,
+sustained combat and matched visual acceptance remain open.

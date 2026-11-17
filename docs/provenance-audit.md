@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 39 and the rulings. The 246 tracked contracts
-comprise 187 A, 54 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 40 and the rulings. The 248 tracked contracts
+comprise 190 A, 53 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -91,6 +91,8 @@ Batch 36 covers `alpha-riding-actor-step.md`.
 Batch 37 covers `alpha-creature-receipt-order.md`.
 Batch 38 covers `alpha-connected-actor-turn.md`.
 Batch 39 covers `alpha-connected-walk-phases.md`.
+Batch 40 covers `alpha-common-action-processing-state.md`,
+`alpha-connected-action-audio.md` and `alpha-rulings-channel36-cadence.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -135,9 +137,10 @@ Batch 39 covers `alpha-connected-walk-phases.md`.
 | `alpha-combat-cast-points.md` | A | 201 | 0 |
 | `alpha-combat-helper-tables.md` | A | 348 | 0 |
 | `alpha-combat-stat-queries.md` | A | 294 | 0 |
-| `alpha-common-action-processing-state.md` | B | 130 | 3 |
+| `alpha-common-action-processing-state.md` | A | 141 | 0 |
 | `alpha-common-hit-input-construction.md` | B | 203 | 1 |
 | `alpha-companion-direct-route-geometry.md` | A | 109 | 1 |
+| `alpha-connected-action-audio.md` | A | 315 | 0 |
 | `alpha-connected-actor-turn.md` | A | 463 | 0 |
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
@@ -260,6 +263,7 @@ Batch 39 covers `alpha-connected-walk-phases.md`.
 | `alpha-rulings-beam-flag-strike-origin.md` | A | 117 | 1 |
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
 | `alpha-rulings-channel2-explosion-window.md` | A | 192 | 1 |
+| `alpha-rulings-channel36-cadence.md` | A | 66 | 0 |
 | `alpha-rulings-corridor-third-line.md` | A | 120 | 0 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-held-light-factor.md` | A | 88 | 0 |

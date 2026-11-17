@@ -257,8 +257,30 @@ void stepCharge(Combatant &c, int32_t before, int32_t dtMs, glm::dvec3 at, ShotE
     advanceCharge(c, (float)dtMs);
 }
 
-void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const std::function<int()> &draw,
-                  std::vector<SoundEvent> &out) {
+namespace {
+
+void appendChannelBurst(const Combatant &c, const Body &body, glm::vec3 aim, std::vector<Burst> &out) {
+    const bool staff = c.action >= 30 && c.action <= 33;
+    const bool water = staff && c.specialization == 1;
+    // The producer leaves the other colour fields unspecified. The engine's
+    // FIRE style supplies their palette at consumption.
+    Burst burst = Burst::at(glm::dvec3(0), {0, 0, 2}, water ? glm::vec4(0, 0.2f, 1, 1) : glm::vec4(0), 0.25f,
+                            staff ? 20 : 80, water ? BRIGHT : FIRE);
+    for (int axis = 0; axis < 3; axis++) {
+        const int64_t offset = staff ? int64_t(aim[axis] * 65536.f) : 0;
+        burst.position[axis] = std::bit_cast<int64_t>(uint64_t(body.position[axis]) + uint64_t(offset));
+    }
+    burst.spread = staff ? 8.f : 20.f;
+    out.push_back(burst);
+}
+
+struct ChannelBursts {
+    const Body &body;
+    std::vector<Burst> &out;
+};
+
+void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at, const std::function<int()> &draw,
+                        std::vector<SoundEvent> &out, const ChannelBursts *channel) {
     const int32_t action = c.action;
     // These dispatch branches own their audio. The native melee lift/swing
     // branch does not surround ranged dispatch or its input-start helpers.
@@ -272,10 +294,12 @@ void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const st
     const auto pitch = [&](float k, float a) { return sound::randomPitch(draw(), k, a); };
     // Audio §6.2: P1 crossings are τ <= X < τ + dt; the half-P2 crossings use the late form
     // τ < X <= τ + dt.
-    const auto crosses = [&](float x) { return t <= x && x < t + dt; };
-    const auto crossesLate = [&](float x) { return t < x && x <= t + dt; };
+    const int32_t after = std::bit_cast<int32_t>(uint32_t(t) + uint32_t(dt));
+    const int32_t previous = std::bit_cast<int32_t>(uint32_t(t) - uint32_t(dt));
+    const auto crosses = [&](int32_t x) { return t <= x && x < after; };
+    const auto crossesLate = [&](int32_t x) { return t < x && x <= after; };
     const Phases P = phases(c, action);
-    const float P1 = (float)P.windUp, P2 = (float)P.active;
+    const int32_t P1 = P.windUp, P2 = P.active;
     const Item &m = c.mainHand();
     const int s = m.subtype;
     const bool twoHanded = m.type == 3 && ((s >= 5 && s <= 8) || s == 10 || s == 11 || (s >= 15 && s <= 18));
@@ -288,13 +312,14 @@ void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const st
     // the step τ < P1 <= τ + dt, or the explosion (81) on the step τ - dt < P1 <= τ. The bursts
     // stay with launch(); the camera shake comes with playing 81.
     if (staff || explosion) {
-        const int32_t before = int32_t(t), after = int32_t(t + dt), first = P.windUp;
-        if (before < first && after / 200 != before / 200)
+        if (t < P1 && after / 200 != t / 200)
             out.push_back({at, 36, pitch(0.25f, 1.f), 1});
-        if (staff && t < P1 && P1 <= t + dt)
-            out.push_back({at, c.specialization == 1 ? 41 : 38, 1, 1});
-        if (explosion && t - dt < P1 && P1 <= t)
-            out.push_back({at, 81, 1, 1});
+        if ((staff && crossesLate(P1)) || (explosion && previous < P1 && P1 <= t)) {
+            const int32_t sound = explosion ? 81 : c.specialization == 1 ? 41 : 38;
+            out.push_back({at, sound, 1, 1});
+            if (channel)
+                appendChannelBurst(c, channel->body, channel->body.look, channel->out);
+        }
     }
     if (crosses(P1)) {
         if (action == 10)
@@ -327,18 +352,38 @@ void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const st
     default: break;
     }
     if (interval > 0 && P1 <= t && t < P1 + P2) {
-        const auto k = [&](float x) { return std::trunc((x - P1) / (float)interval); };
-        if (t - dt < P1 || k(t + dt) != k(t)) {
+        const auto k = [&](int32_t x) { return std::bit_cast<int32_t>(uint32_t(x) - uint32_t(P1)) / interval; };
+        if (previous < P1 || k(after) != k(t)) {
             out.push_back({at, 15, pitch(0.25f, 1.f), 1});
             if (action == 91)
                 out.push_back({at, 82, pitch(0.1f, 0.5f), 1});
         }
     }
     // P1 + P2/2, P2/2 truncated toward zero.
-    if ((action == 57 || action == 58 || action == 60 || action == 74) && crossesLate(P1 + (float)(P.active / 2))) {
+    if ((action == 57 || action == 58 || action == 60 || action == 74) && crossesLate(P1 + P2 / 2)) {
         out.push_back({at, 12, pitch(0.25f, 1.f), 1});
         if (action == 74)
             out.push_back({at, 82, pitch(0.1f, 0.5f), 1});
+    }
+}
+
+} // namespace
+
+void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const std::function<int()> &draw,
+                  std::vector<SoundEvent> &out) {
+    appendActionSounds(c, int32_t(t), int32_t(dt), at, draw, out, nullptr);
+}
+
+void receivedActionEffects(const Combatant &c, const Body &body, int32_t dt, glm::dvec3 at,
+                           const std::function<int()> &draw, std::vector<SoundEvent> &sounds,
+                           std::vector<Burst> &bursts) {
+    if (c.action == 47 || c.action == 48) {
+        const int32_t after = std::bit_cast<int32_t>(uint32_t(c.actionMs) + uint32_t(dt));
+        if (c.actionMs <= 0 && after > 0)
+            sounds.push_back({at, 14, sound::randomPitch(draw(), 0.25f, 1.f), 1.f});
+    } else if (meleeAction(c.action)) {
+        const ChannelBursts channel{body, bursts};
+        appendActionSounds(c, c.actionMs, dt, at, draw, sounds, &channel);
     }
 }
 
@@ -361,22 +406,8 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
     // around the creature for the explosion. Their hum, release and explosion sounds are
     // world-step records made with the swings (actionSounds).
     const bool staff = action >= 30 && action <= 33, explosion = action == 87 || action == 88;
-    if (staff || explosion) {
-        if (explosion && t - dt < P1 && P1 <= t) { // §5.4's late window, one step behind the staff's
-            Burst b = Burst::at(at, {0, 0, 2}, glm::vec4(0), 0.25f, 80, FIRE);
-            b.spread = 20;
-            out.bursts.push_back(b);
-        } else if (staff && t < P1 && P1 <= t + dt) {
-            // §5.3: at the creature plus the float vector at +0x160 (x 65536, truncated), spread 8.
-            const bool water = c.specialization == 1;
-            Burst b = Burst::at(glm::dvec3(0), {0, 0, 2}, water ? glm::vec4(0, 0.2f, 1, 1) : glm::vec4(0), 0.25f, 20,
-                                water ? BRIGHT : FIRE);
-            for (int k = 0; k < 3; k++)
-                b.position[k] = body.position[k] + (int64_t)(c.aim[k] * 65536.f);
-            b.spread = 8;
-            out.bursts.push_back(b);
-        }
-    }
+    if ((explosion && t - dt < P1 && P1 <= t) || (staff && t < P1 && P1 <= t + dt))
+        appendChannelBurst(c, body, c.aim, out.bursts);
 
     // §2.6: the handler of actions 28, 94, 95 gives a healer (class 3, specialization 1) a
     // healing burst at its reach point when P1 is crossed: the attack origin plus the block ray

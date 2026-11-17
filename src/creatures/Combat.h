@@ -274,6 +274,7 @@ struct ActionTickRole {
     bool replica = false;
 };
 void advanceActionTimers(Combatant &c, int32_t dtMs);
+void prepareCommonAction(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *events = nullptr);
 void beginActionUpdate(Combatant &c, int32_t dtMs, std::vector<BuffEvent> *events = nullptr);
 void advanceActionClock(Combatant &c, int32_t dtMs, bool authoritative,
                         const std::function<void(const Buff &)> &periodic = {});

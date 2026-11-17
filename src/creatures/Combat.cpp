@@ -733,8 +733,7 @@ void advanceActionTimers(Combatant &c, int32_t milliseconds) {
         c.recoveryPenalty = std::min(0.f, c.recoveryPenalty + (float(milliseconds) * 0.001f) / 180.f);
 }
 
-void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
-    advanceActionTimers(c, milliseconds);
+void prepareCommonAction(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
     // Healing and projectile bodies have separate resource boundaries: action 0x5F pays at its
     // first crossing in the ray case (beam-leftovers §1.3), action 0x22 at each heal pulse
     // (head-pitch-and-pick §3.1).
@@ -799,6 +798,11 @@ void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent
             c.mana = 0;
         // Action 0x1F's kind-9 reset belongs to the strike itself (strike-call-sites K4).
     }
+}
+
+void beginActionUpdate(Combatant &c, int32_t milliseconds, std::vector<BuffEvent> *events) {
+    advanceActionTimers(c, milliseconds);
+    prepareCommonAction(c, milliseconds, events);
 }
 
 void deferredPass(Combatant &c) {

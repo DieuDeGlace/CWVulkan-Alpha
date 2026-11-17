@@ -2740,8 +2740,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         }
                     for (const auto &sound : aggregate.sounds)
                         playAt(sound.sound, sound.position, sound.volume, sound.pitch);
-                    if (client.connected())
+                    if (client.connected()) {
+                        for (const auto &buff : aggregate.buffs)
+                            sendBuff(buff);
                         bursts.insert(bursts.end(), aggregate.bursts.begin(), aggregate.bursts.end());
+                    }
                     if (std::exchange(input.dropOne, false))
                         if (const auto item = inventory.dropOne())
                             queueItemRequest({ItemRequest::Drop, *item});

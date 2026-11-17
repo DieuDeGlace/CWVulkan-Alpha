@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 
 using namespace creatures;
 namespace {
@@ -467,12 +468,121 @@ void checkConnectedMovementSounds() {
     const int64_t support[3]{-65536, -1, 32768};
     check(footstepCell(support, 2.f) == glm::ivec3(-2, -1, -2), "an aligned negative support sample chooses the previous block");
 }
+
+void checkConnectedActionEffects() {
+    net::RemoteCreatures remotes;
+    ActorMap<net::RemoteFighter> actors;
+    const glm::vec3 aim(0.25f, -0.125f, 0.5f);
+    constexpr int64_t origin = 8389632ll * 65536 + 1;
+    const auto receive = [&](uint64_t id, const Combatant &fighter) -> Combatant & {
+        auto record = net::CreatureRecord::nativeDefaults();
+        record.setFighter(fighter);
+        record.setPosition(0, origin + int64_t(id == UINT64_MAX ? 0 : id) * 65536);
+        record.setPosition(2, 8 * 65536);
+        std::memcpy(record.bytes.data() + 0x150, &aim, sizeof aim);
+        remotes.receive(net::CreatureReceipt::fromRecord(id, record, true, true));
+        auto &state = actors[id];
+        remotes.updateLive(id, record, state);
+        return state.fighter;
+    };
+
+    Combatant input;
+    input.action = 3;
+    input.mana = 0.75f;
+    input.charge = 0.2f;
+    input.hitStun = 21;
+    input.equipment[MAIN_HAND].type = 3;
+    input.equipment[MAIN_HAND].subtype = LONGSWORD;
+    const auto &heavy = receive(UINT64_MAX, input);
+
+    input = {};
+    input.action = 5;
+    input.characterClass = 4;
+    input.specialization = 1;
+    input.mana = 0.9f;
+    input.charge = 0.4f;
+    auto &assassin = receive(1, input);
+    assassin.buffs = {{11, 0, 100, 10}};
+
+    input = {};
+    input.action = 31;
+    input.characterClass = 3;
+    input.specialization = 1;
+    input.mana = 0.8f;
+    input.multipliers[1] = 1.f / attackSpeed(input);
+    const int32_t wind = phases(input, 31).windUp;
+    check(wind == 1600, "the channel fixture uses a unit timing product");
+    input.actionMs = wind - 20;
+    const auto &release = receive(2, input);
+    input.actionMs = wind;
+    auto &lower = receive(3, input);
+    lower.buffs = {{9, 0, 25, 99}};
+    input.actionMs = wind + 1;
+    auto &inside = receive(4, input);
+    inside.buffs = {{9, 0, 25, 99}};
+
+    input.action = 88;
+    input.actionMs = phases(input, 88).windUp;
+    receive(5, input);
+    input.action = 30;
+    input.actionMs = 149;
+    receive(6, input);
+
+    NpcFrame frame;
+    int draws = 0;
+    const std::function<int()> draw = [&] {
+        if (draws == 5)
+            check(frame.bursts.size() == 2, "the deterministic explosion visual precedes the shared swing draw");
+        ++draws;
+        return 32767;
+    };
+    const net::RemoteCreatures::StepEffects effects{frame, draw};
+    Combatant local;
+    Body body;
+    const net::RemoteCreatures::Controlled controlled{local, body};
+    remotes.step(actors, 20, floorBlock, {}, &controlled, [&] {
+        check(draws == 1 && frame.sounds.size() == 1 && frame.sounds[0].sound == 17 &&
+                  frame.sounds[0].pitch == 1.1f && heavy.spentPower == 0.2f &&
+                  heavy.mana == ((0.75f - 0.1f) - 0.2f) - 20.f * 0.00005f && heavy.action == 0,
+              "the earlier actor's start sound and both debits precede live stun interruption and the local turn");
+    }, &effects);
+
+    std::vector<int32_t> sequence;
+    for (const auto &event : frame.sounds)
+        sequence.push_back(event.sound);
+    const std::vector<int32_t> expected{17, 36, 41, 15, 15, 15, 81, 15};
+    if (sequence != expected || draws != 6) {
+        std::printf("Action cue sequence with %d draws and anticipation %d:", draws, wind);
+        for (const int32_t sound : sequence)
+            std::printf(" %d", sound);
+        std::printf("\n");
+    }
+    check(sequence == expected && draws == 6,
+          "the 200 ms channel, deterministic releases, shared and repeated swings preserve their draw order");
+    check(assassin.action == 5 && assassin.dodgeMs == 580 && assassin.spentPower == 0.2f &&
+              assassin.criticalLatched && assassin.buffs.empty(),
+          "common preparation consumes type 11 and starts the class-four roll before movement");
+    check(release.actionMs == wind && release.mana == 0.8f && release.spentPower == 0.f &&
+              lower.actionMs == wind + 20 && lower.mana == 0.8f && lower.spentPower == 0.1f &&
+              lower.buffs.size() == 1 && lower.buffs.front().timeMs == 5 && inside.buffs.empty(),
+          "projected equality releases without spending and live equality keeps type 9 outside the saved window");
+    check(frame.buffs.size() == 2 && frame.buffs[0].source == 1 && frame.buffs[0].target == 1 &&
+              frame.buffs[0].record.kind == 11 && frame.buffs[0].record.source == 0 && frame.buffs[0].record.timeMs == 0 &&
+              frame.buffs[1].source == 4 && frame.buffs[1].target == 4 && frame.buffs[1].record.kind == 9 &&
+              frame.buffs[1].record.source == 0 && frame.buffs[1].record.timeMs == 0,
+          "the resident replacements publish self-addressed zero-duration records in signed turn order");
+    check(frame.bursts.size() == 2 && frame.bursts[0].position[0] == origin + 2 * 65536 + 16384 &&
+              frame.bursts[0].position[1] == -8192 && frame.bursts[0].count == 20 && frame.bursts[0].spread == 8.f &&
+              frame.bursts[1].position[0] == origin + 5 * 65536 && frame.bursts[1].count == 80 && frame.bursts[1].spread == 20.f,
+          "staff visuals use the live aim offset and explosion visuals use the actor's exact fixed position");
+}
 }
 
 int main() {
     checkConnectedActionClock();
     checkConnectedActionResources();
     checkConnectedMovementSounds();
+    checkConnectedActionEffects();
     checkOverlappingStrikes();
     checkRidingRefillOrder();
     checkConnectedRidingOrder();
