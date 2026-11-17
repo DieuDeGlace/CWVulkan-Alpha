@@ -1957,3 +1957,18 @@ The Windows x64 build, seven focused suites and all 60 CTest suites
 passed. The HTML specification parsed and all three added contract links
 resolve. Exact live-field baselines between locks and original-client
 interoperation remain open.
+
+## Live movement baselines (2026-11-17)
+
+NetTests advances a received actor, publishes it under the frame gate,
+then receives a health-only packet 0 and a snap-field-only packet 1.
+It checks the live position against the distinct drawn position, compares
+the six preserved fields byte for byte and verifies the partial batch's
+exact snap position and rotation. It also compares the record bytes
+outside the motion fields immediately after frame publication.
+
+The older blueprint replay fixture missed its adjacent-zone deadline on
+the first run. The spectator now holds the required zone through the
+order check after witnessing the distant broadcast. The final Windows x64
+build, six focused suites and all 60 CTest suites passed. Revision 4 of the
+HTML specification parsed and the three added contract links resolve.

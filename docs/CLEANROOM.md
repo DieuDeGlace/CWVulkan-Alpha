@@ -3355,3 +3355,19 @@ seeds its drawn-aim adapter from the creation receipt. The native
 write-only saved pose and container semantics, exact live-field baselines
 between frame and receiver snapshots, and original-client timing remain
 open.
+
+## Live movement baselines for creature receipt (2026-11-17)
+
+The held [remote interpolation contract](specs/alpha-remote-creature-interpolation.md)
+§§1.3–1.6 and §3.2 and [creature receipt order](specs/alpha-creature-receipt-order.md)
+§§1 and 3 establish that the receiver starts from the live record under its
+initial lock. Packet 1 takes the same kind of baseline before reading its
+field stream. A field omitted by its packet keeps the baseline value.
+
+Before releasing the frame gate, the connected client publishes the
+locally advanced position, orientation, velocity, intent, response and
+head pitch to the receiver's live record. A partial snap can therefore
+take its pose from that advanced baseline. Each receive retains its
+separate temporary copy through decoding. The publication writes the
+six motion fields and leaves the other fields to their current producers.
+Native timing and complete non-motion live fields remain open.

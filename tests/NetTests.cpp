@@ -293,7 +293,7 @@ static void checkCreatureReceiptPoses() {
         check(false, "receipt pose fixture listens");
         return;
     }
-    std::atomic<bool> finish{false}, sendBatch{false}, sendEnd{false};
+    std::atomic<bool> finish{false}, sendBatch{false}, sendEnd{false}, sendPartial{false};
     const uint64_t actor = UINT64_MAX, earlier = UINT64_MAX - 1, later = 7;
     const auto poseRecord = [](int64_t x, float yaw, glm::vec3 aim) {
         auto record = CreatureRecord::nativeDefaults();
@@ -310,7 +310,9 @@ static void checkCreatureReceiptPoses() {
     auto smooth = poseRecord(300000, 30.f, {3, 0, 0});
     smooth.bytes[0x1b0] = 1;
     const auto recreated = poseRecord(400000, 40.f, {4, 0, 0});
-    const auto latest = poseRecord(500000, 50.f, {5, 0, 0});
+    auto latest = poseRecord(500000, 50.f, {5, 0, 0});
+    latest.setMotion({6, 4, 0}, glm::vec3(15, 5, 50), {0.05f, 0, 0}, {4, 2, 0});
+    latest.setHeadPitch(12.f);
     std::thread peer([&] {
         Socket socket = listener.accept();
         socket.setReadTimeout(3000);
@@ -355,7 +357,21 @@ static void checkCreatureReceiptPoses() {
             return;
         while (!sendEnd && !finish)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        if (!finish && socket.sendU32(END_OF_BATCH))
+        if (finish || !socket.sendU32(END_OF_BATCH))
+            return;
+        while (!sendPartial && !finish)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        if (finish)
+            return;
+        ByteWriter partial;
+        auto delta = latest;
+        delta.setHealth(240.f);
+        partial.u32(CREATURE);
+        partial.bytes(compressed(encodeDelta(actor, delta, health)));
+        delta.bytes[0x1b0] = 2;
+        partial.u32(CREATURE_BATCH), partial.i32(1);
+        partial.bytes(encodeDelta(actor, delta, uint64_t(1) << 40));
+        if (socket.send(partial.data()))
             while (!finish)
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
     });
@@ -413,10 +429,56 @@ static void checkCreatureReceiptPoses() {
             }
         }
         sendEnd = true;
-        check(waitFor([&] {
+        const bool pruned = waitFor([&] {
             const auto actors = client.others();
             return actors.size() == 1 && actors.contains(actor);
-        }), "packet 2 keeps the packet-0 key and prunes keys listed only by packet 1");
+        });
+        check(pruned, "packet 2 keeps the packet-0 key and prunes keys listed only by packet 1");
+        if (pruned) {
+            const auto record = client.others().at(actor);
+            creatures::ActorMap<RemoteFighter> fighters;
+            auto &state = fighters[actor];
+            state.refresh(record.fighter(), 0);
+            RemoteCreatures remotes;
+            remotes.receive(CreatureReceipt::fromRecord(actor, recreated, true, true));
+            remotes.receive(CreatureReceipt::fromRecord(actor, latest, false, false));
+            remotes.updateLive(actor, record, state.fighter);
+            const creatures::BlockType air = [](int32_t, int32_t, int32_t) { return uint8_t(0); };
+            remotes.step(fighters, 20, air, {});
+            const auto &advanced = *remotes.find(actor);
+            {
+                auto frame = client.lockFrame();
+                client.publishReceivedMotion(remotes);
+            }
+            const auto motion = client.others().at(actor);
+            const auto &body = advanced.live;
+            const std::array<int64_t, 3> position{body.position[0], body.position[1], body.position[2]};
+            const glm::vec3 orientation(body.swimPitch, body.bank, body.yaw);
+            const size_t motionEnd = CREATURE_FIELDS[6].offset;
+            check(motion.position(0) != latest.position(0) && motion.position(0) != body.follow[0] &&
+                      motion.position(0) == position[0] && motion.position(1) == position[1] && motion.position(2) == position[2] &&
+                      motion.orientation() == orientation && motion.velocity() == body.velocity &&
+                      motion.intent() == body.intent && motion.response() == body.push && motion.headPitch() == advanced.headPitch &&
+                      std::equal(motion.bytes.begin() + motionEnd, motion.bytes.end(), record.bytes.begin() + motionEnd),
+                  "the next receive starts from the advanced live motion fields");
+            sendPartial = true;
+            const bool partial = waitFor([&] {
+                const auto actors = client.others();
+                const auto found = actors.find(actor);
+                return found != actors.end() && found->second.bytes[0x1b0] == 2;
+            });
+            check(partial, "the partial packet 0 and packet 1 records both arrive");
+            if (partial) {
+                const auto current = client.others().at(actor);
+                check(current.health() == 240.f &&
+                          std::equal(motion.bytes.begin(), motion.bytes.begin() + motionEnd, current.bytes.begin()),
+                      "both packet forms preserve the advanced motion when their masks omit it");
+                const auto receipts = client.takeReceipts();
+                check(receipts.size() == 2 && !receipts[0].snap && receipts[1].snap &&
+                          receipts[1].snap->position == position && receipts[1].snap->rotation == orientation,
+                      "a partial batch snap captures the advanced live pose from its temporary baseline");
+            }
+        }
     }
     finish = true;
     client.disconnect();
@@ -1337,7 +1399,14 @@ int main() {
                   return placerSaw && distantPeerSaw;
               }), "the dedicated placement broadcasts the section-8 list to both peers, including the distant peer");
         const std::pair<int32_t, int32_t> neighbour{zx + 1, zy}, outsideWorld{65536, zy};
-        check(waitFor([&] { return server.block(neighbour.first * 256 + 128, zy * 256 + 128, 0).has_value(); }, 15000),
+        // Use the spectator's ordinary interest point to load and hold the
+        // separate zone before testing request order.
+        const int32_t neighbourX = neighbour.first * 256 + 128, neighbourY = zy * 256 + 128;
+        CreatureRecord nearby = rb;
+        nearby.setPosition(0, int64_t(neighbourX) * 65536);
+        nearby.setPosition(1, int64_t(neighbourY) * 65536);
+        b.setOwn(nearby);
+        check(waitFor([&] { return server.block(neighbourX, neighbourY, 0).has_value(); }, 15000),
               "the adjacent request zone is resident");
         b.takeZoneItems();
         b.requestZones(std::array{neighbour, outsideWorld, aliceZone, neighbour});
@@ -1349,6 +1418,7 @@ int main() {
               }, 15000) && replayed == placed,
               "the zone request replays the same ordered placement records");
         b.requestZones({});
+        b.setOwn(rb);
         check(zoneReplies == std::vector{neighbour, aliceZone, neighbour},
               "zone item replies keep request order and duplicates and omit an invalid zone");
         check(b.takeZonePlacements().empty(), "packet 11 replays block edits without a placed-object snapshot");

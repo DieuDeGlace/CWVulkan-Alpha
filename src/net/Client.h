@@ -17,6 +17,8 @@
 
 namespace net {
 
+class RemoteCreatures;
+
 class Client {
   public:
     ~Client();
@@ -62,6 +64,9 @@ class Client {
     // snapshots of the pose on snap (new, changed field +0x1B0, or old health <= 0).
     using Receipt = CreatureReceipt;
     std::vector<Receipt> takeReceipts();
+    // Call under lockFrame after simulation. Receiver snapshots then start
+    // from the live movement record, including when a packet omits those fields.
+    void publishReceivedMotion(const RemoteCreatures &remotes);
     // Frame-side credit cleanup, under lockFrame. Later network deltas may
     // replace this field; unrelated received core bytes remain untouched.
     void setReceivedHealth(uint64_t key, float health);

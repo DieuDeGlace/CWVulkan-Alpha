@@ -1,4 +1,5 @@
 #include "net/Client.h"
+#include "net/RemoteCreatures.h"
 #include "ItemRequest.h"
 #include "Bytes.h"
 #include "ZlibStream.h"
@@ -214,6 +215,12 @@ std::vector<::creatures::KillRecord> Client::takeCredits() {
 std::vector<Client::Receipt> Client::takeReceipts() {
     std::lock_guard guard(lock);
     return std::exchange(receipts, {});
+}
+
+void Client::publishReceivedMotion(const RemoteCreatures &remotes) {
+    std::lock_guard guard(lock);
+    for (auto &[id, record] : creatures)
+        remotes.writeLiveMotion(id, record);
 }
 
 void Client::setReceivedHealth(uint64_t key, float health) {

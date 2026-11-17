@@ -83,11 +83,15 @@ struct CreatureRecord {
     glm::vec3 response() const { return floats(0x3c); }    // field 4, separate from velocity
     float yaw() const { return orientation().z; }
     float headPitch() const { return floats(0x48).x; } // field 5, creature +0x58
+    void setHeadPitch(float value) { std::memcpy(&bytes[0x48], &value, sizeof value); }
     glm::vec3 look() const { return floats(0x150); }  // field 26, creature +0x160: the aim
     void setMotion(glm::vec3 velocity, float yaw, glm::vec3 response = {}, glm::vec3 intent = {}) {
-        glm::vec3 o = orientation();
-        o.z = yaw;
-        std::memcpy(&bytes[0x18], &o, sizeof o);
+        glm::vec3 rotation = orientation();
+        rotation.z = yaw;
+        setMotion(velocity, rotation, response, intent);
+    }
+    void setMotion(glm::vec3 velocity, glm::vec3 rotation, glm::vec3 response, glm::vec3 intent) {
+        std::memcpy(&bytes[0x18], &rotation, sizeof rotation);
         std::memcpy(&bytes[0x24], &velocity, sizeof velocity);
         std::memcpy(&bytes[0x30], &intent, sizeof intent);
         std::memcpy(&bytes[0x3c], &response, sizeof response);

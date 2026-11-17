@@ -4810,8 +4810,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 client.requestRegions({});
             client.setOwn(own);
         }
-        if (networkFrame.owns_lock())
+        if (networkFrame.owns_lock()) {
+            if (client.connected())
+                client.publishReceivedMotion(remotes);
             networkFrame.unlock();
+        }
         renderer.setEffects(effects);
         const bool drawn = renderer.draw(frame, drawStars(scene), items, capturing ? pathOfUtf8(options.capture) : fs::path());
         if (capturing) {

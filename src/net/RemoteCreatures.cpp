@@ -67,6 +67,17 @@ void RemoteCreatures::updateLive(uint64_t id, const CreatureRecord &record, cons
     r.headPitch = record.headPitch();
 }
 
+void RemoteCreatures::writeLiveMotion(uint64_t id, CreatureRecord &record) const {
+    const auto *remote = find(id);
+    if (!remote || remote->needsLiveSnapshot)
+        return;
+    const auto &body = remote->live;
+    for (int axis = 0; axis < 3; axis++)
+        record.setPosition(axis, body.position[axis]);
+    record.setMotion(body.velocity, rotationOf(body), body.push, body.intent);
+    record.setHeadPitch(remote->headPitch);
+}
+
 void RemoteCreatures::retain(const std::map<uint64_t, CreatureRecord> &listed) {
     std::erase_if(list, [&](const auto &entry) { return !listed.contains(entry.first); });
 }
