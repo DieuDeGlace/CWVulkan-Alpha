@@ -76,10 +76,6 @@ struct Npc {
     uint32_t quest = 0;
     uint8_t questRole = 0;
     float leaveMs = -1;
-    // Pets (pets and bombs Part B): the taming progress it carries for 5 s (the kind-7 buff)
-    // and who fed it. The bites are counted in the combo counter (pets §7.3).
-    float tameProgress = 0, tameMs = 0;
-    uint64_t tamer = 0;
     // Cast-point contract §1.1: the latched cast point (object +0x1320), fixed point. Never
     // set at construction natively (allocation contents); zero here.
     int64_t castPoint[3] = {0, 0, 0};
@@ -434,6 +430,13 @@ class Npcs {
     // Pets (Pets.cpp).
     Npc *findNpc(uint64_t id);
     uint64_t freeId() const;
+    // §9.2 step 1 (0x4110d0 after the record reset 0x411360): the creature's transient state
+    // and record go back to their defaults; id, controller, type, health, armour and
+    // resistance multipliers stay. The buff list is emptied.
+    void resetCreature(Npc &n);
+    // §9.4 (0x522580): the pet behaviour builder, with the owner it is given.
+    void buildPet(Npc &pet, uint64_t ownerId);
+    // §9.2 steps 1-6: the creature is rebuilt as the pet the item describes.
     void makePet(Npc &pet, const Item &item, const Combatant &owner);
     void petPass(std::vector<PlayerView> &players, NpcFrame &frame);
     // Trails spec §4: sit a while on a free seat in sight; false when not handled.

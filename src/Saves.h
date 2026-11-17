@@ -107,6 +107,9 @@ std::vector<WorldEntry> readWorlds(const SaveDb &db); // one entry per key 0..nu
 // §4.1: Alpha's world-list deletion of key `selected` (every remaining entry is written in turn
 // under the selected key; no key is deleted or renamed).
 bool deleteWorldEntry(SaveDb &db, uint32_t selected);
+// Character screens §4.5: the same deletion of `entries[selected]` from the list held in memory
+// (erased there, its remaining entries serialised under the selected key).
+bool deleteWorldEntry(SaveDb &db, std::vector<WorldEntry> &entries, uint32_t selected);
 
 // §5.1: a world's clock.
 struct WorldClock {

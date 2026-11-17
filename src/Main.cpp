@@ -748,7 +748,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         creatures::PoseState pose;
     };
     std::vector<PanelFigure> panelFigures;
-    std::vector<std::pair<MeshId, glm::vec3>> worldPreviews; // §4.2: each listed world's preview mesh
+    std::vector<std::pair<MeshId, glm::vec3>> worldPreviews; // §4.2: each world entry's preview mesh
+    // §4.5: the world list as held in memory (read once; a deletion shifts it, while the disk
+    // keeps Alpha's rewrite order until the next start).
+    std::optional<std::vector<WorldEntry>> worldMemory;
+    // §3.9 Apply: the record the last Apply made (kit and level-1 grants), saved by Create Character.
+    std::optional<CharacterRecord> creationRecord;
     glm::dvec2 benchMouse{0};
     int chosenCharacter = options.character;
     // Last observed recipe level. Saved characters synchronize this after load;
@@ -922,15 +927,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     interface.worldPreview = [&](size_t index) {
         return index < worldPreviews.size() ? worldPreviews[index] : std::pair<MeshId, glm::vec3>{0, glm::vec3(0)};
     };
-    interface.characterParts = [&](size_t index, float yaw) {
+    interface.characterParts = [&](size_t index, const ui::Interface::FigureMotion &m) {
+        // Character screens §3.2: the panel figure turns and walks on the spot only while hovered.
         std::vector<std::pair<uint32_t, glm::mat4>> out;
         if (index >= panelFigures.size())
             return out;
         PanelFigure &figure = panelFigures[index];
-        creatures::Motion still;
-        still.yawDegrees = yaw;
-        still.fighter = &figure.fighter;
-        for (const auto &[mesh, matrix] : creatureView.parts(figure.looks, figure.pose, still, 16))
+        creatures::Motion motion;
+        motion.yawDegrees = m.yawDegrees;
+        motion.velocity = m.velocity;
+        motion.intent = m.intent;
+        motion.fighter = &figure.fighter;
+        for (const auto &[mesh, matrix] : creatureView.parts(figure.looks, figure.pose, motion, m.dtMs))
             out.push_back({mesh, matrix});
         return out;
     };
@@ -1234,13 +1242,25 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             menu.mapRelease(); // screens §5.2.6
             return;
         }
-        if (action == GLFW_PRESS && menu.front != ui::Interface::Front::None) {
+        if (action == GLFW_PRESS) {
+            // Character screens §3.3: every press, on any screen, re-anchors the list drag.
+            double x, y;
+            glfwGetCursorPos(w, &x, &y);
+            menu.pointerPress((float)y, button == GLFW_MOUSE_BUTTON_LEFT ? 0 : 1);
+        }
+        if (menu.front != ui::Interface::Front::None) {
             double x, y;
             glfwGetCursorPos(w, &x, &y);
             const VkExtent2D size = in->renderer->size();
-            menu.frontPress({(float)size.width, (float)size.height}, {(float)x, (float)y},
-                            button == GLFW_MOUSE_BUTTON_LEFT ? 0 : 1);
-            return;
+            if (action == GLFW_PRESS) {
+                menu.frontPress({(float)size.width, (float)size.height}, {(float)x, (float)y},
+                                button == GLFW_MOUSE_BUTTON_LEFT ? 0 : 1);
+                return;
+            }
+            if (button == GLFW_MOUSE_BUTTON_LEFT) {
+                menu.frontRelease({(float)x, (float)y}); // §2.1: the buttons answer the release
+                return;
+            }
         }
         if (action == GLFW_PRESS && (menu.inventoryOpen || menu.craftingOpen || menu.skillsOpen) && !menu.startScreen &&
             !menu.mapOpen &&
@@ -1347,6 +1367,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     glfwSetCursorPosCallback(window, [](GLFWwindow *w, double x, double y) {
         auto *in = (Input *)glfwGetWindowUserPointer(w);
         const bool menus = in->interface->wantsMouse();
+        // Character screens §3.3: the list drag's smoothing follows every move (ms clock).
+        in->interface->frontMouseMove((float)y, (uint32_t)(uint64_t)(glfwGetTime() * 1000.0));
         // The first sample only establishes a reference: where the cursor rests
         // when the window opens or changes cursor mode is not a movement.
         if (!in->cursorKnown) {
@@ -1737,8 +1759,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     int width, height;
                     glfwGetCursorPos(window, &x, &y);
                     glfwGetWindowSize(window, &width, &height);
-                    glfwSetCursorPos(window, std::clamp(x + stick.x * pad.cursorSpeed * dt, 0.0, double(std::max(0, width - 1))),
-                                     std::clamp(y - stick.y * pad.cursorSpeed * dt, 0.0, double(std::max(0, height - 1))));
+                    const double toY = std::clamp(y - stick.y * pad.cursorSpeed * dt, 0.0, double(std::max(0, height - 1)));
+                    glfwSetCursorPos(window, std::clamp(x + stick.x * pad.cursorSpeed * dt, 0.0, double(std::max(0, width - 1))), toY);
+                    // A moved cursor is a mouse move for the character screens' list drag (the
+                    // platform may not report a programmatic move).
+                    interface.frontMouseMove((float)toY, (uint32_t)(uint64_t)(glfwGetTime() * 1000.0));
                 };
                 if (pad.context() == Gamepad::Context::Map) {
                     const float psi = glm::radians(180.f - view.camera(renderer.size()).yawDegrees);
@@ -4328,28 +4353,48 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (size_t k = 0; k < r.equipment.size() && k < figure.fighter.equipment.size(); k++)
                             figure.fighter.equipment[k] = creatures::Item::parse(r.equipment[k].data());
                         panelFigures.push_back(std::move(figure));
-                        interface.characterList.push_back(
-                            {r.name, r.level, creatureTypeOf(choice.race, choice.female), r.characterClass, r.specialization});
+                        interface.characterList.push_back({r.name, r.level, creatureTypeOf(choice.race, choice.female),
+                                                           r.characterClass, r.specialization, r.lastWorldSeed, r.lastWorldName});
                     }
                     interface.worldList.clear();
                     for (const auto &[mesh, size] : worldPreviews)
                         renderer.removeMesh(mesh);
                     worldPreviews.clear();
-                    // §4.1: online worlds (online_…) show only in the multiplayer list.
-                    for (const WorldEntry &w : worlds())
-                        if ((w.name.size() > 7 && w.name.rfind("online_", 0) == 0) == interface.multiplayerWorlds) {
-                            interface.worldList.push_back({w.name, w.seed, w.discovered});
-                            // §4.2: the preview model, meshed once for the panel.
-                            CubModel model;
-                            model.sx = w.previewSize[0], model.sy = w.previewSize[1], model.sz = w.previewSize[2];
-                            model.rgb = w.previewRgb;
-                            MeshId mesh = 0;
-                            if (!model.rgb.empty())
-                                if (const ModelMesh m = model.mesh(); !m.indices.empty())
-                                    mesh = renderer.addMesh(m);
-                            worldPreviews.push_back({mesh, glm::vec3(model.sx, model.sy, model.sz)});
-                        }
+                    // §4.1: every entry, by world index; the screen lists one mode's worlds.
+                    if (!worldMemory)
+                        worldMemory = worlds();
+                    for (const WorldEntry &w : *worldMemory) {
+                        interface.worldList.push_back({w.name, w.seed, w.discovered});
+                        // §4.2: the preview model, meshed once for the panel.
+                        CubModel model;
+                        model.sx = w.previewSize[0], model.sy = w.previewSize[1], model.sz = w.previewSize[2];
+                        model.rgb = w.previewRgb;
+                        MeshId mesh = 0;
+                        if (!model.rgb.empty())
+                            if (const ModelMesh m = model.mesh(); !m.indices.empty())
+                                mesh = renderer.addMesh(m);
+                        worldPreviews.push_back({mesh, glm::vec3(model.sx, model.sy, model.sz)});
+                    }
                     frontListsStale = false;
+                }
+                // §3.9 Apply, run on Create, every arrow, palette click and hover change: the
+                // player wears the choices (the hover colour), then the starting kit is made again
+                // with its level-1 grants, spending their draws each time; Create Character saves
+                // the last run's record.
+                if (std::exchange(interface.creationChanged, false)) {
+                    creatures::CharacterChoice choice;
+                    choice.race = interface.creation.race;
+                    choice.female = interface.creation.gender == 1;
+                    choice.head = interface.creation.face;
+                    choice.hair = interface.creation.haircut;
+                    std::copy(interface.creation.hover.begin(), interface.creation.hover.end(), choice.hairColour);
+                    if (player) {
+                        creatures::Appearance looks;
+                        int32_t type = 2;
+                        creatures::generate(type, looks, &choice, [] { return 0; });
+                        player->setLooks(looks);
+                    }
+                    creationRecord = newCharacter("", choice, interface.creation.characterClass + 1, [&] { return worldRandom.draw(); });
                 }
                 const auto request = std::exchange(interface.frontRequest, ui::Interface::FrontRequest::None);
                 using R = ui::Interface::FrontRequest;
@@ -4380,18 +4425,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     chosenCharacter = interface.selectedCharacter;
                     interface.front = ui::Interface::Front::Worlds;
                 } else if (request == R::CreateCharacter) {
-                    creatures::CharacterChoice choice;
-                    choice.race = interface.creation.race;
-                    choice.female = interface.creation.gender == 1;
-                    choice.head = interface.creation.face;
-                    choice.hair = interface.creation.haircut;
-                    std::copy(interface.creation.colour.begin(), interface.creation.colour.end(), choice.hairColour);
-                    std::string name;
+                    // §3.8: the record of the last Apply, with the typed name and level 1.
+                    if (!creationRecord) { // (no Apply ran: the engine makes one now)
+                        creatures::CharacterChoice choice;
+                        choice.race = interface.creation.race;
+                        choice.female = interface.creation.gender == 1;
+                        choice.head = interface.creation.face;
+                        choice.hair = interface.creation.haircut;
+                        std::copy(interface.creation.hover.begin(), interface.creation.hover.end(), choice.hairColour);
+                        creationRecord = newCharacter("", choice, interface.creation.characterClass + 1, [&] { return worldRandom.draw(); });
+                    }
+                    CharacterRecord created = *creationRecord;
+                    created.name.clear();
                     for (char16_t ch : interface.nameText)
-                        name += ch < 0x80 ? (char)ch : '?';
+                        created.name += ch < 0x80 ? (char)ch : '?';
+                    created.level = 1;
                     // Saves §3.1: `num` grows first, then the new character is saved under key N.
-                    const CharacterRecord created = newCharacter(name, choice, interface.creation.characterClass + 1,
-                                                                 [&] { return worldRandom.draw(); });
                     SaveDb db;
                     if (db.open(saves / "characters.db", SaveDb::Mode::ReadWrite)) {
                         chosenCharacter = (int)db.number("num").value_or(0);
@@ -4411,40 +4460,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     std::string name;
                     for (char16_t ch : interface.nameText)
                         name += ch < 0x80 ? (char)ch : '?';
-                    uint32_t seed = 0;
-                    for (char16_t ch : interface.seedText)
-                        seed = seed * 10 + (uint32_t)(ch - u'0');
-                    startWorld(name, seed);
-                } else if (request == R::DeleteWorld && interface.selectedWorld < (int)interface.worldList.size()) {
-                    // Saves §4.1: the world's two files go, then Alpha's list rewrite (every remaining
-                    // entry under the deleted entry's key, so the last world takes its place).
-                    const auto &selected = interface.worldList[interface.selectedWorld];
-                    const std::string name = selected.name;
+                    startWorld(name, interface.worldSeed()); // §5.4: signed parse (overflow: C-6)
+                } else if (request == R::DeleteWorld && worldMemory && interface.selectedWorld >= 0 &&
+                           interface.selectedWorld < (int)worldMemory->size()) {
+                    // §4.5: the world's two files go, the entry leaves the list in memory and Alpha's
+                    // rewrite puts every remaining entry under the selected key. The selection stays.
+                    const uint32_t k = (uint32_t)interface.selectedWorld;
+                    const std::string name = (*worldMemory)[k].name;
                     fs::remove(saves / ("world_" + name + ".db"), ec);
                     fs::remove(saves / ("map_" + name + ".db"), ec);
-                    const std::vector<WorldEntry> all = worlds();
-                    // (The menu lists one kind of world; the entry's own key is its list index.)
-                    for (size_t i = 0; i < all.size(); i++)
-                        if (all[i].name == name && all[i].seed == selected.seed) {
-                            SaveDb db;
-                            if (db.open(saves / "worlds.db", SaveDb::Mode::ReadWrite))
-                                deleteWorldEntry(db, (uint32_t)i);
-                            break;
-                        }
+                    SaveDb db;
+                    if (db.open(saves / "worlds.db", SaveDb::Mode::ReadWrite))
+                        deleteWorldEntry(db, *worldMemory, k);
+                    else
+                        worldMemory->erase(worldMemory->begin() + k);
                     frontListsStale = true;
-                }
-                // §3.9 Apply: the player wears the creation's choices (the hover colour too).
-                if (std::exchange(interface.creationChanged, false) && player) {
-                    creatures::CharacterChoice choice;
-                    choice.race = interface.creation.race;
-                    choice.female = interface.creation.gender == 1;
-                    choice.head = interface.creation.face;
-                    choice.hair = interface.creation.haircut;
-                    std::copy(interface.creation.hover.begin(), interface.creation.hover.end(), choice.hairColour);
-                    creatures::Appearance looks;
-                    int32_t type = 2;
-                    creatures::generate(type, looks, &choice, [] { return 0; });
-                    player->setLooks(looks);
                 }
             } else {
                 frontListsStale = true;

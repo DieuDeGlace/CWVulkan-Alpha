@@ -386,10 +386,12 @@ std::vector<WorldEntry> readWorlds(const SaveDb &db) {
 }
 
 bool deleteWorldEntry(SaveDb &db, uint32_t selected) {
-    // §4.1 (Alpha's own rewrite): the entry leaves the list, the selection is pulled back inside
-    // it, `num` becomes N-1, and every remaining entry is written in turn under the selected
-    // key, so the last one ends up there. (Alpha re-serialises its loaded entries; the stored
-    // bytes are rewritten here, which is the same for every entry its writer made.)
+    // §4.1 (Alpha's own rewrite): the entry leaves the list, `num` becomes N-1, and every
+    // remaining entry is written in turn under the selected key, so the last one ends up there.
+    // The selection is lowered only past the new count, which cannot happen (character screens
+    // §4.5): deleting the last entry writes beyond `num` and leaves the others untouched.
+    // (Alpha re-serialises its loaded entries; the stored bytes are rewritten here, which is the
+    // same for every entry its writer made.)
     const uint32_t n = db.number("num").value_or(0);
     if (selected >= n)
         return false;
@@ -397,11 +399,20 @@ bool deleteWorldEntry(SaveDb &db, uint32_t selected) {
     for (uint32_t i = 0; i < n && i < MAX_ENTRIES; i++)
         if (i != selected)
             remaining.push_back(db.get(std::to_string(i)).value_or(std::vector<uint8_t>{}));
-    if (selected >= remaining.size() && !remaining.empty())
-        selected = (uint32_t)remaining.size() - 1;
     bool ok = db.putNumber("num", n - 1);
     for (const auto &value : remaining)
         ok &= db.put(std::to_string(selected), value);
+    return ok;
+}
+
+bool deleteWorldEntry(SaveDb &db, std::vector<WorldEntry> &entries, uint32_t selected) {
+    // Character screens §4.5: as above, from the list held in memory, which keeps the shifted order.
+    if (selected >= entries.size())
+        return false;
+    entries.erase(entries.begin() + selected);
+    bool ok = db.putNumber("num", (uint32_t)entries.size());
+    for (const WorldEntry &entry : entries)
+        ok &= db.put(std::to_string(selected), entry.serialize());
     return ok;
 }
 

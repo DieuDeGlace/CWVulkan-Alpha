@@ -100,6 +100,13 @@ std::map<std::string, std::string> skillTooltipVariables(int32_t n, int32_t cls,
 float speechFollowShare(int32_t dt);
 std::optional<float> voiceBlip(int32_t typedBefore, int32_t consumed, const std::function<int()> &draw);
 
+// Character screens §3.3: the lists' easing share 1 − (1 − rate)^dt (dt steps in double from 0,
+// rounded to binary32; 0 for dt ≤ 0).
+float listEaseShare(float rate, int32_t dt);
+// §3.2, §4.2: a panel figure's or world model's yaw (degrees) after a frame of dtMs, turning
+// while hovered and easing back towards the nearest multiple of 360° otherwise.
+float panelYawStep(float yaw, bool hovered, float dtMs);
+
 class Interface {
   public:
     // Loads the fonts and the .plx files from the install folder.
@@ -211,21 +218,33 @@ class Interface {
     struct CharacterSummary {
         std::string name;
         int32_t level = 1, type = 2, characterClass = 1, specialization = 0;
+        uint32_t lastWorldSeed = 0; // §4.2: the world the character was last in
+        std::string lastWorldName;
     };
+    // Every worlds.db entry in list order; a world's index here is its world index (§4.1). The
+    // screen itself lists the singleplayer or the online_ entries.
     struct WorldSummary {
         std::string name;
         uint32_t seed = 0, discovered = 0;
     };
     std::vector<CharacterSummary> characterList;
-    // §4.1: a listed character's posed parts (mesh, matrix) turned to `yaw`, for its panel.
-    std::function<std::vector<std::pair<uint32_t, glm::mat4>>(size_t index, float yaw)> characterParts;
-    float panelYaw = 0; // the panels' figures turn 0.05° per ms
-    // §4.2: a listed world's preview mesh and its size in voxels (mesh 0: none).
+    // §3.2: a panel figure's turn (degrees), its two eased motion fields (+0x40 drawn as the
+    // velocity, +0x34 as the intent; believed walk fields) and the frame time.
+    struct FigureMotion {
+        float yawDegrees = 0;
+        glm::vec3 velocity{0}, intent{0};
+        float dtMs = 0;
+    };
+    // §3.2: a listed character's posed parts (mesh, matrix) in that motion, for its panel.
+    std::function<std::vector<std::pair<uint32_t, glm::mat4>>(size_t index, const FigureMotion &motion)> characterParts;
+    // §4.2: a world's preview mesh (by world index) and its size in voxels (mesh 0: none).
     std::function<std::pair<uint32_t, glm::vec3>(size_t index)> worldPreview;
     std::vector<WorldSummary> worldList;
+    // §4.1: an online world: at least seven characters, the first seven `online_`.
+    static bool onlineWorld(const std::string &name) { return name.size() >= 7 && name.compare(0, 7, "online_") == 0; }
     struct Creation {
         int race = 0, gender = 0, characterClass = 0, face = 0, haircut = 0; // class 0 warrior … 3 rogue
-        std::array<uint8_t, 3> colour{255, 200, 50}, hover{255, 200, 50};
+        std::array<uint8_t, 3> colour{255, 200, 50}, hover{255, 255, 255}; // §3.6 step 4
     };
     Creation creation;
     bool creationChanged = false;
@@ -237,10 +256,23 @@ class Interface {
         ListWorlds, // the multiplayer toggle: the game lists the worlds again
     };
     FrontRequest frontRequest = FrontRequest::None;
+    // §3.3, §4.3: the selected character index and world index (N, M: the "New ..." panel).
     int selectedCharacter = 0, selectedWorld = 0;
-    bool leftHeld = false; // the left button, for dragging the lists (set by the game)
+    int activeCharacter = -1; // §4.2: the character last selected or created (P), -1 none
+    bool leftHeld = false; // the interface's left-button bit (set by presses, releases and the game)
     void frontType(char16_t ch, bool backspace); // typed into the focused edit
+    // §3.3: every mouse-button press, on any screen: the drag smoothing restarts at the cursor
+    // and a flung character list stops; a left press sets the held bit.
+    void pointerPress(float mouseY, int button);
+    // A press on the screens (0 left): the event-2 widgets (style arrows, palette, edit focus).
     bool frontPress(glm::vec2 window, glm::vec2 mouse, int button);
+    // §2.1: the left release (event 3), delivered to the visible button under the cursor.
+    void frontRelease(glm::vec2 mouse);
+    // §3.3 dragging: a cursor move (window pixels) at a millisecond clock.
+    void frontMouseMove(float mouseY, uint32_t timeMs);
+    // The screens' per-frame update (§3.2–§3.4, §4.2, §4.3), run by `draw` before drawing.
+    void frontUpdate(glm::vec2 window, glm::vec2 mouse, float dtMs);
+    uint32_t worldSeed() const; // §5.4: the seed edit's value
     // Skills (alpha-skills.md): the skill window (X). The game fills the committed levels,
     // specialization and mana cubes each frame and says whether a class trainer is near; Learn
     // pays from the inventory's money and sets `skillsLearnt` for the game to copy the draft.
@@ -412,15 +444,53 @@ class Interface {
     void drawButton(Painter &painter, glm::vec2 at, glm::vec2 size, const std::u16string &caption, glm::vec2 mouse);
     void drawEdit(Painter &painter, glm::vec2 labelAt, const std::u16string &label, const std::u16string &text, bool focused,
                   double seconds);
-    void scrollList(float &top, float &speed, size_t count, glm::vec2 window, glm::vec2 mouse, float dtMs);
-    float characterListSpeed = 0, worldListSpeed = 0, lastMouseY = -1;
+    // §3.3: a list's column of 600 × 220 panels (top-left corners) and its scroll speed (px/s).
+    struct PanelColumn {
+        std::vector<float> y;
+        float x = 300, speed = 0;
+        bool rebuild = true; // §3.1: placed again at (300, 50 + 230 i) at the next update
+    };
+    // §3.4: a list's Select / small / Delete buttons, placed on the selected panel.
+    struct ListButtons {
+        glm::vec2 at{0};
+        bool select = false, small = false, remove = false, create = false; // create: "Create" caption
+    };
+    // §3.2, §4.2: a figure's yaw (degrees) and motion fields. (The animation blend +0x1188 and
+    // clock +0x118c have no counterpart in the engine's pose, which keeps its own walk cycle.)
+    struct PanelFigure {
+        float yaw = 0;
+        glm::vec3 velocity{0}, intent{0};
+    };
+    enum class FrontButton { Back, Multiplayer, ConnectToServer, Connect, CreateCharacter, CreateWorld, Select, Small, Delete };
+    struct FrontHit {
+        FrontButton button;
+        glm::vec2 at, size;
+    };
+    void stepList(bool characters, glm::vec2 window, glm::vec2 mouse, float dtMs);
+    void stepFigure(PanelFigure &figure, bool hovered, float dtMs) const;
+    int worldPanel(int worldIndex) const; // §4.3: the panel of a world index, -1 none
+    bool activeLastWorld(const WorldSummary &world) const; // §4.2: P is drawn on this world's panel
+    std::vector<FrontHit> visibleFrontButtons(glm::vec2 window) const;
+    void activateFront(FrontButton button);
     bool characterNameTaken() const;
     bool worldNameTaken() const;
     bool worldReady() const;
+    bool createCharacterShown() const;
     std::optional<plasma::Document> listPanel, stylePanel, bigButton, editBox;
-    float characterListTop = 50, worldListTop = 50;
+    PanelColumn characterColumn, worldColumn;
+    ListButtons characterButtons, worldButtons;
+    std::vector<PanelFigure> characterFigures;
+    std::vector<float> worldYaw;         // §4.2: each world panel's model yaw (widget +0x164)
+    PanelFigure activeFigure;            // §4.2: P walking on its last world's panel
+    std::vector<uint32_t> listedWorlds;  // panel j -> world index, this mode
+    glm::vec2 frontWindow{0};            // the window at the last update (the drag recentres x)
+    float smoothY = 0, moveY = 0;        // §3.3: the smoothed and the previous cursor y
+    uint32_t moveTime = 0;
+    bool moveTimeKnown = false;
+    // The buttons visible when the left button went down (engine reading of open point C-9).
+    std::optional<std::pair<Front, std::vector<FrontHit>>> pressedButtons;
     bool multiplayerToggled = false; // (the start-up caption has a capital W)
-    bool deleteShown = false;
+    bool nameCaptionCleared = false; // §3.6 step 3: Create clears the "Name" caption (C-10)
     // Skills, in SkillScreen.cpp.
     void loadSkills();
     void drawSkills(Painter &painter, glm::vec2 window, glm::vec2 mouse);

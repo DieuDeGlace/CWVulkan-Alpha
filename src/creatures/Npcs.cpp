@@ -660,8 +660,13 @@ void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
     // Hazards-blast-ticks contract §4.3/§4.4 (site 2). The bomb has role 6, so the hostility
     // test passes for every victim but itself (the blast loop matches caller 0x20F192 by its
     // struck set and horizontal reach; not traced further); dodgers (+0x128) are skipped.
+    // Pets and bombs §4.2 step 1 (correction 5): after the hostility test, a creature whose id
+    // equals the bomb's mount id (obj +0x11c0) is skipped. A bomb's mount id is never set, so
+    // only id 0 is spared; the engine carries no mount field.
+    constexpr uint64_t bombMountId = 0;
     auto hit = [&](Combatant &target, Body &body, glm::vec3 box) {
-        if (!hostilityTest(bomb.fighter, target) || !(target.health > 0 || std::isnan(target.health)) || target.dodgeMs != 0)
+        if (!hostilityTest(bomb.fighter, target) || target.id == bombMountId ||
+            !(target.health > 0 || std::isnan(target.health)) || target.dodgeMs != 0)
             return;
         // Horizontal reach: the raw horizontal squared length below trunc(((0.7 x + 8)^2) x 65536).
         int64_t horizontal = 0;
@@ -1327,11 +1332,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
                 record.source = target.fighter->id;
                 applyBuff(c, record);
                 frame.buffs.push_back({c.id, c.id, record});
-                // Engine adapters: the taming progress the engine keeps in place of the
-                // kind-7 producer, and the legacy continuation cache.
-                npc.tameProgress = 0;
-                npc.tameMs = 0;
-                npc.target = 0;
+                npc.target = 0; // engine adapter: the legacy continuation cache
             }
         }
         return true;
@@ -2412,7 +2413,6 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         npc.fatalRegionApplied = false;
         npc.fatalRecipientsApplied = false;
         npc.fatalBackingApplied = false;
-        npc.tameMs = std::max(0.f, npc.tameMs - dtMs); // pets §7.3: the taming progress lasts 5 s
         // §13.1: decide every 32 ms of accumulated time while not stunned.
         npc.thinkMs += dtMs;
         // The native behavior gate observes the incoming stun. Expiring this
@@ -2599,13 +2599,20 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     // §9.4, §12.3, server §6.2: deaths. At the moment of death the spawn's countdown starts and
     // every player in the threat map is credited (hostile creatures only); the body is
     // removed 1000 ms later.
+    // Pets and bombs §4, §4.4 (correction 28): the walk visits the table in ascending signed id
+    // and bombs explode inside it, so a creature a blast kills further on in the walk (an older
+    // bomb, with a larger id) is handled in this same pass. Removal waits for the walk's end.
+    std::vector<size_t> walk(list.size());
+    for (size_t k = 0; k < walk.size(); k++)
+        walk[k] = k;
+    std::sort(walk.begin(), walk.end(),
+              [&](size_t a, size_t b) { return ActorKeyLess{}(list[a].fighter.id, list[b].fighter.id); });
+    std::vector<bool> gone(list.size(), false);
     std::set<uint64_t> removed;
-    for (auto it = list.begin(); it != list.end();) {
-        Npc &n = *it;
-        if (n.fighter.health > 0) {
-            ++it;
+    for (const size_t index : walk) {
+        Npc &n = list[index];
+        if (n.fighter.health > 0)
             continue;
-        }
         // Pets §11.1: a dead pet lies until 20 s have passed and its owner is here and not
         // dying, then comes back to its owner, healed and calm.
         if (n.fighter.controller == 5) {
@@ -2626,9 +2633,12 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                     n.fighter.relations.contact = 0; // server simulation §6.3: target cleared
                     n.fighter.relations.threats.clear();
                     p.fighter.relations.counts.clear();
+                    // The native death timer is the action time and is not reset, so the AI's
+                    // 10-second rule ends the old action; the engine's separate death timer
+                    // restarts for the next death.
+                    n.fighter.actionMs = int32_t(n.deadMs);
                     n.deadMs = 0;
                 }
-            ++it;
             continue;
         }
         if (n.deadMs == 0 && !n.silentDeath) {
@@ -2638,7 +2648,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                 state.countdownMs = 1200000;
                 state.deathDay = day;
             }
-            if (n.fighter.type == 144 && n.fighter.controller == 6) {
+            if (n.fighter.type == 144) { // §4: the gate is the type alone (death timer 0, type 144)
                 NpcFrame::Explosion explosion{n.body.blocks(), n.fighter.id, n.fighter.level};
                 // §4.2: the removal-sound draw comes before every victim's draws.
                 if (removesBlocks && removesBlocks(explosion.centre, 8)) {
@@ -2685,10 +2695,18 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         worldStep(n.body, (int32_t)dtMs, block, objects);
         if (n.deadMs >= 1000) {
             removed.insert(n.fighter.id);
-            it = list.erase(it);
-        } else {
-            ++it;
+            gone[index] = true;
         }
+    }
+    if (!removed.empty()) { // erase in storage order once the walk is over
+        size_t kept = 0;
+        for (size_t k = 0; k < list.size(); k++)
+            if (k >= gone.size() || !gone[k]) {
+                if (kept != k)
+                    list[kept] = std::move(list[k]);
+                kept++;
+            }
+        list.resize(kept);
     }
     // Server simulation §6.3: a removed corpse leaves every threat and hit-counter map.
     forgetCreatures(removed, players, true);

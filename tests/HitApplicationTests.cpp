@@ -71,7 +71,7 @@ int main() {
         target.body.velocity = {2, 3, 4};
         target.home = target.body.blocks();
         target.zone = {0, 0};
-        target.tameMs = 44;
+        target.fighter.buffs.push_back({7, .2f, 44, 0}); // a taming-progress buff
         world.npcs().push_back(target);
         Combatant source;
         source.id = 41;
@@ -84,7 +84,7 @@ int main() {
         check(world.all().size() == 1 && world.all()[0].fighter.actionMs == 17 &&
               world.all()[0].fighter.actionLockMs == 9 && world.all()[0].fighter.hitStun == 100 &&
               world.all()[0].fighter.buffs[0].timeMs == 1000 && world.all()[0].thinkMs == 0 &&
-              world.all()[0].tameMs == 44,
+              world.all()[0].fighter.buffs[1].timeMs == 44,
               "actual NPC health rejection skips behavior, timers and resident countdown");
     }
     {

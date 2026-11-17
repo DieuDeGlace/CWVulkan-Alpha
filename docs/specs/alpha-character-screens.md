@@ -1,5 +1,8 @@
 # Alpha interface: character select, character creation and world select
 
+Status: FINAL / STABLE / HELD (re-certified 2026-11-16 against `Cube.exe`, the Alpha client
+image; see the re-certification section at the end).
+
 Behavioural specification of the screens between the start menu's "Start Game" and entering a
 world in the Cube World **Alpha** client (`Cube.exe`): the character list, the character
 creation screen, the world list, the world creation screen and the connect screen, how they
@@ -62,7 +65,7 @@ player is outside a world. The only code that changes their visibility is listed
 | world select | **Select** on a world | hide world select; set the camera (§7); start that world (0x46f620 with its seed and name) | 0x484170 |
 | world select | **Create** (Select on the "New world" panel) | hide world select; set the camera; show **world creation** | 0x484170 |
 | world creation | **Create World** | hide world creation; set the camera; append and save the world; start it (§5.4) | 0x482530 |
-| world select | **Connect to server** | show **connect**, hide world select, clear the address field (*believed*) | 0x481fe0 |
+| world select | **Connect to server** | show **connect**, hide world select, clear the text of the `edit` under the server-address label (G+0x8009ac); the same named clear is also applied to the red error label G+0x8009f8, which has no `edit` child (no effect, *believed*) | 0x481fe0 |
 | connect | **Connect** | if the address text is not empty: hide connect and connect to it (`alpha-net-transport.md`); empty: nothing | 0x4815e0 |
 | any | **Back** | see the Back table below | 0x4814f0 |
 
@@ -94,7 +97,12 @@ Every frame, before anything else in this spec is updated:
 * **Multiplayer Worlds...** and **Connect to server** are visible ⇔ world select is visible.
 * **Connect** is visible ⇔ connect is visible.
 * The in-game root (G+0x800884) is visible only when the start-screen root and all five
-  containers (and the "Please wait..." label) are hidden (0x4ae2f5 … 0x4ae356).
+  containers (and the "Please wait..." label) are hidden (0x4ae2f5 … 0x4ae356, inside the
+  frame routine 0x4ac260). The update routine also writes this visibility earlier
+  (0x4895e0 … 0x48968b) from a smaller test (character creation, character select, connect,
+  "Please wait..." and world creation hidden; world select and the start-screen root are not
+  tested); the frame-routine write is the one in force when the interface is drawn
+  (*believed*: order of the two routines within a frame not traced).
 * The message label G+0x8009f4 ("There is already ..." messages, §3.7, §5.3) is hidden; the
   creation screens may show it again later in the same frame.
 
@@ -106,8 +114,14 @@ Every frame, before anything else in this spec is updated:
 
 Every big button is a clone of the `gui.plx` template `button` (looked up at 0x45c8f0, kept in
 a local), resized with the widget-stretching rule (`alpha-ui-plasma.md` §5.5), its caption set
-on its `text` nodes (0x636ad0), and a callback attached to its click event (0x4576f0, event
-number 3; *believed* "released over the button", compare the press event 2 used by the arrows).
+on its `text` nodes (0x636ad0), and a callback attached to its event 3 (0x4576f0). Event 3 is
+the **left-button release**: the interface's release handler (0x652940, called from
+0x47ddd0) clears the "left button held" bit (interface +0xf4 bit 0), hit-tests the
+**visible** widgets under the cursor (0x636560 skips hidden nodes) and fires event 3 on the
+widget found. It does not check that the press began on the same widget. Event 2 is the
+left-button press (0x6527f0, called from 0x47b600, which also sets the held bit). All twelve
+buttons of the table below, including the list buttons, use event 3 (connections at
+0x45cbff … 0x45cf30 and 0x4656ac … 0x465947).
 
 Template facts (from `gui.plx`): a 100 × 100 bind rectangle; a 12-corner notched body filled
 black at alpha 0.67 with a stroke, an inner outline `Shape`, a `text` widget holding the
@@ -168,7 +182,7 @@ and server address repeat it):
 
 | Field | Label text | Label origin | Edit box (top-left … bottom-right) |
 |---|---|---|---|
-| character name | "Name" | (W/2, H − 50) | (W/2 − 62.5, H − 40) … (W/2 + 62.5, H − 20) |
+| character name | "Name" (cleared on entering creation, §3.6 step 3) | (W/2, H − 50) | (W/2 − 62.5, H − 40) … (W/2 + 62.5, H − 20) |
 | world name | "Name" | (W/2, H − 50) | same as above (other screen) |
 | world seed | "Seed (must be a number)" | (W/2, H − 100) | (W/2 − 62.5, H − 90) … (W/2 + 62.5, H − 70) |
 | server address | "Server address" | (W/2, H/2 − 100) | (W/2 − 62.5, H/2 − 90) … (W/2 + 62.5, H/2 − 70) |
@@ -244,8 +258,22 @@ vertically on the origin, *believed*), wrap width 180. Nothing else.
 terms 1.0001 and −0.10001), aspect W/H; the projection is shifted so that the model's origin
 lands on the screen point **(panel x + 100, panel y + 110)**. The view looks at the model from
 17 blocks, turned by the fixed angles −1.658 rad and 0.785 rad (*believed* pitch ≈ −95° and
-yaw 45°). Each frame the model's body yaw (record +0x137c) decreases by **0.05 · dt** (so the
-figure turns continuously, *believed* 50°/s) and record +0x1188 is set to 0.2. Lighting for
+yaw 45°). The figure animates and turns **only while the mouse is over its panel**
+(mouse-over test 0x6294c0 inside 0x425450). Every frame, before the hover test, the record's fields
++0x128, +0x12c (u32), +0x124 (u16), +0x5c := 0, +0x68 (byte) := 0, and the animation clock
++0x118c += 0.0075 · dt. Then:
+
+* **Hovered:** body yaw (record +0x137c, in **degrees**) −= 0.05 · dt (50°/s); +0x1188 := 0.2;
+  the three floats at +0x40 are eased towards (0, 8, 0) and those at +0x34 towards (0, 3, 0)
+  (0x605950: per millisecond of dt, v += (target − v) · 0.01, single precision).
+* **Not hovered:** the yaw eases back towards 0°: yaw += asin(clamp(−sin(yaw·π/180), −1, 1)) ·
+  f · 180/π with f = 1 − 0.99^dt (computed as dt repeated single-precision steps
+  f += (1 − f) · 0.01); +0x1188 decays by x += (0 − x) · 0.01 per millisecond; +0x40 and +0x34
+  are eased towards (0, 0, 0) with the same rate. So an unhovered figure stops and turns back
+  to face the default direction (the nearest multiple of 360°).
+
+(*Believed*: +0x34/+0x40 are the motion fields that drive the walk animation, +0x1188 an
+animation blend; the panel figure thus appears to walk on the spot while hovered.) Lighting for
 this draw: front (1, 1, 1, 1), back (0.2, 0.3, 0.4, 1), ambient (0.4, 0.4, 0.4, 1), light
 direction (0.5, 1, 1.5)/√3.5 = (0.267, 0.535, 0.802), fog distance 10⁹ (none). The model wears
 its equipment (equipment block record +0x300 is passed). *(The direction differs from the one
@@ -254,7 +282,14 @@ in `alpha-rendering.md` §11.5, which may belong to another preview; open point 
 ### 3.3 Scrolling and placement of the panels (0x489d4f … 0x48a3a9, every frame)
 
 Only while character select is visible and the "Please wait..." label is hidden; otherwise
-the scroll speed G+0x800a04 is set to 0 (0x48a80e).
+the scroll speed G+0x800a04 is set to 0 (0x48a80e). Within that, steps 1–4 are **skipped
+entirely while the left mouse button is held** (interface +0xf4 bit 0, test 0x489dca), and
+also when the panel list is empty; step 5 (friction) runs every such frame, held or not.
+
+Each easing factor f = 1 − (1 − r)^dt below is produced by 0x4ac150: starting from 0, dt
+repetitions of f := f + (1 − f) · r in double precision with r the single-precision rate,
+the result rounded to single precision (dt ≤ 0 gives 0). The eased value is then
+(1 − f) · value + f · target in single precision (0x4aba20).
 
 Let the panels be p₀ … p_*N* (top to bottom), each 600 × 220, and v = G+0x800a04 (pixels per
 second).
@@ -275,7 +310,9 @@ second).
 
 **Dragging** (mouse-move handler 0x47ea00, 0x47eaa7 … 0x47ebad): the handler keeps a smoothed
 mouse y, m := (1 − g)·m + g·y_mouse with g = 1 − 0.99^Δt (Δt = ms since the previous mouse
-message, timeGetTime). While character select is visible **and** the left button is held,
+move, timeGetTime; 0 on the first move). Every mouse-button press resets m to the current
+cursor y (0x47b600 start), so a drag begins without a jump. While character select is
+visible **and** the left button is held,
 every panel moves by the change of m (and is recentred in x), and
 v += (y_mouse − y_previous) · Δt · 2 (the two mouse values are the interface's current and
 previous cursor y, interface +0xd8 and +0xe0, *believed*). Releasing the button lets the list
@@ -290,7 +327,10 @@ highlights it except that the buttons of §3.4 sit on it. The initial selected i
 
 ### 3.4 The buttons on the selected panel (0x48a3af … 0x48a7c8, every frame)
 
-With the selected panel at (x, y) and size 600 × 220, if 0 ≤ selected < number of panels:
+**While the left mouse button is held** (interface +0xf4 bit 0, test 0x48a3b9) all three
+buttons are hidden, whatever the selection (0x48a6e8); the caption step below still runs.
+Otherwise, with the selected panel at (x, y) and size 600 × 220, if 0 ≤ selected < number of
+panels:
 
 | Button | Top-left | Visibility set here |
 |---|---|---|
@@ -302,22 +342,34 @@ Otherwise the three buttons are hidden. Then, if selected ≥ *N* (the "New char
 the small button and Delete Character are hidden and the Select caption is set to
 **"Create"**; else the caption is **"Select"**. (The caption is rewritten every frame.)
 
+Consequences (*believed*, from the code paths only; open point C-9): because the release
+event goes only to a visible widget (§2.1) and these three buttons are hidden on every
+update while the button is held, a click on Select/Create, the small button or Delete
+Character takes effect only if the press and the release are both handled before an update
+runs with the held bit set. Also, a held left button hides Delete Character and nothing
+re-shows it except another click on the small button (§3.5), so any press anywhere (for
+example the press of the click on Delete Character itself, or a drag) withdraws the
+confirmation.
+
 ### 3.5 Deleting a character (two steps, no dialog)
 
 1. Clicking the small 20 × 20 button (0x4829c0) **shows** Delete Character; it does nothing
    else. This is the only confirmation.
-2. Delete Character stays visible until the selection moves to another panel (§3.3 step 4)
-   or the "New character" panel is selected.
+2. Delete Character stays visible until the selection moves to another panel (§3.3 step 4),
+   the "New character" panel is selected, or the left mouse button is held during an update
+   (§3.4).
 3. Clicking **Delete Character** (0x4816f0) deletes the selected character *k*:
    * destroys its in-memory record and removes it from the list;
-   * writes `num` = *N* − 1, then renames keys *k*+1 … *N*−1 down by one
-     (`alpha-saves.md` §3.1); no world or map file is touched;
-   * rebuilds the list (§3.1). The selected index is **not** changed and Delete Character is
-     **not** hidden (*believed*: the rebuild only re-parents it), so after the rebuild the button sits beside the next character (now at
-     index *k*), and a second click deletes that one too without another confirmation, unless
-     the mouse has passed over another panel in between (faithful quirk; an engine may hide the
-     button after deleting). If *k* was the last character the "New character" panel becomes
-     selected and the buttons hide.
+   * writes `num` = *N* − 1, deletes key *k* (0x449720), then for *i* = *k* … *N*−2 renames
+     key *i*+1 to *i* in that order (0x449920; `alpha-saves.md` §3.1); no world or map file
+     is touched;
+   * rebuilds the list (§3.1; panels return to (300, 50 + 230·i) and ease back). The selected
+     index is **not** changed and Delete Character is **not** hidden by this routine (the
+     rebuild only re-parents it), so the button sits beside the next character (now at index
+     *k*) unless it was hidden by a held button (§3.4) or the mouse passes over another panel
+     (native quirk). If *k* was the last character, index *k* is now the "New character"
+     panel: the small button and Delete Character hide and the Select button stays, captioned
+     "Create".
 
 ### 3.6 Select
 
@@ -331,9 +383,17 @@ Create on the "New character" panel (selected ≥ *N*):
 2. show character creation; reset P (0x446330) and then: name := "" (P+0x1168), P+0x60 := 0,
    P+0x28 … P+0x3c := 0, P+0x5c := 0, P+0x180 := 1.0, **level P+0x190 := 1**, health P+0x16c
    := maximum health (0x444db0), main-hand and off-hand slots preset to an iron sword
-   (overwritten by the kit, §3.9), P+0x140 := 1, a fresh 64-byte extra-data object
-   (P+0x1d28: empty recipe list, no world entries);
-3. set the name edit's text to "";
+   (type 3, subtype 0, material 1) and the material byte of equipment slot 2 set to 1 (all
+   overwritten by the kit, which first resets the whole equipment block, §3.10), P+0x60 := 0
+   again, P+0x140 := 1, a fresh 64-byte extra-data object (P+0x1d28: empty recipe list, no
+   world entries). The reset 0x446330 (via 0x4465c0) zeroes, among others, experience
+   P+0x194 and the class/specialization word at P+0x140 (so specialization P+0x141 = 0);
+3. call the recursive text setter (0x636ad0) with "" on the **"charactername" label node**
+   G+0x800974 itself, not on its `edit` child. That setter replaces the text of every text
+   shape in the subtree, so it clears the edit **and both shapes of the "Name" caption**.
+   Nothing restores the caption, and this routine is the only way into character creation,
+   so the creation screen's "Name" label is (*believed*, code-derived; open point C-10) never
+   seen with its text after the first use of Create;
 4. reset the creation widget (0x42bd90): race 0, class 0, gender 0, face 0, haircut 0, hair
    colour (255, 200, 50), hover colour (255, 255, 255);
 5. apply the choices (0x42c080, §3.9).
@@ -354,15 +414,18 @@ Create on the "New character" panel (selected ≥ *N*):
 **Validation** (every frame while creation is visible, 0x4896ab … 0x489966). Let *t* be the
 name edit's text (UTF-16):
 
-1. If *t*, converted to the narrow string (0x6089c0), is equal (exact, case-sensitive,
-   0x428db0) to the name of any saved character: show G+0x8009f4 with
+1. If the name of any saved character (narrow, P+0x1168 of each record), widened unit by unit
+   (0x6089c0), is equal to *t* (exact, case-sensitive wide comparison, 0x428db0; the scan
+   stops at the first match): show G+0x8009f4 with
    "There is already a character with that name." and **hide** Create Character.
 2. Otherwise Create Character is visible ⇔ **2 ≤ length(t) ≤ 15** (length in UTF-16 units;
    0x4898a7: length − 2 ≤ 13 unsigned).
 
 No character is rejected; spaces and punctuation are allowed, and a name of spaces only is
-accepted. The name is stored narrow (0x659f50) in P+0x1168 (16-byte field), so 15 UTF-16 units
-fit when they are single-byte characters (*believed*; non-ASCII names, open point C-2).
+accepted. The name is narrowed (0x659f50: a range copy of the UTF-16 units into a narrow
+string, *believed* keeping the low byte of each unit) and copied, without a length bound, into
+P+0x1168 (16-byte field); the 15-unit limit therefore fits exactly with its terminator.
+(Exact narrowing of units above 0xFF: open point C-2.)
 
 ### 3.8 Create Character (0x4821a0)
 
@@ -415,8 +478,8 @@ palette colour changes:
 1. **Creature type** P+0x64 := base(race) + gender with base = 2, 0, 9, 11, 4, 7, 15, 13 for
    race 0 … 7 (same table as `alpha-creatures-models.md` §4.1).
 2. **Class** P+0x140 := class index + 1 (1 warrior, 2 ranger, 3 mage, 4 rogue). There is no
-   specialization row; the specialization byte P+0x141 is left as the reset left it
-   (*believed* 0).
+   specialization row; the specialization byte P+0x141 is left as the reset left it (0,
+   §3.6).
 3. **Wrap face and haircut** by the counts of the new type (table below): a value below 0
    becomes count − 1, a value ≥ count becomes **0**. (So changing race can reset a high face
    index to 0 rather than clamping it.)
@@ -464,8 +527,8 @@ Face and haircut counts used for wrapping (the model-id ranges first … last of
   (0.25, 0, 1), (0.5, 0, 1), (0.75, 0, 1), (1, 0, 1), (0.5, 0.5, 0.5).
 * 7 rows, *r* = 0 … 6, row top y_r = 197 + 17·r (197, 214, 231, 248, 265, 282, 299). Row
   colour: *r* < 3 → base × (0.2 + 0.25·r) (× 0.2, 0.45, 0.7); *r* = 3 → base; *r* > 3 →
-  base + (1 − base)·0.25·(r − 3) (25, 50, 75 % towards white; *believed*, from the helper
-  pair 0x428990 / 0x4289e0).
+  base + (white − base)·(0.25·(r − 3)) with white = (1, 1, 1, 1) (25, 50, 75 % towards white;
+  helpers 0x428990 subtract, 0x4a8f40 scale, 0x4289e0 add, all single precision).
 * Each swatch: a black 17 × 17 square at (13 + 17·c, y_r), then the colour as a 15 × 15
   square at (14 + 17·c, y_r + 1).
 * **Hover.** At the start of the palette pass the hover colour is reset to the committed
@@ -508,8 +571,9 @@ item is level 1, rarity 0):
 | Rogue | Iron Fist (3, 4, Iron) × 2, Iron Longsword (3, 5, Iron) × 1 |
 | all classes, then | Life Potion (1, 1), level 1, × 5 |
 
-(The ranger's wand comes from code shared with the mage's last item — faithful, probably
-unintended. The jump table at 0x4777d8 orders the cases warrior, ranger, mage, rogue.)
+(The ranger's wand comes from code shared with the mage's last item — native behaviour,
+probably unintended. The item record used for the class items is cleared by 0x42f3e0
+before they are set; the potion record has its remaining fields zeroed explicitly. The jump table at 0x4777d8 orders the cases warrior, ranger, mage, rogue.)
 
 **Then:** health := maximum health (0x444db0, depends on class and level); the recipe list
 is emptied and the level-1 grants are made (`alpha-crafting.md` §2.2). Because Apply runs on
@@ -517,11 +581,12 @@ every arrow click and on every palette-hover change, the grant's `rand()` draws 
 weapon key seeds) are consumed again each time; only the last run's keys are kept.
 
 **Summary of the record written by Create Character** (`alpha-saves.md` §3.2 fields): level
-1, class 1–4, specialization unchanged (*believed* 0), health = maximum, name as typed,
+1, class 1–4, specialization 0, experience 0, health = maximum, name as typed,
 equipment and inventory as above, money/unknowns from the blank creature, recipe list = the
 level-1 grants, choice record (race, sex, face, haircut, committed-or-hovered colour), no
-world entries, no current world. Position, orientation and experience are not set by these
-routines (*believed* zero after the reset; open point C-4).
+world entries, no current world. The position fields (P+0x10 … P+0x23, *believed*) are not
+written by the reset or by these routines (only P+0x24 … P+0x44 are zeroed), so they keep
+whatever P held before (open point C-4).
 
 ---
 
@@ -529,12 +594,14 @@ routines (*believed* zero after the reset; open point C-4).
 
 ### 4.1 The world list (builder 0x4a23d0)
 
-Built at start-up, after "Create World", after "Delete World" and whenever the multiplayer
-toggle is pressed. Steps as §3.1, with the panel list G+0x8009c0, and:
+Built at start-up, after "Create World", after "Delete World", whenever the multiplayer
+toggle is pressed, and when entering a world appends a new entry for it (0x46a8a0, at
+0x46b388; `alpha-saves.md` §4.1). Steps as §3.1, with the panel list G+0x8009c0, and:
 
 * The world entries (list G+0x8009dc, read from `worlds.db`) are filtered by the mode flag
   G+0x8009b0 (0 = singleplayer at start-up): an entry is an **online world** when its name is
-  longer than 7 characters and starts with `online_`. Singleplayer mode lists the other
+  **at least 7** characters long and its first seven characters are `online_` (so a name of
+  exactly `online_` counts). Singleplayer mode lists the other
   entries, multiplayer mode lists only online worlds.
 * After the listed worlds, the **"New world"** panel (record null) is always added, in both
   modes.
@@ -546,27 +613,37 @@ toggle is pressed. Steps as §3.1, with the panel list G+0x8009c0, and:
 
 * **"New world"** panel: "New world", 14 px, origin (300, 30), flags 5, as the "New
   character" panel.
-* **World panel:** the world's preview model (the `worlds.db` preview voxels, drawn in the
-  left part of the panel with its own projection, slowly turning; *believed*, not traced in
-  detail) and:
+* **World panel:** when the entry has a preview model (entry +4 non-null), the model (the
+  `worlds.db` preview voxels) is drawn in the left part of the panel with its own projection
+  (placement not traced in detail, C-8). Its yaw (widget +0x164, degrees) behaves like the
+  character figure's (§3.2): −0.05 · dt while the mouse is over the panel, eased back towards
+  0° otherwise (same asin rule, rate 0.01). If the entry's seed and name equal the active
+  character's last-world seed and name (extra data +0x24, +0x28), the player character P is
+  also drawn on the panel: each frame P's +0x124, +0x5c, +0x128, +0x12c, +0x68 are cleared,
+  its animation clock advances by 0.0075 · dt, its yaw +0x137c := 0, +0x1188 := 0.2 and its
+  +0x40 / +0x34 motion fields ease towards (0, 8, 0) / (0, 3, 0) (rate 0.01), so it is shown
+  walking (*believed*; placement C-8). Then the texts:
 
 | Line | Origin | Size | Flags | Text |
 |---|---|---|---|---|
 | name | (200, 30) | 14 | 0x10, wrap 180 | the world name |
-| explored | (200, 55) | 10 | 0 | "Explored: " *d* " km²" — *d* = the entry's discovered counter, printed as a float by the default stream format (so "38", "1.23457e+06" past six digits) |
-| seed | (200, 80) | 10 | 0 | "Seed: " *seed* (decimal) |
+| explored | (200, 55) | 10 | 0 | "Explored: " *d* " km²" — *d* = the entry's discovered counter (+0x24) read as a signed 32-bit integer, converted to float and printed by the default stream format (so "38", "1.23457e+06" past six digits) |
+| seed | (200, 80) | 10 | 0 | "Seed: " *seed* — the entry's seed (+0x20) printed by the **signed** 32-bit integer insertion (so a stored seed ≥ 2³¹ shows as a negative number) |
 
 ### 4.3 Scrolling, selection and buttons
 
 Identical to §3.3 and §3.4 with: container G+0x80088c, panel list G+0x8009c0, scroll speed
 G+0x800a08, selected **world index** G+0x800a10 (the hovered panel's world index via
 G+0x8009cc), and the buttons Select (G+0x8009e8), small (G+0x8009ec) and Delete World
-(G+0x8009f0). If the selected world index has no panel in the current mode (G+0x8009d4 gives
-none) all three buttons are hidden. Selected ≥ *M* (New world) → caption "Create", small and
+(G+0x8009f0). As for characters, the bounds/coast/pick block is skipped and all three
+buttons are hidden while the left mouse button is held (0x48a88f, 0x48ae9c); dragging the
+world list is done by the same mouse-move handler branch (0x47ea00, second branch: panels
+G+0x8009c0, speed G+0x800a08). If the selected world index has no panel in the current mode
+(G+0x8009d4 gives none) all three buttons are hidden. Selected ≥ *M* (New world) → caption "Create", small and
 Delete hidden; else "Select". Differences:
 
 * the speed G+0x800a08 is **not** zeroed by a mouse press (only G+0x800a04 is, 0x47b70f), so a
-  flung world list keeps coasting under a click (faithful quirk);
+  flung world list keeps coasting under a click (native quirk);
 * hidden world select sets G+0x800a08 to 0 (0x48b2c1).
 
 **Multiplayer Worlds...** (0x484230): toggles G+0x8009b0, sets the caption to
@@ -587,15 +664,20 @@ starts it the same way, as a local world (*believed*).
 The small button shows Delete World; Delete World on world *k* (0 ≤ *k* < *M*):
 
 1. deletes the files `Save\world_<name>.db` and `Save\map_<name>.db` (DeleteFileA);
-2. removes the entry from the list; if the selected index is now ≥ the new count, it becomes
-   count − 1;
+2. destroys the entry and removes it from the list; the selected index is reduced to
+   count − 1 only if it is now **greater than** the new count (test inside 0x481d30), which cannot
+   happen (*k* ≤ new count), so in practice the selected index stays *k*;
 3. writes `num` = *M* − 1 to `worlds.db`, then writes every remaining entry with 0x4878a0 —
    **all to the key of the (adjusted) selected index** (the loop passes the selected index,
    not the loop index). Net effect on disk: key *k* ends up holding the last entry, keys
    *k*+1 … *M*−2 keep their old contents and key *M*−1 is beyond `num`; so after a restart the
-   list is the old list with the last world moved into the deleted world's place. (Faithful
-   quirk; in memory the order is the shifted one until the next start.)
-4. rebuilds the list. As with characters, Delete World is not hidden afterwards.
+   list is the old list with the last world moved into the deleted world's place. When *k*
+   was the last entry (*k* = *M*−1), every write goes to key *M*−1, which is beyond the new
+   `num`, so keys 0 … *M*−2 are untouched and the deletion is clean. (Native quirk; in memory
+   the order is the shifted one until the next start.)
+4. rebuilds the list. As with characters, Delete World is not hidden by this routine; the
+   selection now designates the next world (old *k*+1), or the "New world" panel when *k* was
+   the last entry.
 
 ---
 
@@ -619,16 +701,22 @@ Let *n* be the name text and *s* the seed text.
 1. If *n* (narrow) equals the name of any world entry (0x427a00): show the info label with
    "There is already a world with that name." and hide Create World.
 2. Otherwise Create World is visible ⇔ **length(n) ≥ 2** and **length(s) ≥ 1** and every
-   character of *s* is '0' … '9'. There is no upper limit on the name length, and the seed
-   may not have a sign.
+   character of *s* is '0' … '9'. There is no upper limit on the name length or on the seed's
+   digit count, and the seed may not have a sign. The name check compares *n* with every
+   entry, online or not, whatever the list mode; the entry names are widened (0x6089c0) and
+   compared exactly (0x427a00).
 
 ### 5.4 Create World (0x482530)
 
 1. Hide world creation; camera := pitch 90, roll 0, yaw 180, distance 5 (targets and current).
 2. `worlds.db`: write `num` = *M* + 1.
-3. Make a world entry: name := *n* (narrow), seed := *s* parsed by a wide input stream as an
-   unsigned 32-bit number, discovered := 0, no preview. A seed with more digits than fit makes
-   the stream fail (value not set; open point C-6).
+3. Make a world entry: seed := *s* parsed by a wide string stream into a **signed** 32-bit
+   integer (MSVCP110 wide `operator>>(int&)`, import slot 0x6fc374), then name := *n*
+   (narrow), discovered := 0, no preview. The seed field (+0x20) is not initialised before
+   the parse, so a seed the stream rejects — any value above 2147483647, e.g. "3000000000" or
+   an 11-digit string, although the validation accepts it — leaves it undefined (open point
+   C-6). The edits are read after `num` has been written: name from G+0x8009bc, seed from
+   G+0x8009b8.
 4. Append it, selected world index := *M*, write it as key *M* (0x4878a0).
 5. Start the world (0x46f620 with seed and name), then rebuild the world list.
 
@@ -716,20 +804,109 @@ hidden. Name "x" → hidden.
 * **C-1** The library `Edit` widget (`edit` template, WM_CHAR via 0x652710): maximum
   length, accepted characters, caret, focus and whether Enter does anything. Trace the edit
   class or capture typing 30 characters.
-* **C-2** Narrow conversion 0x659f50 (code page or UTF-8) and what happens to names whose
-  narrow form exceeds 15 bytes.
+* **C-2** Narrow conversion 0x659f50 is a per-unit range copy (not a code-page or UTF-8
+  conversion); still open: the exact value kept for units above 0xFF and the sign handling of
+  bytes ≥ 0x80 when widening (0x6089c0) for the duplicate-name check.
 * **C-3** The small button's caption (the `smallbutton` template's text shape, not set by
   code) and the `button` caption's font size (*believed* 14 px like `button2`). Read the text
   shapes of `gui.plx`.
-* **C-4** Experience, position and orientation of a new character: confirm that 0x446330
-  zeroes P+0x194 and the position, or capture a fresh `characters.db` record.
+* **C-4** Experience (P+0x194) is zeroed by the reset (resolved). Still open: the position
+  fields of a new character, which the reset does not write (their value is whatever P
+  held); observe a fresh `characters.db` record.
 * **C-5** The character-panel model view: exact meaning of the angles −1.658 rad and
-  0.785 rad, the direction of the light (0.267, 0.535, 0.802) against
-  `alpha-rendering.md` §11.5, and the turning rate unit of record +0x137c.
-* **C-6** Seed overflow (more than 10 digits or > 4294967295) and the uninitialised seed field
-  of the new entry; and whether the multiplayer list's online worlds can really be started
-  offline.
-* **C-7** The click event number 3 used by the big buttons (press vs release), and the camera
-  focus during character creation (P drawn at its position by the world frame?) — capture.
-* **C-8** WorldPreviewWidget's model placement and turning (0x605ae0 lines 420–1000 not
-  traced).
+  0.785 rad and the direction of the light (0.267, 0.535, 0.802) against
+  `alpha-rendering.md` §11.5. (The yaw +0x137c is in degrees: resolved.)
+* **C-6** Seed overflow (value > 2147483647, signed parse): the resulting seed of the new
+  entry (uninitialised field); and whether the multiplayer list's online worlds can really be
+  started offline.
+* **C-7** Event 3 is the left-button release (resolved, §2.1). Still open: the camera focus
+  during character creation (P drawn at its position by the world frame?).
+* **C-9** Whether a normal click (press and release in different frames) on the list buttons
+  Select/Create, the small button or Delete Character / Delete World has any effect, given
+  that they are hidden while the left button is held and the release reaches only visible
+  widgets (§3.4); depends on the order of input handling and the update in the main loop
+  (0x4c8ae0), not traced. Needs native observation.
+* **C-10** Whether the character-creation "Name" caption is really blank after Create
+  (§3.6 step 3); needs native observation.
+* **C-8** WorldPreviewWidget's model and player placement and scale inside the panel
+  (projection part of 0x605ae0 not traced; the turning rule is now given in §4.2).
+
+---
+
+## Re-certification (2026-11-16)
+
+Every section was re-checked against the original `Cube.exe` evidence (decompiled routines,
+the instruction listing and constants read from the image; import names resolved from its
+import table). Facts not listed below were confirmed as written. Corrections:
+
+1. **Status line added** (top of document).
+2. **List buttons hidden while the left button is held** (§3.4, §4.3): the selection-button
+   block hides Select/Create, the small button and Delete Character whenever interface
+   +0xf4 bit 0 is set (0x48a3b9 → 0x48a6e8; world list 0x48ae9c → 0x48b192). Omission.
+3. **Scroll/pick skipped while held** (§3.3): steps 1–4 are skipped while the left button is
+   held (0x489dca → 0x48a3af; world list 0x48a88f); friction still runs (0x48a7dc). Omission.
+4. **Event 3 = left-button release** delivered to the visible widget under the cursor
+   (0x652940 via 0x47ddd0; hit test 0x636560 skips hidden nodes); event 2 = press (0x6527f0
+   via 0x47b600). Resolves the event part of C-7; consequence recorded as new C-9 (§2.1, §3.4).
+5. **"Name" caption cleared on Create** (§3.6 step 3, reversal of "set the name edit's text"):
+   0x483e70 calls the recursive text setter 0x636ad0 on the label node G+0x800974
+   (0x4840f5 … 0x484106), whose shape (node +0x34, from 0x64f4e0 → 0x630470) is the caption.
+   New C-10.
+6. **Panel figure turns only while hovered** (§3.2, reversal of "turns continuously"):
+   0x425450 tests 0x6294c0; hovered: yaw −= 0.05·dt, +0x1188 := 0.2, motion fields eased to
+   (0, 8, 0)/(0, 3, 0); not hovered: yaw eased back to 0° by the asin rule (constants 0.01,
+   180, π at 0x6fcda0, 0x6fce5c, 0x6fce08/0x6fce18), +0x1188 decays. Yaw unit is degrees.
+   Per-frame record clears and animation clock +0x118c += 0.0075·dt (0x6fd08c) added.
+7. **World preview** (§4.2): same hover rule for the model yaw (widget +0x164); model drawn
+   only when entry +4 is non-null; the active character is drawn on the panel of its last
+   world (seed/name compare with extra +0x24/+0x28, 0x605ae0 tail). Omission.
+8. **Seed is a signed 32-bit integer** (§5.4, reversal of "unsigned"): parse import
+   `basic_istream<wchar_t>::operator>>(int&)` (slot 0x6fc374, call 0x48283d); display uses
+   `operator<<(int)` (slot 0x6fc2e8, call 0x60869d) (§4.2). Discovered counter printed via
+   signed int → float (0x6082d9 … 0x6082fe).
+9. **Online-world test is length ≥ 7** (§4.1), not > 7 (0x4a23d0: substring(0, 7) compared
+   with `online_`).
+10. **Delete World does not adjust the selection** (§4.5 step 2, reversal): 0x481d30 lowers it
+    only when it exceeds the new count, which cannot happen; last-entry case added.
+11. **Delete Character key order** (§3.5): `num`, then DELETE key *k* (0x449720), then renames
+    *i*+1 → *i* (0x449920); last-character case corrected — Select stays, captioned "Create"
+    (0x48a717 … 0x48a7c8).
+12. **Duplicate-name checks compare widened saved names with the wide edit text**
+    (§3.7, §5.3; 0x4897a0 … 0x489809, 0x489b90 … 0x489bc0), not the edit text narrowed.
+13. **Drag smoothing reset on every button press** (§3.3; 0x47b600 start stores interface
+    +0xd8 into the smoothed value). Omission.
+14. **Easing factor precision** (§3.3): 0x4ac150 iterates dt steps in double precision and
+    rounds to single. Precision detail added.
+15. **Reset facts confirmed** (§3.6, §3.9, §3.10): 0x4465c0 zeroes P+0x194 and the dword at
+    P+0x140 (specialization 0); slot-2 material write (0x48405d) added; position fields not
+    written (C-4 narrowed).
+16. **Palette lighter rows confirmed** (§3.9): helpers 0x428990/0x4a8f40/0x4289e0 confirm
+    base + (white − base)·0.25·(r − 3); "believed" removed.
+17. **Connect to server clear confirmed** (§1.2): 0x636a00 "edit" on G+0x8009ac
+    (0x482089); the second call targets G+0x8009f8 (0x48212b). "Believed" removed.
+18. **In-game root second writer** (§1.3): update routine 0x4895e0 … 0x48968b with a smaller
+    test; recorded as clarification.
+19. **Extra world-list rebuild site** (§4.1): 0x46a8a0 at 0x46b388.
+20. **Kit item record initialisation** (§3.10): 0x42f3e0 clears the class-item record.
+21. **Name copy is unbounded** (§3.7; byte copy loop in 0x4821a0); narrowing is a per-unit
+    range copy (0x659f50), C-2 narrowed.
+22. **Advice addressed to a reimplementation removed** (§3.5, about hiding the button after a
+    deletion); "faithful" wording replaced by "native".
+
+**Remaining uncertainties:** C-1 (edit widget), C-2 (narrowing of units > 0xFF, widening
+sign), C-3 (small-button caption, `button` font size), C-4 (new character position), C-5
+(view angles, light direction), C-6 (seed overflow value, offline online worlds), C-7
+(creation camera focus), C-8 (world-panel placement), C-9 (whether slow clicks on the list
+buttons work at all), C-10 (blank "Name" caption). Also *believed*: the frame-routine write
+of the in-game root visibility governs (§1.3); +0x34/+0x40/+0x1188 as walk-animation fields.
+
+**Cross-spec notes (other specs not edited):**
+
+* `alpha-saves.md` §4.2 lists the world seed as u32 (storage width). This spec: the menu
+  parses and the world panel prints it as a signed 32-bit integer (evidence item 8). Not a
+  storage conflict; the interpretation differs.
+* `alpha-saves.md` §4.1 says world deletion "adjusts the selected index if it is now past the
+  end". Consistent literally, but this spec records that the adjustment can never trigger
+  (item 10, 0x481d30).
+* `alpha-saves.md` §4.1 describes 0x46a8a0 as entering a world without an entry; this spec
+  only cites it as a list-rebuild site (item 19); no conflict.

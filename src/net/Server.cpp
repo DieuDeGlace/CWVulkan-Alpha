@@ -931,10 +931,11 @@ void Server::stepWorld(float dtMs) {
                 if (creatures::itemType(item) == 1 && creatures::itemSubtype(item) == 7) {
                     npcs.placeBomb(at, creatures::itemLevel(item));
                 } else {
-                    // The server's copy of the player's health rises by the healing value (held to
-                    // the maximum by the step's clamp); the client is told by a hit from id 0.
+                    // The server's copy of the player's health rises by the healing value, with no
+                    // clamp here (pets and bombs §6, correction 8); the client is told by a hit
+                    // from id 0. Sound 44 plays at pitch 1.
                     const float heal = creatures::itemHeal(creatures::Item::parse(item.data()));
-                    const float healed = std::min(c->creature.health() + heal, creatures::maxHealth(c->creature.fighter()));
+                    const float healed = c->creature.health() + heal;
                     c->creature.setHealth(healed);
                     for (size_t k = 0; k < who.size(); k++)
                         if (who[k] == c)

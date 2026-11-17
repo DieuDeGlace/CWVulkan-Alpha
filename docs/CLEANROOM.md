@@ -2892,3 +2892,29 @@ Not modelled: riding and mount parts, the plaster field, the highlight colour so
 models (the whole translucent creature is deferred), ghost pose ageing at dt 0, dropping records for unloaded regions.
 Engine adapters retained: fog window origin and start value, the water chunk visiting order, the free-camera cloud gate. The
 owner's shared water shader, swimmable water, reeds, gamepad, price fixes and quests are unchanged.
+## Pets and bombs; character screens (2026-11-16)
+
+Fresh source-only authors re-certified `alpha-pets-bombs.md` (31CC4211...2AAC) and `alpha-character-screens.md`
+(5673CB9C...DF21). The creature-behaviour "pet at combo 5" wording they flagged is already governed by
+`alpha-rulings-knockback-taming-charge.md` (taming happens in the action-110 effect). Fresh implementers read each whole
+(the pets-and-bombs implementer read revision F1E81BFB...0AF; its author then moved only the status line into the header,
+giving the recorded revision).
+Engine changes: the taming adapter is removed: each bite applies a real kind-7 buff (announced in section 12; the failure
+re-issue is reachable; a rebuild empties the buff list through a shared creature reset); the fifth bite builds the pet without
+re-running the appearance generator; bite signals carry the creature position, the pitch grouping is 0.9 + 0.2(d/32767) and the
+target is the creature's own target field; new pet health uses controller 5; the kind-1 heal is not clamped; the T-key distance
+is single precision; the dead-creature pass walks ascending signed id, explodes inside the walk and removes corpses after it;
+the explosion gate is type 144 alone; the bomb filter skips the mount id (0); a returned pet's action time takes its death timer.
+Front screens: list buttons are hidden while the left button is held, scrolling follows the stored-y bounds, pull, coast and
+pick steps with friction every frame; buttons act on the left release (style arrows, palette and edit focus on the press); any
+press withdraws the Delete confirmation and resets drag smoothing; Create clears the Name caption; panel figures turn and walk
+only while hovered (per figure, asin ease back); the active character is drawn on its last world's panel; seeds are signed
+32-bit; online worlds have names of length 7 or more; Delete World never changes the selection and Delete stays shown; names
+are compared widened; the easing share is dt double steps rounded to single; Apply runs on every arrow, palette click, hover
+change and Create, and Create saves the last Apply's record.
+Not modelled: the native stage-10 placement of the dead-creature pass (the engine runs it at the end of the same step, one
+step early); pet names; the online kind-7 conversion test; the bomb hit set; knock-back on bombs; per-frame figure record
+fields; world-panel model placement (C-8); the "Please wait..." state; separate character and world name edits; hover
+caption highlight. Engine choices for open points: delivery uses press-time visibility (C-9, keeps controller clicks working),
+seed overflow wraps (C-6), wide units of 0x80 and above narrow to '?' (C-2). The controller drives the same press/release
+path; price fixes, quests, water and reeds are unchanged.

@@ -18,7 +18,10 @@ bool Interface::controllerBack() {
         case Front::Characters: front = Front::None; startScreen = true; break;
         default: break;
         }
-        deleteShown = false;
+        // (Engine controller extension: leaving a screen withdraws both delete confirmations
+        // and any half-made click.)
+        characterButtons.remove = worldButtons.remove = false;
+        pressedButtons.reset();
         frontRequest = FrontRequest::None;
         leftHeld = false;
     } else if (mapOpen) {

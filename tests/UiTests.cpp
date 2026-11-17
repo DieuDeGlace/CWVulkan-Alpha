@@ -21,6 +21,168 @@ static void check(bool ok, const std::string &what) {
     }
 }
 
+// A click on the character screens as the game delivers it: an update, the press, `held`
+// updates with the button down, then the release (event 3).
+static void frontClick(Interface &ui, glm::vec2 window, glm::vec2 at, int held = 0) {
+    ui.frontUpdate(window, at, 0);
+    ui.frontPress(window, at, 0);
+    for (int i = 0; i < held; i++)
+        ui.frontUpdate(window, at, 0);
+    ui.frontRelease(at);
+}
+
+// alpha-character-screens.md re-certification (2026-11-16) through the public screen API.
+static void checkCharacterScreens() {
+    using R = Interface::FrontRequest;
+    const glm::vec2 window{1280, 720}, select{820, 235}, small{910, 80}, remove{1100, 65}, nowhere{100, 600};
+    const auto click = [&](Interface &ui, glm::vec2 at, int held = 0) { frontClick(ui, window, at, held); };
+    const auto characters = [](Interface &ui, int n) {
+        ui.front = Interface::Front::Characters;
+        for (int i = 0; i < n; i++)
+            ui.characterList.push_back({"C" + std::to_string(i)});
+    };
+
+    // §3.3 easing share and worked example 8.2 (one character, dt 16: both panels move ~12.6).
+    check(std::fabs(listEaseShare(0.01f, 16) - 0.14854f) < 1e-4f && listEaseShare(0.01f, 0) == 0 &&
+              listEaseShare(0.01f, -3) == 0,
+          "list easing share is 1 - 0.99^dt, none for dt <= 0");
+    {
+        Interface ui;
+        characters(ui, 1);
+        ui.selectedCharacter = 1;
+        ui.frontUpdate(window, {640, 0}, 16);
+        ui.frontUpdate(window, {640, 61}, 0);
+        const bool notYet = ui.selectedCharacter == 1;
+        ui.frontUpdate(window, {640, 63}, 0);
+        check(notYet && ui.selectedCharacter == 0, "worked example 8.2: the short column eases 12.6 px towards its centred bound");
+    }
+    // §3.3 / §3.4: while the left button is held the pick is skipped and the buttons hide.
+    {
+        Interface ui;
+        characters(ui, 2);
+        ui.frontUpdate(window, {640, 100}, 0);
+        ui.frontPress(window, {640, 100}, 0);
+        ui.frontUpdate(window, {640, 300}, 16);
+        const bool kept = ui.selectedCharacter == 0;
+        ui.frontRelease({640, 300});
+        ui.frontUpdate(window, {640, 300}, 0);
+        check(kept && ui.selectedCharacter == 1, "a held button skips the pick; after the release the mouse picks again");
+    }
+    // §3.4, §3.5: the small button confirms, any held press withdraws it, deletion keeps both.
+    {
+        Interface ui;
+        characters(ui, 2);
+        ui.frontUpdate(window, {640, 100}, 0);
+        click(ui, remove);
+        check(ui.frontRequest == R::None, "Delete Character answers only once the small button showed it");
+        click(ui, small, 1);
+        click(ui, remove, 2);
+        check(ui.frontRequest == R::DeleteCharacter && ui.selectedCharacter == 0,
+              "a release reaches the Delete Character shown at the press, and the selection stays");
+        ui.frontRequest = R::None;
+        click(ui, small);
+        click(ui, nowhere, 1);
+        click(ui, remove);
+        check(ui.frontRequest == R::None, "a held press anywhere withdraws the delete confirmation");
+        click(ui, small);
+        click(ui, remove);
+        ui.frontRequest = R::None;
+        click(ui, remove);
+        check(ui.frontRequest == R::DeleteCharacter, "Delete Character stays shown after a deletion (native)");
+    }
+    // §2.1: event 3 goes to the visible widget under the release, not checked against the press.
+    {
+        Interface ui;
+        characters(ui, 1);
+        ui.frontUpdate(window, select, 0);
+        ui.frontRelease(select);
+        check(ui.frontRequest == R::None, "a release without its press does nothing");
+        ui.frontPress(window, select, 0);
+        ui.frontRelease({100, 40});
+        check(ui.front == Interface::Front::None && ui.startScreen && ui.frontRequest == R::None,
+              "a press on Select released over Back is Back");
+    }
+    // §3.5: deleting the last character leaves Select on the New character panel as "Create".
+    {
+        Interface ui;
+        characters(ui, 1);
+        ui.frontUpdate(window, {640, 100}, 0);
+        click(ui, small);
+        click(ui, remove);
+        ui.characterList.clear(); // (the game's rebuild)
+        click(ui, select);
+        check(ui.front == Interface::Front::Creation, "after the last character's deletion Select is Create");
+    }
+    // §3.7: saved names are widened and compared with the wide edit text.
+    {
+        Interface ui;
+        ui.front = Interface::Front::Creation;
+        ui.characterList.push_back({"caf\xe9"});
+        ui.characterList.push_back({"ab?"});
+        const char16_t eAcute = 0xe9; // (spelt as a unit: the build sets no source character set)
+        ui.nameText = std::u16string(u"caf") + eAcute;
+        click(ui, {1100, 680});
+        check(ui.frontRequest == R::None, "a widened saved name matches the typed name");
+        ui.nameText = std::u16string(u"ab") + eAcute;
+        click(ui, {1100, 680});
+        check(ui.frontRequest == R::CreateCharacter, "a typed unit above 0x7f is not narrowed before the check");
+    }
+    // §4.1, §4.3, §4.5, §5.3, §5.4: the world list.
+    {
+        Interface ui;
+        ui.front = Interface::Front::Worlds;
+        ui.worldList = {{"online_", 1, 0}, {"online", 2, 0}, {"Home", 3, 0}};
+        ui.frontUpdate(window, {640, 100}, 0);
+        check(ui.selectedWorld == 1, "a six-letter name is singleplayer; the panel picks its world index");
+        click(ui, select);
+        check(ui.frontRequest == R::SelectWorld && ui.selectedWorld == 1, "world Select asks for the selected world index");
+        ui.frontRequest = R::None;
+        click(ui, small);
+        click(ui, remove);
+        check(ui.frontRequest == R::DeleteWorld && ui.selectedWorld == 1, "Delete World never changes the selection");
+        ui.frontRequest = R::None;
+        click(ui, {1100, 40});
+        ui.frontRequest = R::None;
+        ui.frontUpdate(window, {640, 100}, 0);
+        click(ui, select);
+        check(ui.multiplayerWorlds && ui.frontRequest == R::SelectWorld && ui.selectedWorld == 0,
+              "a name of exactly online_ is an online world");
+        ui.frontRequest = R::None;
+        ui.front = Interface::Front::WorldCreation;
+        ui.nameText = u"Home";
+        ui.seedText = u"2147483647";
+        click(ui, {1100, 680});
+        check(ui.frontRequest == R::None, "the world name check covers the worlds the list does not show");
+        ui.nameText = u"Home2";
+        click(ui, {1100, 680});
+        check(ui.frontRequest == R::CreateWorld && ui.selectedWorld == 3 && ui.worldSeed() == 2147483647u,
+              "Create World selects M and parses the largest signed seed");
+    }
+    // §3.3 dragging: a press re-anchors the smoothed cursor, so the drag moves by the mouse only.
+    {
+        Interface ui;
+        characters(ui, 4);
+        ui.selectedCharacter = 4;
+        ui.frontUpdate(window, {0, 0}, 0);
+        ui.frontMouseMove(100, 1000);
+        ui.frontPress(window, {100, 100}, 0);
+        ui.frontMouseMove(100, 2000);
+        ui.frontMouseMove(300, 3000);
+        ui.frontRelease({100, 300});
+        ui.frontUpdate(window, {640, 300}, 0);
+        check(ui.selectedCharacter == 0, "a drag from a fresh press moves the panels by the smoothed mouse change");
+    }
+    // §3.2: figures turn only while hovered, and ease back by the asin rule otherwise.
+    {
+        float share = 0;
+        for (int i = 0; i < 16; i++)
+            share += (1 - share) * 0.01f;
+        check(std::fabs(panelYawStep(0, true, 20) + 1) < 1e-6f && panelYawStep(30, false, 0) == 30 &&
+                  std::fabs(panelYawStep(30, false, 16) - (30 - 30 * share)) < 1e-3f && panelYawStep(350, false, 16) > 350,
+              "panel yaw turns 0.05 deg/ms while hovered and eases back to the nearest turn otherwise");
+    }
+}
+
 static void checkMenuRequests() {
     {
         Interface vendor;
@@ -45,54 +207,63 @@ static void checkMenuRequests() {
     // Drive the engine's public screen input API, without touching owner saves.
     // These checks cover requests; Main's save/renderer integration is separate.
     const glm::vec2 window{1280, 720}, listButton{820, 235}, createButton{1100, 680}, backButton{100, 40};
+    // A click as the game delivers it: an update, the press, `held` updates with the button
+    // down, the release (event 3).
+    const auto click = [&](Interface &ui, glm::vec2 at, int held = 0) { frontClick(ui, window, at, held); };
     Interface menu;
     menu.front = Interface::Front::Characters;
-    check(menu.frontPress(window, listButton, 0) && menu.front == Interface::Front::Creation,
-          "new-character button opens creation");
+    menu.frontUpdate(window, listButton, 0);
+    menu.frontPress(window, listButton, 0);
+    check(menu.front == Interface::Front::Characters, "the list buttons do not answer the press");
+    menu.frontRelease(listButton);
+    check(menu.front == Interface::Front::Creation && menu.creationChanged && menu.creation.hover == std::array<uint8_t, 3>{255, 255, 255},
+          "new-character Create (on the release) opens creation, resets the hover colour to white and applies");
     menu.frontType(u'A', false);
-    menu.frontPress(window, createButton, 0);
+    click(menu, createButton);
     check(menu.frontRequest == Interface::FrontRequest::None, "one-letter character name cannot request a save");
     for (char16_t ch : std::u16string(u"lpha")) menu.frontType(ch, false);
-    menu.frontPress(window, createButton, 0);
-    check(menu.frontRequest == Interface::FrontRequest::CreateCharacter && menu.nameText == u"Alpha",
-          "typed character name reaches the creation request");
+    click(menu, createButton);
+    check(menu.frontRequest == Interface::FrontRequest::CreateCharacter && menu.nameText == u"Alpha" &&
+              menu.selectedCharacter == 0 && menu.activeCharacter == 0,
+          "typed character name reaches the creation request, which selects the new character N");
     menu.frontRequest = Interface::FrontRequest::None;
     menu.characterList.push_back({"Alpha"});
-    menu.frontPress(window, createButton, 0);
+    click(menu, createButton);
     check(menu.frontRequest == Interface::FrontRequest::None, "duplicate character name does not request overwrite");
-    menu.frontPress(window, backButton, 0);
-    menu.frontPress(window, listButton, 0);
+    click(menu, backButton);
+    click(menu, listButton);
     check(menu.frontRequest == Interface::FrontRequest::SelectCharacter,
           "returning to the list can select the existing character");
 
     menu.frontRequest = Interface::FrontRequest::None;
     menu.front = Interface::Front::Worlds;
-    menu.frontPress(window, listButton, 0);
+    click(menu, listButton);
     check(menu.front == Interface::Front::WorldCreation, "new-world button opens world creation");
     menu.nameText.clear();
     for (char16_t ch : std::u16string(u"Test")) menu.frontType(ch, false);
-    menu.frontPress(window, createButton, 0);
+    click(menu, createButton);
     check(menu.frontRequest == Interface::FrontRequest::None, "world creation requires a seed");
-    menu.frontPress(window, {640, 640}, 0);
+    click(menu, {640, 640});
     for (char16_t ch : std::u16string(u"41")) menu.frontType(ch, false);
-    menu.frontPress(window, createButton, 0);
-    check(menu.frontRequest == Interface::FrontRequest::CreateWorld && menu.nameText == u"Test" && menu.seedText == u"41",
+    click(menu, createButton);
+    check(menu.frontRequest == Interface::FrontRequest::CreateWorld && menu.nameText == u"Test" && menu.seedText == u"41" &&
+              menu.worldSeed() == 41,
           "world name and separately focused seed reach the creation request");
     menu.frontRequest = Interface::FrontRequest::None;
     menu.frontType(u'x', false);
-    menu.frontPress(window, createButton, 0);
+    click(menu, createButton);
     check(menu.frontRequest == Interface::FrontRequest::None, "nonnumeric world seed cannot request a save");
-    menu.frontPress(window, backButton, 0);
-    menu.frontPress(window, {1100, 40}, 0);
+    click(menu, backButton);
+    click(menu, {1100, 40});
     check(menu.multiplayerWorlds && menu.frontRequest == Interface::FrontRequest::ListWorlds,
           "multiplayer toggle requests the corresponding world list");
     menu.frontRequest = Interface::FrontRequest::None;
-    menu.frontPress(window, createButton, 0);
+    click(menu, createButton);
     check(menu.front == Interface::Front::Connect, "connect button opens the server field");
-    menu.frontPress(window, {640, 360}, 0);
+    click(menu, {640, 360});
     check(menu.frontRequest == Interface::FrontRequest::None, "empty server field does not request a connection");
     for (char16_t ch : std::u16string(u"127.0.0.1")) menu.frontType(ch, false);
-    menu.frontPress(window, {640, 360}, 0);
+    click(menu, {640, 360});
     check(menu.frontRequest == Interface::FrontRequest::Connect && menu.serverText == u"127.0.0.1",
           "typed server address reaches the connection request");
 
@@ -246,6 +417,7 @@ int main(int argc, char **argv) {
     checkInteractionTargets();
     checkPlatinumAdaption();
     checkMenuRequests();
+    checkCharacterScreens();
     checkSkillTooltip();
     // §8.2
     check(plasma::unscramble({0x78, 0x87, 0x81, 0x6D, 0xBD, 0x3D, 0x2F, 0xC7, 0x6E, 0x99, 0xAC, 0x39, 0x28, 0xD1}) ==

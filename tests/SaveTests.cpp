@@ -118,9 +118,30 @@ int main(int argc, char **argv) {
               "the last entry takes the deleted key; nothing else moves or goes");
         check(deleteWorldEntry(worldList, 2), "delete the last listed world");
         names = readWorlds(worldList);
-        check(names.size() == 2 && names[0].name == "W0" && names[1].name == "W3", "the selection is pulled back inside");
+        check(names.size() == 2 && names[0].name == "W0" && names[1].name == "W3",
+              "deleting the last entry writes beyond num and leaves the others untouched");
         worldList.put("0", {0xff, 0xff});
         check(readWorlds(worldList).size() == 2 && readWorlds(worldList)[1].name == "W3", "a damaged entry keeps its place");
+
+        // Character screens §4.5: the deletion from the list held in memory, which keeps the
+        // shifted order while the disk takes Alpha's rewrite order.
+        std::vector<WorldEntry> memory(4);
+        for (uint32_t i = 0; i < 4; i++) {
+            memory[i].name = "M" + std::to_string(i);
+            memory[i].seed = i;
+            worldList.put(std::to_string(i), memory[i].serialize());
+        }
+        worldList.putNumber("num", 4);
+        check(deleteWorldEntry(worldList, memory, 1) && memory.size() == 3 && memory[1].name == "M2" && memory[2].name == "M3",
+              "memory deletion shifts the later worlds down");
+        names = readWorlds(worldList);
+        check(names.size() == 3 && names[0].name == "M0" && names[1].name == "M3" && names[2].name == "M2",
+              "memory deletion writes every remaining entry under the selected key");
+        check(deleteWorldEntry(worldList, memory, 2) && memory.size() == 2 && memory[1].name == "M2", "memory deletion of the last entry");
+        names = readWorlds(worldList);
+        check(names.size() == 2 && names[0].name == "M0" && names[1].name == "M3" && worldList.get("2").has_value(),
+              "the last entry's deletion writes key M-1 beyond num, so the disk keeps its earlier order");
+        check(!deleteWorldEntry(worldList, memory, 2) && memory.size() == 2, "no entry past the list is deleted");
         } // (both files closed)
         fs::remove(listFile, ec);
         fs::remove(worldFile, ec);

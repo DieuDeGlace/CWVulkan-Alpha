@@ -23,7 +23,7 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-16 (after batches 1-23 and the rulings; 227 tracked contracts, local ignored variants excluded): 154 A, 61 B, 7 C (4346 lines), 5 reclassified (E/G/S).
+Snapshot 2026-11-16 (after batches 1-24 and the rulings; 227 tracked contracts, local ignored variants excluded): 156 A, 61 B, 5 C (3026 lines), 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -71,7 +71,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 `alpha-open-points-10.md` (plus the ruling `alpha-rulings-formation-angle-box.md`); `alpha-net-packets.md` and `alpha-skills.md`
 (plus the ruling `alpha-rulings-knockback-snap.md`); `alpha-travel.md`, `alpha-particles.md`,
 `alpha-crafting.md`, `alpha-open-points-3.md` (plus the ruling `alpha-rulings-walk-flag-pitch.md`); `alpha-path-search.md`, `alpha-worldgen-locations.md`,
-`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`; `alpha-creatures-behaviour.md` (plus the ruling `alpha-rulings-beam-flag-strike-origin.md`); `alpha-worldgen-structures.md`; `alpha-ui-screens.md` (plus the rulings `alpha-rulings-knockback-taming-charge.md` and `alpha-rulings-corridor-third-line.md`); `alpha-creatures-models.md`, `alpha-missions.md` and `alpha-rendering.md` (plus the rulings `alpha-rulings-mission-rewards.md`, `alpha-rulings-pose-49-50-mount.md`, `alpha-rulings-rendering-clouds-lights.md` and `alpha-rulings-shimmer-phase.md`).
+`alpha-item-names.md` and `alpha-worldgen-trees.md`; `alpha-server-simulation.md` and `alpha-physics-camera.md`; `alpha-interaction.md`, `alpha-open-points-4.md`, `alpha-item-services.md` and `alpha-block-edits.md` (plus the ruling `alpha-rulings-melee-reach.md`); `alpha-talk-vendors.md`, `alpha-open-points-6.md` and `alpha-location-creatures.md`; `alpha-creatures-behaviour.md` (plus the ruling `alpha-rulings-beam-flag-strike-origin.md`); `alpha-worldgen-structures.md`; `alpha-ui-screens.md` (plus the rulings `alpha-rulings-knockback-taming-charge.md` and `alpha-rulings-corridor-third-line.md`); `alpha-creatures-models.md`, `alpha-missions.md` and `alpha-rendering.md` (plus the rulings `alpha-rulings-mission-rewards.md`, `alpha-rulings-pose-49-50-mount.md`, `alpha-rulings-rendering-clouds-lights.md` and `alpha-rulings-shimmer-phase.md`); `alpha-pets-bombs.md` and `alpha-character-screens.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -92,7 +92,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-camera-ray-geometry.md` | A | 196 | 1 |
 | `alpha-camera-view-production.md` | A | 100 | 3 |
 | `alpha-category13-inventory-counter.md` | A | 76 | 0 |
-| `alpha-character-screens.md` | C | 736 | 0 |
+| `alpha-character-screens.md` | A | 913 | 0 |
 | `alpha-class-83-descriptor-production.md` | A | 157 | 0 |
 | `alpha-client-action-binding-producer.md` | B | 113 | 1 |
 | `alpha-client-action-input-phase.md` | B | 149 | 2 |
@@ -173,7 +173,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
 | `alpha-location-creatures.md` | A | 519 | 0 |
 | `alpha-loot-rolls.md` | A | 503 | 0 |
-| `alpha-materials-wildlife-routes.md` | C | 708 | 1 |
+| `alpha-materials-wildlife-routes.md` | C | 905 | 0 |
 | `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
 | `alpha-missions.md` | A | 1062 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
@@ -206,7 +206,7 @@ then `alpha-net-transport.md`, `alpha-net-server.md` and `alpha-saves.md`; `alph
 | `alpha-periodic-buff-hit.md` | B | 117 | 2 |
 | `alpha-periodic-hit-application-details.md` | B | 98 | 2 |
 | `alpha-periodic-hit-producer-state.md` | A | 127 | 2 |
-| `alpha-pets-bombs.md` | C | 781 | 2 |
+| `alpha-pets-bombs.md` | A | 1057 | 0 |
 | `alpha-physics-camera.md` | A | 944 | 0 |
 | `alpha-player-control.md` | A | 406 | 0 |
 | `alpha-pose-owner-inputs.md` | A | 212 | 1 |

@@ -51,22 +51,48 @@ uint64_t Npcs::freeId() const {
     return smallest - uint64_t(1); // defined low-64-bit wrap, including the signed minimum
 }
 
-// §9.2 steps 1-5 and §9.4: the creature becomes the pet of `owner` as the Pet slot item says.
-void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
-    pet.path.clear();
-    pet.path.state.reference = {-1, -1, 0};
+// §9.2 step 1, re-certification correction 17: the record reset (level 1, experience 0,
+// motion, mode, action, action time, combo, class, tier, equipment, owner and skills cleared,
+// hit-stun -3000, multipliers 100, 1, 1 with armour and resistance kept, health untouched),
+// then the transient reset (behaviour, stealth, mount, target and pet ids, the threat,
+// hit-counter and third maps, the path and the whole buff list, a kind-7 taming buff included).
+// The controller and type are not part of either reset; the caller writes what follows.
+void Npcs::resetCreature(Npc &n) {
     Combatant c;
-    c.id = pet.fighter.id;
-    c.health = pet.fighter.health;
-    c.type = item.subtype;
-    c.level = std::max(1, item.level);
-    c.experience = (int32_t)item.seed;
-    c.controller = 5;
+    c.id = n.fighter.id;
+    c.controller = n.fighter.controller;
+    c.type = n.fighter.type;
+    c.health = n.fighter.health;
+    c.multipliers[3] = n.fighter.multipliers[3];
+    c.multipliers[4] = n.fighter.multipliers[4];
     c.characterClass = 0;
-    int32_t type = c.type;
-    generate(type, pet.looks, nullptr, [&] { return draw(); });
-    c.appearanceFlags = pet.looks.flags;
-    // §9.4: the behaviour builder's multipliers, per-type changes, level cap and health.
+    c.hitStun = -3000;
+    c.linkedItem.source.fill(0); // native reset differs from fresh item construction
+    c.equipment[PET_SLOT].level = 0;
+    c.linkedItem.retained = n.fighter.linkedItem.retained;
+    c.behaviorReference = n.fighter.behaviorReference; // the held body reset preserves field40
+    n.fighter = std::move(c);
+    n.body.mode = n.fighter.mode; // the reset leaves the reverse ID zero (alpha-fatal-context-field-producers.md)
+    n.looks = Appearance{};       // the default appearance
+    n.path.clear();
+    n.path.state.reference = {-1, -1, 0};
+    n.spawn = Npc::NO_SPAWN;
+    n.target = 0; // legacy continuation cache of the cleared target
+    n.threat = 0;
+    n.deadMs = 0; // the action time is the death timer natively, and the reset zeroes it
+    n.fatalPresented = false;
+    n.fatalLootApplied = false;
+    n.fatalRegionApplied = false;
+    n.fatalRecipientsApplied = false;
+    n.fatalBackingApplied = false;
+}
+
+// §9.4: multipliers 100, 1, 1, 1, 1 and the per-type changes; then, only for a found owner
+// (alpha-forward-link-zero-gates.md, "Owner helper": its own unguarded search by the owner's
+// ID), the level cap, the owner field, the taming-skill health factor and the owner's link.
+// The AI it installs (Combat, then Companion) is selected by controller 5 in think().
+void Npcs::buildPet(Npc &pet, uint64_t ownerId) {
+    Combatant &c = pet.fighter;
     float m[5] = {100, 1, 1, 1, 1};
     if (c.type == 25)
         m[0] = 300, m[2] = 0.1f, m[3] = 5, m[4] = 5;
@@ -75,33 +101,30 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     if (c.type == 104)
         c.characterClass = 2, c.specialization = 1;
     std::copy(m, m + 5, c.multipliers);
-    c.actionMs = 1000000;
-    c.linkedItem.source.fill(0); // native reset differs from fresh item construction
-    c.equipment[PET_SLOT].level = 0;
-    c.linkedItem.retained = pet.fighter.linkedItem.retained;
-    c.behaviorReference = pet.fighter.behaviorReference; // the held body reset preserves field40
-    pet.fighter = c;
-    pet.body.mode = c.mode; // the reset leaves the reverse ID zero (alpha-fatal-context-field-producers.md)
-    pet.spawn = Npc::NO_SPAWN;
-    pet.fighter.relations.threats.clear();
-    pet.target = 0;
-    pet.threat = 0;
-    pet.body.size = pet.looks.box;
-    pet.deadMs = 0;
-    pet.fatalPresented = false;
-    pet.fatalLootApplied = false;
-    pet.fatalRegionApplied = false;
-    pet.fatalRecipientsApplied = false;
-    pet.fatalBackingApplied = false;
-    // Owner helper (alpha-forward-link-zero-gates.md, "Owner helper"): its own
-    // unguarded search by the owner's ID; only a found owner caps the level,
-    // rewrites the reverse ID, rescales the first multiplier and takes the link.
-    if (Combatant *mappedOwner = lookupActor(owner.id, {}).combat()) {
-        pet.fighter.level = std::min(pet.fighter.level, mappedOwner->level);
-        pet.fighter.ownerId = owner.id;
-        pet.fighter.multipliers[0] *= 1 + 0.5f * skillFactor(mappedOwner->skills[0]);
-        mappedOwner->linkedId = pet.fighter.id;
+    if (Combatant *mappedOwner = lookupActor(ownerId, {}).combat()) {
+        c.level = std::min(c.level, mappedOwner->level);
+        c.ownerId = ownerId;
+        c.multipliers[0] *= 1 + 0.5f * skillFactor(mappedOwner->skills[0]);
+        mappedOwner->linkedId = c.id;
     }
+}
+
+// §9.2 steps 1-6 (and §9.3 steps 6-8): reset, then type, level and experience from the item,
+// the owner, the default appearance and the generator with no choice record (its five
+// choice-record draws plus the type's own), then the behaviour builder. Health is kept.
+void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
+    resetCreature(pet);
+    Combatant &c = pet.fighter;
+    c.type = item.subtype;
+    c.level = std::max(1, item.level);
+    c.experience = (int32_t)item.seed;
+    // Step 3, the item's name characters: the engine creature record carries no name.
+    c.ownerId = owner.id; // step 4
+    int32_t type = c.type;
+    generate(type, pet.looks, nullptr, [&] { return draw(); });
+    c.appearanceFlags = pet.looks.flags;
+    pet.body.size = pet.looks.box;
+    buildPet(pet, owner.id);
 }
 
 // §9: each player's pet, found, rebuilt, made or removed by the Pet slot; §11.2 stale pets.
@@ -136,28 +159,30 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
                     owner.linkedId = id;
                     Npc child;
                     child.fighter.id = id;
+                    child.fighter.controller = 5; // §9.3 step 3
                     child.zone = {worldgen::floorDiv((int32_t)std::floor(p.body.blocks().x), worldgen::ZONE),
                                   worldgen::floorDiv((int32_t)std::floor(p.body.blocks().y), worldgen::ZONE)};
                     child.home = p.body.blocks();
+                    // §9.3 step 5: the maximum health of the reset controller-5 record with the
+                    // item's type and level, before the builder caps the level and raises the
+                    // health multiplier.
                     Combatant plain;
+                    plain.controller = 5;
                     plain.type = slot.subtype;
                     plain.level = std::max(1, slot.level);
                     plain.characterClass = 0;
                     child.fighter.health = maxHealth(plain);
                     makePet(child, slot, owner);
-                    child.fighter.ownerId = owner.id; // creation's reverse ID, independent of the helper's lookup
                     child.body.place(p.body.blocks());
                     child.yaw = p.yaw;
                     appendNpc(std::move(child));
                 }
             } else {
-                // This category route deliberately looks up key zero too.
+                // This category route deliberately looks up key zero too. §9.5: a pet still
+                // carrying its kind-7 taming buff (the 5-s grace of §7.4) is kept.
                 const ActorEntry linked = lookupActor(owner.linkedId, players);
                 const Combatant *state = linked.combat();
-                // Keep the preexisting engine feeding grace until its full
-                // selector-seven producer is connected; resident presence wins.
-                const bool feedingGrace = linked.npc && linked.npc->tameMs > 0;
-                if (!state || (!state->hasBuff(7) && !feedingGrace)) {
+                if (!state || !state->hasBuff(7)) {
                     owner.linkedId = 0;
                     if (linked.combat())
                         linked.combat()->health = 0;
@@ -187,6 +212,9 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
         if (current->controller == 5) {
             const ActorEntry owner = lookupActor(current->ownerId, players);
             if (owner.combat() && owner.combat()->linkedId != current->id) {
+                // §11.2, correction 17: the record and transient reset of §9.2 step 1 first.
+                if (actor.npc)
+                    resetCreature(*actor.npc);
                 current->backing = {};
                 current->linkedId = 0;
                 current->health = 0;
@@ -200,36 +228,46 @@ void Npcs::petPass(std::vector<PlayerView> &players, NpcFrame &frame) {
     }
 }
 
-// §7.3: one bite of a creature being fed (the action-110 effect at its hit moment).
+// §7.3, ruling knockback-taming-charge B.2: one bite, the action-110 effect at its P1
+// crossing. The creature's target (+0x11d0) must still exist and hold this creature's food in
+// its Pet slot; otherwise nothing happens and nothing is drawn.
 void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
-    for (PlayerView &p : players) {
-        const Item &food = p.fighter.equipment[PET_SLOT];
-        if (p.fighter.id != n.target || food.type != 20 || food.subtype != n.fighter.type)
-            continue;
-        frame.sounds.push_back({n.body.blocks(), 44, 0.9f + 0.2f * (float)draw() / 32767.f, 1}); // drink2.wav
-        HitRecord signal;
-        signal.attacker = n.fighter.id, signal.target = p.fighter.id, signal.kind = 6; // not damage
-        frame.playerHits.push_back(signal);
-        frame.emittedHits.push_back(signal);
-        float progress = (n.tameMs > 0 ? n.tameProgress : 0.f) + 0.2f;
-        // Pets §7.3: bite counter (field 11, the combo) + 1 and field 12 (its elapsed time) := 0.
-        n.fighter.combo = std::bit_cast<int32_t>(uint32_t(n.fighter.combo) + 1u);
-        n.fighter.comboElapsedMs = 0;
-        if (progress >= 1) { // tamed: the player's pet from now on
-            Item asItem;
-            asItem.type = 19, asItem.subtype = (uint8_t)n.fighter.type, asItem.level = n.fighter.level;
-            asItem.seed = (uint32_t)n.fighter.experience;
-            const float health = n.fighter.health;
-            makePet(n, asItem, p.fighter);
-            n.fighter.health = health;
-            frame.tamed.push_back({n.fighter.id, p.fighter.id, n.fighter.type, n.fighter.level, n.fighter.experience});
-            progress = 1;
-        }
-        n.tameProgress = progress;
-        n.tameMs = 5000;
-        n.tamer = p.fighter.id;
+    Combatant &c = n.fighter;
+    const Combatant *feeder = lookupActor(c.relations.contact, players).combat();
+    if (!feeder)
         return;
+    const Item &food = feeder->equipment[PET_SLOT];
+    if (food.type != 20 || int32_t(food.subtype) != c.type)
+        return;
+    const uint64_t feederId = feeder->id;
+    const float r = (float)draw() / 32767.f; // the bite's only draw: the sound's pitch
+    frame.sounds.push_back({n.body.blocks(), 44, 0.9f + 0.2f * r, 1}); // drink2.wav
+    // A kind-6 signal at the creature's position, straight into section 2 (not the hit routine).
+    HitRecord signal;
+    signal.attacker = c.id, signal.target = feederId, signal.kind = 6;
+    std::copy_n(n.body.position, signal.position.size(), signal.position.begin());
+    frame.playerHits.push_back(signal);
+    frame.emittedHits.push_back(signal);
+    float progress = 0; // the last kind-7 entry's value, 0 if none
+    for (const Buff &b : c.buffs)
+        if (b.kind == 7)
+            progress = b.value;
+    progress += 0.2f; // binary32: five bites sum to exactly 1.0
+    // Bite counter (field 11, the combo) + 1 and field 12 (its elapsed time) := 0.
+    c.combo = std::bit_cast<int32_t>(uint32_t(c.combo) + 1u);
+    c.comboElapsedMs = 0;
+    if (progress >= 1.f) { // tamed: controller 5 and the pet behaviour with the feeder as owner
+        c.controller = 5;
+        buildPet(n, feederId);
+        frame.tamed.push_back({c.id, feederId, c.type, c.level, c.experience});
+        progress = 1.f;
     }
+    // The kind-7 progress buff (5000 ms, carrying the owner field: 0 until the last bite)
+    // replaces any earlier one and is announced in section 12.
+    Buff record;
+    record.kind = 7, record.value = progress, record.timeMs = 5000, record.source = c.ownerId;
+    applyBuff(c, record);
+    frame.buffs.push_back({c.id, c.id, record});
 }
 
 void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
@@ -240,8 +278,12 @@ void Npcs::callPet(Combatant &owner, glm::dvec3 at) {
     if (Npc *pet = findNpc(owner.linkedId); pet && pet->fighter.controller == 5 && pet->fighter.ownerId == owner.id) {
         pet->fighter.relations.threats.clear();
         pet->target = 0;
-        const glm::dvec3 d = pet->body.blocks() - at;
-        if (glm::dot(d, d) > 40000.0)
+        // Correction 24: the 3-D squared distance in blocks, single precision, above 40,000.
+        float d[3];
+        for (int k = 0; k < 3; k++)
+            d[k] = float(std::bit_cast<int64_t>(uint64_t(pet->body.position[k]) - uint64_t(int64_t(at[k] * 65536.0)))) *
+                   (1.f / 65536.f);
+        if ((d[0] * d[0] + d[1] * d[1]) + d[2] * d[2] > 40000.f)
             pet->body.place(at);
     }
 }

@@ -7,6 +7,8 @@
 #include "ui/Widgets.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <utility>
 
 namespace ui {
 namespace {
@@ -14,6 +16,7 @@ namespace {
 using namespace widgets;
 
 constexpr glm::vec2 PANEL{600, 220}, STYLE{300, 330}, EDIT{125, 20};
+constexpr double PI = 3.14159265358979323846;
 const glm::vec4 CYAN{0, 1, 1, 1};
 
 const char16_t *const RACES[8] = {u"Human", u"Elf", u"Dwarf", u"Orc", u"Goblin", u"Lizard", u"Undead", u"Frogman"};
@@ -62,7 +65,46 @@ Button multiplayerButton(glm::vec2 W) { return {{W.x - 320, 20}, {300, 40}}; }
 Button connectToServerButton(glm::vec2 W) { return {{W.x - 320, W.y - 60}, {300, 40}}; }
 Button connectButton(glm::vec2 W) { return {{std::trunc((W.x - 200) / 2), std::trunc((W.y - 40) / 2)}, {200, 40}}; }
 
+// §3.3: the eased value (1 − f)·value + f·target, single precision.
+float eased(float value, float target, float f) { return (1 - f) * value + f * target; }
+
+// §3.2: per millisecond v += (target − v)·0.01, single precision.
+template <typename T> T approach(T value, T target, int32_t dt) {
+    for (int32_t i = 0; i < dt; i++)
+        value += (target - value) * 0.01f;
+    return value;
+}
+
+// §3.7, §5.3: a saved name widened unit by unit (bytes zero-extended; open point C-2) equals
+// the edit's wide text exactly.
+bool sameName(const std::string &saved, const std::u16string &typed) {
+    return saved.size() == typed.size() && std::equal(saved.begin(), saved.end(), typed.begin(), [](char a, char16_t b) {
+               return (char16_t)(unsigned char)a == b;
+           });
+}
+
 } // namespace
+
+float listEaseShare(float rate, int32_t dt) {
+    // f := f + (1 − f)·r, dt times in double with the single-precision rate, then binary32.
+    double f = 0;
+    for (int32_t i = 0; i < dt; i++)
+        f += (1.0 - f) * (double)rate;
+    return (float)f;
+}
+
+float panelYawStep(float yaw, bool hovered, float dtMs) {
+    // Hovered: −0.05° per ms. Otherwise yaw += asin(clamp(−sin yaw)) · f in degrees, the share
+    // f built in single precision. (The trigonometry is evaluated in double; its native
+    // precision is not stated.)
+    if (hovered)
+        return yaw - 0.05f * dtMs;
+    float share = 0;
+    for (int32_t i = 0; i < (int32_t)dtMs; i++)
+        share += (1 - share) * 0.01f;
+    const double back = std::asin(std::clamp(-std::sin((double)yaw * PI / 180.0), -1.0, 1.0));
+    return (float)((double)yaw + back * (double)share * 180.0 / PI);
+}
 
 void Interface::loadFront() {
     if (const int32_t n = gui.find("blackwidget"); n >= 0) {
@@ -105,31 +147,158 @@ void Interface::drawEdit(Painter &painter, glm::vec2 labelAt, const std::u16stri
     outlined(painter, text + (caret ? u"_" : u""), box + glm::vec2(4, 15), 12, 3, glm::vec4(1));
 }
 
-// The panels' column (§3.3): dragged by the mouse, coasting after a fling and slowing down,
-// eased back towards its bounds.
-void Interface::scrollList(float &top, float &speed, size_t count, glm::vec2 W, glm::vec2 mouse, float dtMs) {
-    if (leftHeld && lastMouseY >= 0) {
-        const float dy = mouse.y - lastMouseY;
-        top += dy;
-        if (dtMs > 0)
-            speed = dy / dtMs * 1000.f; // pixels per second, kept for the coast
-    } else {
-        top += speed * 0.001f * dtMs;
-        speed *= std::pow(0.995f, dtMs);
+int Interface::worldPanel(int worldIndex) const {
+    if (worldIndex == (int)worldList.size())
+        return (int)listedWorlds.size(); // the "New world" panel stands for M
+    const auto it = std::find(listedWorlds.begin(), listedWorlds.end(), (uint32_t)worldIndex);
+    return worldIndex >= 0 && it != listedWorlds.end() ? (int)(it - listedWorlds.begin()) : -1;
+}
+
+bool Interface::activeLastWorld(const WorldSummary &world) const {
+    if (activeCharacter < 0 || activeCharacter >= (int)characterList.size())
+        return false;
+    const CharacterSummary &c = characterList[activeCharacter];
+    return c.lastWorldSeed == world.seed && c.lastWorldName == world.name;
+}
+
+void Interface::stepFigure(PanelFigure &figure, bool hovered, float dtMs) const {
+    // §3.2: hovered, the figure turns and walks on the spot; otherwise it turns back and stops.
+    const int32_t ms = (int32_t)dtMs;
+    figure.yaw = panelYawStep(figure.yaw, hovered, dtMs);
+    figure.velocity = approach(figure.velocity, hovered ? glm::vec3(0, 8, 0) : glm::vec3(0), ms);
+    figure.intent = approach(figure.intent, hovered ? glm::vec3(0, 3, 0) : glm::vec3(0), ms);
+}
+
+// §3.3, §3.4 (§4.3 for the world list): one list's column, its pick and its buttons.
+void Interface::stepList(bool chars, glm::vec2 W, glm::vec2 mouse, float dtMs) {
+    PanelColumn &col = chars ? characterColumn : worldColumn;
+    const size_t count = (chars ? characterList.size() : listedWorlds.size()) + 1;
+    if (col.rebuild || col.y.size() != count) {
+        // §3.1, §4.1: the rebuilt list's panels at (300, 50 + 230 i), new world widgets unturned.
+        col.y.resize(count);
+        for (size_t i = 0; i < count; i++)
+            col.y[i] = 50 + 230.f * (float)i;
+        col.x = 300;
+        col.rebuild = false;
+        if (!chars)
+            worldYaw.assign(count - 1, 0.f);
     }
-    lastMouseY = mouse.y;
-    const float span = 230.f * (float)count - 10.f;
-    float T = 10, B = W.y - 10 - span;
-    if (span < W.y - 20)
-        T = B = std::trunc(W.y / 2) - std::trunc(span / 2);
-    const float f = 1 - std::pow(0.99f, dtMs);
-    if (top > T)
-        top += (T - top) * f;
-    else if (top < B)
-        top += (B - top) * f;
+    if (front != (chars ? Front::Characters : Front::Worlds)) {
+        col.speed = 0;
+        return;
+    }
+    const int32_t ms = (int32_t)dtMs, height = (int32_t)W.y, halfH = height / 2;
+    const float x = (float)((int32_t)W.x / 2 - 300), last = PANEL.y;
+    int &selected = chars ? selectedCharacter : selectedWorld;
+    ListButtons &buttons = chars ? characterButtons : worldButtons;
+    if (!leftHeld) {
+        // 1. The bounds; a column shorter than the window is centred.
+        float T = 10, B = (float)height - 10 - last;
+        const int32_t span = (int32_t)(col.y.back() + last - col.y.front());
+        if (span < height - 20) {
+            T = (float)(halfH - span / 2);
+            B = (float)(halfH + span / 2) - last;
+        }
+        const float f = listEaseShare(0.01f, ms);
+        const auto moveAll = [&](float by) {
+            for (float &y : col.y)
+                y += by;
+            col.x = x;
+        };
+        // 2, 3. Pulled down to the top bound, then up to the bottom bound.
+        if (col.y.front() > T)
+            moveAll(eased(col.y.front(), T, f) - col.y.front());
+        if (col.y.front() < T && col.y.back() < B)
+            moveAll(eased(col.y.back(), B, f) - col.y.back());
+        // 4. Coast, and the panel under the mouse is selected.
+        for (size_t i = 0; i < count; i++) {
+            col.x = x;
+            col.y[i] += col.speed * 0.001f * dtMs;
+            if (inside(mouse, {col.x, col.y[i]}, PANEL)) {
+                // A world panel stands for its world index, the "New world" panel for M.
+                const int index = chars                     ? (int)i
+                                  : i < listedWorlds.size() ? (int)listedWorlds[i]
+                                                            : (int)worldList.size();
+                if (index != selected)
+                    buttons.remove = false;
+                selected = index;
+            }
+        }
+    }
+    // 5. Friction, held or not.
+    col.speed = eased(col.speed, 0, listEaseShare(0.005f, ms));
+
+    // §3.4: while the left button is held the three buttons hide (and only the small button
+    // shows Delete again); otherwise Select and the small button sit on the selected panel.
+    const int total = (int)(chars ? characterList.size() : worldList.size()); // N or M
+    if (leftHeld) {
+        buttons.select = buttons.small = buttons.remove = false;
+    } else if (const int panel = chars ? selected : worldPanel(selected); panel >= 0 && panel < (int)count) {
+        buttons.at = {col.x, col.y[panel]};
+        buttons.select = buttons.small = true;
+    } else {
+        buttons.select = buttons.small = buttons.remove = false;
+    }
+    buttons.create = selected >= total;
+    if (buttons.create)
+        buttons.small = buttons.remove = false;
+
+    // §3.2, §4.2: the figures and models turn only under the mouse.
+    if (chars) {
+        characterFigures.resize(characterList.size());
+        for (size_t i = 0; i < characterFigures.size(); i++)
+            stepFigure(characterFigures[i], inside(mouse, {col.x, col.y[i]}, PANEL), dtMs);
+        return;
+    }
+    for (size_t j = 0; j < listedWorlds.size(); j++) {
+        worldYaw[j] = panelYawStep(worldYaw[j], inside(mouse, {col.x, col.y[j]}, PANEL), dtMs);
+        if (activeLastWorld(worldList[listedWorlds[j]])) {
+            // P on its last world's panel: unturned, walking.
+            activeFigure.yaw = 0;
+            activeFigure.velocity = approach(activeFigure.velocity, glm::vec3(0, 8, 0), ms);
+            activeFigure.intent = approach(activeFigure.intent, glm::vec3(0, 3, 0), ms);
+        }
+    }
+}
+
+void Interface::frontUpdate(glm::vec2 W, glm::vec2 mouse, float dtMs) {
+    frontWindow = W;
+    // §4.1: this mode's worlds, in list order.
+    listedWorlds.clear();
+    for (size_t i = 0; i < worldList.size(); i++)
+        if (onlineWorld(worldList[i].name) == multiplayerWorlds)
+            listedWorlds.push_back((uint32_t)i);
+    stepList(true, W, mouse, dtMs);
+    stepList(false, W, mouse, dtMs);
+}
+
+void Interface::frontMouseMove(float mouseY, uint32_t timeMs) {
+    // §3.3 dragging: the smoothed cursor y eases by the milliseconds since the last move (the
+    // share is believed to come from the same routine as the list's easing).
+    const int32_t dt = moveTimeKnown ? (int32_t)(timeMs - moveTime) : 0;
+    moveTime = timeMs;
+    moveTimeKnown = true;
+    const float before = smoothY, step = mouseY - moveY;
+    smoothY = eased(smoothY, mouseY, listEaseShare(0.01f, dt));
+    moveY = mouseY;
+    if (!leftHeld || (front != Front::Characters && front != Front::Worlds))
+        return;
+    PanelColumn &col = front == Front::Characters ? characterColumn : worldColumn;
+    for (float &y : col.y)
+        y += smoothY - before;
+    col.x = (float)((int32_t)frontWindow.x / 2 - 300);
+    col.speed += step * (float)dt * 2;
+}
+
+void Interface::pointerPress(float mouseY, int button) {
+    smoothY = mouseY;
+    characterColumn.speed = 0; // (not the world list's, as in Alpha)
+    if (button == 0)
+        leftHeld = true;
 }
 
 void Interface::drawFront(Painter &painter, glm::vec2 W, glm::vec2 mouse, float dtMs, double seconds) {
+    frontUpdate(W, mouse, dtMs);
     drawButton(painter, backButton().at, backButton().size, u"Back", mouse);
     if (front == Front::Worlds) {
         // §4.3: the multiplayer toggle (its caption as Alpha writes it) and Connect to server.
@@ -146,28 +315,24 @@ void Interface::drawFront(Painter &painter, glm::vec2 W, glm::vec2 mouse, float 
     }
     if (front == Front::Characters || front == Front::Worlds) {
         const bool chars = front == Front::Characters;
-        const size_t count = (chars ? characterList.size() : worldList.size()) + 1;
-        float &top = chars ? characterListTop : worldListTop;
-        panelYaw -= 0.05f * dtMs;
-        scrollList(top, chars ? characterListSpeed : worldListSpeed, count, W, mouse, dtMs);
-        int &selected = chars ? selectedCharacter : selectedWorld;
-        for (size_t i = 0; i < count; i++) {
-            const glm::vec2 at(std::trunc(W.x / 2) - 300, top + 230.f * (float)i);
-            if (inside(mouse, at, PANEL) && selected != (int)i)
-                selected = (int)i, deleteShown = false; // §3.3 step 4: the mouse picks
+        const PanelColumn &col = chars ? characterColumn : worldColumn;
+        for (size_t i = 0; i < col.y.size(); i++) {
+            const glm::vec2 at(col.x, col.y[i]);
             if (listPanel) {
                 placeWidget(*listPanel, 0, at);
                 painter.draw(*listPanel, 0, Transform(1));
             }
-            if (i + 1 == count) {
+            if (i + 1 == col.y.size()) {
                 outlined(painter, chars ? u"New character" : u"New world", at + glm::vec2(300, 30), 14, 3, glm::vec4(1),
                          plasma::CENTRE);
             } else if (chars) {
                 const CharacterSummary &c = characterList[i];
-                // §4.1: the character, 17 blocks away, its origin at (100, 110) in the panel.
-                if (characterParts)
-                    for (const auto &[mesh, matrix] : characterParts(i, panelYaw))
+                // §3.2: the character, 17 blocks away, its origin at (100, 110) in the panel.
+                if (characterParts) {
+                    const PanelFigure &f = characterFigures[i];
+                    for (const auto &[mesh, matrix] : characterParts(i, {f.yaw, f.velocity, f.intent, dtMs}))
                         painter.item(modelDraw(mesh, matrix, at + glm::vec2(100, 110), {-95, 0, 45}, 17, W));
+                }
                 const int cls = c.characterClass >= 1 && c.characterClass <= 4 ? c.characterClass : 0;
                 outlined(painter, utf16(c.name), at + glm::vec2(200, 30), 14, 3, glm::vec4(1), plasma::WRAP, 180);
                 outlined(painter,
@@ -176,36 +341,39 @@ void Interface::drawFront(Painter &painter, glm::vec2 W, glm::vec2 mouse, float 
                 outlined(painter, std::u16string(u"Specialization: ") + SPECIALIZATIONS[cls][c.specialization & 1],
                          at + glm::vec2(200, 75), 10, 3, glm::vec4(1));
             } else {
-                const WorldSummary &w = worldList[i];
-                // §4.2: the preview model in the panel's left part, slowly turning (believed).
+                const WorldSummary &w = worldList[listedWorlds[i]];
+                // §4.2: the preview model in the panel's left part (placement open point C-8).
                 if (worldPreview)
-                    if (const auto [mesh, size] = worldPreview(i); mesh)
-                        painter.item(itemDraw(mesh, size, false, at + glm::vec2(100, 110), {-120, 0, panelYaw * 0.2f}, 0.12f, 0, W));
+                    if (const auto [mesh, size] = worldPreview(listedWorlds[i]); mesh)
+                        painter.item(itemDraw(mesh, size, false, at + glm::vec2(100, 110), {-120, 0, worldYaw[i]}, 0.12f, 0, W));
+                // The active character on its last world's panel (placement C-8: as on its own).
+                if (characterParts && activeLastWorld(w))
+                    for (const auto &[mesh, matrix] :
+                         characterParts((size_t)activeCharacter, {activeFigure.yaw, activeFigure.velocity, activeFigure.intent, dtMs}))
+                        painter.item(modelDraw(mesh, matrix, at + glm::vec2(100, 110), {-95, 0, 45}, 17, W));
+                // The discovered counter as a signed integer made a float, in the default format.
                 char explored[32];
-                std::snprintf(explored, sizeof explored, "%g", (double)w.discovered);
+                std::snprintf(explored, sizeof explored, "%g", (double)(float)(int32_t)w.discovered);
                 outlined(painter, utf16(w.name), at + glm::vec2(200, 30), 14, 3, glm::vec4(1), plasma::WRAP, 180);
                 outlined(painter, u"Explored: " + utf16(explored) + std::u16string(u" km") + (char16_t)0x00b2, at + glm::vec2(200, 55), 10, 3, glm::vec4(1));
-                outlined(painter, u"Seed: " + number(w.seed), at + glm::vec2(200, 80), 10, 3, glm::vec4(1));
+                outlined(painter, u"Seed: " + number((int32_t)w.seed), at + glm::vec2(200, 80), 10, 3, glm::vec4(1));
             }
         }
         // §3.4: Select (or Create) on the chosen panel, the small delete button, Delete.
-        if (selected >= 0 && selected < (int)count) {
-            const glm::vec2 at(std::trunc(W.x / 2) - 300, top + 230.f * (float)selected);
-            const bool isNew = selected + 1 == (int)count;
-            drawButton(painter, at + glm::vec2(380, 170), {200, 30}, isNew ? u"Create" : u"Select", mouse);
-            if (!isNew) {
-                drawButton(painter, at + glm::vec2(560, 20), {20, 20}, u"x", mouse);
-                if (deleteShown)
-                    drawButton(painter, at + glm::vec2(620, 0), {300, 30}, chars ? u"Delete Character" : u"Delete World", mouse);
-            }
-        }
+        const ListButtons &b = chars ? characterButtons : worldButtons;
+        if (b.select)
+            drawButton(painter, b.at + glm::vec2(380, 170), {200, 30}, b.create ? u"Create" : u"Select", mouse);
+        if (b.small)
+            drawButton(painter, b.at + glm::vec2(560, 20), {20, 20}, u"x", mouse);
+        if (b.remove)
+            drawButton(painter, b.at + glm::vec2(620, 0), {300, 30}, chars ? u"Delete Character" : u"Delete World", mouse);
     } else if (front == Front::Creation) {
         drawStylePanel(painter, W, mouse);
-        drawEdit(painter, {std::trunc(W.x / 2), W.y - 50}, u"Name", nameText, true, seconds);
+        drawEdit(painter, {std::trunc(W.x / 2), W.y - 50}, nameCaptionCleared ? u"" : u"Name", nameText, true, seconds);
         if (characterNameTaken())
             outlined(painter, u"There is already a character with that name.", {std::trunc(W.x / 2), W.y - 200}, 12, 3,
                      glm::vec4(1), plasma::CENTRE);
-        else if (nameText.size() >= 2 && nameText.size() <= 15)
+        else if (createCharacterShown())
             drawButton(painter, createButton(W).at, createButton(W).size, u"Create Character", mouse);
     } else if (front == Front::WorldCreation) {
         drawEdit(painter, {std::trunc(W.x / 2), W.y - 100}, u"Seed (must be a number)", seedText, editFocus == 1, seconds);
@@ -254,22 +422,17 @@ void Interface::drawStylePanel(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
         }
     if (hover != creation.hover) {
         creation.hover = hover;
-        creationChanged = true;
+        creationChanged = true; // Apply
     }
 }
 
 bool Interface::characterNameTaken() const {
-    std::string name;
-    for (char16_t ch : nameText)
-        name += ch < 0x80 ? (char)ch : '?';
-    return std::any_of(characterList.begin(), characterList.end(), [&](const CharacterSummary &c) { return c.name == name; });
+    return std::any_of(characterList.begin(), characterList.end(), [&](const CharacterSummary &c) { return sameName(c.name, nameText); });
 }
 
 bool Interface::worldNameTaken() const {
-    std::string name;
-    for (char16_t ch : nameText)
-        name += ch < 0x80 ? (char)ch : '?';
-    return std::any_of(worldList.begin(), worldList.end(), [&](const WorldSummary &w) { return w.name == name; });
+    // §5.3: every entry, online or not, whatever the list shows.
+    return std::any_of(worldList.begin(), worldList.end(), [&](const WorldSummary &w) { return sameName(w.name, nameText); });
 }
 
 bool Interface::worldReady() const {
@@ -277,70 +440,124 @@ bool Interface::worldReady() const {
            std::all_of(seedText.begin(), seedText.end(), [](char16_t ch) { return ch >= u'0' && ch <= u'9'; });
 }
 
+bool Interface::createCharacterShown() const {
+    // §3.7: no saved character of that name, and 2 to 15 UTF-16 units.
+    return !characterNameTaken() && nameText.size() >= 2 && nameText.size() <= 15;
+}
+
+uint32_t Interface::worldSeed() const {
+    // §5.4: a signed 32-bit parse. The validation admits digits only, so every seed up to
+    // 2147483647 reads the same as this; above it the native field is left undefined (open
+    // point C-6) and the engine keeps its wrap modulo 2^32.
+    uint32_t seed = 0;
+    for (char16_t ch : seedText)
+        seed = seed * 10 + (uint32_t)(ch - u'0');
+    return seed;
+}
+
+std::vector<Interface::FrontHit> Interface::visibleFrontButtons(glm::vec2 W) const {
+    // The window root's buttons first (believed to lie above the screen containers), then the
+    // screen's own; the selected-panel buttons as the last update left them (§1.3, §3.4).
+    std::vector<FrontHit> out;
+    const auto add = [&](FrontButton button, Button b) { out.push_back({button, b.at, b.size}); };
+    add(FrontButton::Back, backButton());
+    if (front == Front::Worlds) {
+        add(FrontButton::Multiplayer, multiplayerButton(W));
+        add(FrontButton::ConnectToServer, connectToServerButton(W));
+    }
+    if (front == Front::Connect)
+        add(FrontButton::Connect, connectButton(W));
+    if (front == Front::Characters || front == Front::Worlds) {
+        const ListButtons &b = front == Front::Characters ? characterButtons : worldButtons;
+        if (b.remove)
+            add(FrontButton::Delete, {b.at + glm::vec2(620, 0), {300, 30}});
+        if (b.small)
+            add(FrontButton::Small, {b.at + glm::vec2(560, 20), {20, 20}});
+        if (b.select)
+            add(FrontButton::Select, {b.at + glm::vec2(380, 170), {200, 30}});
+    }
+    if (front == Front::Creation && createCharacterShown())
+        add(FrontButton::CreateCharacter, createButton(W));
+    if (front == Front::WorldCreation && !worldNameTaken() && worldReady())
+        add(FrontButton::CreateWorld, createButton(W));
+    return out;
+}
+
+void Interface::activateFront(FrontButton button) {
+    const bool chars = front == Front::Characters;
+    switch (button) {
+    case FrontButton::Back: // §1.2 Back.
+        front = front == Front::WorldCreation || front == Front::Connect ? Front::Worlds
+                : front == Front::Worlds                                  ? Front::Characters
+                : front == Front::Creation                                ? Front::Characters
+                                                                          : Front::None;
+        if (front == Front::None)
+            startScreen = true;
+        break;
+    case FrontButton::Multiplayer: // §4.3: the other kind of world, listed again.
+        multiplayerWorlds = !multiplayerWorlds;
+        multiplayerToggled = true;
+        worldColumn.rebuild = true;
+        frontRequest = FrontRequest::ListWorlds;
+        break;
+    case FrontButton::ConnectToServer:
+        front = Front::Connect;
+        serverText.clear();
+        break;
+    case FrontButton::Connect:
+        if (!serverText.empty())
+            frontRequest = FrontRequest::Connect;
+        break;
+    case FrontButton::CreateCharacter: // §3.8: the new character is selected, appended and active.
+        frontRequest = FrontRequest::CreateCharacter;
+        selectedCharacter = activeCharacter = (int)characterList.size();
+        characterColumn.rebuild = true;
+        break;
+    case FrontButton::CreateWorld: // §5.4
+        frontRequest = FrontRequest::CreateWorld;
+        selectedWorld = (int)worldList.size();
+        worldColumn.rebuild = true;
+        break;
+    case FrontButton::Select:
+        if (chars && selectedCharacter >= (int)characterList.size()) {
+            // §3.6: Create on the "New character" panel; the label setter also blanks "Name".
+            front = Front::Creation;
+            creation = Creation{};
+            nameText.clear();
+            nameCaptionCleared = true;
+            creationChanged = true;
+        } else if (chars) {
+            frontRequest = FrontRequest::SelectCharacter;
+            activeCharacter = selectedCharacter;
+        } else if (selectedWorld >= (int)worldList.size()) {
+            front = Front::WorldCreation;
+            editFocus = 0;
+        } else {
+            frontRequest = FrontRequest::SelectWorld;
+        }
+        break;
+    case FrontButton::Small: // §3.5 step 1: the only confirmation.
+        (chars ? characterButtons : worldButtons).remove = true;
+        break;
+    case FrontButton::Delete: // §3.5 step 3, §4.5: the selection and the button stay.
+        frontRequest = chars ? FrontRequest::DeleteCharacter : FrontRequest::DeleteWorld;
+        (chars ? characterColumn : worldColumn).rebuild = true;
+        break;
+    }
+}
+
 bool Interface::frontPress(glm::vec2 W, glm::vec2 mouse, int button) {
     if (front == Front::None)
         return false;
+    pointerPress(mouse.y, button);
     if (button != 0)
         return true;
-    characterListSpeed = 0; // a press stops a flung character list (not the world list, as in Alpha)
-    if (inside(mouse, backButton().at, backButton().size)) {
-        // §1.2 Back.
-        front = front == Front::WorldCreation || front == Front::Connect ? Front::Worlds
-                : front == Front::Worlds      ? Front::Characters
-                : front == Front::Creation    ? Front::Characters
-                                              : Front::None;
-        if (front == Front::None)
-            startScreen = true;
-        return true;
-    }
-    if (front == Front::Worlds && inside(mouse, multiplayerButton(W).at, multiplayerButton(W).size)) {
-        multiplayerWorlds = !multiplayerWorlds;
-        multiplayerToggled = true;
-        frontRequest = FrontRequest::ListWorlds;
-        return true;
-    }
-    if (front == Front::Worlds && inside(mouse, connectToServerButton(W).at, connectToServerButton(W).size)) {
-        front = Front::Connect;
-        serverText.clear();
-        return true;
-    }
-    if (front == Front::Connect) {
-        if (!serverText.empty() && inside(mouse, connectButton(W).at, connectButton(W).size))
-            frontRequest = FrontRequest::Connect;
-        return true;
-    }
-    if (front == Front::Characters || front == Front::Worlds) {
-        const bool chars = front == Front::Characters;
-        const size_t count = (chars ? characterList.size() : worldList.size()) + 1;
-        const int selected = chars ? selectedCharacter : selectedWorld;
-        const float top = chars ? characterListTop : worldListTop;
-        if (selected < 0 || selected >= (int)count)
-            return true;
-        const glm::vec2 at(std::trunc(W.x / 2) - 300, top + 230.f * (float)selected);
-        const bool isNew = selected + 1 == (int)count;
-        if (inside(mouse, at + glm::vec2(380, 170), {200, 30})) {
-            if (chars && isNew) {
-                front = Front::Creation;
-                creation = Creation{};
-                nameText.clear();
-                creationChanged = true;
-            } else if (chars) {
-                frontRequest = FrontRequest::SelectCharacter;
-            } else if (isNew) {
-                front = Front::WorldCreation;
-                editFocus = 0;
-            } else {
-                frontRequest = FrontRequest::SelectWorld;
-            }
-        } else if (!isNew && inside(mouse, at + glm::vec2(560, 20), {20, 20})) {
-            deleteShown = true;
-        } else if (!isNew && deleteShown && inside(mouse, at + glm::vec2(620, 0), {300, 30})) {
-            frontRequest = chars ? FrontRequest::DeleteCharacter : FrontRequest::DeleteWorld;
-            deleteShown = false; // (Alpha leaves it showing; one confirmation per delete here)
-        }
-        return true;
-    }
+    // Engine reading of open point C-9: the release (event 3) goes to a button that was
+    // visible when the press arrived, so a click held across updates still lands. A press and
+    // release handled between two updates, the case the contract settles, is the same.
+    pressedButtons = std::pair{front, visibleFrontButtons(W)};
     if (front == Front::Creation) {
+        // §3.9: the style arrows and the palette answer the press (event 2).
         const glm::vec2 P(20, W.y - 20 - STYLE.y), local = mouse - P;
         for (int k = 0; k < 5; k++)
             for (int side = 0; side < 2; side++) {
@@ -361,28 +578,32 @@ bool Interface::frontPress(glm::vec2 W, glm::vec2 mouse, int button) {
                 wrap(creation.face, faceCount(type));
                 wrap(creation.haircut, haircutCount(type));
                 inventorySounds.push_back(0x55);
-                creationChanged = true;
+                creationChanged = true; // Apply
             }
         if (inside(local, {10, 200}, {280, 150})) {
             creation.colour = creation.hover;
             inventorySounds.push_back(0x55);
-            creationChanged = true;
+            creationChanged = true; // Apply
         }
-        if (!characterNameTaken() && nameText.size() >= 2 && nameText.size() <= 15 &&
-            inside(mouse, createButton(W).at, createButton(W).size))
-            frontRequest = FrontRequest::CreateCharacter;
-        return true;
-    }
-    if (front == Front::WorldCreation) {
+    } else if (front == Front::WorldCreation) {
         if (inside(mouse, glm::vec2(std::trunc(W.x / 2) - EDIT.x / 2, W.y - 90), EDIT))
             editFocus = 1;
         if (inside(mouse, glm::vec2(std::trunc(W.x / 2) - EDIT.x / 2, W.y - 40), EDIT))
             editFocus = 0;
-        if (!worldNameTaken() && worldReady() && inside(mouse, createButton(W).at, createButton(W).size))
-            frontRequest = FrontRequest::CreateWorld;
-        return true;
     }
     return true;
+}
+
+void Interface::frontRelease(glm::vec2 mouse) {
+    leftHeld = false;
+    const auto pressed = std::exchange(pressedButtons, std::nullopt);
+    if (front == Front::None || !pressed || pressed->first != front)
+        return;
+    for (const FrontHit &hit : pressed->second)
+        if (inside(mouse, hit.at, hit.size)) {
+            activateFront(hit.button);
+            return;
+        }
 }
 
 void Interface::frontType(char16_t ch, bool backspace) {

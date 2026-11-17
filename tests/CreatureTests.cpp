@@ -2137,6 +2137,73 @@ int main() {
         same(asked, 1, "one block query per blast");
     }
 
+    // Pets and bombs §3 (correction 2): placing a bomb spends exactly the generator's five
+    // choice-record draws; the type-144 case draws nothing more.
+    {
+        worldgen::Random random{11};
+        Npcs npcs{random};
+        const uint32_t before = random.count();
+        npcs.placeBomb({10.5, 10.5, 1.5}, 2);
+        same(random.count() - before, 5, "a bomb placement spends five draws");
+    }
+
+    // Pets and bombs §4.4 (correction 28): the dead-creature walk runs in ascending signed id
+    // and explodes inside the walk. An older bomb (larger id) killed by a blast explodes later
+    // in the same pass; a newer one (smaller id) has been passed and waits for the next step.
+    for (const bool olderVictim : {true, false}) {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({60.5, 10.5, 1 + 1.08 + 0.01}); // out of reach of both blasts
+        Npcs npcs;
+        const uint64_t older = npcs.placeBomb({10.5, 10.5, 1.5}, 1); // -1
+        const uint64_t newer = npcs.placeBomb({12.5, 10.5, 1.5}, 1); // -2
+        Npc *olderBomb = nullptr, *newerBomb = nullptr;
+        for (Npc &n : npcs.npcs())
+            (n.fighter.id == older ? olderBomb : newerBomb) = &n;
+        const uint64_t first = olderVictim ? newer : older, second = olderVictim ? older : newer;
+        (olderVictim ? newerBomb : olderBomb)->fighter.health = 0; // goes off this step
+        (olderVictim ? olderBomb : newerBomb)->fighter.health = 1; // any blast kills it
+        std::vector<uint64_t> thisStep, nextStep;
+        for (const auto &e : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).explosions)
+            thisStep.push_back(e.bomb);
+        for (const auto &e : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).explosions)
+            nextStep.push_back(e.bomb);
+        if (olderVictim) {
+            same(thisStep == std::vector<uint64_t>{first, second}, 1, "the older bomb goes off later in the same pass");
+            same(nextStep.empty(), 1, "nothing is left for the next step");
+        } else {
+            same(thisStep == std::vector<uint64_t>{first}, 1, "the newer bomb was passed before the blast");
+            same(nextStep == std::vector<uint64_t>{second}, 1, "it goes off in the next step's walk");
+        }
+    }
+
+    // Pets and bombs §4.2 step 1 (correction 5): a bomb's mount id is never set, so a creature
+    // with id 0 is spared; every other creature in reach is hit.
+    for (const uint64_t id : {uint64_t(0), uint64_t(1)}) {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = id;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({15.5, 10.5, 1 + 1.08 + 0.01});
+        Npcs npcs;
+        const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 1);
+        npcs.npcs().front().fighter.health = 0;
+        int hits = 0;
+        for (const HitEmission &h : npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor).playerHits)
+            hits += h.record.attacker == bomb;
+        same(hits, id == 0 ? 0 : 1, "the bomb's mount-id comparison spares only id 0");
+    }
+
     // Strike-call-sites K3: a striker wider than 4 asks once per strike frame for the cells
     // within min(trunc(R), 8) of the strike centre; when any go, the sound pitch is the draw
     // right after the query (before any target); none, no draw and no crater.
@@ -2480,15 +2547,27 @@ int main() {
         body.place({274.5, 10.5, 1 + 1.08 + 0.01});
         Npcs npcs;
         npcs.setNamedWorld(true);
-        int bites = 0;
+        int bites = 0, signalsAtCreature = 0;
         bool tamed = false, contactSeen = false;
+        std::vector<Buff> progress; // the kind-7 records the bites announce (section 12)
         for (int i = 0; i < 1500 && !tamed; i++) { // up to 24 s
             const NpcFrame f = npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
             // Held created-actor combat contract: the feeding branch records the feeder as contact.
             for (const Npc &n : npcs.npcs())
                 contactSeen |= n.fighter.controller != 5 && n.fighter.relations.contact == me.id;
             for (const HitEmission &h : f.playerHits)
-                bites += h.record.kind == 6;
+                if (h.record.kind == 6) {
+                    bites++;
+                    // Correction 11: the signal carries the creature's position, not the player's.
+                    for (const Npc &n : npcs.npcs())
+                        if (n.fighter.id == h.record.attacker) {
+                            const double dx = double(h.record.position[0] - n.body.position[0]) / 65536.0;
+                            signalsAtCreature += std::abs(dx) < 0.5 && h.record.position[0] != body.position[0];
+                        }
+                }
+            for (const BuffEvent &e : f.buffs)
+                if (e.record.kind == 7)
+                    progress.push_back(e.record);
             for (const auto &t : f.tamed) {
                 tamed = true;
                 same(t.owner, 1, "tamed for the player");
@@ -2498,7 +2577,18 @@ int main() {
         same(tamed, 1, "the collie is tamed");
         same(contactSeen, 1, "the feeding branch records the feeder as the creature's contact");
         same(bites, 5, "by five bites");
+        same(signalsAtCreature, 5, "each bite signal is at the creature's position");
+        same(progress.size(), 5, "each bite announces its kind-7 progress buff");
+        float sum = 0;
+        for (size_t k = 0; k < progress.size(); k++) {
+            sum += 0.2f;
+            same(progress[k].value, sum, "the progress grows by 0.2 per bite");
+            same(progress[k].timeMs, 5000, "the progress buff lasts 5000 ms");
+            same(progress[k].source, k + 1 == progress.size() ? 1 : 0, "the buff carries the owner field");
+        }
+        same(sum == 1.f, 1, "five binary32 bites of 0.2 sum to exactly 1.0");
         const Npc *pet = npcs.petOf(me);
+        same(pet && pet->fighter.hasBuff(7), 1, "the tamed creature keeps its kind-7 grace buff");
         same(pet && pet->fighter.controller == 5 && pet->fighter.ownerId == 1, 1, "a pet of the player");
         same(pet ? pet->fighter.multipliers[0] : 0, 100 * (1 + 0.5f * skillFactor(2)), "health multiplier 108.33", 1e-3);
     }
@@ -2549,8 +2639,6 @@ int main() {
         }
         same(near, 1, "the creature reaches the feeder");
         collie->fighter.combo = 5; // the bite counter is the combo (pets §7.3)
-        collie->tameMs = 0;
-        collie->tameProgress = 0;
         collie->fighter.action = 110;
         collie->fighter.actionMs = 9000; // past recovery, under the selection prefix's 10000 ms reset
         collie->fighter.buffs = {{7, .4f, 3000, 99}, {7, .6f, 4000, 98}};
@@ -2864,14 +2952,62 @@ int main() {
         same(me.relations.contact == 0 && me.relations.counts.empty(), 1,
              "server simulation §8 kind 8: the reset clears the player's target and hit-counter map");
         npcs.npcs()[0].fighter.health = 0;
-        for (int i = 0; i < 1300; i++) // 20.8 s
+        npcs.npcs()[0].fighter.action = 5, npcs.npcs()[0].fighter.actionMs = 0;
+        int32_t returnedClock = 0;
+        for (int i = 0; i < 1300; i++) { // 20.8 s
+            const bool dead = npcs.npcs()[0].fighter.health <= 0;
             step();
+            if (dead && npcs.npcs()[0].fighter.health > 0)
+                returnedClock = npcs.npcs()[0].fighter.actionMs;
+        }
         pet = npcs.petOf(me);
         same(pet && pet->fighter.health == maxHealth(pet->fighter), 1, "back after 20 s at full health");
+        // §11.1: the death timer is the action time and is not reset, so the AI's 10-second
+        // rule ends the action the pet died in.
+        same(returnedClock >= 20000, 1, "the returned pet's action time is its death timer");
+        same(pet ? pet->fighter.action : -1, 0, "the old action has ended");
         me.equipment[12] = Item{};
         step();
         step();
         same(npcs.petOf(me) == nullptr, 1, "gone when the slot is emptied");
+    }
+    // Pets §9.3 step 5 (correction 19): a new pet's health is the controller-5 maximum of the
+    // reset record, before the builder's taming factor, so with taming skill it starts below
+    // full. §9.2 step 1 (correction 17): a rebuild resets hit-stun to -3000 and empties the
+    // buff list (a kind-7 buff included).
+    {
+        auto zone = std::make_shared<worldgen::Zone>();
+        worldgen::WorldMap map;
+        map.add(zone);
+        auto floor = [](int32_t, int32_t, int32_t z) -> uint8_t { return z < 1 ? 1 : 0; };
+        Combatant me;
+        me.id = 1;
+        me.level = 5;
+        me.skills[0] = 4;
+        me.health = maxHealth(me);
+        me.equipment[12].type = 19, me.equipment[12].subtype = 19, me.equipment[12].level = 3;
+        Body body;
+        body.place({30.5, 30.5, 1 + 1.08 + 0.01});
+        worldgen::Random random{5};
+        Npcs npcs{random};
+        npcs.setNamedWorld(true);
+        auto step = [&] { return npcs.step(16, map, {{me, body, 0, me.actionMs}}, 43200000, 0, floor); };
+        step();
+        Npc *pet = npcs.npcs().empty() ? nullptr : &npcs.npcs().front();
+        same(pet != nullptr, 1, "the pet item makes a pet");
+        if (pet) {
+            Combatant reset;
+            reset.controller = 5, reset.type = 19, reset.level = 3, reset.characterClass = 0;
+            same(pet->fighter.health, maxHealth(reset), "a new pet starts at the reset controller-5 maximum");
+            same(pet->fighter.health < maxHealth(pet->fighter), 1, "below full with taming skill");
+            pet->fighter.buffs.push_back({7, .4f, 5000, 0});
+            pet->fighter.hitStun = 500;
+            me.equipment[12].level = 2; // the slot item changed
+            step();
+            same(pet->fighter.hasBuff(7), 0, "the rebuild empties the buff list");
+            same(pet->fighter.hitStun, -3000 - 16, "the record reset sets hit-stun to -3000 (then one 16 ms step)");
+            same(pet->fighter.level, 2, "the rebuilt pet takes the item level");
+        }
     }
 
     // Behaviour §13.2 step 3: below a quarter of its health a creature drinks a potion it carries.
