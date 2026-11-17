@@ -3042,3 +3042,18 @@ transitive draw counts, the original clock-scaling and admission producers, the
 action-105 input mapping, and charge placement relative to late physics still need
 verification and reconciliation. The GLFW elapsed adapter and synthesized client
 input remain engine paths.
+
+## Bomb terrain edits during the death pass (2026-11-17)
+
+The clean team used the held `alpha-pets-bombs.md` §4, `alpha-block-edits.md` §8
+and `alpha-strike-cell-helpers.md` §8. The offline client and dedicated server
+apply a bomb's cell edits from its raw fixed-point centre inside the death pass.
+The primary burst precedes the ordered broken-cell bursts. The edited terrain
+is visible during victim application and to later blasts and actors. The sound
+draw follows the edit and is spent only when the blast finds removable cells.
+
+The engine applies each blast's edits by zone, retains that step's active spawn
+descriptors across terrain snapshot replacement, and uses its existing relight
+and remesh paths. The earlier deferred bomb-terrain gap is closed. Mixed packet-6
+request timing, deferred melee craters, and native relight and visual acceptance
+remain open.

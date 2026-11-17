@@ -1,5 +1,6 @@
 // Checks the creature code against the worked examples and test vectors of
 // docs/specs/alpha-creatures-models.md and alpha-physics-camera.md.
+#include "BlockEdits.h"
 #include "GameOptions.h"
 #include "ItemNames.h"
 #include "Loot.h"
@@ -2415,9 +2416,9 @@ int main() {
         const uint64_t bomb = npcs.placeBomb({10.5, 10.5, 1.5}, 3);
         int asked = 0;
         std::optional<worldgen::Random> atQuery;
-        npcs.removesBlocks = [&](glm::dvec3 centre, int32_t radius) {
+        npcs.breakBombBlocks = [&](const std::array<int64_t, 3> &centre, std::vector<Burst> &) {
             asked++;
-            same(centre.x == 10.5 && centre.y == 10.5 && radius == 8, 1, "asked at the bomb, radius 8");
+            same(centre[0] == 688128 && centre[1] == 688128, 1, "the terrain service receives the raw bomb centre");
             atQuery = random; // the generator state just before the pitch draw
             return removes;
         };
@@ -2437,8 +2438,65 @@ int main() {
                 }
         }
         same(blasts, 1, "one blast");
-        same(asked, 1, "one block query per blast");
+        same(asked, 1, "one terrain call per blast");
     }
+
+    // Paired blasts read the same world in signed actor order. The first blast's
+    // cell edit is available during victim application and to the second blast.
+    checkInSeparateFrame([] {
+        auto zone = std::make_shared<worldgen::Zone>(0, 0);
+        zone->place(11, 10, 2, {20, 40, 60, worldgen::GRASS | worldgen::SURFACE_COLOURED});
+        worldgen::WorldMap map;
+        map.add(zone);
+        Npcs npcs;
+        const uint64_t older = npcs.placeBomb({12.5, 10, 3}, 1);
+        const uint64_t newer = npcs.placeBomb({10.5, 10, 3}, 1);
+        npcs.npcs().front().fighter.health = 1;
+        npcs.npcs().back().fighter.health = 0;
+
+        int visits = 0;
+        std::vector<BlockEdit> edits;
+        npcs.breakBombBlocks = [&](const std::array<int64_t, 3> &centre, std::vector<Burst> &bursts) {
+            visits++;
+            const auto cells = breakCells(centre, 8, CellRounding::FloorAdjusted, 9,
+                [&](int32_t x, int32_t y, int32_t z) { return map.read(x, y, z); });
+            if (cells.empty())
+                return false;
+            auto updated = std::make_shared<worldgen::Zone>(*map.zone(0, 0));
+            for (const BrokenCell &cell : cells) {
+                bursts.push_back(blockBurst(cell.at, glm::vec3(cell.colour)));
+                applyLive(*updated, cell.removal, {});
+                edits.push_back(cell.removal);
+            }
+            map.add(std::move(updated));
+            return true;
+        };
+        bool victimSawEdit = false, playerSawEdit = false;
+        npcs.onFatalLoot = [&](const Combatant &target, const Body &, std::span<const CountedItem>) {
+            if (target.id == older)
+                victimSawEdit = map.read(11, 10, 2).type() == worldgen::AIR;
+        };
+        Combatant me;
+        me.id = 1;
+        me.health = maxHealth(me);
+        Body body;
+        body.place({60, 10, 3});
+        NpcFrame frame;
+        npcs.stepInto(16, map, {{me, body, 0, 0, false, false, true}}, 1000, 9,
+            [&](int32_t x, int32_t y, int32_t z) { return map.read(x, y, z).type(); }, frame, {}, {},
+            [&](int32_t) { playerSawEdit = map.read(11, 10, 2).type() == worldgen::AIR; });
+        same(edits.size() == 1 && edits.front().day == 9 && visits == 2 && victimSawEdit && playerSawEdit,
+             1, "the only cell edit is visible to the first blast's victim and to the living turn");
+        same(frame.explosions.size() == 2 && frame.explosions[0].bomb == newer && frame.explosions[0].removes &&
+                 frame.explosions[1].bomb == older && !frame.explosions[1].removes && frame.explosions[1].pitch == 0,
+             1, "the later blast sees the removed cell and skips its removal-sound draw");
+        same(frame.bursts.size() >= 3 && frame.bursts[0].style == FIRE && frame.bursts[1].style == LIT &&
+                 frame.bursts[2].style == FIRE && frame.bursts[0].position[0] == 688128,
+             1, "the first primary burst and its cell burst precede the next primary burst");
+        same(std::count_if(frame.sounds.begin(), frame.sounds.end(), [](const SoundEvent &sound) {
+                 return sound.sound == 1;
+             }), 1, "the shared frame delivers one removal sound");
+    });
 
     // Pets and bombs §3 (correction 2): placing a bomb spends exactly the generator's five
     // choice-record draws; the type-144 case draws nothing more.

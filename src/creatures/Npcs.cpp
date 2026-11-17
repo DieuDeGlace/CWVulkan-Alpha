@@ -323,10 +323,8 @@ Npcs::SpawnState &Npcs::spawnState(const std::shared_ptr<const worldgen::Zone> &
     return state;
 }
 
-void Npcs::advanceSpawnTimers(const worldgen::WorldMap &map, const ActiveZones &active, double timeOfDayMs,
-                             float dtMs) {
-    for (const auto &key : active) {
-        const auto &zone = map.zones().at(key);
+void Npcs::advanceSpawnTimers(const ActiveZones &active, double timeOfDayMs, float dtMs) {
+    for (const auto &[key, zone] : active) {
         const auto extra = extras.find(key);
         const size_t base = zone->spawns.size();
         const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
@@ -344,11 +342,9 @@ void Npcs::advanceSpawnTimers(const worldgen::WorldMap &map, const ActiveZones &
     }
 }
 
-void Npcs::activate(const worldgen::WorldMap &map, const ActiveZones &active, const std::vector<PlayerView> &players,
-                    double timeOfDayMs, int32_t day) {
+void Npcs::activate(const ActiveZones &active, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day) {
     const std::function<int32_t()> readClock = [&] { return int32_t(timeOfDayMs); };
-    for (const auto &key : active) {
-        const auto &zone = map.zones().at(key);
+    for (const auto &[key, zone] : active) {
         const auto extra = extras.find(key);
         const size_t base = zone->spawns.size();
         const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
@@ -660,7 +656,6 @@ void Npcs::blast(Npc &bomb, std::vector<PlayerView> &players, NpcFrame &frame) {
         refreshActors(players);
     FlagScope indexScope{actorLookupActive};
     const glm::dvec3 P = bomb.body.blocks();
-    frame.bursts.push_back(bombBurst(P)); // particles §5.1
     // Hazards-blast-ticks contract §4.3/§4.4 (site 2). The bomb has role 6, so the hostility
     // test passes for every victim but itself (the blast loop matches caller 0x20F192 by its
     // struck set and horizontal reach; not traced further); dodgers (+0x128) are skipped.
@@ -2389,10 +2384,16 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
             }
             if (timer == 0 && n.fighter.type == 144) { // §4: death timer zero and type 144
                 NpcFrame::Explosion explosion{n.body.blocks(), n.fighter.id, n.fighter.level};
-                // §4.2: the removal-sound draw comes before every victim's draws.
-                if (removesBlocks && removesBlocks(explosion.centre, 8)) {
+                std::array<int64_t, 3> centre;
+                std::copy_n(n.body.position, centre.size(), centre.begin());
+                Burst burst = bombBurst(glm::dvec3(0));
+                std::copy(centre.begin(), centre.end(), burst.position);
+                frame.bursts.push_back(burst);
+                // Block edits §8: break the terrain before the sound draw and victim hits.
+                if (breakBombBlocks && breakBombBlocks(centre, frame.bursts)) {
                     explosion.removes = true;
                     explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
+                    frame.sounds.push_back({explosion.centre, 1, explosion.pitch, 1});
                 }
                 frame.explosions.push_back(explosion);
                 blast(n, players, frame);
@@ -2451,16 +2452,19 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     clockMs = timeOfDayMs;
     refreshActors(players);
     FlagScope indexScope{actorLookupActive};
-    // Capture the active keys before hits. The engine orders zones by coordinates.
+    // Retain the active descriptor snapshots before hits. A blast can replace a
+    // zone's terrain between its timer pass and activation.
     ActiveZones active;
     for (const PlayerView &player : players) {
         const auto at = player.body.blocks();
         const int32_t zx = worldgen::floorDiv(int32_t(std::floor(at.x)), worldgen::ZONE);
         const int32_t zy = worldgen::floorDiv(int32_t(std::floor(at.y)), worldgen::ZONE);
         for (int32_t dx = -1; dx <= 1; ++dx)
-            for (int32_t dy = -1; dy <= 1; ++dy)
-                if (map.zone(zx + dx, zy + dy))
-                    active.emplace(zx + dx, zy + dy);
+            for (int32_t dy = -1; dy <= 1; ++dy) {
+                const auto key = std::pair(zx + dx, zy + dy);
+                if (const auto zone = map.zones().find(key); zone != map.zones().end())
+                    active.try_emplace(key, zone->second);
+            }
     }
     // Server §3 step 3: hits sent by players' clients land on the NPCs they name.
     for (const HitRecord &hit : incoming) {
@@ -2488,7 +2492,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             tickBuffs(player.fighter, milliseconds, true, [&](const Buff &buff) {
                 periodicHit(player.fighter, player.body, buff, players, frame);
             });
-    advanceSpawnTimers(map, active, timeOfDayMs, dtMs); // stage 7
+    advanceSpawnTimers(active, timeOfDayMs, dtMs); // stage 7
     // Creatures whose zone is let go go with it (inferred); pets stay with their owners.
     const size_t beforeRemovals = list.size();
     std::erase_if(list, [&](const Npc &n) { return !map.zones().count(n.zone) && n.fighter.controller != 5; });
@@ -2531,7 +2535,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         refreshActors(players);
     petPass(players, frame); // stage 9 links and stage 10's pet-item/stale-pet prefix
     processDeadCreatures(milliseconds, day, players, frame);
-    activate(map, active, players, timeOfDayMs, day); // stage 11
+    activate(active, players, timeOfDayMs, day); // stage 11
 
     struct ActorPassScope {
         bool &active;

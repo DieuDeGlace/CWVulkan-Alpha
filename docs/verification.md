@@ -1767,3 +1767,13 @@ DescriptorRefreshTests and the signed actor tests continue to pass.
 The Windows x64 build, all 60 CTests, the player/controller diagnostic and five
 actual-client flows pass. Original-client RNG histories and runtime acceptance
 remain separate verification work.
+
+## Bomb terrain order (2026-11-17)
+
+CreatureTests exercise two bombs that overlap one natural block. The first
+removal is visible to the victim callback and the later living turn, and the
+second blast produces no extra removal sound. The fixture also checks the raw
+centre, primary and broken-cell burst order, and one dated edit. The existing
+conditional pitch test checks the shared generator immediately at the terrain
+boundary. The Windows x64 build, all 60 CTests, the player/controller diagnostic
+and five actual-client smoke flows pass.

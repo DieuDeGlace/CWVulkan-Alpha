@@ -162,6 +162,8 @@ class Server {
     // readers of the old one are undisturbed). Recorded ones are listed for section 1 and
     // stored with their zones; a placement's interior air is not.
     void writeBlocks(const std::vector<BlockEdit> &edits, bool recorded = true);
+    bool breakAround(const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
+                     std::vector<creatures::Burst> &bursts);
     // §6: a placement from packet 6 kind 7, by the sender's record.
     void placeObject(const CreatureRecord &sender);
 

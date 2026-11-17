@@ -960,8 +960,10 @@ Differences from the Steam engine that shape the plan:
   the current step duration. Explode in signed actor order, return eligible pets
   and remove expired corpses before activation and living turns. A fuse death waits
   until the following step, and an incoming fatal hit can reach the current pass.
-- [ ] Bomb request and terrain timing. Place item-request bombs during the player's
-  actor turn and apply blast voxel removal before the next blast or actor visit.
+- [x] Bomb terrain edits apply during the death pass. Overlapping blasts see
+  previous removals before sound draws and victim effects.
+- [ ] Bomb request timing. Place item-request bombs during the player's turn,
+  preserving mixed requests, actor storage and shared draw order.
 - [ ] Multiplayer, rest: testing against original Alpha clients. Against the original
   Server.exe (2026-11-02, a temp copy of the owner's install): AlphaVulkan clients join ("Client
   version: 3", "Player 0 joined"), take its seed and clock, see its creatures (10 near the

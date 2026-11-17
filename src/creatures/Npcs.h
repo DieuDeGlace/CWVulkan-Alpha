@@ -271,9 +271,10 @@ class Npcs {
     std::function<void(const ItemRecord &)> onFatalItem;
     // Final backing admission/write follows every recipient and completion grant.
     std::function<void(const Combatant &)> onFatalBacking;
-    // Engine block adapter (hazards-blast-ticks §4.2, strike-call-sites K3): whether the
-    // removable cells within `radius` of `centre` (blocks) include at least one. Read-only;
-    // the caller removes the blocks after the step. Unset means no removal sound and no draw.
+    // Apply a bomb's terrain edits at its raw centre and emit the broken-cell bursts.
+    // Return true when the blast removed a cell. The service retains actor storage.
+    std::function<bool(const std::array<int64_t, 3> &, std::vector<Burst> &)> breakBombBlocks;
+    // Strike-call-sites K3: read-only query for deferred melee crater edits.
     std::function<bool(glm::dvec3 centre, int32_t radius)> removesBlocks;
     bool markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day);
     // Existing engine descriptor-tail adapter; retains live actors. Native
@@ -385,11 +386,10 @@ class Npcs {
     // spawns) at `p`, added to the list.
     void spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base, uint64_t id,
                        const std::array<int64_t, 3> &position, bool descriptorBacked = true);
-    using ActiveZones = std::set<std::pair<int32_t, int32_t>>;
+    using ActiveZones = std::map<std::pair<int32_t, int32_t>, std::shared_ptr<const worldgen::Zone>>;
     SpawnState &spawnState(const std::shared_ptr<const worldgen::Zone> &zone, size_t index);
-    void advanceSpawnTimers(const worldgen::WorldMap &map, const ActiveZones &active, double timeOfDayMs, float dtMs);
-    void activate(const worldgen::WorldMap &map, const ActiveZones &active, const std::vector<PlayerView> &players,
-                  double timeOfDayMs, int32_t day);
+    void advanceSpawnTimers(const ActiveZones &active, double timeOfDayMs, float dtMs);
+    void activate(const ActiveZones &active, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day);
     void processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame);
     void think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &players, const BlockType &block,
                NpcFrame &frame, const worldgen::WorldMap &map);
