@@ -3834,3 +3834,24 @@ launch records are copied before the resident visit and retain original
 age. Packet 9 input continues through the separate verified raw relay.
 Matched original-client and dedicated runtime flight and full launch
 admission remain open.
+
+## Offline terrain history and blueprint persistence (2026-11-17)
+
+The isolated author finished [the stock writer and persistence audit](specs/alpha-stock-blueprint-writers-and-persistence.md).
+The implementer verified all 238 physical lines and SHA-256
+`05039a958404a4aec9633426bad5e2581f11304de09d8e8ca181da0e5bfd909b`.
+This contract establishes the empty initial build mode and the queued
+kind-seven consumer. The original input, settings and transfer paths
+yielded no verified nonzero activation writer or fresh model selection.
+
+Offline world producers apply terrain changes at their original actor or
+effect boundary and append their edits to the frame list. Each world
+piece's tail visits that complete list and appends each record to its
+current loaded zone with signed division. Later pieces can append prior
+records again without repeating their terrain or request effects. The
+zone save retains the sequence, and restore uses the signed day-minus-three
+cutoff with 32-bit wrapping. A fresh zone's anchor list stays empty through
+the load. An isolated owned-floor diagnostic saved and reopened all 1,800
+20-byte records from a three-piece frame and verified the live 600-cell
+layout, day-plus-three replay and day-plus-four expiry. Original-client
+save and placement interchange remain open.

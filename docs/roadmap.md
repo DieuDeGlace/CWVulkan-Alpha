@@ -962,9 +962,12 @@ Differences from the Steam engine that shape the plan:
   Resolve the signed model at the actor turn, stamp the live world, remove
   unsupported flagged plants and sprites, and append the anchor and colored
   histories. The owned wooden floor was remeshed and rendered in Vulkan.
-- [ ] Trace the stock build-mode and local model-selection producers. Verify
-  original-client placement, repeated history across world pieces and the full
-  persistence boundary.
+- [x] Append the full terrain history at each world-piece tail and preserve
+  the signed save expiry boundary and repeated edits. Reopened all 1,800
+  ordered records from the 600-cell owned floor in an isolated engine save.
+- [ ] Verify original-client placement and save interchange. The original
+  input audit found the compiled request consumer and initial mode zero.
+  A stock activation or fresh local model-selection writer remains unverified.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

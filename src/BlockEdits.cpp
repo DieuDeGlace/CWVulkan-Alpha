@@ -300,6 +300,14 @@ void BlockEditLists::add(Key key, const BlockEdit &e) {
     changed.insert(key);
 }
 
+void BlockEditLists::appendWorldHistory(const worldgen::WorldMap &world, std::span<const BlockEdit> edits) {
+    for (const auto &edit : edits) {
+        const Key key{edit.x / Zone::SIZE, edit.y / Zone::SIZE};
+        if (world.containsNetworkZone(key))
+            add(key, edit);
+    }
+}
+
 const std::vector<BlockEdit> &BlockEditLists::restore(int32_t zx, int32_t zy,
                                                       const std::vector<std::array<uint8_t, 20>> &saved,
                                                       int32_t today) {

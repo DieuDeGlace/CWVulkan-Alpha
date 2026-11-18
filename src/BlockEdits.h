@@ -6,9 +6,11 @@
 #include "CubModel.h"
 #include "worldgen/WorldMap.h"
 #include <array>
+#include <bit>
 #include <functional>
 #include <map>
 #include <set>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -29,7 +31,9 @@ struct BlockEdit {
 constexpr uint8_t PLACED_BLOCK = worldgen::ROCK | worldgen::DRY_AIR;
 
 // §5: a saved edit is applied again on a day no later than three after its own.
-inline bool editKept(int32_t day, int32_t today) { return day < 0 || day >= today - 3; }
+inline bool editKept(int32_t day, int32_t today) {
+    return day < 0 || day >= std::bit_cast<int32_t>(uint32_t(today) - 3u);
+}
 
 using GapFill = std::function<worldgen::Block(int32_t x, int32_t y, int32_t z)>;
 using ReadBlock = std::function<worldgen::Block(int32_t x, int32_t y, int32_t z)>;
@@ -93,6 +97,8 @@ class BlockEditLists {
     // §3 step 3: appends a record to the list of the zone holding its column.
     void add(const BlockEdit &edit);
     void add(Key key, const BlockEdit &edit);
+    // Every world piece visits the current frame's full ordered edit list.
+    void appendWorldHistory(const worldgen::WorldMap &world, std::span<const BlockEdit> edits);
     // §4.2: a zone's saved list, filtered by the 3-day rule; the kept records.
     const std::vector<BlockEdit> &restore(int32_t zx, int32_t zy, const std::vector<std::array<uint8_t, 20>> &saved,
                                           int32_t today);

@@ -1,4 +1,5 @@
 #include "SimulationFrame.h"
+#include "BlockEdits.h"
 #include "ItemRequest.h"
 #include "Saves.h"
 #include "StaticStates.h"
@@ -49,6 +50,40 @@ int main() {
             [&](auto &output) { inputs++; output.push_back(4); });
         check(calls == 0 && inputs == 1 && events == std::vector<int>{3, 4},
               "failed supplied world admission preserves prepared records and still reaches later input");
+    }
+    {
+        worldgen::WorldMap world;
+        world.add(std::make_shared<worldgen::Zone>(0, 0));
+        world.add(std::make_shared<worldgen::Zone>(1, 0));
+        const BlockEdit first{2, 3, 4, 10, 11, 12, PLACED_BLOCK, 17};
+        const BlockEdit negative{-1, 3, 7, 19, 20, 21, PLACED_BLOCK, -1};
+        const BlockEdit east{256, 3, 5, 30, 31, 32, PLACED_BLOCK, 17};
+        const BlockEdit unloaded{512, 3, 5, 40, 41, 42, PLACED_BLOCK, 17};
+        std::vector<BlockEdit> edits;
+        BlockEditLists history;
+        int piece = 0;
+        simulation::clientFrame(41, true, edits, [&](int32_t, auto &frame) {
+            if (piece == 0)
+                frame = {first, unloaded};
+            if (piece == 1)
+                frame.insert(frame.end(), {negative, east});
+            ++piece;
+            history.appendWorldHistory(world, frame);
+        }, [](auto &) {});
+        const auto *westHistory = history.zone(0, 0);
+        const auto *eastHistory = history.zone(1, 0);
+        check(piece == 3 && westHistory && *westHistory == std::vector{first, first, negative, first, negative} &&
+                  eastHistory && *eastHistory == std::vector{east, east} && !history.zone(2, 0),
+              "each piece replays full ordered history into held zones with signed truncation and unloaded skips");
+        check(history.takeChanged() == std::set<BlockEditLists::Key>{{0, 0}, {1, 0}},
+              "repeated history marks only the edited held zones for persistence");
+        BlockEditLists restored;
+        check(westHistory && restored.restore(0, 0, history.saved(0, 0), 20) == *westHistory &&
+                  restored.restore(0, 0, history.saved(0, 0), 21) == std::vector{negative, negative},
+              "ordered history keeps duplicates through day plus three and retains negative records after expiry");
+        check(editKept(INT32_MAX - 2, INT32_MIN) && !editKept(17, INT32_MIN) && editKept(-1, INT32_MIN) &&
+                  editKept(17, INT32_MIN + 3),
+              "the three-day cutoff subtracts with signed 32-bit wrapping");
     }
     {
         constexpr uint64_t local = 0x100000001ull;

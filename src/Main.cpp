@@ -420,6 +420,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     StaticStates statics;
     // Block edits §3: each held zone's edits, saved with the zone.
     BlockEditLists blockEdits;
+    std::vector<BlockEdit> frameBlockEdits;
     // Missions (missions §9): run here offline; online the server's records arrive in section 13.
     Missions missions;
     // AlphaVulkan's quests (docs/design/quests.md): this player's book, read from the world's
@@ -907,8 +908,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             effects.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
         const auto removed = removals(broken);
         view.applyEdits(removed, false);
-        for (const BlockEdit &edit : removed)
-            blockEdits.add(edit);
+        frameBlockEdits.insert(frameBlockEdits.end(), removed.begin(), removed.end());
         return true;
     };
     if (session) {
@@ -1110,14 +1110,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             case ItemRequest::CallPet:
                 npcs.callPetFixed(fighter, body.position);
                 break;
-            case ItemRequest::PlaceObject:
-                for (const auto &edit : view.placeQueuedBlueprint(fighter.blueprintModel, fighter.blueprintRotation,
-                                                                  body.position, fighter.aim, scene.day)) {
-                    const worldgen::WorldMap::ZoneKey zone{edit.x / worldgen::Zone::SIZE, edit.y / worldgen::Zone::SIZE};
-                    if (view.held().containsNetworkZone(zone))
-                        blockEdits.add(zone, edit);
-                }
+            case ItemRequest::PlaceObject: {
+                const auto edits = view.placeQueuedBlueprint(fighter.blueprintModel, fighter.blueprintRotation,
+                                                             body.position, fighter.aim, scene.day);
+                frameBlockEdits.insert(frameBlockEdits.end(), edits.begin(), edits.end());
                 break;
+            }
             default:
                 break;
             }
@@ -2197,6 +2195,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             // equipment, action-clock and skill changes do not rebuild this list.
             player->refreshAbilityBindings();
             playerActionFrame.reset();
+            frameBlockEdits.clear();
             creatures::NpcFrame::Cursor npcEvents;
             bool firstWorldCall = true;
             simulation::clientFrame(frameElapsedMs, true, playerActionFrame,
@@ -2709,6 +2708,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         auto &effects = connected ? aggregate.bursts : bursts;
                         effects.insert(effects.end(), flight.bursts.begin(), flight.bursts.end());
                     }
+                    blockEdits.appendWorldHistory(view.held(), frameBlockEdits);
                     flushZoneState();
                     firstWorldCall = false;
                 },

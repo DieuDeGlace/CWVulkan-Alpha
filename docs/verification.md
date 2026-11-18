@@ -2341,3 +2341,23 @@ cleanly. The production player/controller diagnostic, five actual-client
 flows and all 36 archive digests passed. Matched original dedicated hit
 playback, full launch admission and staged offline projectile application
 remain open.
+
+## Offline terrain history and blueprint persistence (2026-11-17)
+
+SimulationFrameTests checks the 20, 20 and 1 ms pieces, repeated ordered
+records in each held zone, signed coordinate routing at world zero and
+unloaded-zone rejection. Negative day records survive the wrapped
+day-minus-three comparison.
+
+The owned-content diagnostic placed and rendered all 600 wooden floor
+cells. The isolated WorldSession file stored and reopened 1,800 ordered
+20-byte records from three pieces, with the original seed and day. All
+edits replayed at day 20 with their exact color and type. They expired on
+day 21, and the restored zone had no anchor records. The capture showed
+the placed floor and generated terrain. Native save interchange and
+original-client placement remain open.
+
+The Windows x64 build, ten focused suites and all 60 CTests passed.
+The production player/controller diagnostic, five actual-client flows
+and 36 archive digests passed. Revision 24 parsed with all 60 links and
+the held save contract matched its full hash and saved line count.

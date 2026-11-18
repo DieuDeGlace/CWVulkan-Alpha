@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 54 and the rulings. The 268 tracked contracts
-comprise 213 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 55 and the rulings. The 269 tracked contracts
+comprise 214 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -114,6 +114,7 @@ Batch 52 covers `alpha-rulings-projectile-ray-and-variant.md` and
 `alpha-rulings-projectile-steering-and-impact.md`.
 Batch 53 covers `alpha-dedicated-projectile-step.md`.
 Batch 54 covers `alpha-rulings-projectile-point-impact.md`.
+Batch 55 covers `alpha-stock-blueprint-writers-and-persistence.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -334,6 +335,7 @@ Batch 54 covers `alpha-rulings-projectile-point-impact.md`.
 | `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
 | `alpha-spawn-objects.md` | A | 590 | 1 |
 | `alpha-stock-blueprint-placement.md` | A | 253 | 0 |
+| `alpha-stock-blueprint-writers-and-persistence.md` | A | 239 | 0 |
 | `alpha-specialized-vendor-stock.md` | A | 106 | 0 |
 | `alpha-strike-call-sites.md` | A | 277 | 0 |
 | `alpha-strike-cell-helpers.md` | A | 280 | 0 |
