@@ -21,12 +21,16 @@ int32_t stepCoordinate(int32_t value, bool positive) {
 int32_t truncatedCoordinate(int64_t value) {
     return std::bit_cast<int32_t>(uint32_t(value / 65536));
 }
+int64_t truncateFixed(float value) {
+    // Masked x87 conversion stores the integer indefinite on invalid input.
+    return value >= -0x1p63f && value < 0x1p63f ? int64_t(value) : INT64_MIN;
+}
 Position displacement(const Direction &direction, float parameter) {
     const Direction scaled{direction[0] * parameter, direction[1] * parameter, direction[2] * parameter};
     Position result;
     for (size_t axis = 0; axis < 3; axis++) {
         const float fixed = scaled[axis] * fixedScale;
-        result[axis] = int64_t(fixed); // finite, representable ordinary conversion
+        result[axis] = truncateFixed(fixed);
     }
     return result;
 }
@@ -112,7 +116,7 @@ float trace(const Position &start, const Direction &direction, float maximum,
             const int64_t current = add(start[axis], delta[axis]);
             const float distance = float(subtract(boundary, current));
             const float quotient = distance / direction[axis];
-            const float quantized = float(int64_t(quotient));
+            const float quantized = float(truncateFixed(quotient));
             const float candidate = quantized * inverseFixed;
             if (candidate < increment) {
                 increment = candidate;

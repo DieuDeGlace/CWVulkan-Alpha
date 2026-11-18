@@ -48,9 +48,65 @@ struct Collision {
             [](int32_t, int32_t, int32_t) { return uint8_t(0); }, draw, effects, context);
     }
 };
+
+void trajectoryRay() {
+    struct Case {
+        double origin;
+        int32_t occupiedX;
+        uint8_t type;
+        bool survives, pointContact;
+        const char *description;
+    };
+    for (const auto &test : std::array{
+             Case{10.875, 10, 1, false, false, "backward terrain contact rolls back without a point effect"},
+             Case{10.625, 11, 1, true, false, "a solid voxel ahead of the advanced point does not stop the shot"},
+             Case{10.0, 9, 1, true, false, "a terrain face at exact flight distance does not stop the shot"},
+             Case{10.875, 11, 1, false, true, "an occupied advanced cell emits the separate point effect"},
+             Case{10.875, 11, 0x82, true, false, "water passes both the point and trajectory reads"}}) {
+        Projectile shot;
+        shot.position[0] = int64_t(test.origin * 65536.);
+        shot.position[2] = 65536;
+        shot.velocity = {2, 0, .9375f}; // gravity for 125 ms leaves exactly (2, 0, 0)
+        Projectiles world;
+        world.list.push_back(shot);
+        ShotEffects out;
+        int draws = 0;
+        world.step(125, {}, {}, [&](int32_t x, int32_t, int32_t) { return x == test.occupiedX ? test.type : uint8_t(0); },
+                   [&] { draws++; return 0; }, out, {true});
+        check((!world.list.empty()) == test.survives && out.struck.size() == size_t(test.pointContact) &&
+                  draws == 0, test.description);
+        if (!world.list.empty())
+            check(world.list[0].position[0] == shot.position[0] + 16384,
+                  "the unobstructed arrow advances a quarter block in fixed units");
+        if (!out.struck.empty())
+            check(out.struck[0].at.x == test.origin && out.struck[0].cell.x == test.occupiedX,
+                  "the point effect uses the rolled-back position and the struck cell");
+    }
+    for (const uint8_t state : {uint8_t(1), uint8_t(0)}) {
+        Projectile shot;
+        shot.position[0] = 12 * 65536;
+        shot.position[1] = 2 * 65536;
+        shot.position[2] = 65536;
+        shot.velocity = {10, 0, .9375f};
+        Projectiles world;
+        world.list.push_back(shot);
+        ShotEffects out;
+        const visibility::Record object{3, {11 * 65536, 2 * 65536, 0}, {1, 3, 3}, 0, state};
+        const visibility::RecordLookup records = [&](int32_t x, int32_t y, const visibility::RecordVisitor &visit) {
+            if (x == 0 && y == 0)
+                visit(object);
+        };
+        int draws = 0;
+        world.step(125, {}, {}, [](int32_t, int32_t, int32_t) { return uint8_t(0); },
+                   [&] { draws++; return 0; }, out, {true, nullptr, &records});
+        check(world.list.empty() == (state != 0) && out.struck.empty() && draws == 0,
+              "the first of three substeps tests the object side within full piece distance");
+    }
+}
 }
 
 int main() {
+    trajectoryRay();
     {
         Collision c;
         c.source.action = 17;
@@ -592,11 +648,12 @@ int main() {
         thrower.health = 0;
         thrower.aim = {2, 0, 0};
         Body home;
-        home.place({10, 0, 0});
+        home.place({110, 0, 0});
         Projectile shot;
         shot.kind = BOOMERANG_SHOT;
         shot.shooter = thrower.id;
         shot.age = age;
+        shot.position[0] = 100 * 65536;
         Projectiles world;
         world.list.push_back(shot);
         ShotEffects effects;
@@ -614,10 +671,10 @@ int main() {
             continue;
         const auto &resident = world.list[0];
         if (age == 800)
-            check(resident.velocity.x == 3.f && resident.position[0] == 196,
+            check(resident.velocity.x == 3.f && resident.position[0] == shot.position[0] + 196,
                   "outbound steering samples the full aim offset before per-millisecond blending");
         else if (age <= 1100)
-            check(resident.velocity.x == 100.f && resident.position[0] == 0,
+            check(resident.velocity.x == 100.f && resident.position[0] == shot.position[0],
                   "return steering assigns ten times the full source separation even for zero elapsed");
         else
             check(resident.velocity.x == 0.f && resident.position[0] == home.position[0],

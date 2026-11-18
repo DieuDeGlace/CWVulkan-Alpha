@@ -2678,7 +2678,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         }
                         creatures::ShotEffects flight;
                         projectiles.step(elapsed, projectileTargets, frameActor, worldBlock, worldDraw, flight,
-                            {connected, &c, connected ? &npcs.sightRecords : nullptr,
+                            {connected, &c, &npcs.sightRecords,
                              [&](const creatures::HitRecord &hit) { player->takeHit(hit); }});
                         if (connected) {
                             aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());

@@ -858,10 +858,12 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 if (p.kind == ARROW) // particles §5.7: only an arrow inside a solid block
                     out.struck.push_back({p.blocks(), glm::ivec3(glm::floor(hit))});
             } else {
-                // Step 4: the block ray 0x1a35d0 along the velocity, limit |velocity| x tau.
-                const glm::vec3 dir = unit(p.velocity);
-                const float limit = glm::length(p.velocity) * tau;
-                if (limit > visibility::trace(raw(p.position), {dir.x, dir.y, dir.z}, limit, 0, 0, scene)) {
+                // Probe backward from the advanced point over the full world piece.
+                const float speed = float(std::sqrt(double(squaredLength(p.velocity))));
+                const float reciprocal = 1.f / speed;
+                const glm::vec3 direction = (p.velocity * reciprocal) * -1.f;
+                const float limit = speed * tau;
+                if (limit > visibility::trace(raw(p.position), {direction.x, direction.y, direction.z}, limit, 0, 1, scene)) {
                     move(-1);
                     wall = true;
                 }

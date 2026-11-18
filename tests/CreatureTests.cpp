@@ -4691,6 +4691,7 @@ int main() {
         ranger.equipment[MAIN_HAND] = {3, BOW, 1, 0, 1, 0};
         ranger.action = 22;
         Body body;
+        body.place({100, 100, 40});
         const Phases ph = phases(ranger, 22);
         std::vector<Projectile> shots;
         ShotEffects fx;
@@ -4709,8 +4710,14 @@ int main() {
             const int64_t want[3][2] = {{104856, -124}, {209712, -372}, {314568, -748}};
             for (int s = 0; s < 3; s++) {
                 world.step(16, {}, nullptr, air, [] { return 0; }, fx);
-                same((double)world.list[0].position[0], (double)want[s][0], "arrow x after step " + std::to_string(s + 1));
-                same((double)world.list[0].position[2], (double)want[s][1], "arrow z after step " + std::to_string(s + 1));
+                same(world.list.size(), 1, "the arrow remains in flight through an interior column");
+                if (world.list.empty())
+                    break;
+                const auto &current = world.list.front();
+                same(double(current.position[0] - shots[0].position[0]), double(want[s][0]),
+                     "arrow x displacement after step " + std::to_string(s + 1));
+                same(double(current.position[2] - shots[0].position[2]), double(want[s][1]),
+                     "arrow z displacement after step " + std::to_string(s + 1));
             }
             for (int s = 3; s < 313; s++)
                 world.step(16, {}, nullptr, air, [] { return 0; }, fx);

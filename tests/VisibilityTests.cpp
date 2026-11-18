@@ -78,6 +78,11 @@ void traversal() {
           "negative maximum is returned through the upper clamp without a lower repair");
     check(std::bit_cast<uint32_t>(visibility::trace(start, {1, 0, 0}, -0.f, 0, 0, {air, {}})) == 0,
           "negative-zero maximum retains the initial positive-zero parameter");
+    const float unordered = std::numeric_limits<float>::quiet_NaN();
+    check(visibility::trace(start, {unordered, 0, 0}, 2, 0, 0, {air, {}}) == -0x1p47f,
+          "an unordered axis quotient converts to the fixed integer indefinite before the boundary increment");
+    check(visibility::trace(start, {unordered, 0, 0}, unordered, 0, 0, {air, {}}) == 0.f,
+          "an unordered limit bypasses terrain traversal");
     queried.clear();
     check(visibility::trace(position(-1, 1, 1), {1, 0, 0}, 2, 0, 0, observed) == 0 && queried.empty(),
           "out-of-world horizontal coordinates use the missing category without a scene lookup");

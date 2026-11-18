@@ -3775,3 +3775,23 @@ catch performs two signed, low-64-bit products. The component arithmetic
 retains separate binary32 stages. The post-move terrain ray direction,
 placed-object clipping, dedicated hit application and original-client flight
 comparison are follow-up work.
+
+## Backward projectile terrain and object ray (2026-11-17)
+
+The author independently traced [dedicated resident flight](specs/alpha-dedicated-projectile-step.md).
+The implementer read all 404 physical lines and verified SHA-256
+`fba0b426b53f06fc04ad537b08c053d5f70b0d2d126c53c635719b7dd04e333e`.
+Its fixed ray, boundary constants, side geometry and rollback match the
+original client. The shared projectile step now queries from the advanced
+position along negated reciprocal-length velocity. The bound uses the full
+world piece duration even with several flight substeps. Both client and
+dedicated callers supply their live visibility records.
+
+The fixed traversal retains strict distance comparison and reconstructs
+the original signed integer indefinite for an invalid boundary conversion.
+The point test still owns the arrow's cell-colored effect. The backward
+ray rolls the step back without an effect or draw. Signed point sampling
+at the negative boundary and the complete solid-cell effect fields need
+separate verification. The server's live hit delivery and double-copy
+role-zero branch are documented in the held original contract and remain
+implementation work.

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 52 and the rulings. The 266 tracked contracts
-comprise 211 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 53 and the rulings. The 267 tracked contracts
+comprise 212 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -112,6 +112,7 @@ Batch 51 covers `alpha-connected-projectile-receipt-step.md`,
 `alpha-world-call-phase-boundary.md`.
 Batch 52 covers `alpha-rulings-projectile-ray-and-variant.md` and
 `alpha-rulings-projectile-steering-and-impact.md`.
+Batch 53 covers `alpha-dedicated-projectile-step.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -185,6 +186,7 @@ Batch 52 covers `alpha-rulings-projectile-ray-and-variant.md` and
 | `alpha-creatures-models.md` | A | 1920 | 0 |
 | `alpha-critical-and-haste-stat-numerics.md` | A | 342 | 1 |
 | `alpha-data-stores.md` | A | 155 | 0 |
+| `alpha-dedicated-projectile-step.md` | A | 405 | 0 |
 | `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
 | `alpha-descriptor-equipment-setup.md` | A | 133 | 1 |
 | `alpha-descriptor-inventory-transfer.md` | A | 85 | 1 |

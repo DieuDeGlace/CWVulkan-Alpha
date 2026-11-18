@@ -2279,3 +2279,24 @@ An isolated production Vulkan client received remote arrow records at its
 live position through a loopback peer. Its next observed player state
 carried the exact 5,000 ms slow counter and the same 260 health. The client
 rendered its requested frame and disconnected successfully.
+
+## Backward projectile terrain and object ray (2026-11-17)
+
+RangedSchedulingTests compares a solid cell behind the advanced point,
+an obstacle ahead, distance equality, a solid point sample and passable
+water. An active object side more than one substep away still clips the
+first substep because the query uses the full piece distance. The same
+side with its state clear leaves the shot in flight. The ray cases have
+no solid-point effect or random draw.
+
+VisibilityTests checks the terrain and object bounds, negative and
+unordered limits, and the integer-indefinite conversion on an unordered
+boundary quotient. The open-air arrow and steering fixtures now start
+inside map coverage so they measure displacement independently of the
+missing-cell boundary. The Windows x64 build, nine focused suites and all
+60 CTests passed. Revision 21 parsed and all 56 links resolved. The
+original dedicated flight contract matched its full hash and readback.
+The production player/controller diagnostic, all five actual-client flows
+and the 36 package digests passed.
+Exact solid-cell effects and original-client projectile playback remain
+open.
