@@ -3855,3 +3855,22 @@ the load. An isolated owned-floor diagnostic saved and reopened all 1,800
 20-byte records from a three-piece frame and verified the live 600-cell
 layout, day-plus-three replay and day-plus-four expiry. Original-client
 save and placement interchange remain open.
+
+## Packed terrain vertex light (2026-11-17)
+
+The isolated author finalized [the native terrain vertex light contract](specs/alpha-native-terrain-vertex-light-alpha.md).
+The implementer read all 193 physical lines and verified SHA-256
+`b3eab091ccaab5f175b28c76b3285dc9cbe6188aaf5db646e207af2d7eb1dade`.
+It traces stored light through the ordered 36-cell sample, separate
+open-weight RGB contribution, native byte packing and indexed draw.
+The shared chunk mesher now accumulates in X/Y/Z order independently of
+face winding. Each color lane is truncated to the packed byte and
+normalized for the existing Vulkan float vertex input. This applies to
+both terrain streams before the existing surface shaders.
+
+The native reference cases produce top-face alpha bytes 254, 4, 128,
+238 and 251 for uniform full light, uniform intensity five, uniform
+intensity 128, a nearest blocker and a far blocker. These compare the
+actual mesh output rather than an isolated approximation of the sampler.
+The held native cache-dependent padding and observed bright ground still
+need comparison and further verification.

@@ -2361,3 +2361,20 @@ The Windows x64 build, ten focused suites and all 60 CTests passed.
 The production player/controller diagnostic, five actual-client flows
 and 36 archive digests passed. Revision 24 parsed with all 60 links and
 the held save contract matched its full hash and saved line count.
+
+## Packed terrain vertex light (2026-11-17)
+
+TerrainLightTests samples the actual mesh corner through a held zone.
+Uniform intensities 255, 5 and 128 pack to alpha bytes 254, 4 and 128.
+A nearest low-light blocker packs to 238 and a far blocker to 251.
+The fixture compares the normalized float values read by the Vulkan
+vertex layout and checks the three stored RGB values on the all-open
+top face. Existing WaterTests and WaterLiveTests also passed.
+
+The Windows x64 build, nine focused suites and all 60 CTests passed.
+Spec revision 25 parsed with 61 resolved links. The held native contract
+matched its complete hash and line count. The production player/controller
+diagnostic, five actual-client flows and 36 package digests passed. The
+owned-floor render again showed all 600 placed cells. Its ground remains
+bright. Native cache scheduling and matched original-client terrain images
+remain open.

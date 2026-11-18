@@ -1,8 +1,10 @@
+#include "ChunkMesher.h"
 #include "TerrainLights.h"
 #include "creatures/Spirits.h"
 #include <bit>
 #include <cstdio>
 #include <limits>
+#include <memory>
 
 using namespace terrain_lights;
 static int failures = 0;
@@ -19,7 +21,52 @@ static Candidate light(int64_t x, int64_t y, float radius, glm::vec3 colour = {1
     result.radius = radius;
     return result;
 }
+
+static void packedTerrainLight() {
+    auto zone = std::make_shared<worldgen::Zone>(0, 0);
+    worldgen::WorldMap map;
+    map.add(zone);
+    const worldgen::World world(1);
+    const worldgen::Terrain terrain(world);
+    constexpr int32_t x = 42, y = 42, z = 5;
+    for (int32_t i = x - 3; i <= x + 2; i++)
+        for (int32_t j = y - 3; j <= y + 2; j++) {
+            auto &column = zone->column(i, j);
+            column.bottom = z;
+            column.blocks = {{0, 0, 0, worldgen::AIR}};
+        }
+    auto &support = zone->column(x, y);
+    support.bottom = z - 1;
+    support.blocks.insert(support.blocks.begin(), {128, 64, 32, worldgen::GRASS});
+    const auto topColour = [&] {
+        const auto mesh = meshChunk(map, terrain, 32, 32);
+        for (const auto &vertex : mesh.solid.vertices)
+            if (vertex.position == glm::vec3(x - 32, y - 32, z) && vertex.normal == glm::vec3(0, 0, 1))
+                return vertex.colour;
+        return glm::vec4(-1);
+    };
+    const auto uniform = [&](uint8_t intensity) {
+        zone->shadedLight.clear();
+        for (int32_t i = x - 3; i <= x + 2; i++)
+            for (int32_t j = y - 3; j <= y + 2; j++)
+                zone->shadedLight.emplace_back(worldgen::lightKey(i, j, z), intensity);
+    };
+    check(topColour() == glm::vec4(128.f / 255.f, 64.f / 255.f, 32.f / 255.f, 254.f / 255.f),
+          "an open top face uses the original normalized color bytes, including full-light alpha 254");
+    uniform(5);
+    check(topColour().a == 4.f / 255.f, "a uniform intensity-five layer packs alpha four");
+    uniform(128);
+    check(topColour().a == 128.f / 255.f, "a uniform intensity-128 layer packs alpha 128");
+    zone->shadedLight.clear();
+    zone->column(x - 1, y - 1).blocks[0].typeByte = worldgen::ROCK;
+    check(topColour().a == 238.f / 255.f, "a nearest blocker keeps its weight in the native alpha denominator");
+    zone->column(x - 1, y - 1).blocks[0].typeByte = worldgen::AIR;
+    zone->column(x - 3, y - 3).blocks[0].typeByte = worldgen::ROCK;
+    check(topColour().a == 251.f / 255.f, "a far blocker uses its smaller native contribution");
+}
+
 int main() {
+    packedTerrainLight();
     FadingSources timed;
     const FixedPosition precise{(int64_t(1) << 54) + 1, 17, -33};
     timed.append({precise, {1, .5f, .25f}, 20, 0, 400});

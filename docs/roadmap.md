@@ -546,6 +546,11 @@ Differences from the Steam engine that shape the plan:
   groups. Draw counts depend on the models' marker voxels (§8 items 6, 10).
 - [x] Land names (screens §5.9.1): "Lands of N", "N Ocean", location names, districts and
   portals in the banner.
+- [x] Quantize chunk vertex colors and corner-light alpha to the original
+  packed bytes. Check the ordinary top-face reference layers in the
+  production mesher and pass normalized values to Vulkan.
+- [ ] Verify native mesh-cache lighting updates and matched terrain
+  appearance, including the bright-ground observation.
 - [x] Terrain light selection: jointly order collected sources by wrapped fixed-point
   priority, admit the first sixteen qualifying sources per chunk's inclusive XY
   rectangle, and upload the fixed first ten slots. CPU checks and procedural GPU

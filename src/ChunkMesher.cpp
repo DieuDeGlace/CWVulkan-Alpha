@@ -100,16 +100,26 @@ struct CornerShade {
     glm::vec3 rgb;
     float light;
 };
+// The shared Vulkan vertex carries floats, so give it the values the
+// original packed color declaration would deliver to the shader.
+float normalizedByte(float channel) {
+    const auto packed = uint8_t(int32_t(channel * 255.f));
+    return float(packed) / 255.f;
+}
+
 // §9.3, §9.4: a face corner's light (its vertex alpha) and its colour pulled towards a darker,
 // more saturated shade by how closed in it is, from the 6 x 6 cells just outside the face.
 CornerShade cornerShade(const CellCache &cache, glm::ivec3 corner, const Face &f, glm::vec3 colour) {
     float lightSum = 0, weights = 0, open = 0;
     glm::ivec3 sample;
     sample[f.axis] = corner[f.axis] + (f.sign > 0 ? 0 : -1);
+    // Accumulation follows X/Y/Z order independently of vertex winding.
+    const int outer = f.axis == 0 ? 1 : 0;
+    const int inner = f.axis == 2 ? 1 : 2;
     for (int32_t a = -3; a <= 2; a++)
         for (int32_t b = -3; b <= 2; b++) {
-            sample[f.u] = corner[f.u] + a;
-            sample[f.v] = corner[f.v] + b;
+            sample[outer] = corner[outer] + a;
+            sample[inner] = corner[inner] + b;
             const float m = std::max({std::fabs(a + 0.5f), std::fabs(b + 0.5f), 0.5f});
             const float w = (3.f - m) / 3.f;
             const CellCache::Cell s = cache.at(sample.x, sample.y, sample.z);
@@ -212,13 +222,15 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
                             corner[f.u] += c[0];
                             corner[f.v] += c[1];
                             const auto [rgb, light] = cornerShade(cache, corner, f, rgbIn);
+                            const glm::vec4 packedColour{
+                                normalizedByte(rgb.r), normalizedByte(rgb.g), normalizedByte(rgb.b), normalizedByte(light)};
                             const float sway =
                                 sways ? leafSway(corner.x - x0, corner.y - y0, [&](int dx, int dy, int dz) {
                                     return cache.at(corner.x + dx, corner.y + dy, corner.z + dz).type;
                                 })
                                       : 0.f;
                             mesh.vertices.push_back(
-                                {glm::vec3(corner - glm::ivec3(x0, y0, 0)), normal, glm::vec4(rgb, light), sway});
+                                {glm::vec3(corner - glm::ivec3(x0, y0, 0)), normal, packedColour, sway});
                         }
                         for (uint32_t i : {0u, 1u, 2u, 0u, 2u, 3u})
                             mesh.indices.push_back(first + i);

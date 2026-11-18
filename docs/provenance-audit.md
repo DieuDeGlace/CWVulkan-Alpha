@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 55 and the rulings. The 269 tracked contracts
-comprise 214 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 56 and the rulings. The 270 tracked contracts
+comprise 215 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -115,6 +115,7 @@ Batch 52 covers `alpha-rulings-projectile-ray-and-variant.md` and
 Batch 53 covers `alpha-dedicated-projectile-step.md`.
 Batch 54 covers `alpha-rulings-projectile-point-impact.md`.
 Batch 55 covers `alpha-stock-blueprint-writers-and-persistence.md`.
+Batch 56 covers `alpha-native-terrain-vertex-light-alpha.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -236,6 +237,7 @@ Batch 55 covers `alpha-stock-blueprint-writers-and-persistence.md`.
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
 | `alpha-native-initial-direct3d9-device.md` | A | 66 | 0 |
 | `alpha-native-startup-window-input-boundary.md` | A | 132 | 1 |
+| `alpha-native-terrain-vertex-light-alpha.md` | A | 194 | 0 |
 | `alpha-net-packets.md` | A | 642 | 0 |
 | `alpha-net-server.md` | A | 501 | 0 |
 | `alpha-net-transport.md` | A | 450 | 8 |
