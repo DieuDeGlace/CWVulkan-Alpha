@@ -816,7 +816,8 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             };
             if (context.networkMode || context.emitHit)
                 return resolve(*C.fighter);
-            // Offline client delivery still uses its staged world boundary.
+            // A caller without world application collects output without
+            // changing the target's defensive state.
             Combatant target = *C.fighter;
             return resolve(target);
         };

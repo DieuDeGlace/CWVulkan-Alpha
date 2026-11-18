@@ -785,7 +785,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         bursts.push_back(b);
         return true;
     };
-    std::vector<creatures::HitRecord> shotHitsOnNpcs;
     std::vector<creatures::Projectile> playerLaunched;
     creatures::ShotEffects playerShot;
     creatures::NpcFrame playerActionFrame;
@@ -2346,8 +2345,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             player->body().position, aggregate.emittedHits, aggregate.sounds};
                         player->advance(actorElapsed, client.connected(), &consumables, sneakLight, liveActor);
                         publishPlayerEffects();
-                        // The actor records launches in the shared output. A
-                        // connected local launch also becomes resident now.
+                        // The actor records launches in the shared output.
+                        // Standalone flight takes this piece's launches after objects.
                         auto shot = std::exchange(playerShot, {});
                         auto launched = std::exchange(playerLaunched, {});
                         for (creatures::Projectile &p : launched) {
@@ -2611,7 +2610,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         npcs.stepInto((float)elapsed, view.held(),
                             {{c, player->body(), player->facing(), player->actionBefore(), false, false, true,
                               &player->appearance(), &playerCreationConfig}}, scene.timeOfDayMs, scene.day,
-                            worldBlock, aggregate, std::exchange(shotHitsOnNpcs, {}), {}, advancePlayer,
+                            worldBlock, aggregate, {}, {}, advancePlayer,
                             [&](creatures::PlayerView &actor) { consumeOfflineItemRequests(actor, aggregate); },
                             [&](int32_t dt, std::span<creatures::PlayerView> actors) {
                                 const glm::dvec3 at = player->body().blocks();
@@ -2624,10 +2623,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                             active.insert({x, y});
                                 worldItems.step(dt, true, worldBlock, worldDraw, aggregate.sounds, &active);
                                 advanceStaticState(dt, actors);
+                            },
+                            [&](int32_t dt, std::span<creatures::PlayerView> actors) {
+                                stepAirships(dt);
+                                npcs.stepProjectiles(projectiles, dt, view.held(), worldBlock, actors,
+                                                     aggregate, npcEvents.shots);
                             });
-                        stepAirships(elapsed); // world objects §6: after the creature loop
                         const auto happened = aggregate.addedSince(npcEvents);
-                        projectiles.list.insert(projectiles.list.end(), happened.shots.begin(), happened.shots.end());
                         // Server §6.4, loot rolls §3: what the dead leave behind.
                         for (const creatures::NpcFrame::Death &death : happened.deaths)
                             if (!death.lootApplied) // retained non-hit death adapter
@@ -2728,57 +2730,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (int32_t l = (int32_t)before + 1; l <= c.level; l++)
                             mods.levelUp(l); // (the notice and sound follow in the level-change step)
                     }
-                    // After the actor turns use the resulting live positions and combat state.
-                    if (!projectiles.list.empty()) {
+                    // Connected flight uses the received actors and receipt rules.
+                    if (client.connected() && !projectiles.list.empty()) {
                         creatures::Combatant &c = player->combat();
-                        const bool connected = client.connected();
                         projectileTargets.clear();
                         const auto addControlled = [&] { projectileTargets.push_back({&c, &player->body()}); };
-                        if (connected) {
-                            projectileTargets.reserve(otherFighters.size() + 1);
-                            creatures::visitReceivedActors(otherFighters, c.id, addControlled,
-                                [&](uint64_t id, net::RemoteFighter &actor) {
-                                    if (const auto *body = remotes.find(id))
-                                        projectileTargets.push_back({&actor.fighter, &body->live});
-                                });
-                        } else {
-                            projectileTargets.reserve(npcs.npcs().size() + 1);
-                            addControlled();
-                            for (creatures::Npc &n : npcs.npcs())
-                                projectileTargets.push_back({&n.fighter, &n.body});
-                        }
+                        projectileTargets.reserve(otherFighters.size() + 1);
+                        creatures::visitReceivedActors(otherFighters, c.id, addControlled,
+                            [&](uint64_t id, net::RemoteFighter &actor) {
+                                if (const auto *body = remotes.find(id))
+                                    projectileTargets.push_back({&actor.fighter, &body->live});
+                            });
                         creatures::ShotEffects flight;
                         projectiles.step(elapsed, projectileTargets, frameActor, worldBlock, worldDraw, flight,
-                            {connected, &c, &npcs.sightRecords,
+                            {true, &c, &npcs.sightRecords,
                              [&](const creatures::HitRecord &hit) { player->takeHit(hit); }, &view.held()});
-                        if (connected) {
-                            aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());
-                            aggregate.sounds.insert(aggregate.sounds.end(), flight.sounds.begin(), flight.sounds.end());
-                        }
-                        for (const creatures::HitEmission &emission : flight.hits) {
-                            const creatures::HitRecord &h = emission.record;
-                            if (connected) {
-                                aggregate.emittedHits.push_back(h);
-                                continue;
-                            }
-                            glm::dvec3 at = player->body().blocks();
-                            for (const creatures::ShotTarget &t : projectileTargets)
-                                if (t.fighter->id == h.target)
-                                    at = t.body->blocks();
-                            if (emission.applyLocally && h.target == c.id) {
-                                player->takeHit(h);
-                            } else if (emission.applyLocally) {
-                                shotHitsOnNpcs.push_back(h);
-                            }
-                            if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.area, h.target == c.id, at))
-                                interface.floating.push_back(*text);
-                            mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
-                        }
-                        if (!connected)
-                            for (const auto &sound : flight.sounds)
-                                playAt(sound.sound, sound.position, sound.volume, sound.pitch);
-                        auto &effects = connected ? aggregate.bursts : bursts;
-                        effects.insert(effects.end(), flight.bursts.begin(), flight.bursts.end());
+                        aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());
+                        aggregate.sounds.insert(aggregate.sounds.end(), flight.sounds.begin(), flight.sounds.end());
+                        for (const auto &hit : flight.hits)
+                            aggregate.emittedHits.push_back(hit.record);
+                        aggregate.bursts.insert(aggregate.bursts.end(), flight.bursts.begin(), flight.bursts.end());
                     }
                     blockEdits.appendWorldHistory(view.held(), frameBlockEdits);
                     flushZoneState();

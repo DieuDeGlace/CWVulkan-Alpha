@@ -236,10 +236,11 @@ class Npcs {
                   const std::function<void(PlayerView &)> &consumeItemRequests = {},
                   const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState = {},
                   const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld = {});
-    // The dedicated caller runs this after the actor and object passes, while
-    // their signed index and live state are still available.
+    // Run after the actor and object passes, while the signed actor index is
+    // still live. A client frame shares its launch collector across pieces.
     void stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen::WorldMap &map,
-                         const BlockType &block, std::span<PlayerView> players, NpcFrame &frame);
+                         const BlockType &block, std::span<PlayerView> players, NpcFrame &frame,
+                         size_t firstLaunch = 0);
     // Local player dispatch belongs between beginActionUpdate/endActionUpdate,
     // before movement. Carry its events into step and disable later strikes.
     void dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame);

@@ -3767,7 +3767,7 @@ slow counter after the helper returns or bypasses the local target. Resolved
 sources can retime and advance their combo regardless of connection ownership.
 The variant-two contact uses its separate relationship test and applies a
 controlled self heal at the append site. The collected hit remains available
-for presentation and send. The standalone path retains staged target delivery.
+for presentation and send.
 Impact carries the raw charge byte and strength.
 
 Type-two outbound and return branches use full fixed differences and the
@@ -4126,3 +4126,22 @@ zone skips the lift and continues through ordinary solid movement fallback.
 The controlled creature snapshot now copies the actual contact flags from
 that update. The source investigation covers connected local terrain and
 leaves special teleport, object correction and original timing open.
+
+## Offline projectile lifecycle (2026-11-18)
+
+The isolated author finalized the [standalone projectile contract](specs/alpha-client-offline-projectile-lifecycle.md).
+The implementer read all 163 physical lines and verified SHA-256
+`660e2b92ad1a5492fad5d65c92f0d27c953dab5f81acdb3ed853aac7e6d24143`.
+The final contract reads the water conversion constant from each exact
+original executable and confirms separate binary32 multiplication by five
+and addition of five. The existing shared solver matches that arithmetic.
+
+The offline client uses the authoritative projectile walk after the actor
+and world object passes. Each piece appends only its own launches to the
+resident list while the frame collector retains their original values.
+Both controlled and other actors participate in the same signed map order.
+Generic and beneficial contact append and apply in place, so later shots
+read current health and defenses. Hit presentation takes each output once.
+Expiry erases staged residents after the walk, and a converted water spell
+begins its burst sampling on the next piece. Native flight and particle
+playback, full launch admission and unusual defenses are still open.

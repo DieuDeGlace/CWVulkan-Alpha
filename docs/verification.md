@@ -2641,3 +2641,32 @@ full serial run. The package verified 36 hashes in 37 files, and revision
 line count. The production player/controller diagnostic and five actual
 client flows also passed. Original-client timing and special teleport
 cases remain open.
+
+## Offline projectile lifecycle (2026-11-18)
+
+`RangedSchedulingTests` gives two arrows the same collision center.
+The first visits and kills the negative-ID NPC in signed actor order.
+The second sees that death and applies to the controlled actor immediately.
+Each output reaches presentation once. Both launch records keep their
+original bytes, the retired shots leave by the end of the piece, and the
+next piece advances the one older resident without replaying a launch.
+An owner's water burst spends its critical and proc draws in order and
+heals on the 999-to-1,000 ms crossing. Existing cases retain the water
+spell conversion fields and the dedicated role-zero duplicate records.
+
+An isolated Vulkan probe used the production `Player` and world routines
+with owned terrain. In a 20/20/1 ms frame, the player launched an arrow
+during the first actor turn. The hit and fatal callback ran after the
+object phase moved the fixture target into contact. The target was dead
+before the piece returned. An older water burst healed the
+player from 20 to 23 in the second piece. The frame retained one unchanged
+launch copy and two presentation records. The only surviving resident
+finished at age 1,020 ms. A Vulkan capture confirmed that the owned area
+rendered successfully. The test supplies actor state and coordinates.
+
+The Windows x64 build, focused ranged tests and all 60 serial CTests
+passed. The production player/controller diagnostic and the five live
+client flows passed. The package verified 36 hashes in 37 files. Revision
+37 parsed all 78 links and the held offline contract matched its exact
+hash and line count. Original projectile action and particle playback
+remain open.

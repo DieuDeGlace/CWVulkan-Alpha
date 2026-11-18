@@ -221,12 +221,87 @@ void dedicatedFlight() {
     check(frame.sounds.size() >= 2 && frame.sounds.front().sound != 27 && frame.sounds.back().sound == 27,
           "projectile impact feedback precedes the death sound produced by immediate application");
 }
+
+void offlineFlight() {
+    worldgen::WorldMap terrain;
+    terrain.add(std::make_shared<worldgen::Zone>(0, 0));
+    const BlockType block = [&](int32_t x, int32_t y, int32_t z) { return terrain.read(x, y, z).type(); };
+    Combatant local, source;
+    local.id = 3;
+    local.health = 20.f;
+    source.id = 7;
+    source.controller = 1;
+    Body localBody, sourceBody;
+    localBody.place({20, 10, 20});
+    sourceBody.place({10, 10, 20});
+    std::array<PlayerView, 2> players{{{local, localBody, 0, 0, false, false, true}, {source, sourceBody}}};
+    worldgen::Random random(1);
+    Npcs world(random);
+    Npc first;
+    first.fighter.id = uint64_t(-3);
+    first.fighter.controller = 3;
+    first.fighter.health = 12.f;
+    first.body.place(localBody.blocks());
+    world.npcs().push_back(first);
+
+    Projectile oldLaunch;
+    oldLaunch.kind = BURST;
+    oldLaunch.position[0] = 40 * 65536;
+    Projectile resident = oldLaunch;
+    resident.age = 20;
+    Projectile arrow;
+    arrow.shooter = source.id;
+    std::copy_n(localBody.position, 3, arrow.position);
+    arrow.damage = 500.f;
+    NpcFrame frame;
+    frame.shots = {oldLaunch, arrow, arrow};
+    Projectiles flight;
+    flight.list.push_back(resident);
+    bool sawEarlierDeath = false;
+    world.onControlledHit = [&](HitRecord &record) {
+        sawEarlierDeath = record.target == local.id && world.npcs().front().fighter.health == 0;
+    };
+
+    world.stepProjectiles(flight, 20, terrain, block, players, frame, 1);
+    check(sawEarlierDeath && local.health == 0 && world.npcs().front().fatalPresented &&
+              frame.emittedHits.size() == 2 && frame.emittedHits[0].target == first.fighter.id &&
+              frame.emittedHits[1].target == local.id && frame.playerHits.empty(),
+          "offline signed actor order kills the NPC before the next arrow applies to the controlled target");
+    check(frame.seen.size() == 2 && frame.seen[0].first.target == first.fighter.id &&
+              frame.seen[1].first.target == local.id && frame.seen[1].second == localBody.blocks(),
+          "each standalone projectile output reaches combat presentation once");
+    check(frame.shots.size() == 3 && frame.shots[0].serialize() == oldLaunch.serialize() &&
+              frame.shots[1].serialize() == arrow.serialize() && frame.shots[2].serialize() == arrow.serialize() &&
+              flight.list.size() == 1 && flight.list[0].age == 40,
+          "same-piece retirements preserve independent launch copies and do not replay earlier launches");
+    world.stepProjectiles(flight, 1, terrain, block, players, frame, frame.shots.size());
+    check(flight.list.size() == 1 && flight.list[0].age == 41 && frame.emittedHits.size() == 2,
+          "the next piece advances only the surviving resident and emits no duplicate hit");
+
+    worldgen::Random healRandom(4567);
+    Npcs healingWorld(healRandom);
+    local.health = 20;
+    auto &burst = flight.list.front();
+    burst.shooter = local.id;
+    burst.element = 2;
+    burst.damage = 10.f;
+    burst.age = 999;
+    std::copy_n(localBody.position, 3, burst.position);
+    healingWorld.stepProjectiles(flight, 1, terrain, block, std::span{players}.first(1), frame, frame.shots.size());
+    worldgen::Random expected(4567);
+    expected.draw();
+    expected.draw();
+    check(local.health == 30.f && frame.emittedHits.size() == 3 && frame.emittedHits.back().amount == -10.f &&
+              flight.list.front().age == 1000 && healRandom.draw() == expected.draw(),
+          "the owner's first water pulse applies in place and spends critical then controlled proc draws");
+}
 }
 
 int main() {
     trajectoryRay();
     pointImpactSample();
     dedicatedFlight();
+    offlineFlight();
     {
         Collision c;
         c.source.action = 17;

@@ -2536,8 +2536,10 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
 }
 
 void Npcs::stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen::WorldMap &map,
-                          const BlockType &block, std::span<PlayerView> players, NpcFrame &frame) {
-    flight.list.insert(flight.list.end(), frame.shots.begin(), frame.shots.end());
+                          const BlockType &block, std::span<PlayerView> players, NpcFrame &frame,
+                          size_t firstLaunch) {
+    const auto launches = std::span<const Projectile>{frame.shots}.subspan(firstLaunch);
+    flight.list.insert(flight.list.end(), launches.begin(), launches.end());
     if (flight.list.empty())
         return;
     if (!actorLookupActive)
@@ -2551,8 +2553,12 @@ void Npcs::stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen:
     const CombatFeedback feedback{frame.sounds, frame.buffs, frame.bursts};
     ShotEffects output;
     flight.step(elapsed, projectileTargets, source, block, [&] { return draw(); }, output,
-        {.sightRecords = &sightRecords, .terrain = &map, .feedback = &feedback, .emitHit = [&](const HitEmission &hit) {
+        {.controlled = controlledActor, .sightRecords = &sightRecords, .terrain = &map,
+         .feedback = &feedback, .emitHit = [&](const HitEmission &hit) {
             frame.emittedHits.push_back(hit.record);
+            if (controlledActor)
+                if (const Body *target = actorBody(hit.record.target).body)
+                    frame.seen.emplace_back(hit.record, target->blocks());
             if (!hit.applyLocally)
                 return;
             const size_t firstRelay = frame.playerHits.size();

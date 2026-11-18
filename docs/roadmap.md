@@ -858,8 +858,12 @@ Differences from the Steam engine that shape the plan:
 - [x] Deliver dedicated projectile hits at the live producer boundary.
   Preserve the role-zero duplicate for admitted guard, ward and ordinary
   outputs and apply non-player hits before later projectiles visit.
+- [x] Step standalone projectiles after actors and world objects. Append
+  only the current piece's launches, preserve independent output copies and
+  apply hits and heals to the signed live actor map before later candidates.
+  Apply staged removals by the end of the piece and retain water conversions.
 - [ ] Compare matched original flight and particle playback and close the
-  remaining dedicated launch admission conditions.
+  remaining standalone and dedicated launch admission conditions.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
