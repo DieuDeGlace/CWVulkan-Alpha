@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-18 after batch 70 and the rulings. The 292 tracked contracts
-comprise 238 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-18 after batch 71 and the rulings. The 293 tracked contracts
+comprise 239 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -139,6 +139,7 @@ Batch 69 covers `alpha-menu-camera-focus-producer.md`.
 Batch 70 covers `alpha-dedicated-action-projectile-launch.md`,
 `alpha-ray-launch-fields-reconciliation.md` and
 `alpha-ray-post-hit-timing-evaluation.md`.
+Batch 71 covers `alpha-generation-worker-floating-point-controls.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -240,6 +241,7 @@ Batch 70 covers `alpha-dedicated-action-projectile-launch.md`,
 | `alpha-floating-point-environment.md` | B | 272 | 1 |
 | `alpha-forward-link-zero-gates.md` | A | 99 | 1 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
+| `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
 | `alpha-generic-hit-presentation-draws.md` | B | 65 | 1 |
 | `alpha-generic-hit-record-production.md` | B | 116 | 3 |
 | `alpha-generic-hit-source-auxiliary.md` | B | 119 | 2 |

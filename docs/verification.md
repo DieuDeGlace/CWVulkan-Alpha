@@ -2820,3 +2820,37 @@ and five actual client flows passed. Package inspection verified 36 hashes
 in 37 files. Revision 42 parsed all 85 links. All three held documents
 matched their exact hashes, line counts and final LF. Original fight playback
 and complete upstream launch admission remain open.
+
+## Native generation-worker precision (2026-11-18)
+
+Two fresh isolated original-client copies matched the held executable and
+bundled-runtime hashes. The observer recorded the loaded runtime's actual
+path in each private copy. Both files retained those hashes after the run.
+Each run observed one generation thread at application callback entry,
+worker entry and three consecutive pre-root-call/root-entry pairs. Both
+threads showed x87 control word 0x027f in the legacy and extended context.
+The first root pair showed MXCSR 0x1f80. Later pairs showed 0x1fb2 in one
+run and 0x1fa0 in the other. Masking the six sticky status flags gives
+0x1f80 for every worker sample.
+
+These sampled controls select 53-bit x87 precision, nearest rounding and
+masked exceptions. SSE nearest rounding, masked exceptions and disabled
+flush-to-zero and denormals-are-zero were observed at the same boundaries.
+The debugger read FP context while debug events suspended the process.
+Hardware breakpoint and resume bookkeeping left the FP fields outside the
+context-write mask. The executable image stayed intact. Each bounded run
+stopped its own exact child after collecting all three pairs.
+
+Two initial sandbox observations reached process startup and loaded the
+same runtime, then reached their bounded cleanup deadlines. The recorded samples ended at process entry. The subsequent normal-desktop runs completed the
+worker sequence. The earlier startup record also distinguishes this
+machine's sandbox and desktop Direct3D9 initialization. Computer Use
+inventories reached the app-list stage during these probes. Original
+menu/gameplay acceptance remains open. Complete transitive control-state
+persistence and dedicated-worker sampling also remain open. The retained
+one-blue-byte terrain discrepancy requires further investigation.
+
+All 60 serial CTests passed in 92.03 seconds. The production
+player/controller diagnostic and five actual client flows passed. Package
+inspection verified 36 hashes in 37 files. Revision 43 parsed all 86 links
+and the 132-line held worker contract matched its exact SHA-256 and final LF.

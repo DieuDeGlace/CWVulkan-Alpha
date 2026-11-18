@@ -4263,3 +4263,40 @@ then append their outgoing copy before the firing sound. Existing standalone
 callers retain the unbound launch-range import at the flight boundary.
 Native combat playback, full upstream eligibility, rate and amount formulas,
 unusual numeric inputs and inherited provenance gates remain open.
+
+## Native generation-worker controls (2026-11-18)
+
+The isolated source author finalized the [generation-worker FP contract](specs/alpha-generation-worker-floating-point-controls.md).
+The implementer read all 132 physical lines and verified SHA-256
+`1e6d5b9bde409ebb12c17ab49fc63bd2135bc396b739caf05c6a9c418c3ad324`.
+The static contract traces the process precision request and the checked
+thread-creation route. It retains operating-system initialization and other
+loaded-library effects as runtime dependencies.
+
+A private black-box observer ran two fresh, hash-verified original client
+copies on the normal desktop. Hardware execution breakpoints used only
+observation addresses from the held contract. Debug events suspended the
+threads for WOW64 context reads. Context writes were limited to hardware
+debug registers and resume bookkeeping. The floating-point fields were read through the documented Windows
+context and debugger APIs. The observer used the held RVAs and process
+module metadata.
+[WOW64 thread context](https://learn.microsoft.com/en-us/windows/win32/api/wow64apiset/nf-wow64apiset-wow64getthreadcontext),
+[debug event suspension](https://learn.microsoft.com/en-us/windows/win32/debug/writing-the-debugger-s-main-loop).
+
+Both runs loaded the bundled runtime from their own isolated directory.
+The client and loaded file matched the held hashes before and after each
+run. Each generation thread was observed at application callback entry,
+worker entry, and three consecutive pre-root-call and root-entry pairs.
+The legacy and extended context views agreed on x87 control word 0x027f.
+MXCSR control fields were 0x1f80 at every sampled boundary. Later sticky
+status flags differed between runs while those control fields stayed fixed.
+
+These observations establish 53-bit x87 precision, nearest rounding and
+masked exceptions at the sampled client-worker boundaries. SSE nearest
+rounding, masked exceptions and disabled flush-to-zero and denormals-are-zero
+were observed at those boundaries. Complete nested-call persistence,
+dedicated-worker observations, other runtime/driver combinations and the
+retained one-byte rock-color discrepancy remain open. The observation
+perturbs scheduling through debugger stops and supplies no frame-timing
+or original-menu acceptance claim. Probe files, native copies and logs
+remain private and excluded from source and packages.

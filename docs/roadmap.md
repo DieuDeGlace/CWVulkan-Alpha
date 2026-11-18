@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Native client generation-worker FP boundaries observed in two fresh owned
+  copies. The same worker retained x87 control 0x027f and SSE control fields
+  0x1f80 at callback, worker entry and three consecutive generator-call pairs.
+  Loaded bundled-runtime identity was verified. Nested persistence, dedicated
+  controls and the one-byte rock-color discrepancy remain open.
+
 - [x] Shared ray actions 28, 94 and 95 use source-role and controlled-pointer
   admission, signed clocks, resource work, ordered actor sampling and independent
   cloud gates after each resolver. Production client/server launches insert
