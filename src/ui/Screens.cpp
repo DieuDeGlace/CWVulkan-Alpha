@@ -1050,27 +1050,29 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
     Painter painter(fonts, atlas);
     const float dtMs = lastSeconds < 0 ? 0.f : (float)((seconds - lastSeconds) * 1000.0);
     lastSeconds = seconds;
+    const bool inGame = inGameVisible();
     // Rulings manacubebar §2 timeline: the game's update has run (pickups); the HUD block reads
     // "a sequence plays" for the mana-cube icons, then the interface update advances the
     // sequences, and the frame is drawn with the advanced values.
-    if (!startScreen && front == Front::None) {
+    if (inGame) {
         if (hud && manaCubeBar)
             showManaCubeIcons(*manaCubeBar, manaCubes);
         advanceSequences(dtMs);
     }
-    if (startScreen && !optionsOpen) {
-        if (logo) {
-            anchor(*logo, size * 0.5f);
+    if (startScreen) {
+        if (logo && !optionsOpen) {
+            anchor(*logo, glm::floor(size * 0.5f));
             painter.draw(*logo, 0, Transform(1));
         }
         if (picroma) {
             anchor(*picroma, size - glm::vec2(20));
             painter.draw(*picroma, 0, Transform(1));
         }
-        drawMenu(painter, startMenu(size), mouse);
+        if (!optionsOpen)
+            drawMenu(painter, startMenu(size), mouse);
     } else if (front != Front::None) {
         drawFront(painter, size, mouse, dtMs, seconds);
-    } else if (!startScreen && mapOpen) {
+    } else if (mapOpen) {
         // §5.2.3 step 7: the compass at (W - 60, 40), turned with the map. (Routine 0x476660
         // is read as not scaling the model to its size: 0.003 units per voxel.)
         if (compass.mesh) {
@@ -1099,7 +1101,7 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
             style.colour = glm::vec4(1);
             painter.text(cursorLabel, mouse + glm::vec2(0, -20), style);
         }
-    } else if (!startScreen) {
+    } else {
         // Quests: the icons over givers' heads, bobbing a little, and on the corner map.
         const float bob = 3 * (float)std::sin(seconds * 3);
         if (hud)
@@ -1130,7 +1132,7 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
             }
         }
     }
-    if (hud && !startScreen)
+    if (hud && inGame)
         drawQuickItems(painter, size, *hud);
     if (startScreen) // skills §1.3: the start screen (U-7 reading) closes the skill window and the inventory
         skillsOpen = inventoryOpen = false;
@@ -1139,27 +1141,27 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
     benchOpen = benchOpen && inventoryOpen; // the bench closes with the inventory
     if (benchOpen)
         craftingOpen = skillsOpen = false;
-    if (!startScreen && !mapOpen && benchOpen)
+    if (inGame && !mapOpen && benchOpen)
         drawBench(painter, size, mouse);
-    if (!startScreen && !mapOpen && craftingOpen)
+    if (inGame && !mapOpen && craftingOpen)
         drawCrafting(painter, size, mouse, dtMs);
-    if (!startScreen && !mapOpen && skillsOpen)
+    if (inGame && !mapOpen && skillsOpen)
         drawSkills(painter, size, mouse);
     vendorOpen = vendorOpen && inventoryOpen; // talk §3.6: these close with the inventory
     identifyOpen = identifyOpen && inventoryOpen;
     adaptOpen = adaptOpen && inventoryOpen;
-    if (!startScreen && !mapOpen && (identifyOpen || adaptOpen))
+    if (inGame && !mapOpen && (identifyOpen || adaptOpen))
         drawServices(painter, size, mouse);
-    if (!startScreen && !mapOpen && vendorOpen) {
+    if (inGame && !mapOpen && vendorOpen) {
         drawVendor(painter, size, mouse);
         if (vendorHovered)
             drawTooltip(painter, size, mouse + glm::vec2(20), *vendorHovered);
     }
-    if (!startScreen && !mapOpen && inventoryOpen)
+    if (inGame && !mapOpen && inventoryOpen)
         drawInventory(painter, size, mouse);
-    else if (!startScreen && !mapOpen && hud && targetItem && !craftingOpen)
+    else if (inGame && !mapOpen && hud && targetItem && !craftingOpen)
         drawTooltip(painter, size, size - glm::vec2(320), *targetItem, true);
-    if (!startScreen && systemMenu) {
+    if (inGame && systemMenu) {
         const Menu menu = systemMenuLayout(size);
         if (systemPanel) {
             placeWidget(*systemPanel, 0, menu.origin);

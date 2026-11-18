@@ -4145,3 +4145,20 @@ read current health and defenses. Hit presentation takes each output once.
 Expiry erases staged residents after the walk, and a converted water spell
 begins its burst sampling on the next piece. Native flight and particle
 playback, full launch admission and unusual defenses are still open.
+
+## Windowed start menu and gameplay visibility (2026-11-18)
+
+The isolated author finalized the [start menu title contract](specs/alpha-start-menu-title-layout.md).
+The implementer read all 32 physical lines and verified SHA-256
+`8ef325440ec337c1a67c4e533729b7187f75b98027f7a3a22e1cb3c2146412d6`.
+Windowed start mode requests maximization. The title uses integer halves
+of the drawable viewport inside its authored transform. Its fixed size
+can crop at smaller extents. The Options panel hides the title and start
+menu and leaves the independently anchored publisher mark visible.
+
+The front-end screens honor the in-game root boundary from the held
+character-screens and corner-map contracts. The gameplay HUD, quick slot,
+gameplay panels and corner map are hidden on those screens. The background
+world still renders. The engine keeps its configured restored window size.
+Original pixel comparisons, native startup message timing and the complete
+creation preview state remain open.

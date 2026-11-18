@@ -913,6 +913,12 @@ Differences from the Steam engine that shape the plan:
   meshes with subdivision, strokes, textures and text, widget nine-slice resizing, an interface
   pass over the frame; the start screen (`--start`: logos and menu over the world) and the system
   panel (O). `PlxDump` prints a file's node tree.
+- [x] Request a maximized window for the start menu, place its authored
+  title at integer viewport halves, and keep the publisher mark visible
+  behind Options. Hide the gameplay panels, quick slot and corner map
+  during the front-end screens.
+- [ ] Verify matched original startup pixels, restore and DPI behavior, and
+  the character-creation preview actor and camera through normal input.
 - [x] Interface, second part: masks (stencil; flags-4 masks left unclipped, P-5), the player's bars
   (life, XP, mana with charge, health, stamina; screens §5.3), the crosshair with "[R] Revive" and
   reviving (§5.8), the Esc menu row with Alpha's icons (§7; its system button opens the panel).

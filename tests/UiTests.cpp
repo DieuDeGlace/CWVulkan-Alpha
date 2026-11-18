@@ -23,6 +23,41 @@ static void check(bool ok, const std::string &what) {
     }
 }
 
+static void checkFrontRendering(const fs::path &game) {
+    Interface screens;
+    std::string error;
+    const bool loaded = screens.load(game, &error);
+    check(loaded, "front-end assets load: " + error);
+    if (!loaded)
+        return;
+    const glm::vec2 size{1280, 720}, mouse{-1, -1};
+    screens.startScreen = true;
+    const auto even = screens.draw(size, mouse, 0);
+    const auto odd = screens.draw(size + glm::vec2(1), mouse, 0);
+    const auto next = screens.draw(size + glm::vec2(2), mouse, 0);
+    check(!even.triangles.empty() && !odd.triangles.empty() && !next.triangles.empty() &&
+              even.triangles.front().position == odd.triangles.front().position &&
+              next.triangles.front().position - even.triangles.front().position == glm::vec2(1),
+          "the owned title anchors to integer viewport halves without changing scale");
+
+    screens.optionsOpen = true;
+    const auto options = screens.draw(size, mouse, 0);
+    check(!options.triangles.empty() && options.triangles.front().position.x > 1100 &&
+              options.triangles.front().position.y > 600,
+          "start options leave the lower-right publisher mark visible while hiding the title");
+    screens.optionsOpen = screens.startScreen = false;
+    screens.front = Interface::Front::Creation;
+    const auto creator = screens.draw(size, mouse, 0);
+    screens.hud.emplace();
+    screens.systemMenu = screens.menuRow = screens.inventoryOpen = screens.skillsOpen = true;
+    const auto covered = screens.draw(size, mouse, 0);
+    check(!screens.inGameVisible() && !creator.triangles.empty() &&
+              creator.triangles.size() == covered.triangles.size() && creator.batches.size() == covered.batches.size(),
+          "character creation hides resident gameplay HUD, quick slot and panels");
+    screens.front = Interface::Front::None;
+    check(screens.inGameVisible(), "closing the front end admits the in-game root");
+}
+
 // A click on the character screens as the game delivers it: an update, the press, `held`
 // updates with the button down, then the release (event 3).
 static void frontClick(Interface &ui, glm::vec2 window, glm::vec2 at, int held = 0) {
@@ -819,6 +854,7 @@ int main(int argc, char **argv) {
         std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
         return failures ? 1 : 0;
     }
+    checkFrontRendering(game);
 
     // §3.8: nodes, mesh shapes, text shapes, transformations, widgets, textures.
     struct FileCase {

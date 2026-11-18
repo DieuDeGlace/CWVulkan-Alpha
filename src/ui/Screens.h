@@ -251,6 +251,7 @@ class Interface {
     // when `creationChanged` is set.
     enum class Front { None, Characters, Creation, Worlds, WorldCreation, Connect };
     Front front = Front::None;
+    bool inGameVisible() const { return !startScreen && front == Front::None; }
     struct CharacterSummary {
         std::string name;
         int32_t level = 1, type = 2, characterClass = 1, specialization = 0;

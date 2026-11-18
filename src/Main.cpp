@@ -3491,7 +3491,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         FrameConstants frame = makeFrame(view.camera(renderer.size()), scene, shadowSettings, moonSettings);
         // Screens §5.1: the corner map while playing, 3 x 3 zones round the player's at the
         // starting map zoom (s 0.8).
-        if (player && !interface.startScreen) {
+        if (player && interface.inGameVisible()) {
             const glm::dvec3 at = player->body().blocks();
             if (now - lastRegionPass > 1) {
                 regionPass(at);
@@ -5070,6 +5070,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_MAXIMIZED, options.start ? GLFW_TRUE : GLFW_FALSE);
     GLFWwindow *window = glfwCreateWindow(config.number("Window", "Width", 1280), config.number("Window", "Height", 720),
                                           "AlphaVulkan", nullptr, nullptr);
     int status = 0;

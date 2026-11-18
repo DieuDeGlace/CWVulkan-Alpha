@@ -2670,3 +2670,26 @@ client flows passed. The package verified 36 hashes in 37 files. Revision
 37 parsed all 78 links and the held offline contract matched its exact
 hash and line count. Original projectile action and particle playback
 remain open.
+
+## Start menu and front-end visibility (2026-11-18)
+
+`UiTests` loads the owned title asset and compares its geometry at even
+and odd drawable extents. Adding one pixel to each axis keeps the title
+anchor fixed. The following pixel moves it one unit on each axis. The
+Options frame begins with the lower-right publisher artwork. Resident
+HUD and panels add no draw batches while the creator is active.
+
+Isolated production Vulkan runs captured the start menu and start Options
+at the maximized 1,920 × 1,017 drawable extent. The full title fit in the
+start frame. The Options frame hid the title and kept the publisher mark.
+At 1,280 × 720, the creator kept its actor and removed the minimap and quick
+slot that had appeared in the earlier capture. The gameplay frame had
+its map and HUD. These capture modes directly open the named screens.
+The menu background actor and original first-present comparison remain
+open for the separate preview checkpoint.
+
+The Windows x64 build, owned-content `UiTests`, all 60 serial CTests,
+production player/controller diagnostic and five live client flows
+passed. Package inspection verified 36 hashes in 37 files. Revision 38
+parsed all 79 links. The held start contract matched its exact hash
+and physical line count.
