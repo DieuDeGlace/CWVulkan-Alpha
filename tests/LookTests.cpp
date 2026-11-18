@@ -45,6 +45,18 @@ int main() {
     exact(extrapolated.back.r, 0x3f8ccccc, "positive Q is not clamped to one");
     const auto negativeQ = alpha::palette(1.f, {.5f, .5f, 0.f, -1.f}, false);
     exact(negativeQ.front.r, std::bit_cast<uint32_t>(1.1f), "nonpositive Q leaves directional palette unchanged");
+    const alpha::ZoneFactors coldWet{.125f, .8f, 0.f, .25f};
+    const auto normalCell = alpha::palette(.5f, coldWet, false);
+    const auto waterCell = alpha::palette(.5f, coldWet, true);
+    near(waterCell.sky1, {.05f, .075f, .5f}, "type-two first sky replacement");
+    near(waterCell.sky2, waterCell.sky1, "type-two second sky replacement");
+    near(waterCell.fog, normalCell.fog, "camera cell leaves the fog output");
+    near(waterCell.front, normalCell.front, "camera cell leaves the front directional input");
+    near(waterCell.back, normalCell.back, "camera cell leaves the back directional input");
+    near(waterCell.ambient, normalCell.ambient, "camera cell leaves the spatial ambient input");
+    const glm::vec4 cameraMaterial = alpha::material(.5f, true);
+    near(glm::vec3(cameraMaterial), {.4f, .5f, 1.f}, "separate type-two material tint");
+    exact(cameraMaterial.a, std::bit_cast<uint32_t>(.5f), "material keeps the supplied light strength");
     // §2.1: L = (1 - |x|^3)^4.
     near(alpha::paletteDaylight(at(12)), 1, "L noon");
     near(alpha::paletteDaylight(at(9)), .9390f, "L 09:00");

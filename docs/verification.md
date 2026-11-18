@@ -2378,3 +2378,21 @@ diagnostic, five actual-client flows and 36 package digests passed. The
 owned-floor render again showed all 600 placed cells. Its ground remains
 bright. Native cache scheduling and matched original-client terrain images
 remain open.
+
+## Live terrain palette and camera cell (2026-11-17)
+
+LookTests checks both native sky replacements, independent type-two material
+tint and the original fog, front, back and ambient inputs. An owned-content
+Vulkan diagnostic checked the production world scene against the live region
+samplers. At exactly Z = −1 it read the type-two cell below the boundary.
+Just above that plane it read the dry cell. The floor capture matched the
+previous checkpoint byte for byte. Its bright ground remains unresolved.
+
+The Windows x64 build and nine focused suites passed. The first parallel
+CTest run timed out waiting for an adjacent zone in NetTests. The isolated
+NetTests rerun passed in 23.32 s, followed by all 60 CTests at two concurrent
+jobs in 97.14 s. The production player/controller diagnostic, five actual
+client flows and 36 package digests passed. Revision 26 parsed with all
+63 links, and both held native contracts matched their full hashes and
+saved line counts. Native mesh-cache lighting and comparable original-client
+terrain images remain open.

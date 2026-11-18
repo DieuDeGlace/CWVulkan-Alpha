@@ -3874,3 +3874,22 @@ intensity 128, a nearest blocker and a far blocker. These compare the
 actual mesh output rather than an isolated approximation of the sampler.
 The held native cache-dependent padding and observed bright ground still
 need comparison and further verification.
+
+## Terrain environment palette inputs (2026-11-17)
+
+The isolated author finalized [the native palette](specs/alpha-native-terrain-environment-palette.md)
+and [the primary terrain and fixed render boundary](specs/alpha-native-fixed-coordinates-terrain-light.md).
+The implementer verified both complete readbacks, 251 and 109 physical lines
+respectively, and SHA-256 hashes
+`370a60d749040120be673236c05901cc84e9b31c23ee46bbc9e18192d084a1b1` and
+`9c40c5dc112b965e5a58d1faeef568cfb654cd9ddb4704a4f06d9cd93ec7a59d`.
+
+The world scene now reads its palette factors directly from the live
+regional queries at the truncated horizontal camera reference. The sea
+share is read when the warm, wet sky branch uses it. The separate
+camera-cell type query matches the original whole coordinate conversion and
+horizontal bounds, including the lower cell at an exact negative plane.
+Its result selects the existing sky replacement and material tint. The
+held contracts also trace the terrain direction normalization, fixed
+horizontal rebasing and separate regional point-light registers.
+Full native camera setup, cache updates and image comparisons remain open.

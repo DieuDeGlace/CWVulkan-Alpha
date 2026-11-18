@@ -875,14 +875,26 @@ void WorldView::setLook(float y, float p) {
 }
 
 void WorldView::fillScene(Scene &scene) const {
-    const int32_t x = origin.x + (int32_t)std::floor(eye.x), y = origin.y + (int32_t)std::floor(eye.y);
-    const Climate cl = terrain.climate(x, y, map.zoneAt(x, y));
-    scene.zone = {cl.warmth, cl.moisture, world.seaShare(x, y), cl.fire};
-    scene.focus = glm::vec3(eye.x, eye.y, std::max(eye.z - 40.f, 0.f));
-    // Alternate-tint condition (alpha-terrain-color-pipeline-public.md): only the
-    // voxel-type-2 test at the reference position; no submersion meaning is held.
-    scene.underwater = map.read(x, y, (int32_t)std::floor(eye.z)).type() == WATER;
+    scene.zone = {};
+    scene.underwater = false;
+    if (const auto reference = terrain_lights::fromBlocks(worldPosition())) {
+        const auto &[rawX, rawY, rawZ] = *reference;
+        // The regional sampler truncates the fixed camera coordinates toward zero.
+        const int32_t x = int32_t(rawX / 65536);
+        const int32_t y = int32_t(rawY / 65536);
+        const float warmth = world.warmth(x, y);
+        const float moisture = world.moisture(x, y);
+        const float sea = warmth > .3f && moisture > .6f ? world.seaShare(x, y) : 0.f;
+        scene.zone = {warmth, moisture, sea, world.fireShare(x, y)};
 
+        // The separate type-two query uses the biased point-cell coordinates.
+        const int32_t cellX = blockOfFixed(rawX);
+        const int32_t cellY = blockOfFixed(rawY);
+        const int32_t cellZ = blockOfFixed(rawZ);
+        scene.underwater = uint32_t(cellX) < 0x1000000u && uint32_t(cellY) < 0x1000000u &&
+                           map.read(cellX, cellY, cellZ).type() == WATER;
+    }
+    scene.focus = glm::vec3(eye.x, eye.y, std::max(eye.z - 40.f, 0.f));
     scene.lights.clear();
 }
 

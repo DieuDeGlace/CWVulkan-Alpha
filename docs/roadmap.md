@@ -549,6 +549,9 @@ Differences from the Steam engine that shape the plan:
 - [x] Quantize chunk vertex colors and corner-light alpha to the original
   packed bytes. Check the ordinary top-face reference layers in the
   production mesher and pass normalized values to Vulkan.
+- [x] Feed the terrain palette from live regional samples at the fixed
+  camera position and use the independent signed point-cell query for
+  the two sky colors and material tint.
 - [ ] Verify native mesh-cache lighting updates and matched terrain
   appearance, including the bright-ground observation.
 - [x] Terrain light selection: jointly order collected sources by wrapped fixed-point
