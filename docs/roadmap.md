@@ -562,6 +562,9 @@ Differences from the Steam engine that shape the plan:
   areas in request order. Queued cell edits keep their incoming bytes
   until bounded preparation reaches them. A terrain change during
   background preparation triggers a retry from the newer state.
+- [x] Update terrain fog using signed millisecond samples, fixed camera
+  deltas, the native recurrence and lower bound. Use the current
+  followed angle or the map's 90-degree gradient for the frame.
 - [ ] Apply the native light rectangles for destruction. Verify original
   mesh scheduling and matched terrain
   appearance, including the bright-ground observation.

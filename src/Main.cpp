@@ -893,10 +893,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     float travelled = 0;
     view.setLook(options.lookGiven ? options.yaw : 30.f, options.lookGiven ? options.pitch : 15.f);
     Scene scene;
-    // Rendering §7.1: the fog distance F, smoothed towards the nearest missing chunk. The
-    // engine starts it at the first target (the native starting value is not specified).
     alpha::FogDistance fogDistance;
-    bool fogStarted = false;
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
     npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
                            std::vector<creatures::Burst> &effects) {
@@ -1565,6 +1562,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     uint64_t simulationWorldCalls = 0, simulationInputFrames = 0;
     int32_t simulationMaxPiece = 0;
     double frameLeftoverMs = 0;
+    uint32_t previousFogTick = 0;
     uint32_t lightClockMs = 0;
     std::vector<DrawItem> items;
     std::vector<EffectVertex> effects; // weapon trails (trails §1.3)
@@ -1882,6 +1880,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             while ((glfwGetTime() - last) * 1000.0 < step)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         const double now = glfwGetTime();
+        const int32_t fogElapsedMs = alpha::fogElapsed(previousFogTick, uint32_t(uint64_t(now * 1000.0)));
         const float seconds = (float)(now - last);
         frameLeftoverMs += (now - last) * 1000.0;
         // GLFW supplies fractional seconds. Keep an integer-duration adapter
@@ -2852,12 +2851,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const bool settling = travelled < options.travel || (options.travel > 0 && view.busy());
         view.fillScene(scene);
         {
-            const float target = view.fogTarget();
-            if (!fogStarted)
-                fogDistance.reset(target), fogStarted = true;
-            else
-                fogDistance.update(target, frameElapsedMs);
+            const auto reference = player && options.travel == 0.f ? std::optional(player->followCamera().eyeFixed()) : std::nullopt;
+            const float target = view.fogTarget(reference);
+            const bool worldMatches = !client.connected() || client.seed() == view.terrainWorld().seed();
+            fogDistance.update(target, fogElapsedMs, worldMatches);
             scene.fogDistance = fogDistance.value();
+            scene.currentFogAngle = player ? std::optional(player->cameraPitch()) : std::nullopt;
+            scene.mapFog = interface.mapOpen;
         }
         scene.seconds = now - start;
         const auto &motionSettings = options.worldOptions.motion;

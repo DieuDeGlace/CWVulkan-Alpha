@@ -2464,3 +2464,24 @@ The production player/controller diagnostic, five actual client flows
 and 36 package digests passed. Revision 29 parsed with all 65 links.
 Immediate destruction margins and matched original-client runtime
 timing and visuals remain open.
+
+## Primary terrain fog and composition (2026-11-17)
+
+LookTests checks the first tick, a transition across unsigned rollover,
+negative signed counts, fixed-point subtraction before narrowing, and
+the exact binary32 result of a thousand recurrence steps. Zero elapsed
+still applies the startup floor. A world mismatch also forces the
+floor, and a long positive count reaches the same stable value.
+The frame test checks both the current followed angle and the 90-degree
+map choice with an unchanged reciprocal fog distance.
+
+The Windows x64 build, ten focused suites and all 60 CTests passed.
+The production player/controller diagnostic, five actual client flows
+and 36 package digests passed. The terrain Vulkan probe passed the
+current point-light routing, cap, lifecycle and fallback checks.
+The owned-content town capture showed the terrain and interface with
+the updated fog. Revision 30 parsed with all 68 links and verified the
+two held presentation contracts and re-certified light lifecycle.
+The checked source scope leaves 49 inherited contracts awaiting review.
+Native capture comparison and complete world transition acceptance
+remain open.

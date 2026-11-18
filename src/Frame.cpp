@@ -67,7 +67,7 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     c.sky2 = glm::vec4(palette.sky2, 1);
     c.fog = glm::vec4(palette.fog, 1);
     // §7.2: the gradient follows the camera's angle from straight up (90 = level).
-    const float zenith = 90 + camera.pitchDegrees;
+    const float zenith = scene.mapFog ? 90.f : scene.currentFogAngle.value_or(90.f + camera.pitchDegrees);
     c.params = glm::vec4(scene.fogDistance > 0 ? 1 / scene.fogDistance : 0, alpha::fogGradientTranslation(zenith), 0, 0);
     c.sunColour = alpha::sunSpriteColour(S);
     // The view's right and up axes are the first two rows of its rotation.

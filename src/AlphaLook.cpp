@@ -1,4 +1,5 @@
 #include "AlphaLook.h"
+#include "creatures/CameraView.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -155,9 +156,19 @@ glm::vec4 material(float S, bool underwater) {
 
 float fogGradientTranslation(float zenithDegrees) { return (zenithDegrees - 80) / -30.f; }
 
-void FogDistance::update(float targetDistance, double elapsedMs) {
-    double w = 1 - std::pow(.999, std::max(0.0, elapsedMs));
-    distance = (float)(distance * (1 - w) + targetDistance * w);
+int32_t fogElapsed(uint32_t &previous, uint32_t current) {
+    const uint32_t elapsed = previous ? current - previous : 0;
+    previous = current;
+    return std::bit_cast<int32_t>(elapsed);
+}
+
+void FogDistance::update(float targetDistance, int32_t elapsedMs, bool worldMatches) {
+    constexpr float minimum = std::bit_cast<float>(0x38d1b717u);
+    constexpr float coefficient = std::bit_cast<float>(0x3a83126fu);
+    const float weight = camera_view::weight(elapsedMs, coefficient);
+    distance = camera_view::blend(distance, targetDistance, weight);
+    if (distance < minimum || !worldMatches)
+        distance = minimum;
 }
 
 std::vector<Star> stars() {

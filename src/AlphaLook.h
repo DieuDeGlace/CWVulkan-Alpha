@@ -8,6 +8,8 @@
 // Spatial factor generators and final display transfer remain unverified.
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -60,29 +62,32 @@ float fogGradientTranslation(float zenithDegrees);
 // §7.1: the render radius R (a 40-chunk window times 0.5 times 32 blocks); fixed in Alpha.
 constexpr int32_t FOG_WINDOW_CHUNKS = 40;
 constexpr float RENDER_RADIUS = 640;
-// §7.1 steps 1-3: the fog target for a camera at block column (x, y) and the 40 x 40 chunk
-// window whose first chunk is `window`. Starting from R², every window chunk with both
-// coordinates in [0, 0x80000) that `loaded(i, j)` denies lowers the minimum to the squared
-// horizontal distance to its centre (32 i + 16, 32 j + 16). Returns sqrt(min) - 22.4.
-template <class Loaded> float fogTarget(glm::dvec2 camera, glm::ivec2 window, Loaded loaded) {
-    double nearest = double(RENDER_RADIUS) * RENDER_RADIUS;
-    for (int32_t i = window.x; i < window.x + FOG_WINDOW_CHUNKS; i++)
-        for (int32_t j = window.y; j < window.y + FOG_WINDOW_CHUNKS; j++) {
-            if (uint32_t(i) >= 0x80000u || uint32_t(j) >= 0x80000u || loaded(i, j))
+// The horizontal comparison subtracts the complete raw position before
+// narrowing each component to binary32.
+template <class Loaded> float fogTarget(const std::array<int64_t, 3> &camera, glm::ivec2 window, Loaded loaded) {
+    const auto offset = [](int32_t chunk, int64_t cameraAxis) {
+        const uint64_t centre = uint64_t(chunk * 32 + 16) * 65536u;
+        return float(std::bit_cast<int64_t>(centre - uint64_t(cameraAxis))) * (1.f / 65536.f);
+    };
+    float nearest = RENDER_RADIUS * RENDER_RADIUS;
+    for (int64_t i = window.x; i < int64_t(window.x) + FOG_WINDOW_CHUNKS; ++i)
+        for (int64_t j = window.y; j < int64_t(window.y) + FOG_WINDOW_CHUNKS; ++j) {
+            if (uint64_t(i) >= 0x80000u || uint64_t(j) >= 0x80000u || loaded(int32_t(i), int32_t(j)))
                 continue;
-            const double dx = 32.0 * i + 16 - camera.x, dy = 32.0 * j + 16 - camera.y;
-            nearest = std::min(nearest, dx * dx + dy * dy);
+            const float dx = offset(int32_t(i), camera[0]), dy = offset(int32_t(j), camera[1]);
+            const float x2 = dx * dx, y2 = dy * dy;
+            nearest = std::min(nearest, x2 + y2);
         }
-    return float(std::sqrt(nearest)) - 22.4f;
+    return float(std::sqrt(double(nearest))) - std::bit_cast<float>(0x41b33333u);
 }
 
-// §7.1: the fog distance F follows the nearest unloaded ground, smoothed over time.
+// The frame caller keeps the low 32 bits of the tick difference. Zero is the
+// native sentinel for an unset previous sample.
+int32_t fogElapsed(uint32_t &previous, uint32_t current);
+
 class FogDistance {
   public:
-    // Distance to the nearest missing chunk centre (or the render radius) in blocks.
-    static float target(float nearestMissing) { return nearestMissing - 22.4f; }
-    // Moves towards `target` over `elapsedMs`: w = 1 - 0.999^ms; F <- F (1 - w) + target w.
-    void update(float targetDistance, double elapsedMs);
+    void update(float targetDistance, int32_t elapsedMs, bool worldMatches);
     float value() const { return distance; }
     void reset(float value) { distance = value; }
 

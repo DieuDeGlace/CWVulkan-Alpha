@@ -3961,3 +3961,34 @@ admitted mesh preparation. Save restore, blueprint placement and the
 existing local destruction paths still use the previous area-wide
 preparation. Native immediate destruction margins, original worker
 dispatch timing and matched visuals remain open.
+
+## Primary terrain fog and composition (2026-11-17)
+
+The isolated authors finalized [the fog upload state](specs/alpha-primary-terrain-fog-upload-state.md)
+and [terrain RGB and composition](specs/alpha-native-terrain-rgb-and-composition.md).
+The implementer read all 81 and 206 physical lines and verified SHA-256
+`b52ed291351a0d705e1e2b2d038dc64389a912c665f8939cb8f48dd711de2a57` and
+`1f7785758067ea4897f0882bffd23861de65a5dbd8b52e91407880069cf42e58`.
+The RGB contract checks the two original terrain shaders, their binding
+and direct presentation route. Its arithmetic matched 192 vertex and
+192 pixel instruction cases. Device precision, inherited render state
+and final display processing remain open.
+
+The world view now checks published geometry in the existing chunk
+window and subtracts fixed camera coordinates before narrowing each
+horizontal difference. Main applies signed elapsed time from low
+32-bit GLFW millisecond samples. The fog update uses the same rounded
+weight and blend as the camera. The stored distance starts at zero
+and takes the original positive floor. A mismatch between the connected
+requested seed and active world seed forces that floor. The complete
+native pair of requested seed and name and its adoption remain open.
+The frame uses the followed camera's actual current angle and selects
+90 degrees in the live map. Viewers keep their ordinary camera angle.
+
+The separate source re-certification of [the light lifecycle](specs/alpha-light-propagation-lifecycle.md)
+retains the supported original rules and clarifies allocation,
+caller-selected byte reads, mesh marking and immediate destruction.
+The implementer read all 228 physical lines and verified SHA-256
+`d0df53880aba9b4b4cdcd5006a687bc17020d32a53cb3cfe37122215fe50cb0c`.
+Original view-window placement, complete input admission and matched
+native visuals remain open.

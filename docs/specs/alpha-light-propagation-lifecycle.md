@@ -1,14 +1,16 @@
 # Alpha block-light propagation lifecycle
 
-Status: **FINAL / STABLE / HELD**. Source-author freeze: 2026-11-07.
+**FINAL / STABLE / HELD**
 
-This is a bounded, code-free contract for the original Alpha client's stored terrain lighting. It covers the complete rectangular propagation operation, its column and zone lookup rules, the first generation pass, and the traced terrain-rebuild admission path. It does not establish visual parity, a replacement engine's authorship, or the complete set of native invalidation events.
+This contract describes terrain light stored in the original Alpha client's
+columns. It covers the rectangular operation, initial zone lighting, the
+admission and lighting steps of the terrain mesh worker, and two world-update
+paths that relight after local terrain destruction.
 
 ## Evidence and supported image
 
-The source-author policy was read before reference inspection. Reference filenames were inventoried before content searches. No replacement engine, exporter, SDK, tests, captures, logs, existing specifications, or implementation history were inspected. Reconstruction-owned terrain files under `Infinite-Cubes-main/Infinite-Cubes-main/alpha` supplied search leads; the native claims below were independently checked against original Alpha decompiled routines and original assembly. No reconstruction-only claim is required by this contract.
-
-Evidence paths are relative to the `disassembled alpha cube world` evidence root. The supported native image is `binary/Cube.exe`:
+The reference is `binary/Cube.exe` in the `disassembled alpha cube world`
+evidence tree. All routine and data addresses are RVAs in this file.
 
 | Identity property | Value |
 | --- | --- |
@@ -20,80 +22,207 @@ Evidence paths are relative to the `disassembled alpha cube world` evidence root
 | Image size | `0x003BC000` |
 | Entry-point RVA | `0x0028E1E0` |
 
-All addresses below are RVAs in that image. Original evidence resides under `decompiled/client`: individually identified numeric `.c` files in `functions`, and address-bearing instructions in `assembly.txt`. The generation routine's decompilation timed out, so its lifecycle claims come from original assembly. No claim is made for the server image or another Alpha build.
+The behavior below comes from the matched PE. The listing at
+`decompiled/client/assembly.txt` served as an index, with instruction bytes
+checked against the image. Source-side instruction tracing matched the seed,
+all sixteen transfers and the commit against independently calculated results
+in 31 synthetic invocations. The attenuation calculation was also checked for
+all 256 possible input maxima. The traces covered a narrow corridor,
+implicit water, missing and admitted neighbors, a zone restriction, and reuse
+of a working-margin value in a later call.
 
 ## Stored state and initial allocation
 
-Each stored terrain cell occupies four bytes. Byte `+3` contains a material identifier in its low five bits and flags in the high three bits. For cells whose masked material is 0 or 2, bytes `+0`, `+1`, and `+2` respectively serve as the committed light result, the next-round working value, and the current-round working value. Those same byte positions retain color data for other materials; they must not generally be interpreted as light.
+A terrain cell is four bytes. The low five bits of byte `+3` are its material
+tag and the top three bits are flags. For stored tags 0 and 2, the three
+preceding bytes have the following roles during lighting.
 
-A native column record has a 32-byte stride. Its signed base height is at `+0x10`, its cell pointer at `+0x18`, and its cell count at `+0x1C`; these are 32-bit fields in this image. The zone's column-array pointer is at `+0xA8`, and its two 32-bit zone coordinates are at `+0x60` and `+0x64`. A zone contains 256 by 256 columns. Local X varies fastest in storage.
+| Offset | Role |
+| --- | --- |
+| `+0` | Committed terrain light |
+| `+1` | Next-round light |
+| `+2` | Current-round light |
 
-Zone construction at RVA `0x2240F0` constructs 65,536 column records. The original column-construction instructions at RVA `0x050BF0` initialize base height, cell pointer and count to zero. An empty new column therefore has no stored light cells. The resize operation at RVA `0x050C50` clears newly allocated four-byte cells to zero before copying retained cells. Retained cells preserve all four bytes, with their position adjusted when storage grows downward. Generation and subsequent terrain writes can replace these zero values; this is not evidence that every cell entering the lighting operation has zero committed light.
+For other stored tags, the rectangle operation leaves all four bytes intact.
+Ordinary terrain meshing reads the first three bytes of an ordinary solid as
+color (`0x09E426`–`0x09E460`).
+
+Each 32-byte column record has a signed base height at `+0x10`, a cell pointer at
+`+0x18` and a signed count at `+0x1C`. Each field is 32 bits in this image. A
+zone has signed coordinates at `+0x60` and `+0x64` and a column-array pointer at
+`+0xA8`. Its array holds 256 by 256 columns, with X varying fastest.
+
+Zone construction at `0x2240F0` initializes 65,536 column records through
+`0x050BF0`. Base, pointer and count begin at zero. At `0x050C50`, a request
+matching the current count returns immediately. A changed request of zero or
+less discards the allocation and clears pointer and count. A changed positive
+request allocates and zeros four bytes per cell before copying retained records.
+Shrinking copies the first records that fit to their original indices.
+Growing shifts each old record upward by the supplied index displacement. Both
+copy paths retain all four bytes. On a changed count, the base decreases by
+the supplied displacement. The ordinary cell insertion paths at `0x04E719`
+and `0x04E74F` supply the downward displacement for a write below the base and
+zero for extension above the upper end, respectively.
 
 ## Rectangular operation and reset
 
-The propagation operation starts at RVA `0x19A0E0`. Its inputs are a horizontal rectangle with inclusive low bounds and exclusive high bounds, a horizontal margin, and an optional restriction to a particular zone. The working rectangle extends each side of the requested rectangle by that margin. Missing columns are skipped. The operation does not allocate or generate missing columns, extend their stored vertical ranges, or add implicit cells to storage.
+At `0x19A0E0` the inputs are a world, signed horizontal whole-cell bounds,
+a horizontal margin and an optional explicit zone. The low bounds are
+inclusive and the high bounds exclusive. The destination is the requested
+rectangle. The working rectangle extends it on all four sides by the supplied
+margin. The operation visits the existing full vertical span of each resolved
+column. Missing columns are skipped. It creates neither columns nor cells.
 
-Initialization visits X in increasing order, then Y in increasing order, then each stored column from its highest cell downward. The scan begins with an unobstructed-sky condition. Masked materials 0 and 2 permit that condition to continue. Their two working bytes both become 255 while the condition holds, and both become zero after an obstructing material has been encountered. Every other masked material permanently closes the condition for the remainder of that column. Its cell bytes are left untouched by the lighting operation.
+The seed sweep starts at `0x19A130`. It advances X on the outside and Y on the
+inside, both in ascending order. It visits each column from its top stored
+cell down. Each column initially has open sky. Raw stored tags 0 and 2 receive
+255 in both working bytes while the sky is open and zero once closed. The
+first other tag closes the sky for every lower cell. Tag 13 closes it too.
+There is no separate downward attenuation for tag 2. The test masks out the
+three flag bits. Byte `+0` keeps its prior value throughout the seed sweep.
 
-This initialization preserves byte `+0` until the final commit. It overwrites both working bytes of every eligible stored cell in the working rectangle, regardless of their previous values. Consequently, a repeated invocation restarts lighting within its working rectangle; it does not continue earlier rounds or preserve an earlier interior light field as its starting state. Material 2 receives full direct-sky light with no extra vertical attenuation in this operation. Flag bits do not change the initialization eligibility test.
+Every invocation reseeds the eligible cells in its working rectangle. At the
+end, only the destination receives the new committed byte. The values left
+behind are as follows.
 
-The requested rectangle and the working rectangle have different effects when the margin is nonzero. Both working bytes are reset and propagated throughout the expanded area, but byte `+0` is committed only within the requested rectangle. Working bytes outside the commit rectangle can therefore change while their committed results remain unchanged.
+| Stored cell | Bytes on return |
+| --- | --- |
+| Tag 0 or 2 inside the destination | The round-sixteen result fills `+0`, `+1` and `+2`. Flags and tag are preserved. |
+| Tag 0 or 2 in the working margin alone | The round-sixteen result remains in `+1` and `+2`. Prior `+0` and `+3` are preserved. |
+| Cell outside the working rectangle, or any other raw tag | All four bytes are preserved. |
 
 ## Propagation rounds, order and material gates
 
-The operation performs exactly sixteen rounds. It has no convergence test, changed-cell frontier, lighting queue, recursive flood, or persistent round cursor. Each round first calculates next-round values throughout the working rectangle, then performs a separate transfer throughout that rectangle from byte `+1` to byte `+2`. This separation prevents a newly calculated value from advancing through multiple cells during one calculation sweep.
+There are sixteen rounds. Each round calculates throughout the working area
+before transferring any result to the current-round byte. Both sweeps visit
+X first as the outer loop, Y inside X, and the stored cells from lowest to
+highest within each column. Only stored tags 0 and 2 with current byte `+2`
+below 255 are calculated. The 255 seeds keep their full working value.
 
-The calculation sweep visits X increasingly, then Y increasingly, then stored cells from the column's lowest index upward. A target is calculated only when its masked material is 0 or 2 and its current-round byte is not 255. Cells already at 255 retain their initialized working values. Solid targets are neither recalculated nor transferred.
+The six reads are minus X, plus X, minus Y, plus Y, minus Z and plus Z. The
+largest neighbor brightness is used and the remaining reads are skipped as
+soon as the maximum reaches 255. Each resolved tag 13 contributes 255. A
+resolved tag 0 or 2 contributes its unsigned byte `+2` with a minimum of 5.
+Other resolved tags contribute zero. This reads only the six face neighbors.
+A tie has the same numerical effect as a single sample at that value.
 
-For a calculated target, the six axis-adjacent neighbors are considered in this order: negative X, positive X, negative Y, positive Y, negative Z, positive Z. The largest available brightness is retained. As soon as that maximum reaches 255, remaining neighbors are not read. Ties do not create an ownership or scheduling distinction. There are no diagonal propagation neighbors.
+The new `+1` is 85 percent of the maximum, rounded down. A maximum of 255 gives
+216, a maximum of 5 gives 4, and a maximum of zero gives zero. The target's
+prior value participates only in the 255 eligibility check. The minimum of 5
+belongs to the neighbor read. After the whole calculation sweep, every
+eligible stored tag 0 or 2 copies `+1` into `+2`. After round sixteen, a sweep
+of the destination in ascending X, then Y, then stored height copies `+2`
+into `+0`. The round count is fixed in the image.
 
-A resolved neighbor with masked material 13 supplies brightness 255. A neighbor with masked material 0 or 2 supplies its byte `+2`, raised to a minimum of 5. Every other masked material supplies zero. Material 13 is therefore a full-brightness source when sampled, while still obstructing the initialization scan and being ineligible as a propagation target. The semantic identity and ordinary occurrence of material 13 are not established here.
-
-The next-round byte is 85 percent of the maximum neighbor brightness, truncated downward to an integer. A maximum of 255 therefore yields 216. This replaces the next-round value; it is not compared against the target's previous value. The minimum of 5 applies when reading an eligible neighbor, not to every target or final result. For example, six solid neighbors provide zero, while an eligible neighbor whose stored working value is zero provides 5 and can produce a target value of 4.
-
-After the sixteenth transfer, a final increasing-X, increasing-Y, increasing-height sweep copies byte `+2` into byte `+0` for eligible stored cells in the requested rectangle. Material and flags remain unchanged. The fixed round limit is part of the observed behavior; an unrestricted flood to equilibrium is not the established native operation.
-
-These facts are supported by the complete routine at RVA `0x19A0E0`, including initialization around `0x19A130`, attenuation around `0x19A67E`, transfer around `0x19A714`, and the sixteen-round bound at `0x19A769`. The separate brightness query at RVA `0x0718B0` independently confirms the material-13 exception, material-0/material-2 eligibility, and minimum of 5.
+Relevant ranges are `0x19A20A`–`0x19A698` for calculation,
+`0x19A6FF`–`0x19A757` for transfer, `0x19A765`–`0x19A76C` for the round bound,
+and `0x19A772`–`0x19A7EC` for commit. The separate query at `0x0718B0` uses the
+same material gates and minimum of 5. Its caller supplies the byte offset.
+The rectangle operation's neighbor arithmetic specifically reads `+2`.
 
 ## Neighbor resolution and boundaries
 
-Column lookup at RVA `0x0347A0` accepts horizontal block coordinates from zero through `0x00FFFFFF`, inclusive. Without a zone restriction, it looks up the currently admitted zone containing that column; it does not create a zone. Zone lookup at RVA `0x034D10` and region lookup at RVA `0x034A90` only return existing entries. A missing entry fails the column lookup.
+Column lookup at `0x0347A0` accepts horizontal coordinates from zero through
+`0x00FFFFFF` on both axes. Without an explicit zone, it uses the resident
+region and zone lookups at `0x034A90` and `0x034D10`. Either lookup can
+fail. With an explicit zone, the lookup only addresses columns within that
+zone's own 256-by-256 extent. A point across that extent fails even if its
+zone is in the world table. This applies both when visiting a target column
+and when resolving its neighbors.
 
-With a zone restriction, a horizontal coordinate must fall inside that zone's own 256-by-256 extent. The lookup does not fall back to the world lookup for an adjacent zone, even when such a zone is already admitted. The restriction is applied to neighbor samples as well as target-column visits.
-
-The propagation routine resolves neighbor cells using the following native boundary behavior:
-
-| Neighbor location | Resolved material and lighting consequence |
+| Sample position or stored tag | Record used for the read |
 | --- | --- |
-| Missing column, failed zone lookup, outside the allowed horizontal range, or below a column's stored base | Material 1; contributes zero |
-| At or above the stored column end, with global height greater than zero | Material 0 with all three value bytes 255; contributes 255 |
-| At or above the stored column end, with global height zero or below | Material 2 with all three value bytes 255 and flag `0x80`; contributes 255 |
-| Stored material 0 at global height zero or below, with flag `0x40` clear | The same full-brightness material-2 fallback replaces the stored cell for this read |
-| Other stored cell within the column | Its stored bytes are read with the material gates above |
+| Column lookup fails, or height is below a resolved column's base | Opaque tag 1. Value bytes are 200, and the brightness gate returns zero. |
+| At or above base plus count, at global height above zero | Implicit air, tag 0 with all three value bytes 255. |
+| At or above base plus count, at global height zero or lower | Implicit water, tag 2 with all three value bytes 255 and flag `0x80`. |
+| Stored tag 0 at global height zero or lower with flag `0x40` clear | The implicit-water record. |
+| Any other stored cell in the span | The stored record itself. |
 
-The distinction between global height and column-relative index matters. The below-base fallback takes precedence over the implicit above-column air/water choice. Initialization and target selection operate on stored records directly; the below-sea substitution belongs to neighbor resolution.
+The sample routine is at `0x02F730`. The below-base check comes before the
+above-span test. A stored tag 2 uses its own value even with flag `0x80` set.
+A stored tag 0 with `0x40` set also uses its own value at or below zero. The
+seed, transfer and commit visit raw stored cells, so the implicit-water read
+creates no record and does not replace the target's tag. The original defaults
+are initialized at `0x2FAAD0`, `0x2FAB00` and `0x2FAB30`, with data at
+`0x36B7D0` (air), `0x36B7D4` (opaque), and `0x36B7CC` (water), respectively.
 
-The fallback records have original initializers at RVAs `0x2FAAD0`, `0x2FAB00`, and `0x2FAB30`. Their corresponding data RVAs are `0x36B7D0` for white material 0, `0x36B7D4` for material 1 with value bytes 200, and `0x36B7CC` for white material 2 with flag `0x80`. Solid fallback color does not contribute brightness.
-
-Neighbors can lie outside the working rectangle. Such samples read the existing byte `+2` of an admitted stored cell, subject to the same gates. That exterior state is not reset or transferred by the current call. It must not be assumed to equal byte `+0`, especially following an earlier call with a nonzero margin. Cross-zone light can therefore enter a world-wide rectangular invocation from existing adjacent-zone state, but absent zones do not provide a deferred frontier.
+Face-neighbor reads can extend past the working rectangle. A resolved stored
+sample there uses its existing `+2` under the same material and height rules.
+That byte may be from an earlier working-margin pass while `+0` still holds
+another result. World lookup allows these reads across adjacent admitted
+zones. A missing zone contributes the opaque fallback.
 
 ## Generation, admission and later rebuilds
 
-The generation routine at RVA `0x1E4850` returns an already admitted zone without rebuilding it. For a newly constructed zone, the call at RVA `0x1EDE84` requests its entire 256-by-256 horizontal extent, with margin zero and the new zone supplied as the restriction. This excludes all adjacent zones from that first lighting operation. The generated zone is installed into its region's zone table later, at RVA `0x1EE05A`. The first pass therefore occurs before that publication and is sufficient to operate on the new zone without world-table membership.
+The generation entry at `0x1E4850` returns an already resident zone from
+`0x1E4952`–`0x1E4959` without regenerating or relighting it on that path. For a
+new zone, the call at `0x1EDE84` covers all 256 by 256 columns with margin zero
+and the new zone supplied explicitly. It seeds, propagates and commits in that
+zone's own storage. The same zone is installed in the resident table later at
+`0x1EE05A`. The traced publication path has no second lighting call.
 
-The traced terrain-rebuild routine at RVA `0x09D910` addresses 32-by-32 block tiles. It invokes lighting when the tile record's byte `+0x74` is nonzero, or when the tile touches a zone edge. A nonzero byte selects an extension of four columns on every side; an edge tile with that byte zero selects sixteen. This extension is incorporated into the requested rectangle itself; the lighting call's separate margin is zero. Both working and committed light are consequently updated throughout that extended rectangle. The call at RVA `0x09DB84` supplies no zone restriction and can cross admitted zone boundaries. A tile with that byte zero that is strictly inside a zone skips this lighting call.
+The mesh builder at `0x09D910` takes a 32-by-32 chunk. The byte at `+0x74`
+belongs to its mesh-cache slot. At `0x09DB10`–`0x09DB89` the native choices are
+as follows.
 
-In the observed caller at RVA `0x0690A0`, rebuild admission is tested by RVA `0x06F490`. The containing zone must exist. A tile strictly inside its zone needs no neighboring zone for this test. An edge tile requires the zone immediately across the touched side. A corner tile checks the diagonally adjacent zone first, then the X-adjacent zone, then the Y-adjacent zone; all three must exist. Failure postpones this caller's rebuild. The predicate performs presence checks rather than generating those neighbors. This is rebuild eligibility, distinct from the six-neighbor order inside a lighting round.
+| Cache state | Lighting request |
+| --- | --- |
+| `+0x74` is nonzero at the check | Extend the chunk by four cells on every side, including at a zone edge. Commit the resulting 40-by-40 rectangle. |
+| `+0x74` is zero and either origin axis has within-zone offset 0 or 224 | Extend by sixteen cells on every side. Commit the resulting 64-by-64 rectangle. |
+| `+0x74` is zero and the chunk is strictly interior | Skip this lighting call. |
 
-Every lighting call that proceeds performs the reset and sixteen rounds described above. Publication of a zone does not resume a stored light queue. The generation and admission instructions inspected here do not directly invoke a second cross-zone lighting pass merely by installing the zone; later eligible tile rebuilds supply a confirmed path for recalculation across that boundary.
+Both requests at `0x09DB84` use a separate margin of zero and world lookup.
+The extended area is the destination, so eligible cells there receive all
+three new light bytes in resident columns. The builder takes the world
+critical section at `+0x8000D8` through `0x19C480` before this step and releases
+it through `0x201EA0` at `0x0A0F24`. The rectangle routine and its lookup
+helpers take no lock themselves.
 
-The lighting operation and its column lookup helpers acquire no lock themselves. The traced tile-rebuild routine enters the world critical section at offset `+0x8000D8` before its lighting call, through RVA `0x19C480`; the corresponding unlock helper is RVA `0x201EA0`. This does not establish the complete locking discipline of generation or of all other callers.
+The observed worker at `0x0690A0` tests admission through `0x06F490` before
+dispatch. It needs the containing zone and, for an edge, the zone across the
+touched side. A corner checks the diagonal first, then the X-side and Y-side
+zones. These are resident-presence checks. The denial branch at
+`0x069569`–`0x069580` bypasses the build and its publication.
+
+The mesh cache initializes the pending byte and timestamp to zero and the
+published chunk coordinates to minus one (`0x059751`–`0x059768`). One frame
+change-marking path around `0x09568B` checks the 3-by-3 chunk neighborhood of
+each changed cell. After a published-coordinate match, it sets `+0x74` to
+one and writes the frame's sampled timestamp at `+0x70` under the slot lock
+(`0x0957DC`–`0x0957E4`). Multiple marks before a build coalesce into the
+same bit. The invalidation at `0x086BA0` can discard the published coordinates
+and resources while preserving the pending byte and timestamp. The builder
+publishes its new coordinates and clears `+0x74` at `0x0A1394` under the slot
+lock at `+0x250`. Its earlier padding check occurs before taking that slot lock.
+
+There are also two confirmed immediate resident-column calls in the world
+update. The Bomb path handles entity kind `0x90` (`0x20EBD8`, name at
+`0x18FB9D`–`0x18FBB2`). Its terrain deletion appends a changed cell at
+`0x20EF2B`. A variable-radius combat terrain-deletion path appends at
+`0x213E30`. After a qualifying deletion, the respective immediate calls
+at `0x20F071` and `0x213FC0` require the pointer at world offset `+0xB8` to
+be null. Both use world lookup and a separate working margin of eight.
+For the Bomb, the destination bounds on each axis are centered on its fixed
+position at a distance of eight cells to either side. The combat call uses
+the computed action radius in place of that distance. It converts the
+radius by binary32 multiplication by 65,536 and signed integer truncation
+before adding or subtracting it in fixed units. Both calls convert each
+resulting fixed-point bound to a whole cell by signed division by 65,536
+toward zero. The resulting high end is exclusive. Conversion sites include
+`0x0122E0`, `0x012220` and `0x02F570`.
 
 ## Explicit limits
 
-Two additional calls to the same lighting operation were located at RVAs `0x20F071` and `0x213FC0` in original update assembly. Their complete triggering events and rectangle policies were not traced here. The full set of writes to tile byte `+0x74`, all rebuild scheduling priorities, generation-to-render timing, and all save/network invalidation paths remain unresolved. The presence predicate above must not be generalized into a universal rule governing every native lighting call.
+The confirmed initialization rules cover cell allocation and the start of a
+rectangle invocation. The initial committed value of a generated or loaded
+cell depends on earlier writers. This work leaves the semantic identity and
+ordinary occurrence of material 13 unresolved.
 
-Fresh allocation, retained-cell copying, working-state reset, and commit are established separately. This contract does not assign a single uniform pre-lighting value to all generated or loaded cells, and does not claim that admitting a neighbor immediately updates every affected committed value. No runtime observation or native acceptance result was used to close those gaps.
-
-This file is held after final readback. Its bounded facts are stable for the identified image; the unresolved lifecycle coverage remains open.
+The terrain mesh path establishes a later opportunity to relight across an
+admitted zone boundary. Exact scheduling, the outcomes of overlapping edits
+and mesh publication, and the lock coverage of other native callers remain
+open. The complete set of events that set the pending byte, terrain-changing
+combat abilities, and save or network invalidation routes remain open as well.
+The evidence covers the identified client image and controlled instruction
+traces. In-game timing, visual acceptance and other Alpha builds remain
+unverified.

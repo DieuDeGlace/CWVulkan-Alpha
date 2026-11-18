@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 59 and the rulings. The 274 tracked contracts
-comprise 219 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 60 and the rulings. The 276 tracked contracts
+comprise 222 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -120,6 +120,9 @@ Batch 57 covers `alpha-native-fixed-coordinates-terrain-light.md` and
 `alpha-native-terrain-environment-palette.md`.
 Batch 58 covers `alpha-native-mesh-cache-light-padding.md`.
 Batch 59 covers `alpha-native-light-rectangle-propagation.md`.
+Batch 60 covers `alpha-primary-terrain-fog-upload-state.md`,
+`alpha-native-terrain-rgb-and-composition.md` and the re-certified
+`alpha-light-propagation-lifecycle.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -231,7 +234,7 @@ Batch 59 covers `alpha-native-light-rectangle-propagation.md`.
 | `alpha-item-services.md` | A | 668 | 2 |
 | `alpha-items-generator.md` | A | 426 | 0 |
 | `alpha-light-admission-plane-production.md` | A | 104 | 1 |
-| `alpha-light-propagation-lifecycle.md` | B | 100 | 2 |
+| `alpha-light-propagation-lifecycle.md` | A | 229 | 0 |
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
 | `alpha-location-creatures.md` | A | 519 | 0 |
 | `alpha-loot-rolls.md` | A | 503 | 0 |
@@ -245,6 +248,7 @@ Batch 59 covers `alpha-native-light-rectangle-propagation.md`.
 | `alpha-native-light-rectangle-propagation.md` | A | 157 | 0 |
 | `alpha-native-mesh-cache-light-padding.md` | A | 158 | 0 |
 | `alpha-native-terrain-environment-palette.md` | A | 252 | 0 |
+| `alpha-native-terrain-rgb-and-composition.md` | A | 207 | 0 |
 | `alpha-native-terrain-vertex-light-alpha.md` | A | 194 | 0 |
 | `alpha-net-packets.md` | A | 642 | 0 |
 | `alpha-net-server.md` | A | 501 | 0 |
@@ -289,6 +293,7 @@ Batch 59 covers `alpha-native-light-rectangle-propagation.md`.
 | `alpha-pose-selectors-25-30.md` | A | 289 | 1 |
 | `alpha-pose-selectors-31-49.md` | A | 536 | 0 |
 | `alpha-power-helper-call-boundary.md` | B | 69 | 3 |
+| `alpha-primary-terrain-fog-upload-state.md` | A | 82 | 0 |
 | `alpha-projectile-world-ownership.md` | B | 105 | 3 |
 | `alpha-projectiles.md` | A | 565 | 0 |
 | `alpha-projection-input-production.md` | A | 97 | 2 |

@@ -72,7 +72,7 @@ class WorldView {
     // camera with no player) uses the camera's column as the engine's fallback.
     std::optional<glm::ivec2> playerColumn;
     // §7.1 steps 1-3: this frame's fog target from the chunks held round the camera.
-    float fogTarget() const;
+    float fogTarget(std::optional<terrain_lights::FixedPosition> camera = {}) const;
     // Whether chunk (cx, cy) (32-block units) has built geometry here: the ambience slot's
     // "populated" test (zone-fields ruling 1 §1.2).
     bool chunkBuilt(int32_t cx, int32_t cy) const {

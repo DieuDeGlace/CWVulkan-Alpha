@@ -927,14 +927,22 @@ std::vector<DrawItem> WorldView::items(double clockMs) {
     return out;
 }
 
-float WorldView::fogTarget() const {
+float WorldView::fogTarget(std::optional<terrain_lights::FixedPosition> reference) const {
     // The window's first chunk: 20 chunks before the camera's on each axis. (The engine's
     // window placement; the native window origin is not part of the fog contract.)
-    const glm::dvec3 at = worldPosition();
-    const glm::ivec2 camera(floorDiv((int32_t)std::floor(at.x), CHUNK), floorDiv((int32_t)std::floor(at.y), CHUNK));
-    const glm::ivec2 window = camera - glm::ivec2(alpha::FOG_WINDOW_CHUNKS / 2);
-    return alpha::fogTarget(glm::dvec2(at), window, [&](int32_t i, int32_t j) {
-        return chunks.count({i * CHUNK, j * CHUNK}) != 0;
+    if (!reference)
+        reference = terrain_lights::fromBlocks(worldPosition());
+    if (!reference)
+        return alpha::RENDER_RADIUS - 22.4f;
+    const auto windowStart = [](int64_t raw) {
+        constexpr int64_t units = int64_t(CHUNK) * 65536;
+        const int64_t chunk = raw / units - (raw < 0 && raw % units != 0);
+        return int32_t(chunk - alpha::FOG_WINDOW_CHUNKS / 2);
+    };
+    const glm::ivec2 window(windowStart((*reference)[0]), windowStart((*reference)[1]));
+    return alpha::fogTarget(*reference, window, [&](int32_t i, int32_t j) {
+        const auto it = chunks.find({i * CHUNK, j * CHUNK});
+        return it != chunks.end() && (it->second.solid != 0 || it->second.water != 0);
     });
 }
 

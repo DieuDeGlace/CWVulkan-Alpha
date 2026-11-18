@@ -6,6 +6,7 @@
 #include <cmath>
 #include <bit>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 static int failures = 0;
@@ -135,23 +136,69 @@ int main() {
     // §7.1 correction 21: the fog target is to missing chunk centres, starts from R = 640 and
     // ignores window chunks outside [0, 0x80000).
     {
+        const auto fixed = [](int32_t x, int32_t y) { return std::array{int64_t(x) * 65536, int64_t(y) * 65536, int64_t(0)}; };
         const auto allLoaded = [](int32_t, int32_t) { return true; };
-        near(alpha::fogTarget({1000, 1000}, {10, 10}, allLoaded), 640 - 22.4f, "fog target with everything loaded");
+        near(alpha::fogTarget(fixed(1000, 1000), {10, 10}, allLoaded), 640 - 22.4f, "fog target with everything loaded");
         // Camera at block (100, 100); chunk (5, 3) missing: centre (176, 112).
         const auto oneMissing = [](int32_t i, int32_t j) { return !(i == 5 && j == 3); };
-        near(alpha::fogTarget({100, 100}, {0, 0}, oneMissing), (float)std::sqrt(76.0 * 76 + 12 * 12) - 22.4f,
+        near(alpha::fogTarget(fixed(100, 100), {0, 0}, oneMissing), (float)std::sqrt(76.0 * 76 + 12 * 12) - 22.4f,
              "fog target measures to the chunk centre");
         // Negative window chunks never count, even when missing.
         const auto noneLoaded = [](int32_t, int32_t) { return false; };
-        near(alpha::fogTarget({0, 0}, {-40, -40}, noneLoaded), 640 - 22.4f, "chunks outside the world are skipped");
-        near(alpha::fogTarget({16, 16}, {0, 0}, noneLoaded), -22.4f, "a missing chunk under the camera");
+        near(alpha::fogTarget(fixed(0, 0), {-40, -40}, noneLoaded), 640 - 22.4f, "chunks outside the world are skipped");
+        near(alpha::fogTarget(fixed(16, 16), {0, 0}, noneLoaded), -22.4f, "a missing chunk under the camera");
         // Only the 40 x 40 window counts.
         const auto outside = [](int32_t i, int32_t) { return i != 40; };
-        near(alpha::fogTarget({1296, 16}, {0, 0}, outside), 640 - 22.4f, "chunk 40 lies outside a window from 0");
+        near(alpha::fogTarget(fixed(1296, 16), {0, 0}, outside), 640 - 22.4f, "chunk 40 lies outside a window from 0");
+        constexpr int32_t farChunk = 500000;
+        constexpr int64_t centre = (int64_t(farChunk) * 32 + 16) * 65536;
+        const auto farMissing = [](int32_t x, int32_t y) { return x != farChunk || y != farChunk; };
+        exact(alpha::fogTarget({centre - 1294041, centre - 7879517, std::numeric_limits<int64_t>::min()},
+                               {farChunk, farChunk}, farMissing),
+              0x42c6e28e, "fixed deltas narrow before squaring and exclude height");
+
+        uint32_t previous = 0;
+        const auto first = alpha::fogElapsed(previous, 0xfffffff8u);
+        const auto wrapped = alpha::fogElapsed(previous, 16);
+        const auto backwards = alpha::fogElapsed(previous, 11);
+        const auto highBit = alpha::fogElapsed(previous, 0x8000000bu);
+        if (first != 0 || wrapped != 24 || backwards != -5 || highBit != std::numeric_limits<int32_t>::min())
+            ++failures, std::printf("FAIL signed frame ticks preserve the first sample and rollover\n");
+
         alpha::FogDistance fog;
+        constexpr uint32_t floor = 0x38d1b717u;
+        fog.update(617.6f, 0, true);
+        exact(fog.value(), floor, "zero elapsed at startup still applies the positive fog floor");
+        fog.update(617.6f, 1, true);
+        exact(fog.value(), 0x3f1e2195, "the first fog recurrence uses the exact coefficient and stored floor");
         fog.reset(100);
-        fog.update(200, 1000);
-        near(fog.value(), 100 + 100 * (1 - (float)std::pow(.999, 1000.0)), "fog smoothing 1 - 0.999^ms", 1e-3f);
+        fog.update(200, 1000, true);
+        exact(fog.value(), 0x43233b00, "a thousand binary64 steps feed the separately rounded binary32 blend");
+        fog.update(200, std::numeric_limits<int32_t>::min(), true);
+        exact(fog.value(), 0x43233b00, "negative counts keep the prior fog");
+        fog.update(200, 0, false);
+        exact(fog.value(), floor, "a world mismatch overwrites even when no time elapsed");
+        fog.update(-22.4f, 16, true);
+        exact(fog.value(), floor, "the lower bound applies after blending a negative target");
+        fog.update(200, std::numeric_limits<int32_t>::max(), true);
+        exact(fog.value(), 0x43480000, "a stable recurrence can finish without revisiting its fixed point");
+    }
+    {
+        Camera camera;
+        camera.pitchDegrees = 0;
+        Scene scene;
+        scene.currentFogAngle = 120;
+        scene.fogDistance = 40;
+        const auto followed = makeFrame(camera, scene, ShadowSettings{}, MoonSettings{});
+        exact(followed.params.x, std::bit_cast<uint32_t>(.025f), "the positive fog upload is reciprocal distance");
+        exact(followed.params.y, 0xbfaaaaab, "the followed angle is used directly for the fog gradient");
+        scene.mapFog = true;
+        const auto map = makeFrame(camera, scene, ShadowSettings{}, MoonSettings{});
+        exact(map.params.x, std::bit_cast<uint32_t>(.025f), "the map gradient leaves fog distance independent");
+        exact(map.params.y, 0xbeaaaaab, "the map selector chooses 90 degrees for the upload");
+        scene.mapFog = false;
+        exact(makeFrame(camera, scene, ShadowSettings{}, MoonSettings{}).params.y, 0xbfaaaaab,
+              "clearing the selector restores the live followed angle");
     }
 
     Scene scene;

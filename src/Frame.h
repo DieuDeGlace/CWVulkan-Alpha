@@ -100,6 +100,8 @@ struct Scene {
     alpha::ZoneFactors zone;
     bool underwater = false;
     float fogDistance = 640; // F (§7.1); 640 blocks is the default render radius
+    std::optional<float> currentFogAngle; // the followed camera's current first rotation, in degrees
+    bool mapFog = false;
     glm::vec3 focus{0};      // what the shadow map is centred on (the player, in play)
     int day = 0;             // world day, for the moon's phase
     WaterLook water = WaterLook::Omega;
