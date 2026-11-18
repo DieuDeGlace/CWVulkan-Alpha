@@ -784,7 +784,18 @@ Differences from the Steam engine that shape the plan:
 - [x] Connected nonlocal ranged dispatch (`alpha-connected-ranged-dispatch.md`).
   Keep the signed windup and zero-crossing cues in the live actor order and
   respect original pointer ownership on the scoped launch and hit bodies.
-  World projectile receipt, stepping and broader native comparisons remain open.
+- [x] Connected projectile receipt and relay (`alpha-connected-projectile-receipt-step.md`).
+  Complete the world pieces before accepting fresh remote shots. Preserve
+  duplicates and filter exact source identity at the resident and outgoing
+  boundaries. Dedicated relay follows world-produced shots. A two-client
+  loopback against the original server retained both 112-byte payloads in order.
+- [x] Order the connected buff pass before local-target hits, projectile
+  insertion and the foreign-source hit pass
+  (`alpha-rulings-connected-client-receipt-order.md`).
+  Intervening object receipt, elapsed mode and native late capture effects
+  remain open.
+- [ ] Complete connected live projectile contact, terrain rays and retirement.
+  Verify results from the original client and the dedicated server.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
@@ -940,7 +951,8 @@ Differences from the Steam engine that shape the plan:
   unsupported flagged plants and sprites, and append the anchor and colored
   histories. The owned wooden floor was remeshed and rendered in Vulkan.
 - [ ] Trace the stock build-mode and local model-selection producers. Verify
-  original-client placement and the full persistence boundary.
+  original-client placement, repeated history across world pieces and the full
+  persistence boundary.
 - [x] Kill loot (`Loot.h`, spec `alpha-loot-rolls.md`): equipment, random armour or weapons with the
   rarity roll and level re-roll, pet food from the 45 tameable types, type drops, recipes, coins,
   animals' leftovers, inventories, all in the original's draw order (CreatureTests reproduce both

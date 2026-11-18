@@ -17,15 +17,28 @@
 #include <span>
 #include <thread>
 
+namespace creatures {
+struct NpcFrame;
+struct Projectile;
+class Projectiles;
+}
+
 namespace net {
 
 class RemoteCreatures;
 struct RemoteFighter;
 
-// Complete the local-target pass before appending the received tail. A local
-// handler may adjust a payload through the engine's hit hook.
-void mergeReceivedHits(std::span<Hit> pending, uint64_t local, std::vector<creatures::HitRecord> &frame,
-                       const std::function<void(creatures::HitRecord &)> &applyLocal);
+struct CombatReceipts {
+    std::vector<Hit> hits;
+    std::vector<std::array<uint8_t, 112>> shots;
+    std::vector<creatures::BuffEvent> buffs;
+
+    // Consume after the world calls. The local hit handler may adjust a payload
+    // through the engine's hit hook before it reaches the aggregate.
+    void apply(uint64_t local, creatures::NpcFrame &frame, creatures::Projectiles &flight,
+               const std::function<creatures::Combatant *(uint64_t)> &findActor,
+               const std::function<void(creatures::HitRecord &)> &applyLocalHit);
+};
 
 class Client {
   public:
@@ -57,9 +70,8 @@ class Client {
     void sendHit(const Hit &hit);
     // Promote only local-source frame outputs, in collector order.
     void queueCombatFrame(std::span<const ::creatures::HitRecord> hits,
-                          std::span<const ::creatures::BuffEvent> buffs);
-    // Queues a projectile the local player launched, sent as packet 9 (projectiles §1).
-    void sendShoot(const std::array<uint8_t, 112> &record);
+                          std::span<const ::creatures::BuffEvent> buffs,
+                          std::span<const ::creatures::Projectile> projectiles = {});
     // Queues an interaction request, sent as packet 6, one per tick (server simulation §8).
     void sendItemRequest(const std::array<uint8_t, 300> &record);
     // The connected simulation can observe the static subset without removing
@@ -90,6 +102,8 @@ class Client {
     std::optional<std::vector<uint8_t>> takeQuestBook();
     // Chat lines received since the last call, as (sender id, text).
     std::vector<std::pair<uint64_t, std::string>> takeChat();
+    // Drain the related packet-4 sections together under the receive lock.
+    CombatReceipts takeCombatReceipts();
     // Ordered incoming hits; target application and source-based presentation
     // filtering belong to the frame consumer.
     std::vector<Hit> takeHits();
@@ -109,8 +123,6 @@ class Client {
     std::vector<Sound> takeSounds();
     // Particle bursts relayed in world-update section 3 (particles §1, §9), 72 bytes each.
     std::vector<std::array<uint8_t, 72>> takeBursts();
-    // Shoot records relayed in world-update section 5 since the last call (projectiles §3).
-    std::vector<std::array<uint8_t, 112>> takeShoots();
     // Zone item lists received in section 7 since the last call: (zone x, zone y) and its
     // 328-byte records.
     using ZoneItems = std::pair<std::pair<int32_t, int32_t>, std::vector<std::array<uint8_t, 328>>>;
@@ -146,7 +158,7 @@ class Client {
     std::deque<std::string> outgoingChat;
     std::vector<std::array<uint8_t, 40>> outgoingEvents;
     std::vector<Hit> outgoingHits;
-    std::vector<std::array<uint8_t, 112>> outgoingShoots, shoots;
+    std::vector<std::array<uint8_t, 112>> outgoingShoots;
     std::deque<std::array<uint8_t, 300>> outgoingItems;
     std::vector<std::pair<int32_t, int32_t>> outgoingZones, outgoingRegions;
     std::vector<std::array<uint8_t, 56>> missionRecords;
@@ -162,8 +174,7 @@ class Client {
     std::optional<std::pair<uint32_t, uint32_t>> pendingClock;
     std::vector<std::pair<uint64_t, std::string>> chat;
     std::optional<std::vector<uint8_t>> questBook;
-    std::vector<Hit> hits;
-    std::vector<::creatures::BuffEvent> buffEvents;
+    CombatReceipts incomingCombat;
     std::vector<::creatures::RelationshipRecord> relationshipEvents;
     std::vector<::creatures::KillRecord> credits;
     std::vector<Sound> sounds;

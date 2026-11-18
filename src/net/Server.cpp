@@ -515,8 +515,10 @@ void Server::receiveLoop(Connection &c) {
         case SHOOT: {
             std::array<uint8_t, 112> record;
             ok = readArray(record);
-            std::lock_guard guard(lock);
-            shoots.push_back(record);
+            if (ok) {
+                std::lock_guard guard(lock);
+                shoots.push_back(record);
+            }
             break;
         }
         case CHAT: { // to everyone, the sender included (packets §4.3); n <= 0 is ignored
@@ -701,8 +703,8 @@ void Server::simulationLoop() {
             clockMs = ms;
             clockDay = day;
             stepWorld((float)dt);
-            // Received shoots are relayed. Buff inputs were applied by stepWorld;
-            // their list is separate from snapshots and generated outgoing events.
+            // Relay complete received shots after the world's produced shots.
+            // The relay never inserts its records into the resident flight list.
             for (auto &[id, c] : connections)
                 for (const auto &s : shoots)
                     c->outgoing.sections[4].emplace_back(s.begin(), s.end());

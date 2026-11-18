@@ -17,6 +17,7 @@ std::array<uint8_t, 112> Projectile::serialize() const {
     put(0x00, &shooter, 8);
     put(0x08, home.data(), 12);
     put(0x18, position, 24);
+    put(0x30, carried.data(), 12);
     put(0x3c, &velocity, 12);
     put(0x48, &damage, 4);
     put(0x4c, &radius, 4);
@@ -37,6 +38,7 @@ Projectile Projectile::parse(const uint8_t *r) {
     get(0x00, &p.shooter, 8);
     get(0x08, p.home.data(), 12);
     get(0x18, p.position, 24);
+    get(0x30, p.carried.data(), 12);
     get(0x3c, &p.velocity, 12);
     get(0x48, &p.damage, 4);
     get(0x4c, &p.radius, 4);
@@ -49,6 +51,14 @@ Projectile Projectile::parse(const uint8_t *r) {
     get(0x68, &p.age, 4);
     get(0x6c, &p.slow, 4);
     return p;
+}
+
+void Projectiles::receiveRemote(std::span<const std::array<uint8_t, 112>> records, uint64_t localId) {
+    for (const auto &bytes : records) {
+        const auto shot = Projectile::parse(bytes.data());
+        if (shot.shooter != localId)
+            list.push_back(shot);
+    }
 }
 
 namespace {

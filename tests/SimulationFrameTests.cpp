@@ -51,6 +51,41 @@ int main() {
               "failed supplied world admission preserves prepared records and still reaches later input");
     }
     {
+        constexpr uint64_t local = 0x100000001ull;
+        Projectile resident;
+        resident.shooter = local;
+        resident.kind = SPELL;
+        resident.position[0] = resident.position[1] = resident.position[2] = 5 * 65536;
+        resident.velocity = {1, 0, 0};
+        resident.age = 10;
+        Projectiles flight;
+        flight.list.push_back(resident);
+        auto first = resident;
+        first.shooter = 1;
+        first.carried = {0x12345678, 0x87654321, 1};
+        first.age = 321;
+        auto second = first;
+        second.shooter = 0;
+        second.age = 147;
+        second.position[0] += 2121;
+        const std::array pending{first.serialize(), resident.serialize(), second.serialize(), first.serialize()};
+        NpcFrame events;
+        const BlockType air = [](int32_t, int32_t, int32_t) { return uint8_t(0); };
+        const auto step = [&](int32_t elapsed, NpcFrame &) {
+            check(flight.list.size() == 1, "received shots wait until every world piece is complete");
+            ShotEffects output;
+            flight.step(elapsed, {}, {}, air, [] { return 0; }, output, {true, nullptr});
+        };
+        simulation::clientFrame(41, true, events, step, [&](NpcFrame &) { flight.receiveRemote(pending, local); });
+        check(flight.list.size() == 4 && flight.list[0].age == 51 && flight.list[1].serialize() == pending[0] &&
+                  flight.list[2].serialize() == pending[2] && flight.list[3].serialize() == pending[3],
+              "late merge skips the exact local echo and retains ordered duplicates, unresolved sources and wire fields");
+        ShotEffects output;
+        flight.step(3, {}, {}, air, [] { return 0; }, output, {true, nullptr});
+        check(flight.list.size() == 4 && flight.list[1].age == 324 && flight.list[2].age == 150 &&
+                  flight.list[3].age == 324, "received shots first age in the next admitted world piece");
+    }
+    {
         NpcFrame frame;
         NpcFrame::Cursor cursor;
         const auto append = [&] {

@@ -1,4 +1,5 @@
 #include "creatures/Combat.h"
+#include "creatures/Npcs.h"
 #include "creatures/Physics.h"
 #include "net/Client.h"
 #include <bit>
@@ -35,26 +36,46 @@ void checkFrameMerge() {
     HitRecord capture = remoteWard;
     capture.kind = 6;
 
-    std::array pending{net::Hit::from(localDamage), net::Hit::from(distant), net::Hit::from(remoteWard),
-                       net::Hit::from(produced), net::Hit::from(capture)};
-    std::vector frame{produced};
-    std::vector<BuffEvent> notices;
+    const BuffEvent before{89, actor.id, {ABSORB, 1.f, 200, 98}};
+    const BuffEvent unresolved{89, 57, {ABSORB, 100.f, 200, 99}};
+    const BuffEvent latest{91, actor.id, {ABSORB, 8.f, 800, 97, {1, 2, 3}, {4, 5, 6, 7}}};
+    Projectile shot;
+    shot.shooter = remoteWard.attacker;
+    shot.age = 41;
+    net::CombatReceipts pending;
+    pending.hits = {net::Hit::from(localDamage), net::Hit::from(distant), net::Hit::from(remoteWard),
+                    net::Hit::from(produced), net::Hit::from(capture)};
+    pending.buffs = {before, unresolved, latest};
+    pending.shots = {shot.serialize()};
+    NpcFrame frame;
+    frame.emittedHits.push_back(produced);
+    Projectiles flight;
     int applied = 0;
-    net::mergeReceivedHits(pending, actor.id, frame, [&](HitRecord &hit) {
-        check(frame.size() == 1, "the received local-target pass finishes before the receive tail is merged");
+    pending.apply(actor.id, frame, flight, [&](uint64_t id) { return id == actor.id ? &actor : nullptr; }, [&](HitRecord &hit) {
+        check(frame.emittedHits.size() == 1 && flight.list.empty(),
+              "local-target hits precede projectile insertion and the foreign-source append");
         ++applied;
-        if (hit.kind == HIT_ABSORBED)
+        if (hit.kind == HIT_ABSORBED) {
+            check(actor.buffs[0].serialize() == latest.record.serialize() && frame.buffs.size() == 3,
+                  "in-order buff replacement and aggregate copies precede local ward damage");
             hit.amount = 3.f; // the engine's local damage hook can adjust this record
+        }
         if (hit.kind != 6)
-            receiveHit(actor, body, hit, &notices);
+            receiveHit(actor, body, hit, &frame.buffs);
     });
-    check(applied == 3 && actor.health == 35.f && actor.buffs[0].value == 3.f && notices.size() == 1 &&
-              notices[0].source == actor.id && notices[0].target == actor.id && notices[0].record.source == 42,
-          "local echoes apply once, and the received ward emits a local self notice");
+    check(applied == 3 && actor.health == 35.f && actor.buffs[0].value == 5.f && frame.buffs.size() == 4 &&
+              frame.buffs[0].serialize() == before.serialize() && frame.buffs[1].serialize() == unresolved.serialize() &&
+              frame.buffs[2].serialize() == latest.serialize() && frame.buffs[3].source == actor.id &&
+              frame.buffs[3].target == actor.id && frame.buffs[3].record.serialize() == actor.buffs[0].serialize(),
+          "local hit echoes apply once and the self ward notice follows every received buff including an unresolved target");
+    check(flight.list.size() == 1 && flight.list[0].serialize() == shot.serialize(),
+          "a foreign shot becomes resident at the end of the local-hit pass");
     remoteWard.amount = 3.f;
-    check(frame.size() == 3 && frame[0].serialize() == produced.serialize() &&
-              frame[1].serialize() == distant.serialize() && frame[2].serialize() == remoteWard.serialize(),
-          "foreign-source payloads follow produced records in wire order with local echoes and capture removed");
+    const auto &hits = frame.emittedHits;
+    check(hits.size() == 4 && hits[0].serialize() == produced.serialize() &&
+              hits[1].serialize() == distant.serialize() && hits[2].serialize() == remoteWard.serialize() &&
+              hits[3].serialize() == capture.serialize(),
+          "all foreign-source kinds follow produced records in wire order, with exact local-source echoes filtered");
 }
 }
 

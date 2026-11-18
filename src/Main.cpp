@@ -1751,7 +1751,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (session && named && simulation::clockWriteDue(lightClockMs, elapsed))
             session->saveClock();
     };
-    const auto frameActor = [&](uint64_t key) -> creatures::Combatant * {
+    const std::function<creatures::Combatant *(uint64_t)> frameActor = [&](uint64_t key) -> creatures::Combatant * {
         if (player && player->combat().id == key)
             return &player->combat();
         if (const auto remote = otherFighters.find(key); remote != otherFighters.end())
@@ -1775,39 +1775,38 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             if (auto *target = frameActor(event.target))
                 creatures::applyBuff(*target, event.record);
     };
-    const auto mergeConnectedHits = [&](creatures::NpcFrame &frame) {
-        auto pending = client.takeHits();
+    const auto applyConnectedHit = [&](creatures::NpcFrame &frame, creatures::HitRecord &hit) {
         auto &local = player->combat();
-        net::mergeReceivedHits(pending, local.id, frame.emittedHits, [&](creatures::HitRecord &hit) {
-            if (hit.kind != 6) {
-                mods.playerHit(hit.attacker, hit.kind, hit.amount);
-                player->receiveHit(hit, &frame.buffs);
-                return;
-            }
-            // Pets §7.4: a capture signal can turn the item in the pet slot into the pet.
-            const auto other = receivedActors.find(hit.attacker);
-            if (creatures::itemType(inventory.equipment[12]) != 20 || other == receivedActors.end() ||
-                other->second.controller() != 5)
-                return;
-            const auto tamed = other->second.fighter();
-            if (tamed.ownerId != local.id)
-                return;
-            creatures::ItemRecord pet{};
-            pet[0] = 19;
-            pet[1] = uint8_t(tamed.type);
-            const uint32_t experience = uint32_t(tamed.experience);
-            std::memcpy(pet.data() + 4, &experience, sizeof experience);
-            creatures::setItemLevel(pet, int16_t(tamed.level));
-            inventory.equipment[12] = pet;
-            local.action = 0;
-            local.linkedId = hit.attacker;
-            wearInventory();
-        });
+        if (hit.kind != 6) {
+            mods.playerHit(hit.attacker, hit.kind, hit.amount);
+            player->receiveHit(hit, &frame.buffs);
+            return;
+        }
+        // Pets §7.4: a capture signal can turn the item in the pet slot into the pet.
+        const auto other = receivedActors.find(hit.attacker);
+        if (creatures::itemType(inventory.equipment[12]) != 20 || other == receivedActors.end() ||
+            other->second.controller() != 5)
+            return;
+        const auto tamed = other->second.fighter();
+        if (tamed.ownerId != local.id)
+            return;
+        creatures::ItemRecord pet{};
+        pet[0] = 19;
+        pet[1] = uint8_t(tamed.type);
+        const uint32_t experience = uint32_t(tamed.experience);
+        std::memcpy(pet.data() + 4, &experience, sizeof experience);
+        creatures::setItemLevel(pet, int16_t(tamed.level));
+        inventory.equipment[12] = pet;
+        local.action = 0;
+        local.linkedId = hit.attacker;
+        wearInventory();
     };
     const auto presentConnectedHits = [&](const std::vector<creatures::HitRecord> &hits, size_t produced) {
         const auto *local = &player->combat();
         for (size_t index = 0; index < hits.size(); index++) {
             const auto &hit = hits[index];
+            if (index >= produced && hit.kind == 6) // Received capture signals use the pet adapter.
+                continue;
             const auto *target = frameActor(hit.target);
             const auto *source = frameActor(hit.attacker);
             const bool toLocal = target == local;
@@ -2245,27 +2244,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             player->body().position, aggregate.emittedHits, aggregate.sounds};
                         player->advance(actorElapsed, client.connected(), &consumables, sneakLight, liveActor);
                         publishPlayerEffects();
-                        // Keep offline launch order in the same actor output list.
-                        // Online sends remain at this actor's producer boundary.
-                        creatures::Combatant &c = player->combat();
+                        // The actor records launches in the shared output. A
+                        // connected local launch also becomes resident now.
                         auto shot = std::exchange(playerShot, {});
                         auto launched = std::exchange(playerLaunched, {});
                         for (creatures::Projectile &p : launched) {
                             if (p.kind == creatures::BOOMERANG_SHOT) // §2.3: the thrower's weapon scale
                                 p.scale = player->appearance().weaponScale;
-                            if (client.connected()) {
-                                client.sendShoot(p.serialize());
+                            aggregate.shots.push_back(p);
+                            if (client.connected())
                                 projectiles.list.push_back(p);
-                            } else {
-                                aggregate.shots.push_back(p);
-                            }
                         }
-                        if (firstWorldCall)
-                            for (const auto &record : client.takeShoots()) {
-                                creatures::Projectile p = creatures::Projectile::parse(record.data());
-                                if (p.shooter != c.id)
-                                    projectiles.list.push_back(p);
-                            }
                         for (const creatures::SoundEvent &s : shot.sounds)
                             playAt(s.sound, s.position, s.volume, s.pitch);
                         bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
@@ -2756,8 +2745,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 [&](creatures::NpcFrame &aggregate) {
                     if (client.connected()) {
                         const size_t produced = aggregate.emittedHits.size();
-                        mergeConnectedHits(aggregate);
-                        applyReceivedBuffs();
+                        client.takeCombatReceipts().apply(player->combat().id, aggregate, projectiles, frameActor,
+                            [&](creatures::HitRecord &hit) { applyConnectedHit(aggregate, hit); });
                         presentConnectedHits(aggregate.emittedHits, produced);
                     }
                     applyReceivedZoneContents();
@@ -2829,7 +2818,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             queueItemRequest({ItemRequest::Drop, *item});
                     publishPlayerEffects();
                     if (client.connected())
-                        client.queueCombatFrame(aggregate.emittedHits, aggregate.buffs);
+                        client.queueCombatFrame(aggregate.emittedHits, aggregate.buffs, aggregate.shots);
                     // Held initial-state contract: the front-end rotation assigns
                     // its targets before the same update's camera smoothing.
                     if (frontEndRotation()) {

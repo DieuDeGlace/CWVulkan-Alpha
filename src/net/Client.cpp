@@ -4,6 +4,7 @@
 #include "Bytes.h"
 #include "ZlibStream.h"
 #include "creatures/ActorMap.h"
+#include "creatures/Npcs.h"
 #include <bit>
 #include <cstring>
 #include <set>
@@ -69,10 +70,12 @@ void Client::disconnect() {
     socket.close();
     std::lock_guard guard(lock);
     creatures.clear();
-    buffEvents.clear();
+    incomingCombat = {};
     relationshipEvents.clear();
     credits.clear();
     outgoingEvents.clear();
+    outgoingHits.clear();
+    outgoingShoots.clear();
     outgoingItems.clear();
     outgoingZones.clear();
     outgoingRegions.clear();
@@ -107,7 +110,8 @@ void Client::sendHit(const Hit &hit) {
 }
 
 void Client::queueCombatFrame(std::span<const ::creatures::HitRecord> frameHits,
-                              std::span<const ::creatures::BuffEvent> buffs) {
+                              std::span<const ::creatures::BuffEvent> buffs,
+                              std::span<const ::creatures::Projectile> projectiles) {
     std::lock_guard guard(lock);
     if (!online)
         return;
@@ -117,11 +121,9 @@ void Client::queueCombatFrame(std::span<const ::creatures::HitRecord> frameHits,
     for (const auto &buff : buffs)
         if (buff.source == ownId)
             outgoingEvents.push_back(buff.serialize());
-}
-
-void Client::sendShoot(const std::array<uint8_t, 112> &record) {
-    std::lock_guard guard(lock);
-    outgoingShoots.push_back(record);
+    for (const auto &shot : projectiles)
+        if (shot.shooter == ownId)
+            outgoingShoots.push_back(shot.serialize());
 }
 
 void Client::sendItemRequest(const std::array<uint8_t, 300> &record) {
@@ -176,11 +178,6 @@ std::vector<std::array<uint8_t, 20>> Client::takeBlockEdits() {
 std::vector<std::array<uint8_t, 280>> Client::takeGifts() {
     std::lock_guard guard(lock);
     return std::exchange(gifts, {});
-}
-
-std::vector<std::array<uint8_t, 112>> Client::takeShoots() {
-    std::lock_guard guard(lock);
-    return std::exchange(shoots, {});
 }
 
 std::map<uint64_t, CreatureRecord> Client::others() const {
@@ -243,28 +240,42 @@ void Client::setReceivedHealth(uint64_t key, float health) {
         actor->second.setHealth(health);
 }
 
-std::vector<Hit> Client::takeHits() {
+CombatReceipts Client::takeCombatReceipts() {
     std::lock_guard guard(lock);
-    return std::exchange(hits, {});
+    return std::exchange(incomingCombat, {});
 }
 
-void mergeReceivedHits(std::span<Hit> pending, uint64_t local, std::vector<::creatures::HitRecord> &frame,
-                       const std::function<void(::creatures::HitRecord &)> &applyLocal) {
-    for (auto &wire : pending) {
+std::vector<Hit> Client::takeHits() {
+    std::lock_guard guard(lock);
+    return std::exchange(incomingCombat.hits, {});
+}
+
+void CombatReceipts::apply(uint64_t local, creatures::NpcFrame &frame, creatures::Projectiles &flight,
+                           const std::function<creatures::Combatant *(uint64_t)> &findActor,
+                           const std::function<void(creatures::HitRecord &)> &applyLocalHit) {
+    for (const auto &event : buffs)
+        if (auto *target = findActor(event.target))
+            creatures::applyBuff(*target, event.record);
+    frame.buffs.insert(frame.buffs.end(), buffs.begin(), buffs.end());
+
+    for (auto &wire : hits) {
         if (wire.target() != local)
             continue;
         auto hit = wire.record();
-        applyLocal(hit);
+        applyLocalHit(hit);
         wire = Hit::from(hit);
     }
-    for (const auto &wire : pending)
-        if (wire.attacker() != local && wire.kind() != 6) // pet-capture signals have their own consumer
-            frame.push_back(wire.record());
+
+    flight.receiveRemote(shots, local);
+
+    for (const auto &wire : hits)
+        if (wire.attacker() != local)
+            frame.emittedHits.push_back(wire.record());
 }
 
 std::vector<::creatures::BuffEvent> Client::takeBuffs() {
     std::lock_guard guard(lock);
-    return std::exchange(buffEvents, {});
+    return std::exchange(incomingCombat.buffs, {});
 }
 
 std::vector<::creatures::RelationshipRecord> Client::takeRelationships() {
@@ -543,7 +554,7 @@ void Client::receiveLoop() {
             for (const auto &bytes : update->sections[1]) {
                 Hit h;
                 std::memcpy(h.bytes.data(), bytes.data(), h.bytes.size());
-                hits.push_back(h);
+                incomingCombat.hits.push_back(h);
             }
             for (const auto &bytes : update->sections[12]) // section 13: map-cell missions
                 if (bytes.size() == 56) {
@@ -587,7 +598,7 @@ void Client::receiveLoop() {
                 if (bytes.size() == 112) {
                     std::array<uint8_t, 112> record;
                     std::memcpy(record.data(), bytes.data(), 112);
-                    shoots.push_back(record);
+                    incomingCombat.shots.push_back(record);
                 }
             for (const auto &bytes : update->sections[2]) { // section 3: particle bursts
                 std::array<uint8_t, 72> record;
@@ -605,7 +616,7 @@ void Client::receiveLoop() {
             for (const auto &bytes : update->sections[10])
                 relationshipEvents.push_back(::creatures::RelationshipRecord::parse(bytes.data()));
             for (const auto &bytes : update->sections[11])
-                buffEvents.push_back(::creatures::BuffEvent::parse(bytes.data()));
+                incomingCombat.buffs.push_back(::creatures::BuffEvent::parse(bytes.data()));
             // Section 9 grants inventory items. Category 13 credits Platinum
             // Coins through the same item route; kill experience is section 10.
             for (const auto &bytes : update->sections[8]) {

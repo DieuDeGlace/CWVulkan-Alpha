@@ -2226,3 +2226,31 @@ isolated directory without imported saves or mods. Accessibility tools
 identified the native window and its title bar. Three window capture
 attempts timed out before menu pixels were available. The original-client
 menu, gameplay and visual acceptance therefore remain open.
+
+## Connected projectile and combat receipt order (2026-11-17)
+
+SimulationFrameTests runs a 41 ms frame in three pieces. Existing shots
+advance in all three. Received records retain the carried fields, age,
+duplicates and unresolved sources at the resident tail. The next world
+piece advances them for the first time. NetTests checks the frame gate
+with a real loopback socket, all three packet-4 combat sections in one
+drain and the exact local-source selection and order on outbound
+packets 7, 8 and 9.
+
+IncomingHitTests replaces a local ward twice from the received buff
+list before consuming its first hit. The ward update follows the
+complete received list, including an unresolved target, in the frame
+aggregate. The local hit callback precedes projectile insertion and
+foreign-source hits follow it in wire order. The fixture checks an
+equal low word with a different high word and the retained type-6
+payload. The Windows x64 build, eight focused suites and all 60 CTests
+passed. Revision 19 parsed, all 53 links resolved and all three held
+contracts matched their saved hashes and line counts. The production
+player/controller diagnostic, five actual-client flows and 36 release
+archive digests passed.
+
+Two loopback clients joined the hash-verified original dedicated server
+using protocol 3 and seed 41. Both retrieved the same two 112-byte shot
+records in send order and with unchanged bytes. Resident admission
+dropped both echoes at the sender and retained both at the peer. Native
+flight effects and late capture behavior remain open.

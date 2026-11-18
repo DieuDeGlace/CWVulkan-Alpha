@@ -3705,3 +3705,45 @@ and system mouse creation returned zero. A fresh isolated copy of the exact
 original executable opened a responsive native window in a normal visible
 desktop launch. The window capture tools timed out. Original menu contents,
 interactive gameplay and matched image comparisons remain open.
+
+## Connected projectile receipt and relay (2026-11-17)
+
+The isolated author finalized [the projectile receipt and step contract](specs/alpha-connected-projectile-receipt-step.md).
+The implementer read all 458 physical lines and verified SHA-256
+`3ba7abff8d03e89a6ca97e904fe2c5a50c466c17278c864b6bf83d78fe05d756`.
+The controlled connected frame appends pending projectile records after all
+world pieces and local-target hit effects. It filters the full local source ID.
+Duplicate and unresolved remote records keep their place at the resident
+tail, with age, velocity, position and carried words intact. The typed
+copy preserves the named fields, while raw transport also retains padding.
+
+The separate [receipt ruling](specs/alpha-rulings-connected-client-receipt-order.md)
+corrects the buff address from the earlier hit contract. The implementer read
+all 205 physical lines and verified SHA-256
+`2d6addb53663f2930344e4adf6af7d02f3d8b64257f412b7433a983a89790b40`.
+The client drains the three receipt lists together. Received buffs update
+residents before either hit pass and all are retained in the aggregate. The
+local-target pass sees those residents and appends its own ward notices after
+the received buff records. The second pass appends every foreign-source hit
+after projectile insertion. Presentation retains the existing pet adapter.
+The intervening object receipt, elapsed-mode flag and stock late capture
+effects remain open.
+
+Local launches enter the resident list during the actor's turn and the shared
+frame collector in the same order. Late promotion uses the exact source ID
+for shots as for hits and buffs. Dedicated pending relays accept complete
+records, preserve their wire payload and follow produced shots in each peer
+queue. Dedicated relays leave the resident projectile list to local producers.
+The exact original dedicated server relayed two ordered 112-byte records to
+both connected test clients, preserving the bytes. Only the originating
+client's resident list rejected them. Live target resolution, connected
+collision, original-client effects and the embedded-host path remain open.
+
+A separate author re-certified [the world-call boundary](specs/alpha-world-call-phase-boundary.md).
+The implementer read all 442 physical lines and verified SHA-256
+`9e78f9a1c530369cfed4c12d2ec0236ac016291d35c8bbd04ea71ce53a2e3ea8`.
+It confirms the client piece sequence and the single dedicated call, and
+traces the queue order and two separate zone snapshots. The client retains
+one aggregate across pieces. Its earlier terrain records can contribute to
+more than one later history pass. That repeated append, the dedicated
+drains' separate cutoffs and later frame effects remain follow-up work.

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 50 and the rulings. The 262 tracked contracts
-comprise 206 A, 51 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 51 and the rulings. The 264 tracked contracts
+comprise 209 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -107,6 +107,9 @@ Batch 49 covers `alpha-connected-ranged-dispatch.md` and the re-certified
 `alpha-critical-and-haste-stat-numerics.md`.
 Batch 50 covers `alpha-native-startup-window-input-boundary.md` and
 `alpha-native-initial-direct3d9-device.md`.
+Batch 51 covers `alpha-connected-projectile-receipt-step.md`,
+`alpha-rulings-connected-client-receipt-order.md` and the re-certified
+`alpha-world-call-phase-boundary.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -162,6 +165,7 @@ Batch 50 covers `alpha-native-startup-window-input-boundary.md` and
 | `alpha-connected-melee-actions-30-through-33.md` | A | 394 | 0 |
 | `alpha-connected-melee-actions-9-through-21.md` | A | 426 | 0 |
 | `alpha-connected-melee-candidates.md` | A | 452 | 0 |
+| `alpha-connected-projectile-receipt-step.md` | A | 459 | 0 |
 | `alpha-connected-ranged-dispatch.md` | A | 257 | 0 |
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
@@ -288,6 +292,7 @@ Batch 50 covers `alpha-native-startup-window-input-boundary.md` and
 | `alpha-rulings-camera-lens-pan.md` | A | 192 | 1 |
 | `alpha-rulings-channel2-explosion-window.md` | A | 192 | 1 |
 | `alpha-rulings-channel36-cadence.md` | A | 66 | 0 |
+| `alpha-rulings-connected-client-receipt-order.md` | A | 206 | 0 |
 | `alpha-rulings-connected-melee-30-through-33-stats.md` | A | 217 | 0 |
 | `alpha-rulings-connected-melee-scalar-selectors.md` | A | 129 | 0 |
 | `alpha-rulings-corridor-third-line.md` | A | 120 | 0 |
@@ -348,7 +353,7 @@ Batch 50 covers `alpha-native-startup-window-input-boundary.md` and
 | `alpha-water-projectile-contact-event.md` | B | 113 | 3 |
 | `alpha-weapon-attachment-poses.md` | A | 157 | 0 |
 | `alpha-world-actor-creation.md` | B | 199 | 0 |
-| `alpha-world-call-phase-boundary.md` | B | 82 | 1 |
+| `alpha-world-call-phase-boundary.md` | A | 443 | 0 |
 | `alpha-world-creature-health-admission.md` | A | 84 | 0 |
 | `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |
 | `alpha-world-hit-target-admission.md` | B | 101 | 2 |

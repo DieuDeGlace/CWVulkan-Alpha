@@ -7,6 +7,7 @@
 #include "creatures/Physics.h"
 #include <array>
 #include <functional>
+#include <span>
 #include <vector>
 
 namespace creatures {
@@ -19,6 +20,7 @@ struct Projectile {
     uint64_t shooter = UINT64_MAX;
     std::array<int32_t, 3> home{-1, -1, 0}; // the shooter's record field 39 (not read here)
     int64_t position[3] = {0, 0, 0};        // 1/65536 blocks
+    std::array<uint32_t, 3> carried{};     // wire fields at 0x30, with no verified flight use
     glm::vec3 velocity{0};                  // blocks per second
     float damage = 0;
     float radius = 0.5f;   // half the hit cube, blocks
@@ -103,6 +105,9 @@ struct ProjectileContext {
 class Projectiles {
   public:
     std::vector<Projectile> list;
+
+    // Apply section-four receipts after the frame's world pieces and hit input.
+    void receiveRemote(std::span<const std::array<uint8_t, 112>> records, uint64_t localId);
 
     // Mutable source lookup is independent of authority: resource writes and
     // buff production have different network/controlled-creature gates.

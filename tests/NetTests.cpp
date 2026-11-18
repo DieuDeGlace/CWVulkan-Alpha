@@ -604,7 +604,20 @@ static void checkCombatTransport() {
     auto foreignHit = outboundHit;
     foreignHit.attacker |= uint64_t(1) << 32;
     const std::array expectedHits{outboundHit.serialize(), laterHit.serialize()};
-    std::atomic<bool> finish{false}, received{false}, receivedHit{false};
+    creatures::Projectile firstShot;
+    firstShot.shooter = 1;
+    firstShot.position[0] = 123456789;
+    firstShot.carried = {0x91, 0x81424344, 0xbeef};
+    firstShot.age = 180;
+    auto secondShot = firstShot;
+    secondShot.position[2] = -98765;
+    auto foreignShot = firstShot;
+    foreignShot.shooter |= uint64_t(1) << 32;
+    const std::array expectedShots{firstShot.serialize(), secondShot.serialize()};
+    auto inboundShot = foreignShot.serialize();
+    inboundShot[0x65] = 0xc7;
+    const std::array inboundShots{inboundShot, firstShot.serialize(), inboundShot};
+    std::atomic<bool> finish{false}, received{false}, receivedHit{false}, receivedShots{false};
     std::atomic<bool> frameHeld{false}, worldSent{false}, coherentHit{false}, packetOrder{false};
     std::atomic<bool> repeatClock{false};
     constexpr uint32_t clockDay = 0xfedcba98u, clockTime = 0x80123456u;
@@ -628,6 +641,8 @@ static void checkCombatTransport() {
         WorldUpdate update;
         const auto hitBytes = inboundHit.serialize();
         update.sections[1].emplace_back(hitBytes.begin(), hitBytes.end());
+        for (const auto &shot : inboundShots)
+            update.sections[4].emplace_back(shot.begin(), shot.end());
         for (const auto &event : {first, second}) {
             const auto bytes = event.serialize();
             update.sections[11].emplace_back(bytes.begin(), bytes.end());
@@ -664,8 +679,8 @@ static void checkCombatTransport() {
         if (!socket.send(response.data())) return;
         worldSent = true;
         CreatureRecord latestOwn;
-        size_t hitCount = 0, buffCount = 0;
-        bool validHits = true;
+        size_t hitCount = 0, buffCount = 0, shotCount = 0;
+        bool validHits = true, validShots = true;
         while (!finish && socket.readU32(packet)) {
             if (packet == CREATURE) {
                 uint32_t size = 0;
@@ -680,7 +695,6 @@ static void checkCombatTransport() {
                 received = bytes == expectedSend;
                 packetOrder = received && receivedHit && buffCount == 0;
                 buffCount++;
-                if (received && receivedHit) break;
             } else if (packet == HIT) {
                 std::array<uint8_t, 72> bytes{};
                 if (!socket.readExact(bytes.data(), bytes.size())) return;
@@ -688,7 +702,14 @@ static void checkCombatTransport() {
                 hitCount++;
                 receivedHit = hitCount >= expectedHits.size();
                 coherentHit = validHits && hitCount == expectedHits.size();
-                if (received && receivedHit) break;
+            } else if (packet == SHOOT) {
+                std::array<uint8_t, 112> bytes{};
+                if (!socket.readExact(bytes.data(), bytes.size())) return;
+                validShots &= packetOrder && shotCount < expectedShots.size() && bytes == expectedShots[shotCount];
+                if (++shotCount == expectedShots.size()) {
+                    receivedShots = validShots;
+                    break;
+                }
             } else return;
         }
         while (!followupRequested && !finish) std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -731,10 +752,12 @@ static void checkCombatTransport() {
         foreignBuff.source |= uint64_t(1) << 32;
         const std::array frameHits{foreignHit, outboundHit, laterHit};
         const std::array frameBuffs{foreignBuff, localBuff};
-        client.queueCombatFrame(frameHits, frameBuffs);
+        const std::array frameShots{firstShot, foreignShot, secondShot};
+        client.queueCombatFrame(frameHits, frameBuffs, frameShots);
         check(waitFor([&] { return worldSent.load(); }), "peer supplies input while the frame gate is held");
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
-        check(client.takeHits().empty() && client.takeBuffs().empty() && client.takeRelationships().empty() &&
+        const auto blocked = client.takeCombatReceipts();
+        check(blocked.hits.empty() && blocked.buffs.empty() && blocked.shots.empty() && client.takeRelationships().empty() &&
               client.takeStaticStates().empty() &&
               client.takeGifts().empty() && client.takeCredits().empty() &&
               client.takeMissionRecords().empty() &&
@@ -746,32 +769,40 @@ static void checkCombatTransport() {
         published.setFighter(actor);
         client.setOwn(published);
         frame.unlock();
-        std::vector<creatures::BuffEvent> events;
+        CombatReceipts combat;
+        const auto &events = combat.buffs;
+        const auto &hits = combat.hits;
+        const auto &shots = combat.shots;
         std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<std::vector<uint8_t>> receivedStatics;
         std::vector<std::array<uint8_t, 56>> receivedMissions;
         std::vector<creatures::ItemRecord> receivedGifts;
         std::vector<creatures::KillRecord> receivedCredits;
-        std::vector<Hit> hits;
         check(waitFor([&] {
-            for (const auto &event : client.takeBuffs()) events.push_back(event);
+            if (shots.empty()) {
+                combat = client.takeCombatReceipts();
+                if (!shots.empty())
+                    check(!hits.empty() && !events.empty(), "related combat sections become visible as one frame receipt");
+            }
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
             for (const auto &event : client.takeMissionRecords()) receivedMissions.push_back(event);
             for (const auto &item : client.takeGifts()) receivedGifts.push_back(item);
             for (const auto &credit : client.takeCredits()) receivedCredits.push_back(credit);
-            for (const auto &hit : client.takeHits()) hits.push_back(hit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
                    receivedStatics.size() >= expectedStaticPayloads.size() && receivedGifts.size() >= expectedGifts.size() &&
                    receivedCredits.size() >= expectedCredits.size() &&
                    receivedMissions.size() >= expectedMissionPayloads.size() &&
-                   !hits.empty() && received && receivedHit;
-        }), "actual client exchanges packet-8 and section-12 buff records");
-        check(coherentHit && packetOrder,
-              "sender queues exact local-source IDs, snapshots completed state, preserves hit order and sends buffs afterward");
+                   !hits.empty() && shots.size() >= inboundShots.size() && received && receivedHit && receivedShots;
+        }), "actual client exchanges ordered hit, buff and projectile records");
+        check(coherentHit && packetOrder && receivedShots,
+              "sender queues exact local-source IDs and sends ordered hits, buffs and uncompressed shots after the state");
+        const auto drained = client.takeCombatReceipts();
+        check(shots.size() == inboundShots.size() && std::equal(shots.begin(), shots.end(), inboundShots.begin()) &&
+                  drained.shots.empty(), "section-five shot receipt preserves duplicate payloads and opaque bytes until one drain");
         check(events.size() == 2 && events[0].serialize() == first.serialize() && events[1].serialize() == second.serialize(),
               "incoming buff order, nonlocal target, embedded sources and opaque bytes survive transport");
-        check(client.takeBuffs().empty(), "received buff queue drains exactly once");
+        check(drained.buffs.empty(), "received buff queue drains exactly once");
         check(receivedRelationships.size() == relationships.size() &&
               receivedRelationships[0].serialize() == relationships[0].serialize() &&
               receivedRelationships[1].serialize() == relationships[1].serialize() &&
@@ -802,7 +833,7 @@ static void checkCombatTransport() {
         check(clock && clock->first == clockDay && clock->second == clockTime && !client.takeClock() &&
               client.clock(observedDay, observedTime) && observedDay == clockDay && observedTime == clockTime,
               "fresh clock publication retains both raw words, drains once and keeps historical lookup separate");
-        check(hits.size() == 1 && hits[0].record().serialize() == inboundHit.serialize() && client.takeHits().empty(),
+        check(hits.size() == 1 && hits[0].record().serialize() == inboundHit.serialize() && drained.hits.empty(),
               "packet-7 and compressed-world hits retain lock timer, raw position, flags and opaque bytes");
         const auto peers = client.others();
         const auto remote = peers.find(19);
