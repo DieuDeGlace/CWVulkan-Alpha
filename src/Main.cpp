@@ -66,7 +66,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <bit>
-#include <bitset>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -456,8 +455,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Held weapon-attachment contract: the weapon points of each creature's last
     // pose refresh. Lights read them before this frame's refresh replaces them.
     std::map<uint64_t, std::array<std::optional<terrain_lights::FixedPosition>, 2>> weaponPoints;
-    std::optional<Missions::Key> missionRequestRegion;
-    std::bitset<64> missionCellsReceived;
     std::optional<MissionArea> questRemembered; // missions §8.2: the mission the quest tag shows
     // Mod SDK v5: missions to read and block edits to make, while this world runs.
     mods.hooks().getMission = [&](int32_t cx, int32_t cy, AvMission &out) {
@@ -1774,6 +1771,57 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const auto *remote = remotes.find(key);
         return remote ? creatures::ActorBody{frameActor(key), &remote->live} : creatures::ActorBody{};
     };
+    interface.creatureAt = [&](uint64_t id) -> std::optional<std::pair<glm::dvec3, float>> {
+        const creatures::Body *body = liveActor(id).body;
+        if (!body)
+            return std::nullopt;
+        return std::pair{glm::dvec3(body->follow[0], body->follow[1], body->follow[2]) / 65536.0,
+                         body->size.z};
+    };
+    const auto talkTo = [&](const creatures::Combatant &actor, int32_t kind, glm::ivec2 zone, bool restart) {
+        interface.talk(actor.id, [&]() -> std::vector<SpeechPage> {
+            const worldgen::World &world = view.terrainWorld();
+            const auto mark = [&](int32_t zx, int32_t zy) {
+                if (uint32_t(zx) >= 65536 || uint32_t(zy) >= 65536)
+                    return;
+                // Prepared zone summaries and restored regions back the engine's sparse map.
+                if (mapRegions.contains({zx / 64, zy / 64}) || world.zoneEntry(zx, zy))
+                    view.markDiscovered(zx, zy);
+            };
+            const uint32_t level = uint32_t(player->combat().level);
+            const int32_t maxLevel = std::bit_cast<int32_t>(level + 2);
+            if (actor.appearanceFlags & 0x80) {
+                if (const auto *region = world.region(actor.backing.x / 64, actor.backing.y / 64))
+                    for (const auto &location : region->records)
+                        if (location.type != 0 && location.level <= maxLevel) {
+                            const auto [zx, zy] = net::zoneForRawPosition(location.x, location.y);
+                            mark(zx, zy);
+                        }
+                return {};
+            }
+
+            const auto placeAt = [&] { return cellLocation(world, zone.x / 8, zone.y / 8); };
+            if (actor.characterClass != 132) {
+                const int32_t minLevel = std::bit_cast<int32_t>(level - 2);
+                if (const auto *place = placeAt(); place && (place->level < minLevel || place->level > maxLevel))
+                    zone = {-1, -1};
+            }
+            auto pages = npcSpeech(dictionary, actor.id, actor.characterClass, kind, placeAt, worldRandom);
+            if (actor.characterClass != 132)
+                mark(zone.x, zone.y);
+            return pages;
+        }, restart);
+    };
+    const auto replayObjectiveInteraction = [&](uint64_t id) {
+        if (!frameActor(id))
+            return;
+        if (const auto *actor = frameActor(id)) {
+            const auto record = receivedActors.find(id);
+            const bool remote = record != receivedActors.end();
+            talkTo(*actor, remote ? record->second.talkKind() : own.talkKind(),
+                   remote ? record->second.talkTarget() : own.talkTarget(), true);
+        }
+    };
     const auto applyReceivedBuffs = [&] {
         for (const auto &event : client.takeBuffs())
             if (auto *target = frameActor(event.target))
@@ -2336,23 +2384,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     };
                     if (client.connected()) {
                         worldItems.step(elapsed, false, worldBlock, worldDraw, aggregate.sounds);
-                        if (firstWorldCall) {
-                            for (const auto &record : client.takeMissionRecords()) {
-                                missions.apply(record.data());
-                                // Open points 1 §2: a completed mission's record shows the banner (every
-                                // player with the region loaded sees it, as in Alpha).
-                                int32_t cx = 0, cy = 0;
-                                const MissionArea m = MissionArea::fromRecord(record.data(), cx, cy);
-                                if (cx >= 0 && cy >= 0 && missionRequestRegion == Missions::Key(cx / 8, cy / 8))
-                                    missionCellsReceived.set(size_t(cx % 8) * 8 + size_t(cy % 8));
-                                if (m.kind != 0 && m.state == 2)
-                                    if (const worldgen::Location *L = cellLocation(view.terrainWorld(), cx, cy)) {
-                                        interface.questComplete(ui::objectiveText(m, *L, dictionary));
-                                        if (const char *key = creatures::soundKey(30))
-                                            audio.play(key);
-                                    }
-                            }
-                        }
                         advanceStaticState(elapsed, {});
                         const net::RemoteCreatures::Controlled controlled{player->combat(), player->body()};
                         const net::RemoteCreatures::StepEffects remoteEffects{aggregate, worldDraw};
@@ -2690,8 +2721,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 [&](creatures::NpcFrame &aggregate) {
                     if (client.connected()) {
                         const size_t produced = aggregate.emittedHits.size();
-                        client.takeCombatReceipts().apply(player->combat().id, aggregate, projectiles, frameActor,
+                        const worldgen::World &world = view.terrainWorld();
+                        client.takeCombatReceipts().apply(player->combat().id, aggregate, projectiles, missions, world, frameActor,
                             [&](creatures::HitRecord &hit) { applyConnectedHit(aggregate, hit); });
+                        missions.presentReceived(world, aggregate.receivedMissions, replayObjectiveInteraction,
+                            [&](const MissionArea &mission, const worldgen::Location &location) {
+                                interface.questComplete(ui::objectiveText(mission, location, dictionary));
+                                playInterfaceSound(30);
+                            });
                         presentConnectedHits(aggregate.emittedHits, produced);
                     } else {
                         for (const auto &hit : aggregate.emittedHits)
@@ -4136,6 +4173,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             }
                     if (const auto other = receivedActors.find(creatureTarget); other != receivedActors.end()) {
                         characterClass = other->second.fighter().characterClass;
+                        talkKind = other->second.talkKind();
+                        target = other->second.talkTarget();
                         home = other->second.homeSpawn();
                     }
                     // §5.1 step 2: the talk record, queued on every Talk press before the bubble.
@@ -4193,29 +4232,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 }
                                 break;
                             }
-                        // Talk §1.3 step 3: the text is built only for a new bubble. Steps 0-2 of
-                        // §2.4 (the target zone's location, dropped when its level is more than
-                        // 2 from the player's; truncating division) and the map mark of §2.5
-                        // belong to that build, for every NPC but the innkeeper.
-                        const auto nativeSpeech = [&] {
-                            const worldgen::Location *place = nullptr;
-                            if (characterClass != 132) {
-                                const auto lookup = [&](glm::ivec2 z) -> const worldgen::Location * {
-                                    const int32_t cx = z.x / 8, cy = z.y / 8;
-                                    return cx >= 0 && cy >= 0 && cx < 8192 && cy < 8192
-                                               ? cellLocation(view.terrainWorld(), cx, cy) : nullptr;
-                                };
-                                glm::ivec2 zone = target;
-                                if (const worldgen::Location *L = lookup(zone); L && std::abs(L->level - c.level) > 2)
-                                    zone = {-1, -1};
-                                place = lookup(zone);
-                                if (zone.x >= 0 && zone.y >= 0 && zone.x <= 65535 && zone.y <= 65535)
-                                    view.markDiscovered(zone.x, zone.y);
-                            }
-                            return npcSpeech(dictionary, who, characterClass, talkKind, place, worldRandom);
-                        };
                         if (!questTalk)
-                            interface.talk(who, nativeSpeech);
+                            if (const auto *actor = frameActor(who))
+                                talkTo(*actor, talkKind, target, false);
                     }
                 }
                 // §5.2: the R block waits for the quick-item wheel to close, and is skipped
@@ -4580,20 +4599,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             } else {
                 frontListsStale = true;
             }
-            // Talk §1: the bubbles follow their creatures (the player, NPCs offline, others online).
-            interface.creatureAt = [&](uint64_t id) -> std::optional<std::pair<glm::dvec3, float>> {
-                if (player && id == player->combat().id)
-                    return std::pair{player->body().blocks(), player->body().size.z};
-                if (!client.connected())
-                    for (const creatures::Npc &n : npcs.all())
-                        if (n.fighter.id == id)
-                            return std::pair{n.body.blocks(), n.body.size.z};
-                for (const auto &[other, record] : receivedActors)
-                    if (other == id)
-                        return std::pair{glm::dvec3(record.position(0), record.position(1), record.position(2)) / 65536.0,
-                                         record.appearance().box.z};
-                return std::nullopt;
-            };
             if (sayAtStart && player) {
                 sayAtStart = false;
                 interface.talk(player->combat().id, nothingSpecial);
@@ -4763,21 +4768,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     client.requestZones(std::array{zone});
                 else
                     client.requestZones({});
-                if (uint32_t(zone.first) < 65536u && uint32_t(zone.second) < 65536u)
-                    region = Missions::Key{zone.first / 64, zone.second / 64};
+                region = Missions::Key{zone.first / 64, zone.second / 64};
             } else {
                 const glm::dvec3 at = view.worldPosition();
                 for (int axis = 0; axis < 3; axis++)
                     own.setPosition(axis, (int64_t)(at[axis] * 65536.0));
                 client.requestZones({});
             }
-            // Retain the current region until all of its cells arrive. An open
-            // map continues to refresh that region on each request turn.
-            if (region != missionRequestRegion) {
-                missionRequestRegion = region;
-                missionCellsReceived.reset();
-            }
-            if (region && (!missionCellsReceived.all() || interface.mapOpen))
+            if (region && missions.needsRegionContents(view.terrainWorld(), *region))
                 client.requestRegions(std::array{*region});
             else
                 client.requestRegions({});

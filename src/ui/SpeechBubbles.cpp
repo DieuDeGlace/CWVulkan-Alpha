@@ -25,43 +25,46 @@ float pageLength(const std::vector<SpeechPage> &pages, size_t page) {
 
 } // namespace
 
-void Interface::talk(uint64_t creature, const std::function<std::vector<SpeechPage>()> &text) {
-    // Step 1: the creature's own bubble finishes typing, or goes to its next page.
-    for (Bubble &b : bubbles)
+void Interface::talk(uint64_t creature, const std::function<std::vector<SpeechPage>()> &text, bool restart) {
+    // Choose an owned bubble first, otherwise the last free slot.
+    Bubble *slot = nullptr;
+    for (Bubble &b : bubbles) {
         if (b.creature == creature) {
+            if (restart) {
+                slot = &b;
+                break;
+            }
             if (b.elapsed >= pageLength(b.pages, b.page))
                 b.page++, b.elapsed = 0, b.typedBefore = 0;
             else
                 b.elapsed = pageLength(b.pages, b.page);
             return;
         }
-    // Step 2: the last free bubble; none free, nothing shows.
-    Bubble *free = nullptr;
-    for (Bubble &b : bubbles)
-        if (b.creature == 0)
-            free = &b;
-    if (!free)
+        if (!b.creature)
+            slot = &b;
+    }
+    if (!slot)
         return;
     std::vector<SpeechPage> pages = text();
     if (pages.empty() || pages[0].empty())
         return;
     const auto at = creatureAt ? creatureAt(creature) : std::nullopt;
-    *free = Bubble{creature, at ? at->first : glm::dvec3(0), std::move(pages)};
+    *slot = Bubble{creature, at ? at->first : glm::dvec3(0), std::move(pages)};
 }
 
 void Interface::advanceBubbles(float dtMs) {
     // §1.5 step 2: every bubble's time first, then step 4's strict 3000 hold and close.
     for (Bubble &b : bubbles)
-        if (b.creature != 0)
+        if (b.creature)
             b.elapsed += dtMs;
     for (Bubble &b : bubbles) {
-        if (b.creature == 0)
+        if (!b.creature)
             continue;
         if (b.elapsed > pageLength(b.pages, b.page) + 3000)
             b.page++, b.elapsed = 0, b.typedBefore = 0;
         // Engine lifetime policy: a bubble whose creature has gone is freed (the original keeps
         // a stale pointer, B-1).
-        if (b.page >= b.pages.size() || !(creatureAt && creatureAt(b.creature)))
+        if (b.page >= b.pages.size() || !(creatureAt && creatureAt(*b.creature)))
             b = Bubble{};
     }
 }
@@ -70,9 +73,9 @@ void Interface::followBubbles(float dtMs) {
     // §1.6 step 1: each bubble glides after its creature by the follow share of this step.
     const double share = (double)speechFollowShare((int32_t)dtMs);
     for (Bubble &b : bubbles) {
-        if (b.creature == 0)
+        if (!b.creature)
             continue;
-        if (const auto at = creatureAt ? creatureAt(b.creature) : std::nullopt)
+        if (const auto at = creatureAt ? creatureAt(*b.creature) : std::nullopt)
             b.anchor += (at->first - b.anchor) * share;
     }
 }
@@ -96,9 +99,9 @@ std::optional<float> voiceBlip(int32_t typedBefore, int32_t consumed, const std:
 
 void Interface::drawBubbles(Painter &painter, glm::vec2 W) {
     for (Bubble &b : bubbles) {
-        if (b.creature == 0 || !project || b.page >= b.pages.size())
+        if (!b.creature || !project || b.page >= b.pages.size())
             continue;
-        const auto at = creatureAt ? creatureAt(b.creature) : std::nullopt;
+        const auto at = creatureAt ? creatureAt(*b.creature) : std::nullopt;
         const float height = at ? at->second : 2;
         // §1.5 steps 2-5: the tail on the head point, the box above it.
         const auto head = project(b.anchor + glm::dvec3(0, 0, height / 2 + 1));

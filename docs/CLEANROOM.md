@@ -4036,3 +4036,32 @@ the default pet record with the source species, level and experience,
 clears the action and links the actor. The offline producer's mod
 notification remains at its existing event boundary. Native play,
 all offering controls and the separate objective receipt remain open.
+
+## Connected objective writes and late effects (2026-11-17)
+
+The isolated author finalized [state-one interaction](specs/alpha-objective-state-one-late-interaction.md)
+and [objective formatting and requests](specs/alpha-objective-receipt-formatting-map-supplement.md).
+The implementer read all 102 and 185 physical lines and verified exact
+SHA-256 `b4d4a00c03fd16c0ee44f2110b3e5339fae8b1abd21e027aa869d198d1fa5010`
+and `3854bf0a5094a7f2f187d334d7e6c991654d5e11209442def8f3f1056716b75d`.
+
+The connected client takes section 13 with its ordered buffs, hits and
+projectiles under the frame gate. After buffs it updates present cells
+and clears present terrain region request flags using the independent
+signed quotient. The live descriptor omits the two padding bytes. After
+both hit passes it copies the complete original 56-byte records into the
+frame including all misses and duplicates. The late walk gates on each
+record's own kind and state. State two resolves the cell again, uses its
+current descriptor and first localized page, restarts `shine`, assigns
+`objective` and plays sound 30.
+
+State one resolves the full identity, uses an owned speech slot or the
+last free one, and prepares the non-innkeeper's seeded text before the
+map mark. Map-only actors use their backing region and the controlled
+level gate. The speech mode and target come from the received creature
+record. The engine stores map discovery sparsely and uses prepared zone
+summaries or restored map regions as backing. Native map allocation and
+descriptor lifetime still need verification. The ordinary controlled
+socket path derives the region from the actor position, with an independent
+resident gate and the existing strict sender interval. Embedded host,
+local objective producers and native UI playback remain open.

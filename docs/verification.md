@@ -2530,3 +2530,36 @@ The production player/controller diagnostic, five actual client flows
 and 36 package digests passed. Revision 32 parsed with all 71 links and
 both held contracts matched their hashes and line counts. Original
 client and dedicated feeding playback remain open.
+
+## Connected objective receipt (2026-11-17)
+
+`IncomingHitTests` verifies that resident buffs precede objective writes,
+local hits see the current descriptor and latch, and the complete objective
+sequence follows both hit passes. A coordinate of -1 acknowledges region
+zero without a cell write. Coordinates -8 and 8,192 do not acknowledge it.
+A missing region stays unallocated and still requests contents when first
+prepared. Repeated completion records use the final descriptor even after
+a kind-zero update. `NetTests` exchanges all 56 bytes of ordered records
+under the same frame gate, including the distinct padding bytes.
+
+`UiTests` covers first-page formatting, punctuation, and the four-slot
+dialogue restart with an exact zero actor identity. A failed preparation
+leaves the existing slot bound. `ContentTests` exercises the real owned
+dictionary and verifies the innkeeper bypass and the zero, one and four
+draw paths for non-innkeeper speech.
+
+The production Vulkan client requested its controlled actor's region
+(512, 512) over isolated loopback. One objective record suppressed further
+requests past a full sender interval. The client then applied a completion,
+a state-one request for the innkeeper, an absent actor with the same low
+word, and a final live Troll objective. Its captured banner displayed
+"Defeat the Troll." and the speaker began the localized innkeeper text.
+The two accompanying hits reduced health from 100 to 95. Both private
+processes exited successfully. Bright terrain is still visible in that
+capture. Native dialogue, objective and visual comparison remain open.
+
+The Windows x64 build, ten focused suites and all 60 CTests passed.
+The production player/controller diagnostic and the five actual Vulkan
+flows passed. Package inspection verified 36 hashes in 37 archive files.
+Revision 33 parsed with all 73 links and both held objective contracts
+matched their exact hashes and line counts.

@@ -71,6 +71,7 @@ CreatureRecord npcRecord(const creatures::Npc &n) {
     r.setFighter(n.fighter);
     r.setHomeSpawn(n.spawn == creatures::Npc::NO_SPAWN ? std::array<int32_t, 3>{-1, -1, 0}
                                                         : std::array<int32_t, 3>{n.zone.first, n.zone.second, (int32_t)n.spawn});
+    r.setTalk(uint8_t(n.talkKind), n.talkTarget);
     r.bytes[0x50] = n.fighter.controller;
     return r;
 }

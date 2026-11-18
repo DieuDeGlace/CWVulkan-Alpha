@@ -138,6 +138,7 @@ class Missions {
             return worldgen::floorDiv(entry.first.first, 8) == rx && worldgen::floorDiv(entry.first.second, 8) == ry;
         });
         done.erase({rx, ry});
+        receivedRegions.erase({rx, ry});
     }
     // §2.3 - §2.6 (without the zone pass, which the caller runs for the loaded zones): the
     // day's monsters and missions of region (rx, ry). Every cell whose mission changed is
@@ -172,8 +173,12 @@ class Missions {
 
     const Cell *cell(int32_t cx, int32_t cy) const;
     Cell &edit(int32_t cx, int32_t cy) { return cells[{cx, cy}]; }
-    // §6.3: a record from the server.
-    void apply(const uint8_t *record);
+    // Section 13 has distinct early state writes and later presentation.
+    void receive(const worldgen::World &world, const std::array<uint8_t, 56> &record);
+    bool needsRegionContents(const worldgen::World &world, Key region) const;
+    void presentReceived(const worldgen::World &world, std::span<const std::array<uint8_t, 56>> records,
+        const std::function<void(uint64_t)> &interact,
+        const std::function<void(const MissionArea &, const worldgen::Location &)> &complete) const;
     // §7: a region's saved cells; reading any mission marks the region as generated today.
     void restore(int32_t cx, int32_t cy, const std::optional<MissionArea> &mission, const std::optional<MonsterArea> &monster);
     // Cells whose mission changed since the last call (for section 13 and the saves).
@@ -186,4 +191,5 @@ class Missions {
 
     std::map<Key, Cell> cells;
     std::set<Key> done, changed, passed;
+    std::set<Key> receivedRegions;
 };

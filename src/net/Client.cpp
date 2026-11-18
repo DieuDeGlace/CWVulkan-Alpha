@@ -2,6 +2,7 @@
 #include "net/RemoteCreatures.h"
 #include "ItemRequest.h"
 #include "Bytes.h"
+#include "Missions.h"
 #include "ZlibStream.h"
 #include "creatures/ActorMap.h"
 #include "creatures/Npcs.h"
@@ -79,7 +80,6 @@ void Client::disconnect() {
     outgoingItems.clear();
     outgoingZones.clear();
     outgoingRegions.clear();
-    missionRecords.clear();
     zoneItems.clear();
     zonePlacements.clear();
     staticStates.clear();
@@ -152,7 +152,7 @@ void Client::requestRegions(std::span<const std::pair<int32_t, int32_t>> regions
 
 std::vector<std::array<uint8_t, 56>> Client::takeMissionRecords() {
     std::lock_guard guard(lock);
-    return std::exchange(missionRecords, {});
+    return std::exchange(incomingCombat.missions, {});
 }
 
 std::vector<Client::ZoneItems> Client::takeZoneItems() {
@@ -251,12 +251,16 @@ std::vector<Hit> Client::takeHits() {
 }
 
 void CombatReceipts::apply(uint64_t local, creatures::NpcFrame &frame, creatures::Projectiles &flight,
+                           Missions &missionState, const worldgen::World &world,
                            const std::function<creatures::Combatant *(uint64_t)> &findActor,
                            const std::function<void(creatures::HitRecord &)> &applyLocalHit) {
     for (const auto &event : buffs)
         if (auto *target = findActor(event.target))
             creatures::applyBuff(*target, event.record);
     frame.buffs.insert(frame.buffs.end(), buffs.begin(), buffs.end());
+
+    for (const auto &mission : missions)
+        missionState.receive(world, mission);
 
     for (auto &wire : hits) {
         if (wire.target() != local)
@@ -271,6 +275,7 @@ void CombatReceipts::apply(uint64_t local, creatures::NpcFrame &frame, creatures
     for (const auto &wire : hits)
         if (wire.attacker() != local)
             frame.emittedHits.push_back(wire.record());
+    frame.receivedMissions.insert(frame.receivedMissions.end(), missions.begin(), missions.end());
 }
 
 std::vector<::creatures::BuffEvent> Client::takeBuffs() {
@@ -556,12 +561,6 @@ void Client::receiveLoop() {
                 std::memcpy(h.bytes.data(), bytes.data(), h.bytes.size());
                 incomingCombat.hits.push_back(h);
             }
-            for (const auto &bytes : update->sections[12]) // section 13: map-cell missions
-                if (bytes.size() == 56) {
-                    std::array<uint8_t, 56> record;
-                    std::memcpy(record.data(), bytes.data(), 56);
-                    missionRecords.push_back(record);
-                }
             for (const auto &bytes : update->sections[0]) // section 1: block edits
                 if (bytes.size() == 20) {
                     std::array<uint8_t, 20> record;
@@ -617,6 +616,11 @@ void Client::receiveLoop() {
                 relationshipEvents.push_back(::creatures::RelationshipRecord::parse(bytes.data()));
             for (const auto &bytes : update->sections[11])
                 incomingCombat.buffs.push_back(::creatures::BuffEvent::parse(bytes.data()));
+            for (const auto &bytes : update->sections[12]) { // section 13: map-cell missions
+                std::array<uint8_t, 56> record;
+                std::memcpy(record.data(), bytes.data(), record.size());
+                incomingCombat.missions.push_back(record);
+            }
             // Section 9 grants inventory items. Category 13 credits Platinum
             // Coins through the same item route; kill experience is section 10.
             for (const auto &bytes : update->sections[8]) {

@@ -155,6 +155,7 @@ struct NpcFrame {
     };
     std::vector<Death> deaths;
     std::vector<MissionProgress> missions; // immediate snapshots with engine reward metadata
+    std::vector<std::array<uint8_t, 56>> receivedMissions; // connected frame tail, full wire records
     // Block edits §8: bombs that went off this step (their first dead step).
     struct Explosion {
         glm::dvec3 centre{0}; // blocks

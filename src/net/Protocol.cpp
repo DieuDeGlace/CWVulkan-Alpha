@@ -86,6 +86,12 @@ constexpr size_t EQUIPMENT = 0x2f0, ITEM_SIZE = 0x118;
 
 std::array<int32_t, 3> CreatureRecord::homeSpawn() const { return get<std::array<int32_t, 3>>(bytes, 0x1a0); }
 void CreatureRecord::setHomeSpawn(const std::array<int32_t, 3> &home) { put(bytes, 0x1a0, home); }
+glm::ivec2 CreatureRecord::talkTarget() const { return {get<int32_t>(bytes, 0x1cc), get<int32_t>(bytes, 0x1d0)}; }
+void CreatureRecord::setTalk(uint8_t kind, glm::ivec2 target) {
+    bytes[0x1c8] = kind;
+    put(bytes, 0x1cc, target.x);
+    put(bytes, 0x1d0, target.y);
+}
 int32_t CreatureRecord::manaCubeCounter() const { return get<int32_t>(bytes, 0x1154); }
 void CreatureRecord::setManaCubeCounter(int32_t counter) { put(bytes, 0x1154, counter); }
 uint32_t CreatureRecord::contactFlags() const { return get<uint32_t>(bytes, 0x04c); }

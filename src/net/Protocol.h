@@ -105,6 +105,9 @@ struct CreatureRecord {
     void setHealth(float value) { std::memcpy(bytes.data() + 0x15c, &value, 4); }
     std::array<int32_t, 3> homeSpawn() const;
     void setHomeSpawn(const std::array<int32_t, 3> &home);
+    uint8_t talkKind() const { return bytes[0x1c8]; }
+    glm::ivec2 talkTarget() const;
+    void setTalk(uint8_t kind, glm::ivec2 target);
     int32_t manaCubeCounter() const;
     void setManaCubeCounter(int32_t counter);
     // The fighting state other clients draw and the server relays (behaviour spec §1): type,

@@ -756,8 +756,8 @@ void Interface::setObjective(const std::u16string &text) {
 void Interface::questComplete(const std::u16string &objective) {
     if (!questBanner)
         return;
-    setText(*questBanner, "objective", objective);
     plasma::play(*questBanner, 0, "shine");
+    setText(*questBanner, "objective", objective);
     questBannerMs = 0;
 }
 

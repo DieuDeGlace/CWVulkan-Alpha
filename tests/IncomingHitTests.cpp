@@ -4,6 +4,7 @@
 #include "net/Client.h"
 #include <bit>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 
 using namespace creatures;
@@ -47,13 +48,39 @@ void checkFrameMerge() {
                     net::Hit::from(produced), net::Hit::from(capture)};
     pending.buffs = {before, unresolved, latest};
     pending.shots = {shot.serialize()};
+    worldgen::World world(41);
+    world.prepareRegion(0, 0, [](int32_t, int32_t) { return 20.f; });
+    Missions missions;
+    MissionArea objective;
+    objective.kind = 7;
+    objective.count = 1;
+    objective.state = 2;
+    auto first = objective.record(0, 0);
+    first[38] = 0xba;
+    auto unresolvedCell = objective.record(16, 16);
+    objective.count = 2;
+    auto second = objective.record(0, 0);
+    objective.state = 1;
+    auto interaction = objective.record(-8, 0);
+    constexpr uint64_t speaker = 0x8000000200000003ull;
+    std::memcpy(interaction.data() + 8, &speaker, sizeof speaker);
+    objective.kind = 0;
+    objective.seed = 4531;
+    auto last = objective.record(0, 0);
+    pending.missions = {first, unresolvedCell, interaction, second, last};
     NpcFrame frame;
     frame.emittedHits.push_back(produced);
     Projectiles flight;
     int applied = 0;
-    pending.apply(actor.id, frame, flight, [&](uint64_t id) { return id == actor.id ? &actor : nullptr; }, [&](HitRecord &hit) {
-        check(frame.emittedHits.size() == 1 && flight.list.empty(),
-              "local-target hits precede projectile insertion and the foreign-source append");
+    pending.apply(actor.id, frame, flight, missions, world, [&](uint64_t id) {
+        check(!missions.cell(0, 0), "received buff lookups precede the objective descriptor writes");
+        return id == actor.id ? &actor : nullptr;
+    }, [&](HitRecord &hit) {
+        check(frame.emittedHits.size() == 1 && frame.receivedMissions.empty() && flight.list.empty(),
+              "local-target hits precede projectile insertion, foreign-source hits and objective aggregate copies");
+        const auto *cell = missions.cell(0, 0);
+        check(cell && cell->mission == objective && !missions.needsRegionContents(world, {0, 0}),
+              "all earlier objective updates and the region acknowledgement are visible to local hits");
         ++applied;
         if (hit.kind == HIT_ABSORBED) {
             check(actor.buffs[0].serialize() == latest.record.serialize() && frame.buffs.size() == 3,
@@ -76,6 +103,35 @@ void checkFrameMerge() {
               hits[1].serialize() == distant.serialize() && hits[2].serialize() == remoteWard.serialize() &&
               hits[3].serialize() == capture.serialize(),
           "all foreign-source kinds follow produced records in wire order, with exact local-source echoes filtered");
+    const auto *stored = missions.cell(0, 0);
+    check(frame.receivedMissions == pending.missions && !missions.cell(16, 16) && !missions.cell(-8, 0) &&
+              !world.region(2, 2) && stored && stored->mission.record(0, 0)[38] == 0,
+          "the late tail keeps all 56-byte records in order and the live descriptor ignores receipt padding and missing cells");
+    std::vector<uint64_t> effects;
+    missions.presentReceived(world, frame.receivedMissions, [&](uint64_t id) { effects.push_back(id); },
+        [&](const MissionArea &live, const worldgen::Location &place) {
+            check(live == objective && &place == cellLocation(world, 0, 0),
+                  "repeated completions format the final live descriptor, even when its kind was cleared");
+            effects.push_back(live.seed);
+        });
+    check(effects == std::vector<uint64_t>{4531, speaker, 4531},
+          "each receipt gates its own late effect, including an actor key with no valid objective cell");
+
+    Missions border;
+    check(border.needsRegionContents(world, {0, 0}) && !border.needsRegionContents(world, {2, 2}),
+          "only present terrain regions begin with a pending request");
+    border.receive(world, objective.record(-8, 0));
+    border.receive(world, objective.record(8192, 0));
+    border.receive(world, unresolvedCell);
+    check(border.needsRegionContents(world, {0, 0}), "independent region lookup does not admit -8 or 8192");
+    border.receive(world, objective.record(-1, 0));
+    check(!border.needsRegionContents(world, {0, 0}) && !border.cell(-1, 0) && !border.cell(0, 0),
+          "-1 misses the cell but acknowledges present region zero through signed division");
+    world.prepareRegion(2, 2, [](int32_t, int32_t) { return 20.f; });
+    check(border.needsRegionContents(world, {2, 2}) && !border.cell(16, 16),
+          "a previous receipt to a missing region does not allocate or acknowledge its future state");
+    frame.reset();
+    check(frame.receivedMissions.empty(), "objective aggregate tail is cleared at the next frame boundary");
 }
 }
 

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 62 and the rulings. The 279 tracked contracts
-comprise 225 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 63 and the rulings. The 281 tracked contracts
+comprise 227 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -126,6 +126,8 @@ Batch 60 covers `alpha-primary-terrain-fog-upload-state.md`,
 Batch 61 covers `alpha-combat-terrain-lighting.md`.
 Batch 62 covers `alpha-connected-receipt-supplement.md` and
 `alpha-taming-progress-and-capture.md`.
+Batch 63 covers `alpha-objective-state-one-late-interaction.md` and
+`alpha-objective-receipt-formatting-map-supplement.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -262,6 +264,8 @@ Batch 62 covers `alpha-connected-receipt-supplement.md` and
 | `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
 | `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
 | `alpha-opaque-output-transfer-state.md` | A | 105 | 1 |
+| `alpha-objective-receipt-formatting-map-supplement.md` | A | 186 | 0 |
+| `alpha-objective-state-one-late-interaction.md` | A | 103 | 0 |
 | `alpha-open-points-1.md` | A | 522 | 0 |
 | `alpha-open-points-10.md` | A | 390 | 1 |
 | `alpha-open-points-11.md` | A | 212 | 1 |

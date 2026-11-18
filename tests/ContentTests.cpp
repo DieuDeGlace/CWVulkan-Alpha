@@ -162,22 +162,26 @@ int main(int argc, char **argv) {
             return expected.draw();
         };
         worldgen::Random shared(777);
-        const auto inn = npcSpeech(english, 5, 132, 0, nullptr, shared);
+        const auto missing = []() -> const worldgen::Location * { return nullptr; };
+        const auto inn = npcSpeech(english, 5, 132, 0, []() -> const worldgen::Location * {
+            check(false, "the innkeeper bypasses the regular target lookup");
+            return nullptr;
+        }, shared);
         check(inn.size() == 1 && inn[0].size() == 21, "the innkeeper's 21 segments: " + words(inn));
         check(shared.count() == 0 && shared.draw() == nextAfter(777, 0), "the innkeeper neither reseeds nor draws");
-        const auto random = npcSpeech(english, 1, 136, 0, nullptr, shared);
+        const auto random = npcSpeech(english, 1, 136, 0, missing, shared);
         check(words(random) == "My Slime is adorable ! | ", "random:11 for id 1: " + words(random));
         check(!random.empty() && random[0].size() == 5 && random[0][1].colour == glm::vec4(1, 0.3f, 0.3f, 1),
               "the pet in creature red");
         check(shared.draw() == nextAfter(1, 4), "random talk leaves the shared stream four draws past srand(1)");
-        const auto food = npcSpeech(english, 1000, 136, 3, nullptr, shared);
+        const auto food = npcSpeech(english, 1000, 136, 3, missing, shared);
         check(words(food).find("Slimes") != std::string::npos && words(food).find("Pink Jellies") != std::string::npos,
               "pet-food talk for id 1000: " + words(food));
         check(shared.draw() == nextAfter(1000, 1), "pet-food talk leaves the stream one draw past srand(1000)");
         // §5.4: a resident speaks of Ruins of N (N = the name of serial 525240, "Duraron").
         worldgen::Location ruins;
         ruins.type = 5, ruins.serial = 525240;
-        const auto explored = npcSpeech(english, 1000, 136, 4, &ruins, shared);
+        const auto explored = npcSpeech(english, 1000, 136, 4, [&] { return &ruins; }, shared);
         check(words(explored).rfind("Have you already explored the Ruins of Duraron ?", 0) == 0 && explored.size() == 2,
               "explored talk: " + words(explored));
         check(shared.draw() == nextAfter(1000, 0), "explored talk reseeds but makes no draw");

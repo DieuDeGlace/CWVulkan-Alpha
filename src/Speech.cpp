@@ -172,10 +172,11 @@ std::vector<SpeechPage> entry(const Dictionary &d, const std::string &key, const
 } // namespace
 
 std::vector<SpeechPage> npcSpeech(const Dictionary &d, uint64_t id, uint8_t characterClass, int32_t talkKind,
-                                  const worldgen::Location *place, worldgen::Random &random) {
+                                  const std::function<const worldgen::Location *()> &placeAt, worldgen::Random &random) {
     if (characterClass == 132) // no srand, no draw
         return entry(d, "innkeeper", {}, {});
     random.seed((uint32_t)id); // step 1, before the explored test of step 3
+    const worldgen::Location *place = placeAt();
     if (talkKind == 4 && place && place->type != 0) { // §2.4 step 3: no draw
         std::set<std::string> tags;
         std::map<std::string, std::string> variables;

@@ -17,6 +17,10 @@
 #include <span>
 #include <thread>
 
+class Missions;
+namespace worldgen {
+class World;
+}
 namespace creatures {
 struct NpcFrame;
 struct Projectile;
@@ -32,10 +36,12 @@ struct CombatReceipts {
     std::vector<Hit> hits;
     std::vector<std::array<uint8_t, 112>> shots;
     std::vector<creatures::BuffEvent> buffs;
+    std::vector<std::array<uint8_t, 56>> missions;
 
     // Consume after the world calls. The local hit handler may adjust a payload
     // through the engine's hit hook before it reaches the aggregate.
     void apply(uint64_t local, creatures::NpcFrame &frame, creatures::Projectiles &flight,
+               Missions &missionState, const worldgen::World &world,
                const std::function<creatures::Combatant *(uint64_t)> &findActor,
                const std::function<void(creatures::HitRecord &)> &applyLocalHit);
 };
@@ -161,7 +167,6 @@ class Client {
     std::vector<std::array<uint8_t, 112>> outgoingShoots;
     std::deque<std::array<uint8_t, 300>> outgoingItems;
     std::vector<std::pair<int32_t, int32_t>> outgoingZones, outgoingRegions;
-    std::vector<std::array<uint8_t, 56>> missionRecords;
     std::vector<ZoneItems> zoneItems;
     std::vector<ZonePlacements> zonePlacements;
     std::vector<std::array<uint8_t, 280>> gifts;

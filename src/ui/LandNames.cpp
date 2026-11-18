@@ -4,6 +4,7 @@
 #include "creatures/Names.h"
 #include "ui/Painter.h"
 #include <map>
+#include <string_view>
 
 namespace ui {
 namespace {
@@ -87,10 +88,17 @@ std::u16string objectiveText(const MissionArea &m, const worldgen::Location &L, 
     if (const char *species = creatures::speciesKey(m.targetType))
         speechNameVariables(dictionary, species, "creature", tags, variables);
     locationVariables(L, dictionary, "scenery", tags, variables);
+    const auto pages = SpeechText(e->text).render(tags, variables);
     std::string line;
-    for (const SpeechPage &page : SpeechText(e->text).render(tags, variables))
-        for (const SpeechSegment &word : page)
-            line += (line.empty() || word.text == "." ? "" : " ") + word.text;
+    bool afterHyphen = false;
+    constexpr std::string_view punctuation = ".-,;!?:";
+    for (const SpeechSegment &word : pages.front()) {
+        const bool joined = word.text.size() == 1 && punctuation.find(word.text.front()) != std::string_view::npos;
+        if (!line.empty() && !afterHyphen && !joined)
+            line.push_back(' ');
+        line += word.text;
+        afterHyphen = word.text == "-";
+    }
     return utf16(line);
 }
 

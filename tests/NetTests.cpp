@@ -757,7 +757,8 @@ static void checkCombatTransport() {
         check(waitFor([&] { return worldSent.load(); }), "peer supplies input while the frame gate is held");
         std::this_thread::sleep_for(std::chrono::milliseconds(60));
         const auto blocked = client.takeCombatReceipts();
-        check(blocked.hits.empty() && blocked.buffs.empty() && blocked.shots.empty() && client.takeRelationships().empty() &&
+        check(blocked.hits.empty() && blocked.buffs.empty() && blocked.shots.empty() && blocked.missions.empty() &&
+              client.takeRelationships().empty() &&
               client.takeStaticStates().empty() &&
               client.takeGifts().empty() && client.takeCredits().empty() &&
               client.takeMissionRecords().empty() &&
@@ -775,18 +776,18 @@ static void checkCombatTransport() {
         const auto &shots = combat.shots;
         std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<std::vector<uint8_t>> receivedStatics;
-        std::vector<std::array<uint8_t, 56>> receivedMissions;
+        const auto &receivedMissions = combat.missions;
         std::vector<creatures::ItemRecord> receivedGifts;
         std::vector<creatures::KillRecord> receivedCredits;
         check(waitFor([&] {
             if (shots.empty()) {
                 combat = client.takeCombatReceipts();
                 if (!shots.empty())
-                    check(!hits.empty() && !events.empty(), "related combat sections become visible as one frame receipt");
+                    check(!hits.empty() && !events.empty() && !receivedMissions.empty(),
+                          "related combat and objective sections become visible as one frame receipt");
             }
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
-            for (const auto &event : client.takeMissionRecords()) receivedMissions.push_back(event);
             for (const auto &item : client.takeGifts()) receivedGifts.push_back(item);
             for (const auto &credit : client.takeCredits()) receivedCredits.push_back(credit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
@@ -813,7 +814,7 @@ static void checkCombatTransport() {
         bool sameMissions = receivedMissions.size() == expectedMissionPayloads.size();
         for (size_t i = 0; sameMissions && i < receivedMissions.size(); i++)
             sameMissions = std::equal(receivedMissions[i].begin(), receivedMissions[i].end(), expectedMissionPayloads[i].begin());
-        check(sameMissions && client.takeMissionRecords().empty(),
+        check(sameMissions && drained.missions.empty() && client.takeMissionRecords().empty(),
               "section-thirteen retains intermediate regional snapshots, opaque received bytes and order through one frame drain");
         check(receivedGifts == expectedGifts && client.takeGifts().empty(),
               "positive, zero and negative Platinum Coins grants retain item bytes without becoming or consuming kill experience");

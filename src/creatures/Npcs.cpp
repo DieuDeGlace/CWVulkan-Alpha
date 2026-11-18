@@ -2937,6 +2937,7 @@ void NpcFrame::reset() {
     relationships.clear();
     staticStates.clear();
     missions.clear();
+    receivedMissions.clear();
     grants.clear();
     appliedCredits.clear();
     kills.clear();

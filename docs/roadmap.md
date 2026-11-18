@@ -817,11 +817,21 @@ Differences from the Steam engine that shape the plan:
   duplicates and filter exact source identity at the resident and outgoing
   boundaries. Dedicated relay follows world-produced shots. A two-client
   loopback against the original server retained both 112-byte payloads in order.
-- [x] Order the connected buff pass before local-target hits, projectile
-  insertion and the foreign-source hit pass
+- [x] Order the connected buff pass before objective writes, local-target
+  hits, projectile insertion and the foreign-source hit pass
   (`alpha-rulings-connected-client-receipt-order.md`).
-  Intervening object receipt, elapsed mode and native late capture effects
-  remain open.
+  The requested and active world transition remains open.
+- [x] Connected section-13 objective receipt. Write present cells in wire
+  order and acknowledge the signed resident region independently. Retain
+  the raw records for the late effects after the hit passes. State one
+  can restart speech by full actor identity. State two reads the final
+  cell descriptor and repeats feedback for each completion record. The
+  connected sender uses the controlled actor's region and stops requesting
+  it when a receipt clears its latch. `IncomingHitTests`, `NetTests`,
+  `ContentTests` and `UiTests` cover the receipt, text and dialogue paths.
+- [ ] Match the native map-entry lifetime and embedded-host request path.
+  Run original-client objective and dialogue acceptance and reconcile local
+  objective presentation with the shared late walk.
 - [x] Connected live projectile candidates, contact counters and boomerang
   steering. Preserve caller draw order, live defensive state and raw impact
   charge and strength. Use the separate beneficial contact relation. The

@@ -341,8 +341,8 @@ class Interface {
     // Talk §1: speech bubbles, four at most, each following its creature. `creatureAt(id)`
     // gives a creature's drawn centre and height (blocks), none once it has gone.
     std::function<std::optional<std::pair<glm::dvec3, float>>(uint64_t)> creatureAt;
-    // §1.3: opens a bubble for `creature`, or advances (finishes typing, next page) its own.
-    void talk(uint64_t creature, const std::function<std::vector<SpeechPage>()> &text);
+    // §1.3: opens a bubble or advances an owned one. A restart prepares new pages.
+    void talk(uint64_t creature, const std::function<std::vector<SpeechPage>()> &text, bool restart = false);
     // §1.5 steps 2 and 4: time, then the 3 s auto-advance and closing, before the frame's talk
     // press; §1.5 step 6 / §1.6 step 1: the glide after each creature, after the talk press.
     void advanceBubbles(float dtMs);
@@ -569,7 +569,7 @@ class Interface {
     vendor::Services vendorServices();
     // Talk §1, in SpeechBubbles.cpp.
     struct Bubble {
-        uint64_t creature = 0; // 0: free
+        std::optional<uint64_t> creature;
         glm::dvec3 anchor{0};  // blocks
         std::vector<SpeechPage> pages;
         float elapsed = 0;

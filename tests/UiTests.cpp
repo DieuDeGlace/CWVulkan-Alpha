@@ -594,6 +594,43 @@ static void checkPlasmaRuntime() {
     }
 }
 
+static void checkObjectiveDialogue() {
+    Dictionary dictionary;
+    check(dictionary.parse("<dict><speech key=\"objective:invasion\">Now: North-West, captain; yes! Go? Done. % later</speech></dict>"),
+          "objective test dictionary parses");
+    MissionArea mission;
+    mission.kind = 7;
+    const worldgen::Location location;
+    check(objectiveText(mission, location, dictionary) == u"Now: North-West, captain; yes! Go? Done.",
+          "objective text uses the first page, seven attached punctuation tokens and hyphen glue");
+    mission.kind = 6;
+    check(objectiveText(mission, location, dictionary).empty(), "a live kind with no template produces empty text");
+
+    Interface ui;
+    ui.creatureAt = [](uint64_t id) { return std::pair{glm::dvec3(double(id), 0, 0), 2.f}; };
+    int prepared = 0;
+    const auto pages = [&] {
+        ++prepared;
+        return nothingSpecial();
+    };
+    ui.talk(0, pages);
+    ui.talk(0, pages); // finish typing
+    ui.talk(0, pages); // advance past the only page
+    check(prepared == 1, "ordinary talk advances the owned bubble for an exact zero actor key");
+    ui.talk(0, pages, true);
+    ui.advanceBubbles(0);
+    for (uint64_t id : {1ull, 2ull, 3ull})
+        ui.talk(id, pages);
+    int emptyAttempts = 0;
+    ui.talk(0, [&] {
+        ++emptyAttempts;
+        return std::vector<SpeechPage>{};
+    }, true);
+    ui.talk(4, pages, true);
+    check(prepared == 5 && emptyAttempts == 1,
+          "an owned restart resets page and timing, and empty preparation retains the slot without preparing a fifth bubble");
+}
+
 int main(int argc, char **argv) {
     checkPlasmaRuntime();
     checkInteractionTargets();
@@ -601,6 +638,7 @@ int main(int argc, char **argv) {
     checkMenuRequests();
     checkCharacterScreens();
     checkSkillTooltip();
+    checkObjectiveDialogue();
     // §8.2
     check(plasma::unscramble({0x78, 0x87, 0x81, 0x6D, 0xBD, 0x3D, 0x2F, 0xC7, 0x6E, 0x99, 0xAC, 0x39, 0x28, 0xD1}) ==
               "PlasmaGraphics",

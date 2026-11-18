@@ -562,10 +562,39 @@ const Missions::Cell *Missions::cell(int32_t cx, int32_t cy) const {
     return it == cells.end() ? nullptr : &it->second;
 }
 
-void Missions::apply(const uint8_t *record) {
+void Missions::receive(const World &world, const std::array<uint8_t, 56> &record) {
     int32_t cx, cy;
-    const MissionArea m = MissionArea::fromRecord(record, cx, cy);
-    cells[{cx, cy}].mission = m;
+    const MissionArea mission = MissionArea::fromRecord(record.data(), cx, cy);
+    if (cellLocation(world, cx, cy))
+        cells[{cx, cy}].mission = mission;
+
+    // The region request check uses independent signed quotients. A cell
+    // coordinate of -1, for example, can acknowledge region zero.
+    const Key region{cx / 8, cy / 8};
+    if (world.region(region.first, region.second))
+        receivedRegions.insert(region);
+}
+
+bool Missions::needsRegionContents(const World &world, Key region) const {
+    return !receivedRegions.contains(region) && world.region(region.first, region.second);
+}
+
+void Missions::presentReceived(const World &world, std::span<const std::array<uint8_t, 56>> records,
+    const std::function<void(uint64_t)> &interact,
+    const std::function<void(const MissionArea &, const Location &)> &complete) const {
+    for (const auto &record : records) {
+        if (get<int32_t>(record.data(), 24) == 0)
+            continue;
+        if (record[37] == 1) {
+            interact(get<uint64_t>(record.data(), 8));
+        } else if (record[37] == 2) {
+            const int32_t cx = get<int32_t>(record.data(), 0), cy = get<int32_t>(record.data(), 4);
+            if (const Location *location = cellLocation(world, cx, cy)) {
+                const Cell *current = cell(cx, cy);
+                complete(current ? current->mission : MissionArea{}, *location);
+            }
+        }
+    }
 }
 
 void Missions::restore(int32_t cx, int32_t cy, const std::optional<MissionArea> &mission,
