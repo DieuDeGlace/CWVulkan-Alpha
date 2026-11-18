@@ -3943,3 +3943,21 @@ retains the actual four-byte records in the existing container.
 The renderer still uses mesh preparation from immutable snapshots.
 Cross-area resident mesh writes, live destruction margins and exact
 worker dispatch remain open.
+
+## Resident mesh light publication (2026-11-17)
+
+The mesh preparation rectangles in the held cache and propagation
+rulings now update resident terrain before mesh dispatch. A background
+worker prepares each ordered batch and copies each touched area once.
+Each rectangle sees the work bytes left by the preceding preparations.
+Before publishing the copies, the world view verifies that the source
+areas are still current. An edit or unload prompts a fresh preparation.
+Older snapshots keep their original geometry and light. Each mesh job
+also receives the prepared light from its own rectangle. Repeated
+requests before dispatch share a snapshot.
+
+The connected client's queued edits keep the incoming cell bytes until
+admitted mesh preparation. Save restore, blueprint placement and the
+existing local destruction paths still use the previous area-wide
+preparation. Native immediate destruction margins, original worker
+dispatch timing and matched visuals remain open.

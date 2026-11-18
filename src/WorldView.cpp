@@ -1,6 +1,7 @@
 #include "WorldView.h"
 #include "creatures/Npcs.h"
 #include "DataStore.h"
+#include "worldgen/BlockLight.h"
 #include "worldgen/MapTile.h"
 #include "worldgen/WaterFeatures.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -235,22 +236,98 @@ void WorldView::requestChunk(int32_t x0, int32_t y0) {
     const Key key{x0, y0};
     {
         std::lock_guard guard(doneLock);
-        if (!chunksPending.insert(key).second) {
-            chunksStale.insert(key); // mesh it again once this one is back
+        const auto [job, inserted] = chunksPending.try_emplace(key, false);
+        if (!inserted) {
+            if (job->second)
+                chunksStale.insert(key);
             return;
         }
     }
     // A snapshot of the zones round it, so the job reads without locks.
-    const uint64_t lightChange = chunkLightUpdates.beginBuild({x0 / CHUNK, y0 / CHUNK});
-    auto around = std::make_shared<WorldMap>(map.neighbourhood(floorDiv(x0, Zone::SIZE), floorDiv(y0, Zone::SIZE)));
-    post([this, around, x0, y0, lightChange] {
-        ChunkMeshes meshes = meshChunk(*around, terrain, x0, y0, lightChange != 0);
-        std::vector<terrain_lights::CachedSource> lights;
-        if (const Zone *zone = around->zoneAt(x0, y0))
-            lights = terrain_lights::chunkSources(zone->sprites, {x0 / CHUNK, y0 / CHUNK});
+    chunkRequests.push_back(key);
+}
+
+void WorldView::dispatchChunks() {
+    if (preparingChunks || chunkRequests.empty())
+        return;
+    auto batch = std::make_shared<PreparedChunks>();
+    batch->builds.reserve(chunkRequests.size());
+    batch->source = map;
+    {
         std::lock_guard guard(doneLock);
-        doneChunks.push_back({{x0, y0}, std::move(meshes), std::move(lights), lightChange});
+        for (const auto &corner : chunkRequests) {
+            const auto [x0, y0] = corner;
+            const uint64_t change = chunkLightUpdates.beginBuild({x0 / CHUNK, y0 / CHUNK});
+            batch->builds.push_back({corner, change, {}});
+            chunksPending.at(corner) = true;
+        }
+    }
+    chunkRequests.clear();
+    preparingChunks = true;
+    post([this, batch = std::move(batch)] {
+        // Each preparation reads earlier work bytes in this ordered batch.
+        // The worker only writes to its own area copies.
+        WorldMap draft = batch->source;
+        for (auto &build : batch->builds) {
+            const auto [x0, y0] = build.corner;
+            build.prepared = prepareChunkLight(draft, x0, y0, build.lightChange != 0);
+            if (build.prepared)
+                build.prepared->store(draft, batch->editedAreas);
+        }
+        std::lock_guard guard(doneLock);
+        donePreparation = batch;
     });
+}
+
+void WorldView::publishPreparedChunks(PreparedChunks &batch) {
+    preparingChunks = false;
+    // The 4- and 16-cell pads and their one-cell halos use the same
+    // resident areas. An intervening edit or unload invalidates the batch.
+    const bool changed = std::any_of(batch.editedAreas.begin(), batch.editedAreas.end(), [&](const auto &entry) {
+        const auto [ax, ay] = entry.first;
+        return map.zone(ax, ay) != batch.source.zone(ax, ay);
+    });
+    if (changed) {
+        std::vector<Key> retry;
+        retry.reserve(batch.builds.size() + chunkRequests.size());
+        {
+            std::lock_guard guard(doneLock);
+            for (const auto &build : batch.builds) {
+                const auto [x0, y0] = build.corner;
+                chunksStale.erase(build.corner);
+                if (map.zoneAt(x0, y0)) {
+                    chunksPending.at(build.corner) = false;
+                    retry.push_back(build.corner);
+                } else {
+                    chunksPending.erase(build.corner);
+                }
+            }
+        }
+        retry.insert(retry.end(), chunkRequests.begin(), chunkRequests.end());
+        chunkRequests.swap(retry);
+        return;
+    }
+
+    for (auto &[key, area] : batch.editedAreas)
+        map.add(std::move(area));
+    for (auto &[corner, lightChange, prepared] : batch.builds) {
+        const auto [x0, y0] = corner;
+        if (!map.zoneAt(x0, y0)) {
+            std::lock_guard guard(doneLock);
+            chunksPending.erase(corner);
+            chunksStale.erase(corner);
+            continue;
+        }
+        auto around = map.neighbourhood(floorDiv(x0, Zone::SIZE), floorDiv(y0, Zone::SIZE));
+        post([this, around = std::move(around), x0, y0, lightChange, prepared = std::move(prepared)] {
+            ChunkMeshes meshes = meshChunk(around, terrain, x0, y0, prepared.get());
+            std::vector<terrain_lights::CachedSource> lights;
+            if (const Zone *zone = around.zoneAt(x0, y0))
+                lights = terrain_lights::chunkSources(zone->sprites, {x0 / CHUNK, y0 / CHUNK});
+            std::lock_guard guard(doneLock);
+            doneChunks.push_back({{x0, y0}, std::move(meshes), std::move(lights), lightChange});
+        });
+    }
 }
 
 void WorldView::addZone(std::shared_ptr<Zone> zone) {
@@ -283,9 +360,10 @@ void WorldView::addZone(std::shared_ptr<Zone> zone) {
             requestChunk(x0 + dx, y0 + dy);
 }
 
-void WorldView::applyEdits(const std::vector<BlockEdit> &edits, bool saved) {
+void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source) {
     // Each held zone the records touch is copied, changed and swapped in, so the mesh jobs
     // still reading the old one are not disturbed.
+    const bool saved = source == TerrainEditSource::Saved;
     std::map<Key, std::vector<const BlockEdit *>> byZone;
     for (const BlockEdit &e : edits) {
         if (map.zoneAt(e.x, e.y)) {
@@ -308,12 +386,13 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, bool saved) {
         dropFloating(*zone);
         replacements.emplace(key, std::move(zone));
     }
-    publishEditedZones(std::move(replacements));
+    publishEditedZones(std::move(replacements), source != TerrainEditSource::Queued);
 }
 
-void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits) {
+void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, bool relightAreas) {
     for (auto &[key, zone] : edits) {
-        terrain.relight(*zone);
+        if (relightAreas)
+            terrain.relight(*zone);
         sectorSources.update(*zone);
         map.add(std::move(zone));
     }
@@ -403,11 +482,13 @@ void WorldView::update() {
     std::vector<std::shared_ptr<Zone>> zones;
     std::vector<DoneChunk> meshed;
     std::vector<DoneTile> newTiles;
+    std::shared_ptr<PreparedChunks> prepared;
     {
         std::lock_guard guard(doneLock);
         zones.swap(doneZones);
         newTiles.swap(doneTiles);
         meshed.swap(doneChunks);
+        prepared.swap(donePreparation);
         for (const auto &z : zones)
             zonesPending.erase({z->zx, z->zy});
     }
@@ -446,10 +527,13 @@ void WorldView::update() {
     }
     for (const Key &k : again)
         requestChunk(k.first, k.second);
+    if (prepared)
+        publishPreparedChunks(*prepared);
     const Key here = cameraZone();
     for (auto &z : zones)
         if (std::abs(z->zx - here.first) <= radius + 1 && std::abs(z->zy - here.second) <= radius + 1)
             addZone(std::move(z));
+    dispatchChunks();
 
     // Ask for the zones round the camera, nearest first, and let go of far ones.
     std::vector<Key> wanted;

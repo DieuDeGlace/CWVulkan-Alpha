@@ -471,7 +471,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (client.connected() || !view.held().zoneAt(x, y))
             return false;
         const BlockEdit e{x, y, z, block[0], block[1], block[2], block[3], session ? (int32_t)session->clock.day : 0};
-        view.applyEdits({e}, false);
+        view.applyEdits({e}, TerrainEditSource::Live);
         blockEdits.add(e);
         return true;
     };
@@ -505,7 +505,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // Block edits §4.2: the edits of the last three days are written again.
                 const auto &kept = blockEdits.restore(zx, zy, saved->blockEdits, (int32_t)session->clock.day);
                 if (!kept.empty())
-                    view.applyEdits(kept, true);
+                    view.applyEdits(kept, TerrainEditSource::Saved);
             }
         worldItems.takeChanged(); // (what came from the save is already saved)
         statics.takeChanged();
@@ -883,7 +883,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             for (const BrokenCell &cell : broken) // particles §5.2
                 bursts.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
             const auto removed = removals(broken);
-            view.applyEdits(removed, false);
+            view.applyEdits(removed, TerrainEditSource::Live);
             for (const BlockEdit &e : removed)
                 blockEdits.add(e);
             std::fprintf(stderr, "--crater: %zu blocks removed\n", removed.size());
@@ -907,7 +907,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const BrokenCell &cell : broken)
             effects.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
         const auto removed = removals(broken);
-        view.applyEdits(removed, false);
+        view.applyEdits(removed, TerrainEditSource::Live);
         frameBlockEdits.insert(frameBlockEdits.end(), removed.begin(), removed.end());
         return true;
     };
@@ -1853,7 +1853,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const auto &record : client.takeBlockEdits())
             edits.push_back(BlockEdit::parse(record.data()));
         if (!edits.empty())
-            view.applyEdits(edits, false);
+            view.applyEdits(edits, TerrainEditSource::Queued);
         for (const auto &record : client.takeStaticStates())
             if (const auto key = statics.apply(record.data(), &view.held()))
                 view.acknowledgeZoneContents(*key);

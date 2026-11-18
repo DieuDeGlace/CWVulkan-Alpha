@@ -117,6 +117,42 @@ void lightRectangle() {
     }
 }
 
+void residentLight() {
+    auto left = std::make_shared<Zone>(0, 0);
+    auto right = std::make_shared<Zone>(1, 0);
+    chamber(*left, 255, 32);
+    chamber(*right, 256, 32);
+    left->column(255, 32).blocks[1] = {19, 22, 7, AIR};
+    right->column(256, 32).blocks[1] = {35, 95, 15, AIR};
+    right->column(257, 32).blocks[1] = {50, 120, 150, GLOWING};
+    WorldMap resident;
+    resident.add(left);
+    resident.add(right);
+    resident.acknowledgeZoneContents({0, 0});
+    resident.appendPlacedObject({1, 0}, {0, 256, 32, 2});
+    const WorldMap earlier = resident.neighbourhood(0, 0);
+
+    BlockLightUpdate::AreaCopies copies;
+    BlockLightUpdate(resident, {{256, 32}, {257, 33}}).store(resident, copies);
+    const auto *litRight = resident.zone(1, 0);
+    expect(litRight->light(256, 32, 2), 216, "the first publication updates a resident area");
+    expect(resident.zone(0, 0) == left.get(), 1, "a neighboring read does not copy the halo area");
+
+    BlockLightUpdate(resident, {{255, 32}, {256, 33}}).store(resident, copies);
+    const auto *litLeft = resident.zone(0, 0);
+    expect(litLeft->light(255, 32, 2), 183, "the next preparation reads the first published working byte");
+    expect(storedAs(earlier.read(255, 32, 2), {19, 22, 7, AIR}) &&
+               storedAs(earlier.read(256, 32, 2), {35, 95, 15, AIR}),
+           1, "workers holding earlier terrain keep both original areas");
+
+    BlockLightUpdate(resident, {{255, 32}, {257, 33}}).store(resident, copies);
+    expect(resident.zone(0, 0) == litLeft && resident.zone(1, 0) == litRight, 1,
+           "a later rectangle uses the existing writable copies during the same batch");
+    expect(resident.placedObjects({1, 0}) && resident.placedObjects({1, 0})->size() == 1 &&
+               !resident.needsZoneContents({0, 0}),
+           1, "resident light publication preserves the area's network and placement records");
+}
+
 bool same(glm::vec4 a, glm::vec4 b) { return a == b; }
 
 // alpha-rendering.md §11.2 and rulings §16: the creature material, the motion-trail test and
@@ -213,6 +249,7 @@ int main() {
                dry ? "dry-air flag suppresses implicit water" : "stored underwater air samples full-bright implicit water");
     }
     lightRectangle();
+    residentLight();
     creatureShading();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

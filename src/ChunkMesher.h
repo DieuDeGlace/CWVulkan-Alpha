@@ -9,6 +9,8 @@
 #include <array>
 #include <span>
 
+namespace worldgen { class BlockLightUpdate; }
+
 struct ChunkMeshes {
     ModelMesh solid; // positions relative to the chunk's corner (x, y) and z = 0
     ModelMesh water;
@@ -38,6 +40,8 @@ class ChunkLightUpdates {
 };
 
 int32_t meshLightPadding(int32_t x0, int32_t y0, bool lightingRequested);
+std::shared_ptr<const worldgen::BlockLightUpdate> prepareChunkLight(const worldgen::WorldMap &map, int32_t x0,
+                                                                   int32_t y0, bool lightingRequested);
 
 // How much a corner of a leaf block moves with AlphaVulkan's leaf sway (the rule of the user's
 // AlphaCWWorldMotion mod): 0 where the corner touches anything but leaves and air (wood, ground,
@@ -64,3 +68,5 @@ template <class Types> float leafSway(int32_t cx, int32_t cy, Types type) {
 // as solid, so a chunk at the edge of the held area is closed off there.
 ChunkMeshes meshChunk(const worldgen::WorldMap &map, const worldgen::Terrain &terrain, int32_t x0, int32_t y0,
                       bool lightingRequested = false);
+ChunkMeshes meshChunk(const worldgen::WorldMap &map, const worldgen::Terrain &terrain, int32_t x0, int32_t y0,
+                      const worldgen::BlockLightUpdate *preparedLighting);

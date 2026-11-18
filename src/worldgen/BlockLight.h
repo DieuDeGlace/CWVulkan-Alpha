@@ -20,12 +20,17 @@ struct LightRectangle {
 // can store them without changing a worker's source columns.
 class BlockLightUpdate {
   public:
+    using AreaCopies = std::map<WorldMap::ZoneKey, std::shared_ptr<Zone>>;
+
     BlockLightUpdate(const WorldMap &map, LightRectangle destination, int32_t workingMargin = 0);
     BlockLightUpdate(const Zone &area, LightRectangle destination, int32_t workingMargin = 0);
 
     std::optional<uint8_t> committed(int32_t x, int32_t y, int32_t z) const;
     // Store into the area used for preparation or its unmodified terrain copy.
     void store(Zone &area) const;
+    // Reuse copies while publishing an ordered set of updates. Take worker
+    // snapshots after the set has been published.
+    void store(WorldMap &map, AreaCopies &copies) const;
 
   private:
     using ColumnLookup = std::function<const Column *(int32_t, int32_t)>;

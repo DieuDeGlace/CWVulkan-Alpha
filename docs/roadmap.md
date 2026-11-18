@@ -558,8 +558,12 @@ Differences from the Steam engine that shape the plan:
 - [x] Share exact light propagation between area generation and mesh
   preparation. Store all three light bytes in clear cells before area
   publication. Verify the distinct margin and committed bytes.
-- [ ] Publish bounded light work and committed values to resident terrain.
-  Verify destruction margins, original mesh scheduling and matched terrain
+- [x] Publish bounded mesh light work and committed values to resident
+  areas in request order. Queued cell edits keep their incoming bytes
+  until bounded preparation reaches them. A terrain change during
+  background preparation triggers a retry from the newer state.
+- [ ] Apply the native light rectangles for destruction. Verify original
+  mesh scheduling and matched terrain
   appearance, including the bright-ground observation.
 - [x] Terrain light selection: jointly order collected sources by wrapped fixed-point
   priority, admit the first sixteen qualifying sources per chunk's inclusive XY

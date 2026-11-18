@@ -43,6 +43,8 @@ struct WorldViewOptions {
     bool swimmableWater = true;
 };
 
+enum class TerrainEditSource { Live, Saved, Queued };
+
 class WorldView {
   public:
     using TileReady = std::function<void(int32_t zx, int32_t zy, const worldgen::MapTile &tile)>;
@@ -129,11 +131,9 @@ class WorldView {
     void restoreZone(int32_t zx, int32_t zy, uint8_t flags);
     // Talk §2.5, missions §8.1: marks one zone discovered on the world map.
     void markDiscovered(int32_t zx, int32_t zy) { discoveredZones.insert({zx, zy}); }
-    // Block edits §4: writes records into the held zones (live records with the removal rule of
-    // §4.1, `saved` ones with the general writer of §4.2), drops plants left floating, lights
-    // the changed zones again and re-meshes the 3 x 3 chunks round each record. Records for
-    // zones not held are dropped.
-    void applyEdits(const std::vector<BlockEdit> &edits, bool saved);
+    // Restore saved cells with the general writer. Live and queued records
+    // use the removal rule and mark the published mesh cache at frame end.
+    void applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source);
     // Offline kind 7 consumes the actor's live placement fields and returns
     // only the colored history records, in stencil order.
     std::vector<BlockEdit> placeQueuedBlueprint(int8_t number, int8_t rotation, const int64_t position[3],
@@ -179,7 +179,7 @@ class WorldView {
   private:
     using Key = std::pair<int32_t, int32_t>;
     void refreshPlantsNear(Key zone);
-    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits);
+    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits, bool relightAreas = true);
     std::map<int8_t, CubModel> blueprintModels;
     // A placed plant model: placed = translate x scale, the yaw after the sway.
     struct PlantInstance {
@@ -197,6 +197,18 @@ class WorldView {
     void workerLoop();
     void requestZone(Key zone);
     void requestChunk(int32_t x0, int32_t y0);
+    void dispatchChunks();
+    struct ChunkBuild {
+        Key corner;
+        uint64_t lightChange;
+        std::shared_ptr<const worldgen::BlockLightUpdate> prepared;
+    };
+    struct PreparedChunks {
+        std::vector<ChunkBuild> builds;
+        worldgen::WorldMap source;
+        std::map<Key, std::shared_ptr<worldgen::Zone>> editedAreas;
+    };
+    void publishPreparedChunks(PreparedChunks &batch);
     void addZone(std::shared_ptr<worldgen::Zone> zone);
     void dropZone(Key zone);
     struct DoneChunk {
@@ -289,8 +301,12 @@ class WorldView {
     void buildLand(Key cell);
     std::map<Key, TileEntry> tiles;
     std::vector<DoneChunk> doneChunks;
+    std::shared_ptr<PreparedChunks> donePreparation;
+    std::vector<Key> chunkRequests;
+    bool preparingChunks = false;
     std::set<Key> zonesPending;
-    std::set<Key> chunksPending, chunksStale; // stale: asked for again while pending
+    std::map<Key, bool> chunksPending; // true once preparation or geometry is dispatched
+    std::set<Key> chunksStale;         // requested again after worker dispatch
 
     double startSeconds = 0;
 };

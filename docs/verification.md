@@ -2439,3 +2439,28 @@ The production player/controller diagnostic, five actual client flows and
 36 package digests passed. Revision 28 parsed with 65 links. The held
 contract matched its full hash and line count. Mesh and destruction
 writeback to resident areas and matched original-client visuals remain open.
+
+## Resident mesh light publication (2026-11-17)
+
+LightingTests publishes two sequential rectangles by a zone seam.
+The second reads the work byte written by the first. The earlier
+neighbourhood retains both original areas, and later preparations within
+the batch reuse their writable copies. The existing placement records
+and network acknowledgement survive.
+
+The owned-content Vulkan probe applied queued records to both sides of
+a loaded area seam. Their work bytes held at 109 before preparation.
+The left and right resident cells committed 183 and 216 respectively
+to all three light bytes. An edit that removed the emitter during
+preparation preserved the new rock and retried to values of 4 on both
+sides. Both earlier snapshots retained their original bytes.
+
+Moving preparation from the frame thread to an ordered background
+worker reduced the longest world update in the isolated streaming
+probe from 218 ms to 57 ms. Total streaming and seam-edit time in
+those runs was 7.39 s and 8.06 s respectively. The x64 build, ten
+focused suites and all 60 CTests passed for the background variant.
+The production player/controller diagnostic, five actual client flows
+and 36 package digests passed. Revision 29 parsed with all 65 links.
+Immediate destruction margins and matched original-client runtime
+timing and visuals remain open.

@@ -147,4 +147,21 @@ void BlockLightUpdate::store(Zone &area) const {
         }
 }
 
+void BlockLightUpdate::store(WorldMap &map, AreaCopies &copies) const {
+    if (!pitch)
+        return;
+    const glm::ivec2 first = working.lower / Zone::SIZE;
+    const glm::ivec2 last = (working.upper - glm::ivec2(1)) / Zone::SIZE;
+    for (int32_t ax = first.x; ax <= last.x; ++ax)
+        for (int32_t ay = first.y; ay <= last.y; ++ay)
+            if (const auto *area = map.zone(ax, ay)) {
+                auto &copy = copies[{ax, ay}];
+                if (copy.get() != area) {
+                    copy = std::make_shared<Zone>(*area);
+                    map.add(copy);
+                }
+                store(*copy);
+            }
+}
+
 } // namespace worldgen

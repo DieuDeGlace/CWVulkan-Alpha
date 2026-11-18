@@ -2,7 +2,6 @@
 #include "worldgen/BlockLight.h"
 #include <algorithm>
 #include <cmath>
-#include <optional>
 
 using namespace worldgen;
 
@@ -228,13 +227,24 @@ int32_t meshLightPadding(int32_t x0, int32_t y0, bool lightingRequested) {
     return seamOffset(x0) || seamOffset(y0) ? 16 : 0;
 }
 
+std::shared_ptr<const BlockLightUpdate> prepareChunkLight(const WorldMap &map, int32_t x0, int32_t y0,
+                                                         bool lightingRequested) {
+    const int32_t pad = meshLightPadding(x0, y0, lightingRequested);
+    if (!pad || !meshLightAdmitted(map, x0, y0))
+        return {};
+    const LightRectangle rectangle{{x0 - pad, y0 - pad}, {x0 + CHUNK + pad, y0 + CHUNK + pad}};
+    return std::make_shared<const BlockLightUpdate>(map, rectangle);
+}
+
 ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, int32_t y0, bool lightingRequested) {
+    const auto prepared = prepareChunkLight(map, x0, y0, lightingRequested);
+    return meshChunk(map, terrain, x0, y0, prepared.get());
+}
+
+ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, int32_t y0, const BlockLightUpdate *lightPatch) {
     ChunkMeshes out;
-    std::optional<BlockLightUpdate> lightPatch;
-    if (const int32_t pad = meshLightPadding(x0, y0, lightingRequested); pad && meshLightAdmitted(map, x0, y0))
-        lightPatch.emplace(map, LightRectangle{{x0 - pad, y0 - pad}, {x0 + CHUNK + pad, y0 + CHUNK + pad}});
-    out.preparedLighting = lightPatch.has_value();
-    const CellCache cache(map, x0, y0, lightPatch ? &*lightPatch : nullptr);
+    out.preparedLighting = lightPatch != nullptr;
+    const CellCache cache(map, x0, y0, lightPatch);
 
     for (int32_t x = x0; x < x0 + CHUNK; x++)
         for (int32_t y = y0; y < y0 + CHUNK; y++) {
