@@ -2280,6 +2280,8 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
             const float pitch = (float)draw() * 0.4f / 32767.f + 0.5f;
             const glm::vec3 at(attackerBody.blocks());
             frame.sounds.push_back({glm::dvec3(at), 2, pitch, 1});
+            if (lightBrokenBlocks)
+                lightBrokenBlocks(geometry.centre, geometry.reach);
         }
     }
     // K4: action 0x1F resets a kind-9 effect (with its notice).
@@ -2484,6 +2486,8 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
                     explosion.removes = true;
                     explosion.pitch = 0.5f + 0.4f * (float)draw() / 32767.f;
                     frame.sounds.push_back({explosion.centre, 1, explosion.pitch, 1});
+                    if (lightBrokenBlocks)
+                        lightBrokenBlocks(centre, 8.f);
                 }
                 frame.explosions.push_back(explosion);
                 blast(n, players, frame);

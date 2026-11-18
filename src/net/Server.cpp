@@ -1,4 +1,5 @@
 #include "net/Server.h"
+#include "worldgen/BlockLight.h"
 #include "net/CreaturePublication.h"
 #include "GenerationProfile.h"
 #include "ItemRequest.h"
@@ -1075,6 +1076,9 @@ void Server::stepWorld(float dtMs) {
                                  std::vector<creatures::Burst> &bursts) {
             return breakAround(centre, radius, rounding, bursts);
         };
+        npcs.lightBrokenBlocks = [this](const std::array<int64_t, 3> &centre, float radius) {
+            worldgen::relightAfterDestruction(zones, centre, radius);
+        };
         npcs.seatFree = [this](const creatures::Seat &s) { return statics.free(s); };
         npcs.sit = [this](creatures::Npc &n, const creatures::Seat &s, creatures::NpcFrame &frame) {
             if (n.fighter.action == 79)
@@ -1484,11 +1488,11 @@ bool Server::breakAround(const std::array<int64_t, 3> &centre, int32_t radius, C
         return false;
     for (const BrokenCell &cell : broken)
         bursts.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
-    writeBlocks(removals(broken));
+    writeBlocks(removals(broken), BlockLighting::Deferred);
     return true;
 }
 
-void Server::writeBlocks(const std::vector<BlockEdit> &list, bool recordProtectedAir) {
+void Server::writeBlocks(const std::vector<BlockEdit> &list, BlockLighting lighting, bool recordProtectedAir) {
     std::map<std::pair<int32_t, int32_t>, std::vector<const BlockEdit *>> byZone;
     for (const BlockEdit &e : list)
         if (const worldgen::Zone *zone = zones.zoneAt(e.x, e.y))
@@ -1499,7 +1503,8 @@ void Server::writeBlocks(const std::vector<BlockEdit> &list, bool recordProtecte
         for (const BlockEdit *e : records)
             applyLive(*zone, *e, rock);
         dropFloating(*zone);
-        terrain->relight(*zone);
+        if (lighting == BlockLighting::Area)
+            terrain->relight(*zone);
         zones.add(std::move(zone));
     }
     for (const BlockEdit &e : list) {
@@ -1534,7 +1539,7 @@ void Server::placeObject(const CreatureRecord &sender, const creatures::Body &bo
     const int32_t day = (int32_t)clockDay;
     for (const BlueprintBlock &b : blocks)
         writes.push_back({b.x, b.y, b.z, b.block.r, b.block.g, b.block.b, b.block.typeByte, day});
-    writeBlocks(writes, /*recordProtectedAir=*/false);
+    writeBlocks(writes, BlockLighting::Area, /*recordProtectedAir=*/false);
     // §6.4: the zone's placed-object list.
     if (const worldgen::Zone *zone = zones.zoneAt(base[0], base[1])) {
         placedObjects[{zone->zx, zone->zy}].push_back({number, base[0], base[1], base[2]});

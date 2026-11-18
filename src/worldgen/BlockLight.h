@@ -2,6 +2,7 @@
 
 #include "worldgen/WorldMap.h"
 #include <glm/vec2.hpp>
+#include <array>
 #include <cstddef>
 #include <optional>
 
@@ -14,6 +15,9 @@ struct LightRectangle {
         return x >= lower.x && x < upper.x && y >= lower.y && y < upper.y;
     }
 };
+
+LightRectangle destructionLightBounds(const std::array<int64_t, 3> &centre, float radius);
+void relightAfterDestruction(WorldMap &map, const std::array<int64_t, 3> &centre, float radius);
 
 // One native propagation call over stored cells. Values are calculated against
 // an immutable terrain snapshot, so meshes can read them and the owning area

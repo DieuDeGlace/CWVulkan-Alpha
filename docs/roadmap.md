@@ -565,9 +565,11 @@ Differences from the Steam engine that shape the plan:
 - [x] Update terrain fog using signed millisecond samples, fixed camera
   deltas, the native recurrence and lower bound. Use the current
   followed angle or the map's 90-degree gradient for the frame.
-- [ ] Apply the native light rectangles for destruction. Verify original
-  mesh scheduling and matched terrain
-  appearance, including the bright-ground observation.
+- [x] Update bounded light after admitted Bomb or combat terrain removal
+  and its sound draw. Keep the full strike radius for light, the capped
+  radius for the removal scan and the separate eight-cell work margin.
+- [ ] Verify original mesh scheduling, live destruction playback and
+  matched terrain appearance, including the bright-ground observation.
 - [x] Terrain light selection: jointly order collected sources by wrapped fixed-point
   priority, admit the first sixteen qualifying sources per chunk's inclusive XY
   rectangle, and upload the fixed first ten slots. CPU checks and procedural GPU

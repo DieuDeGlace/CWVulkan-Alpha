@@ -1,6 +1,6 @@
 #include "worldgen/BlockLight.h"
-#include <glm/common.hpp>
 #include <algorithm>
+#include <bit>
 
 namespace worldgen {
 
@@ -14,7 +14,27 @@ bool inWorld(int32_t x, int32_t y) {
     return uint32_t(x) < WORLD_WIDTH && uint32_t(y) < WORLD_WIDTH;
 }
 
+int32_t workingBound(int32_t edge, int64_t margin) {
+    return int32_t(std::clamp(int64_t(edge) + margin, int64_t(0), int64_t(WORLD_WIDTH)));
+}
+
 } // namespace
+
+LightRectangle destructionLightBounds(const std::array<int64_t, 3> &centre, float radius) {
+    const float scaledRadius = radius * 65536.f;
+    const int64_t displacement = scaledRadius >= -0x1p63f && scaledRadius < 0x1p63f ? int64_t(scaledRadius) : INT64_MIN;
+    const auto whole = [](uint64_t fixed) {
+        return std::bit_cast<int32_t>(uint32_t(std::bit_cast<int64_t>(fixed) / 65536));
+    };
+    const uint64_t distance = uint64_t(displacement);
+    const uint64_t x = uint64_t(centre[0]), y = uint64_t(centre[1]);
+    return {{whole(x - distance), whole(y - distance)}, {whole(x + distance), whole(y + distance)}};
+}
+
+void relightAfterDestruction(WorldMap &map, const std::array<int64_t, 3> &centre, float radius) {
+    BlockLightUpdate::AreaCopies copies;
+    BlockLightUpdate(map, destructionLightBounds(centre, radius), 8).store(map, copies);
+}
 
 BlockLightUpdate::BlockLightUpdate(const WorldMap &map, LightRectangle destination, int32_t workingMargin)
     : BlockLightUpdate(destination, workingMargin, [&](int32_t x, int32_t y) -> const Column * {
@@ -33,8 +53,8 @@ size_t BlockLightUpdate::index(int32_t x, int32_t y) const {
 
 BlockLightUpdate::BlockLightUpdate(LightRectangle destination, int32_t margin, const ColumnLookup &columnAt)
     : destination(destination),
-      working{glm::max(destination.lower - glm::ivec2(margin), glm::ivec2(0)),
-              glm::min(destination.upper + glm::ivec2(margin), glm::ivec2(WORLD_WIDTH))} {
+      working{{workingBound(destination.lower.x, -int64_t(margin)), workingBound(destination.lower.y, -int64_t(margin))},
+              {workingBound(destination.upper.x, margin), workingBound(destination.upper.y, margin)}} {
     const glm::ivec2 extent = working.upper - working.lower;
     if (extent.x <= 0 || extent.y <= 0)
         return;

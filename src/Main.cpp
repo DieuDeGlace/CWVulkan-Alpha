@@ -897,6 +897,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     scene.timeOfDayMs = std::fmod(options.hour, 24.f) * 3600000.0;
     npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
                            std::vector<creatures::Burst> &effects) {
+        if (rounding == CellRounding::Truncate && client.connected())
+            return false;
         const auto broken = breakCells(centre, radius, rounding, scene.day,
             [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z); });
         if (broken.empty())
@@ -904,9 +906,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         for (const BrokenCell &cell : broken)
             effects.push_back(creatures::blockBurst(cell.at, glm::vec3(cell.colour)));
         const auto removed = removals(broken);
-        view.applyEdits(removed, TerrainEditSource::Live);
+        view.applyEdits(removed, TerrainEditSource::Destruction);
         frameBlockEdits.insert(frameBlockEdits.end(), removed.begin(), removed.end());
         return true;
+    };
+    npcs.lightBrokenBlocks = [&](const std::array<int64_t, 3> &centre, float radius) {
+        if (!player)
+            view.relightAfterDestruction(centre, radius);
     };
     if (session) {
         scene.timeOfDayMs = session->clock.timeOfDayMs;

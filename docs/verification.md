@@ -2485,3 +2485,24 @@ two held presentation contracts and re-certified light lifecycle.
 The checked source scope leaves 49 inherited contracts awaiting review.
 Native capture comparison and complete world transition acceptance
 remain open.
+
+## Combat terrain lighting (2026-11-17)
+
+ActorOrderTests checks that only the first admitted strike spends the
+removal sound draw. The light callback observes the removed block after
+that draw and receives the full fractional radius. LightingTests checks
+the independent signed endpoints, half-open destination, eight-cell
+working margin and preserved earlier terrain snapshot.
+
+The owned-content world view verified an immediate cross-area light
+commit of 183 and 216 before mesh processing. The margin kept its
+committed value of 35 and updated both work bytes to 255. Two runs
+passed these checks. Both runs also observed a long streaming update
+before the destruction stage, at 2.23 s and 1.36 s respectively.
+The cause of those streaming stalls remains open.
+
+The Windows x64 build, ten focused suites and all 60 CTests passed.
+The production player/controller diagnostic, five actual client flows
+and 36 package digests passed. Revision 31 parsed with all 69 links and
+the held combat terrain-lighting contract matched its hash and full
+readback. Original-client and dedicated combat playback remain open.

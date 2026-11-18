@@ -43,7 +43,7 @@ struct WorldViewOptions {
     bool swimmableWater = true;
 };
 
-enum class TerrainEditSource { Live, Saved, Queued };
+enum class TerrainEditSource { Live, Saved, Queued, Destruction };
 
 class WorldView {
   public:
@@ -131,9 +131,10 @@ class WorldView {
     void restoreZone(int32_t zx, int32_t zy, uint8_t flags);
     // Talk §2.5, missions §8.1: marks one zone discovered on the world map.
     void markDiscovered(int32_t zx, int32_t zy) { discoveredZones.insert({zx, zy}); }
-    // Restore saved cells with the general writer. Live and queued records
-    // use the removal rule and mark the published mesh cache at frame end.
+    // Restore saved cells with the general writer. The other sources use
+    // the removal rule and mark the published mesh cache at frame end.
     void applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source);
+    void relightAfterDestruction(const std::array<int64_t, 3> &centre, float radius);
     // Offline kind 7 consumes the actor's live placement fields and returns
     // only the colored history records, in stencil order.
     std::vector<BlockEdit> placeQueuedBlueprint(int8_t number, int8_t rotation, const int64_t position[3],

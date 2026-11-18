@@ -61,6 +61,7 @@ void checkOverlappingStrikes() {
 
     std::vector<int64_t> centres;
     std::vector<BlockEdit> edits;
+    int relights = 0;
     npcs.breakBlocks = [&](const std::array<int64_t, 3> &centre, int32_t radius, CellRounding rounding,
                            std::vector<Burst> &bursts) {
         centres.push_back(centre[0]);
@@ -77,6 +78,13 @@ void checkOverlappingStrikes() {
         map.add(std::move(changed));
         return true;
     };
+    npcs.lightBrokenBlocks = [&](const std::array<int64_t, 3> &centre, float radius) {
+        ++relights;
+        check(centre[0] == 1327104 && radius == 5.6f * 1.5f && radius > 8.f,
+              "strike lighting keeps the full radius after the capped removal scan");
+        check(random.count() == 1 && map.read(20, 25, 3).type() == worldgen::AIR,
+              "strike lighting sees the removed cell after the destruction sound draw");
+    };
     const BlockType block = [&](int32_t x, int32_t y, int32_t z) { return map.read(x, y, z).type(); };
     const auto frame = npcs.step(1, map, {}, 1000, 12, block);
     check(centres == std::vector<int64_t>{1327104, 1359872}, "overlapping strikes execute in signed actor order");
@@ -86,6 +94,7 @@ void checkOverlappingStrikes() {
     check(frame.sounds.size() == 1 && frame.sounds.front().sound == 2 && frame.sounds.front().pitch == pitch &&
               frame.sounds.front().position.x == 20.25 && random.count() == 1,
           "only the first strike spends the removal sound draw");
+    check(relights == 1, "a rejected removal performs no immediate lighting");
 }
 
 void checkRidingRefillOrder() {

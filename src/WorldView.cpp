@@ -386,7 +386,11 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSourc
         dropFloating(*zone);
         replacements.emplace(key, std::move(zone));
     }
-    publishEditedZones(std::move(replacements), source != TerrainEditSource::Queued);
+    publishEditedZones(std::move(replacements), saved || source == TerrainEditSource::Live);
+}
+
+void WorldView::relightAfterDestruction(const std::array<int64_t, 3> &centre, float radius) {
+    worldgen::relightAfterDestruction(map, centre, radius);
 }
 
 void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, bool relightAreas) {

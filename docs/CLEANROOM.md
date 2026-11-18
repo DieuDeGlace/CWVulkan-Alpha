@@ -3992,3 +3992,23 @@ The implementer read all 228 physical lines and verified SHA-256
 `d0df53880aba9b4b4cdcd5006a687bc17020d32a53cb3cfe37122215fe50cb0c`.
 Original view-window placement, complete input admission and matched
 native visuals remain open.
+
+## Combat terrain lighting (2026-11-17)
+
+The isolated author finalized [the combat terrain-lighting contract](specs/alpha-combat-terrain-lighting.md)
+from both matched original images. The implementer read all 182 physical
+lines and verified SHA-256
+`85816cca3ef5ae005ccabbb72da4a5f8e574baeb48f49bcea5965d7d2e477311`.
+The ruling distinguishes the capped integer removal scan, signed fixed
+light bounds and retained binary32 strike radius. It confirms the
+protected clear and shallow-water storage rules.
+
+The Bomb and strike turns run the immediate light callback after an
+accepted removal and its original pitch draw. The dedicated caller
+writes the bounded resident light before continuing the actor turn.
+The stand-alone client uses the same immediate operation when no local
+creature is selected. A controlled client defers light to admitted mesh
+requests, and the connected client's variable scan is gated out.
+Immediate publication writes all three bytes to the destination and
+only working bytes to its eight-cell margin. Original runtime playback
+and further action and network acceptance remain open.

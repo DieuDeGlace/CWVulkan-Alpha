@@ -273,6 +273,8 @@ class Npcs {
     // Apply a strike's or blast's edits at its raw centre and emit the cell bursts.
     // Return true when any cell passed the removal test. Preserve actor storage.
     std::function<bool(const std::array<int64_t, 3> &, int32_t, CellRounding, std::vector<Burst> &)> breakBlocks;
+    // Immediate resident light pass after an accepted removal and its sound draw.
+    std::function<void(const std::array<int64_t, 3> &, float)> lightBrokenBlocks;
     bool markFatalBacking(const Combatant &target, const worldgen::WorldMap &map, int32_t day);
     // Existing engine descriptor-tail adapter; retains live actors. Native
     // virtual destruction and descriptor lifetime remain separate contracts.

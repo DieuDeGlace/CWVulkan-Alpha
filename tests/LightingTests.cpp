@@ -153,6 +153,34 @@ void residentLight() {
            1, "resident light publication preserves the area's network and placement records");
 }
 
+void destructionLighting() {
+    constexpr int64_t one = 65536;
+    const auto bomb = destructionLightBounds({one / 2, -one / 2, 0}, 8.f);
+    expect(bomb.lower == glm::ivec2(-7, -8) && bomb.upper == glm::ivec2(8, 7), 1,
+           "Bomb divides each fixed endpoint toward zero");
+    const auto strike = destructionLightBounds({3 * one / 4, one / 4, INT64_MIN}, 8.6f);
+    expect(strike.lower == glm::ivec2(-7, -8) && strike.upper == glm::ivec2(9, 8), 1,
+           "strike lighting keeps the uncapped fractional radius and ignores the vertical input");
+
+    WorldMap resident;
+    auto area = std::make_shared<Zone>(0, 0);
+    for (const auto x : {92, 108, 116}) {
+        auto &column = area->column(x, 100);
+        column.bottom = 3;
+        column.blocks = {{19, 37, 51, AIR}};
+    }
+    resident.add(area);
+    relightAfterDestruction(resident, {100 * one + one / 2, 100 * one + one / 2, 3 * one}, 8.f);
+    expect(storedAs(resident.read(92, 100, 3), {255, 255, 255, AIR}), 1,
+           "immediate lighting commits inside the half-open destruction bounds");
+    expect(storedAs(resident.read(108, 100, 3), {19, 255, 255, AIR}), 1,
+           "the eight-cell working margin leaves its committed byte intact");
+    expect(storedAs(resident.read(116, 100, 3), {19, 37, 51, AIR}), 1,
+           "the exclusive upper boundary preserves the first exterior column");
+    expect(storedAs(area->read(92, 100, 3), {19, 37, 51, AIR}), 1,
+           "lighting after destruction keeps earlier terrain snapshots intact");
+}
+
 bool same(glm::vec4 a, glm::vec4 b) { return a == b; }
 
 // alpha-rendering.md §11.2 and rulings §16: the creature material, the motion-trail test and
@@ -250,6 +278,7 @@ int main() {
     }
     lightRectangle();
     residentLight();
+    destructionLighting();
     creatureShading();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
