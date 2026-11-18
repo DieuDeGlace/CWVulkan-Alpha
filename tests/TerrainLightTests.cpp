@@ -38,8 +38,9 @@ static void packedTerrainLight() {
     auto &support = zone->column(x, y);
     support.bottom = z - 1;
     support.blocks.insert(support.blocks.begin(), {128, 64, 32, worldgen::GRASS});
-    const auto topColour = [&] {
-        const auto mesh = meshChunk(map, terrain, 32, 32);
+    const auto topColour = [&](bool lightingRequested = false) {
+        const auto mesh = meshChunk(map, terrain, 32, 32, lightingRequested);
+        check(mesh.preparedLighting == lightingRequested, "only the dirty interior mesh prepares lighting");
         for (const auto &vertex : mesh.solid.vertices)
             if (vertex.position == glm::vec3(x - 32, y - 32, z) && vertex.normal == glm::vec3(0, 0, 1))
                 return vertex.colour;
@@ -55,6 +56,7 @@ static void packedTerrainLight() {
           "an open top face uses the original normalized color bytes, including full-light alpha 254");
     uniform(5);
     check(topColour().a == 4.f / 255.f, "a uniform intensity-five layer packs alpha four");
+    check(topColour(true).a == 254.f / 255.f, "a dirty interior mesh uses its newly prepared sky light");
     uniform(128);
     check(topColour().a == 128.f / 255.f, "a uniform intensity-128 layer packs alpha 128");
     zone->shadedLight.clear();
@@ -65,8 +67,60 @@ static void packedTerrainLight() {
     check(topColour().a == 251.f / 255.f, "a far blocker uses its smaller native contribution");
 }
 
+static void meshLightRequests() {
+    ChunkLightUpdates updates;
+    const glm::ivec2 chunk(2, 2), neighbour(2, 3), unpublished(3, 3), alias(42, 2);
+    updates.publish(chunk, 0, false);
+    updates.publish(neighbour, 0, false);
+    const std::array<glm::ivec2, 2> edits{{{96, 96}, {96, 96}}};
+    updates.markChanged(edits);
+    const auto first = updates.beginBuild(chunk);
+    check(first != 0 && updates.beginBuild(neighbour) == first && updates.beginBuild(unpublished) == 0,
+          "a frame coalesces edits on its matching published neighbours only");
+    const std::array<glm::ivec2, 1> aliasEdit{{alias * CHUNK}};
+    updates.markChanged(aliasEdit);
+    check(updates.beginBuild(chunk) == first, "a different coordinate in the same slot does not mark it");
+
+    updates.markChanged(edits);
+    const auto second = updates.beginBuild(chunk);
+    updates.publish(chunk, first, true);
+    check(second != first && updates.beginBuild(chunk) == second, "a newer mark survives older worker publication");
+    updates.publish(chunk, second, false);
+    check(updates.beginBuild(chunk) == second, "fallback geometry leaves the waiting light request intact");
+    updates.invalidate(chunk);
+    check(updates.beginBuild(alias) == second, "slot reuse carries a pending lighting change");
+    updates.publish(alias, second, true);
+    check(updates.beginBuild(alias) == 0, "prepared publication clears the matching change");
+
+    const glm::ivec2 edge(0x7ffff, 4);
+    updates.publish(edge, 0, false);
+    updates.publish(chunk, 0, false);
+    const std::array<glm::ivec2, 2> edgeThenInterior{{edge * CHUNK, chunk * CHUNK}};
+    updates.markChanged(edgeThenInterior);
+    check(updates.beginBuild(edge) != 0 && updates.beginBuild(chunk) == 0,
+          "world bounds retain marks before cleanup and skip later records");
+
+    check(meshLightPadding(32, 32, false) == 0 && meshLightPadding(32, 32, true) == 4 &&
+              meshLightPadding(224, 32, false) == 16 && meshLightPadding(32, 256, false) == 16 &&
+              meshLightPadding(224, 224, true) == 4,
+          "dirty padding takes priority over both zone seam axes");
+
+    worldgen::WorldMap corner;
+    for (const auto cell : {glm::ivec2(0), glm::ivec2(1, 0), glm::ivec2(0, 1)})
+        corner.add(std::make_shared<worldgen::Zone>(cell.x, cell.y));
+    const worldgen::World world(1);
+    const worldgen::Terrain terrain(world);
+    check(meshChunk(corner, terrain, 0, 0).preparedLighting, "the world origin clips the negative light pad");
+    check(!meshChunk(corner, terrain, 224, 224, true).preparedLighting,
+          "a corner with both sides held still awaits its diagonal");
+    corner.add(std::make_shared<worldgen::Zone>(1, 1));
+    check(meshChunk(corner, terrain, 224, 224, true).preparedLighting,
+          "the diagonal admits the dirty corner mesh");
+}
+
 int main() {
     packedTerrainLight();
+    meshLightRequests();
     FadingSources timed;
     const FixedPosition precise{(int64_t(1) << 54) + 1, 17, -33};
     timed.append({precise, {1, .5f, .25f}, 20, 0, 400});

@@ -8,6 +8,11 @@ using namespace worldgen;
 
 namespace {
 
+bool validChunk(glm::ivec2 chunk) {
+    constexpr uint32_t worldChunks = 0x1000000u / CHUNK;
+    return uint32_t(chunk.x) < worldChunks && uint32_t(chunk.y) < worldChunks;
+}
+
 // A face direction: its axis, the sign of its normal, and the two axes across it, ordered so
 // that u x v points outwards (counter-clockwise seen from outside).
 struct Face {
@@ -41,7 +46,8 @@ class CellCache {
   public:
     static constexpr int32_t BORDER = 4;
 
-    CellCache(const WorldMap &map, int32_t x0, int32_t y0) : map(map), x0(x0 - BORDER), y0(y0 - BORDER) {
+    CellCache(const WorldMap &map, int32_t x0, int32_t y0, const EdgeLight *lightPatch)
+        : map(map), x0(x0 - BORDER), y0(y0 - BORDER) {
         zlo = INT32_MAX;
         zhi = 4; // at least past sea level, for the sea's surface
         for (int32_t i = 0; i < SIDE; i++)
@@ -55,10 +61,6 @@ class CellCache {
             zlo = -BORDER;
         height = zhi - zlo;
         cells.resize((size_t)SIDE * SIDE * height);
-        // Rendering §9.2: at a zone's edge the light is flooded again, across into the neighbour.
-        std::optional<EdgeLight> edge;
-        if (atZoneEdge(x0, y0, CHUNK))
-            edge.emplace(map, x0, y0, CHUNK);
         for (int32_t i = 0; i < SIDE; i++)
             for (int32_t j = 0; j < SIDE; j++) {
                 const int32_t x = this->x0 + i, y = this->y0 + j;
@@ -68,7 +70,7 @@ class CellCache {
                     const uint8_t t = zone ? zone->read(x, y, z).type() : SOLID;
                     uint8_t light = 0;
                     if (zone && clear(t))
-                        light = edge && edge->covers(x, y, z) ? edge->at(x, y, z) : cellLight(*zone, x, y, z);
+                        light = lightPatch && lightPatch->covers(x, y, z) ? lightPatch->at(x, y, z) : cellLight(*zone, x, y, z);
                     cells[index(i, j, k)] = {t, light};
                 }
             }
@@ -158,9 +160,65 @@ int32_t lowestOpen(const WorldMap &map, int32_t x, int32_t y) {
 
 } // namespace
 
-ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, int32_t y0) {
+ChunkLightUpdates::Slot &ChunkLightUpdates::slot(glm::ivec2 chunk) {
+    return slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
+}
+
+void ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
+    if (columns.empty())
+        return;
+    const uint64_t change = ++changes;
+    for (const auto column : columns) {
+        const glm::ivec2 centre = column / CHUNK;
+        for (int32_t dx = -1; dx <= 1; ++dx)
+            for (int32_t dy = -1; dy <= 1; ++dy) {
+                const glm::ivec2 chunk = centre + glm::ivec2(dx, dy);
+                if (!validChunk(chunk))
+                    return;
+                Slot &entry = slot(chunk);
+                if (entry.published == chunk)
+                    entry.change = change;
+            }
+    }
+}
+
+uint64_t ChunkLightUpdates::beginBuild(glm::ivec2 chunk) {
+    if (!validChunk(chunk))
+        return 0;
+    Slot &entry = slot(chunk);
+    if (entry.published != chunk)
+        entry.published = glm::ivec2(-1);
+    return entry.change;
+}
+
+void ChunkLightUpdates::publish(glm::ivec2 chunk, uint64_t buildChange, bool preparedLighting) {
+    if (!validChunk(chunk))
+        return;
+    Slot &entry = slot(chunk);
+    entry.published = chunk;
+    // Preserve edits marked after this worker took its terrain snapshot.
+    if (preparedLighting && entry.change == buildChange)
+        entry.change = 0;
+}
+
+void ChunkLightUpdates::invalidate(glm::ivec2 chunk) {
+    if (validChunk(chunk) && slot(chunk).published == chunk)
+        slot(chunk).published = glm::ivec2(-1);
+}
+
+int32_t meshLightPadding(int32_t x0, int32_t y0, bool lightingRequested) {
+    if (lightingRequested)
+        return 4;
+    return atZoneEdge(x0, y0, CHUNK) ? EdgeLight::BORDER : 0;
+}
+
+ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, int32_t y0, bool lightingRequested) {
     ChunkMeshes out;
-    const CellCache cache(map, x0, y0);
+    std::optional<EdgeLight> lightPatch;
+    if (const int32_t pad = meshLightPadding(x0, y0, lightingRequested))
+        lightPatch.emplace(map, x0, y0, CHUNK, pad);
+    out.preparedLighting = lightPatch && lightPatch->ready();
+    const CellCache cache(map, x0, y0, out.preparedLighting ? &*lightPatch : nullptr);
 
     for (int32_t x = x0; x < x0 + CHUNK; x++)
         for (int32_t y = y0; y < y0 + CHUNK; y++) {

@@ -3893,3 +3893,29 @@ Its result selects the existing sky replacement and material tint. The
 held contracts also trace the terrain direction normalization, fixed
 horizontal rebasing and separate regional point-light registers.
 Full native camera setup, cache updates and image comparisons remain open.
+
+## Mesh-cache light preparation (2026-11-17)
+
+The isolated author finalized [the mesh-cache lighting contract](specs/alpha-native-mesh-cache-light-padding.md).
+The implementer verified all 157 physical lines and SHA-256
+`cb36974145f2b4cbbac60bf12a18144335e0fc8f6f34341b7d723c2523677486`.
+The contract traces the matching-slot mark, literal request byte,
+invalidation, clearance and the distinct four- and sixteen-cell pads.
+Its separate resident storage and destruction-margin rules remain
+implementation work.
+
+At the world-view update, live changed columns mark matching coordinates
+in the 40-by-40 request cache. The signed neighbourhood can end marking
+at a world boundary. Duplicate records coalesce and the request survives
+invalidated coordinates. A completed light preparation can clear its
+request. The engine workers use a frame sequence to preserve a newer mark
+that arrived after an earlier terrain snapshot. Geometry can stream with
+stored light while required neighbours load. A corner is queued again
+when its diagonal becomes available.
+
+The mesh uses a four-cell pad for a pending request, a sixteen-cell pad
+at an ordinary area seam and stored values elsewhere. Snapshot
+preparation still feeds only the generated mesh. Edited areas still
+receive the existing area-wide relight. Native resident work and
+commit publication, destruction rectangles and original worker timing
+remain open.

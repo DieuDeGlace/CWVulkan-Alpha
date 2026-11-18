@@ -6,13 +6,38 @@
 #include "worldgen/Terrain.h"
 #include "worldgen/WorldMap.h"
 #include <algorithm>
+#include <array>
+#include <span>
 
 struct ChunkMeshes {
     ModelMesh solid; // positions relative to the chunk's corner (x, y) and z = 0
     ModelMesh water;
+    bool preparedLighting = false;
 };
 
 constexpr int32_t CHUNK = 32;
+
+// Mesh slots share a light request across reuse. Geometry remains in the renderer's
+// independent streaming cache. A nonzero change identifies one edit marking phase.
+class ChunkLightUpdates {
+  public:
+    void markChanged(std::span<const glm::ivec2> columns);
+    uint64_t beginBuild(glm::ivec2 chunk);
+    void publish(glm::ivec2 chunk, uint64_t buildChange, bool preparedLighting);
+    void invalidate(glm::ivec2 chunk);
+
+  private:
+    static constexpr int32_t SIDE = 40;
+    struct Slot {
+        glm::ivec2 published{-1};
+        uint64_t change = 0;
+    };
+    Slot &slot(glm::ivec2 chunk);
+    std::array<Slot, SIDE * SIDE> slots;
+    uint64_t changes = 0;
+};
+
+int32_t meshLightPadding(int32_t x0, int32_t y0, bool lightingRequested);
 
 // How much a corner of a leaf block moves with AlphaVulkan's leaf sway (the rule of the user's
 // AlphaCWWorldMotion mod): 0 where the corner touches anything but leaves and air (wood, ground,
@@ -37,4 +62,5 @@ template <class Types> float leafSway(int32_t cx, int32_t cy, Types type) {
 
 // Meshes the chunk whose corner column is (x0, y0). Cells of zones the map does not hold read
 // as solid, so a chunk at the edge of the held area is closed off there.
-ChunkMeshes meshChunk(const worldgen::WorldMap &map, const worldgen::Terrain &terrain, int32_t x0, int32_t y0);
+ChunkMeshes meshChunk(const worldgen::WorldMap &map, const worldgen::Terrain &terrain, int32_t x0, int32_t y0,
+                      bool lightingRequested = false);

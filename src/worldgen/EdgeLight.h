@@ -1,7 +1,6 @@
 #pragma once
-// Rendering §9.2: a zone floods its light alone, so light cannot cross into it from the next
-// zone. Alpha floods again when it meshes a chunk at a zone edge, over the chunk and a 16-block
-// border that reaches into the neighbours. EdgeLight is that second flood.
+// Bounded light preparation for a mesh snapshot. A regular seam rebuild uses a
+// sixteen-cell pad. The mesh cache requests a four-cell pad after terrain changes.
 #include "worldgen/WorldMap.h"
 #include <cstdint>
 #include <vector>
@@ -13,8 +12,8 @@ class EdgeLight {
     static constexpr int32_t BORDER = 16;
 
     // Floods the square of `size` columns at (x0, y0) plus the border. Reads the zones it covers
-    // from `map`; if one is missing there is nothing to flood across and ready() is false.
-    EdgeLight(const WorldMap &map, int32_t x0, int32_t y0, int32_t size);
+    // from `map`; a missing in-range zone defers preparation. World bounds clip the pad.
+    EdgeLight(const WorldMap &map, int32_t x0, int32_t y0, int32_t size, int32_t pad = BORDER);
 
     bool ready() const { return !values.empty(); }
     // The light of a clear cell inside the flooded area.

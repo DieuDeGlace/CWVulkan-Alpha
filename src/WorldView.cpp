@@ -201,7 +201,7 @@ void WorldView::workerLoop() {
 
 bool WorldView::idle() {
     std::lock_guard guard(doneLock);
-    return zonesPending.empty() && chunksPending.empty() && doneZones.empty() && doneChunks.empty();
+    return zonesPending.empty() && chunksPending.empty() && doneZones.empty() && doneChunks.empty() && editedChunks.empty();
 }
 
 WorldView::Key WorldView::cameraZone() const {
@@ -230,6 +230,8 @@ void WorldView::requestZone(Key key) {
 }
 
 void WorldView::requestChunk(int32_t x0, int32_t y0) {
+    if (!map.zoneAt(x0, y0))
+        return;
     const Key key{x0, y0};
     {
         std::lock_guard guard(doneLock);
@@ -239,14 +241,15 @@ void WorldView::requestChunk(int32_t x0, int32_t y0) {
         }
     }
     // A snapshot of the zones round it, so the job reads without locks.
+    const uint64_t lightChange = chunkLightUpdates.beginBuild({x0 / CHUNK, y0 / CHUNK});
     auto around = std::make_shared<WorldMap>(map.neighbourhood(floorDiv(x0, Zone::SIZE), floorDiv(y0, Zone::SIZE)));
-    post([this, around, x0, y0] {
-        ChunkMeshes meshes = meshChunk(*around, terrain, x0, y0);
+    post([this, around, x0, y0, lightChange] {
+        ChunkMeshes meshes = meshChunk(*around, terrain, x0, y0, lightChange != 0);
         std::vector<terrain_lights::CachedSource> lights;
         if (const Zone *zone = around->zoneAt(x0, y0))
             lights = terrain_lights::chunkSources(zone->sprites, {x0 / CHUNK, y0 / CHUNK});
         std::lock_guard guard(doneLock);
-        doneChunks.push_back({{x0, y0}, std::move(meshes), std::move(lights)});
+        doneChunks.push_back({{x0, y0}, std::move(meshes), std::move(lights), lightChange});
     });
 }
 
@@ -273,16 +276,24 @@ void WorldView::addZone(std::shared_ptr<Zone> zone) {
         if (map.zone(zx, zy + 1))
             requestChunk(x0 + k, y0 + Zone::SIZE);
     }
+    // A corner's lighting also needs the diagonal. This area can supply the
+    // last missing dependency without sharing a face with that corner.
+    for (const int32_t dx : {-CHUNK, Zone::SIZE})
+        for (const int32_t dy : {-CHUNK, Zone::SIZE})
+            requestChunk(x0 + dx, y0 + dy);
 }
 
 void WorldView::applyEdits(const std::vector<BlockEdit> &edits, bool saved) {
     // Each held zone the records touch is copied, changed and swapped in, so the mesh jobs
     // still reading the old one are not disturbed.
     std::map<Key, std::vector<const BlockEdit *>> byZone;
-    for (const BlockEdit &e : edits)
-        if (map.zoneAt(e.x, e.y))
+    for (const BlockEdit &e : edits) {
+        if (map.zoneAt(e.x, e.y)) {
             byZone[{floorDiv(e.x, Zone::SIZE), floorDiv(e.y, Zone::SIZE)}].push_back(&e);
-    std::set<Key> remesh;
+            if (!saved)
+                changedLightColumns.emplace_back(e.x, e.y);
+        }
+    }
     std::map<Key, std::shared_ptr<Zone>> replacements;
     for (const auto &[key, list] : byZone) {
         auto zone = std::make_shared<Zone>(*map.zone(key.first, key.second));
@@ -292,15 +303,15 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, bool saved) {
                 applySaved(*zone, *e, rock);
             else
                 applyLive(*zone, *e, rock);
-            remeshColumn(remesh, e->x, e->y);
+            remeshColumn(editedChunks, e->x, e->y);
         }
         dropFloating(*zone);
         replacements.emplace(key, std::move(zone));
     }
-    publishEditedZones(std::move(replacements), remesh);
+    publishEditedZones(std::move(replacements));
 }
 
-void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, const std::set<Key> &remesh) {
+void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits) {
     for (auto &[key, zone] : edits) {
         terrain.relight(*zone);
         sectorSources.update(*zone);
@@ -308,9 +319,6 @@ void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, c
     }
     for (const auto &[key, zone] : edits)
         refreshPlantsNear(key);
-    for (const Key &corner : remesh)
-        if (map.zoneAt(corner.first, corner.second))
-            requestChunk(corner.first, corner.second);
 }
 
 std::vector<BlockEdit> WorldView::placeQueuedBlueprint(int8_t number, int8_t rotation, const int64_t position[3],
@@ -336,10 +344,9 @@ std::vector<BlockEdit> WorldView::placeQueuedBlueprint(int8_t number, int8_t rot
             return terrain.gapBlock(x, y, z, *zone);
         return IMPLICIT_SOLID;
     });
-    std::set<Key> remesh;
     for (const auto &[x, y] : placed.changedColumns)
-        remeshColumn(remesh, x, y);
-    publishEditedZones(std::move(placed.zones), remesh);
+        remeshColumn(editedChunks, x, y);
+    publishEditedZones(std::move(placed.zones));
     map.appendPlacedObject({base[0] / Zone::SIZE, base[1] / Zone::SIZE}, {number, base[0], base[1], base[2]});
     return std::move(placed.records);
 }
@@ -355,7 +362,9 @@ void WorldView::dropZone(Key key) {
         if (it->first.second >= y0 && it->first.second < y0 + Zone::SIZE) {
             renderer.removeMesh(it->second.solid);
             renderer.removeMesh(it->second.water);
-            cachedSources.reset({it->first.first / CHUNK, it->first.second / CHUNK});
+            const glm::ivec2 chunk(it->first.first / CHUNK, it->first.second / CHUNK);
+            cachedSources.reset(chunk);
+            chunkLightUpdates.invalidate(chunk);
             it = chunks.erase(it);
         } else
             ++it;
@@ -378,9 +387,18 @@ void WorldView::placeChunk(DoneChunk &chunk) {
     renderer.removeMesh(entry.water);
     entry.solid = meshes.solid.indices.empty() ? 0 : renderer.addMesh(meshes.solid);
     entry.water = meshes.water.indices.empty() ? 0 : renderer.addMesh(meshes.water);
+    chunkLightUpdates.publish(coordinate, chunk.lightChange, meshes.preparedLighting);
 }
 
 void WorldView::update() {
+    // Mark the cache coordinates that were already published during the frame.
+    // An in-flight mesh keeps its snapshot and is requested again after completion.
+    chunkLightUpdates.markChanged(changedLightColumns);
+    changedLightColumns.clear();
+    for (const Key &corner : editedChunks)
+        requestChunk(corner.first, corner.second);
+    editedChunks.clear();
+
     // Take in finished work.
     std::vector<std::shared_ptr<Zone>> zones;
     std::vector<DoneChunk> meshed;

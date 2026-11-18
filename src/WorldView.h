@@ -179,7 +179,7 @@ class WorldView {
   private:
     using Key = std::pair<int32_t, int32_t>;
     void refreshPlantsNear(Key zone);
-    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits, const std::set<Key> &remesh);
+    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits);
     std::map<int8_t, CubModel> blueprintModels;
     // A placed plant model: placed = translate x scale, the yaw after the sway.
     struct PlantInstance {
@@ -203,6 +203,7 @@ class WorldView {
         glm::ivec2 corner;
         ChunkMeshes meshes;
         std::vector<terrain_lights::CachedSource> lights;
+        uint64_t lightChange;
     };
     void placeChunk(DoneChunk &chunk);
     std::vector<PlantInstance> plantsOf(const worldgen::Zone &zone);
@@ -230,6 +231,9 @@ class WorldView {
     mutable std::vector<terrain_lights::Candidate> lightCandidates;
     mutable std::vector<terrain_lights::Chunk> lightChunks;
     std::map<Key, ChunkEntry> chunks; // by chunk corner
+    ChunkLightUpdates chunkLightUpdates;
+    std::vector<glm::ivec2> changedLightColumns;
+    std::set<Key> editedChunks;
     std::map<int32_t, std::pair<MeshId, float>> plantModels;
     std::map<int32_t, std::pair<MeshId, glm::vec3>> staticModels;
     MeshId airshipModelMesh = 0;

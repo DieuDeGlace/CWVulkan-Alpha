@@ -2396,3 +2396,22 @@ client flows and 36 package digests passed. Revision 26 parsed with all
 63 links, and both held native contracts matched their full hashes and
 saved line counts. Native mesh-cache lighting and comparable original-client
 terrain images remain open.
+
+## Mesh-cache light preparation (2026-11-17)
+
+TerrainLightTests checks repeated frame edits, a different coordinate
+in the same cache slot, the signed world boundary, request retention
+through invalidation and successful clearance. A newer mark survives
+an older worker result. The actual mesher reads the prepared light on
+dirty interior chunks, uses four cells at a dirty seam, and waits for a
+missing diagonal before preparing a corner.
+
+The owned-content Vulkan diagnostic placed all 600 floor cells and
+applied two live batches to a five-cell column while a remesh was pending.
+The final capture shows the newest batch's colour. The surrounding
+terrain is still bright. The Windows x64 build, nine focused suites and
+all 60 CTests passed. The production player/controller diagnostic, five
+actual client flows and 36 package digests passed. Revision 27 parsed with
+64 links, and the held cache contract matched its full hash and line count.
+Original worker timing, writes to resident light and matched native
+terrain images remain open.

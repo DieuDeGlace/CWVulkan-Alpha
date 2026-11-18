@@ -552,7 +552,11 @@ Differences from the Steam engine that shape the plan:
 - [x] Feed the terrain palette from live regional samples at the fixed
   camera position and use the independent signed point-cell query for
   the two sky colors and material tint.
-- [ ] Verify native mesh-cache lighting updates and matched terrain
+- [x] Track live terrain edits against matching mesh-cache coordinates and
+  use four-cell dirty preparation ahead of the sixteen-cell seam rule.
+  Revisit corner meshes when their diagonal area arrives.
+- [ ] Publish bounded light work and committed values to resident terrain.
+  Verify destruction margins, original mesh scheduling and matched terrain
   appearance, including the bright-ground observation.
 - [x] Terrain light selection: jointly order collected sources by wrapped fixed-point
   priority, admit the first sixteen qualifying sources per chunk's inclusive XY

@@ -11,21 +11,30 @@ constexpr int16_t SHUT = -1;   // solid: counts 0 for its neighbours
 constexpr int OPEN_FLOOR = 5;  // an open neighbour never counts less than this
 constexpr int SWEEPS = 16;
 
+bool withinWorld(int32_t x, int32_t y) {
+    return uint32_t(x) < 0x1000000u && uint32_t(y) < 0x1000000u;
+}
+
 } // namespace
 
-EdgeLight::EdgeLight(const WorldMap &map, int32_t chunkX, int32_t chunkY, int32_t size)
-    : x0(chunkX - BORDER), y0(chunkY - BORDER), side(size + 2 * BORDER) {
+EdgeLight::EdgeLight(const WorldMap &map, int32_t chunkX, int32_t chunkY, int32_t size, int32_t pad)
+    : x0(chunkX - pad), y0(chunkY - pad), side(size + 2 * pad) {
     // The vertical range, one layer past every column, and every zone held.
     int32_t lowest = INT32_MAX, highest = INT32_MIN;
     for (int32_t i = 0; i < side; i++)
         for (int32_t j = 0; j < side; j++) {
-            const Zone *zone = map.zoneAt(x0 + i, y0 + j);
+            const int32_t x = x0 + i, y = y0 + j;
+            if (!withinWorld(x, y))
+                continue;
+            const Zone *zone = map.zoneAt(x, y);
             if (!zone)
                 return;
-            const Column &c = zone->column(x0 + i, y0 + j);
+            const Column &c = zone->column(x, y);
             lowest = std::min(lowest, c.bottom);
             highest = std::max(highest, c.top());
         }
+    if (lowest == INT32_MAX)
+        return;
     zlo = lowest - 1;
     height = highest + 1 - zlo;
     values.assign((size_t)side * side * height, SHUT);
@@ -36,6 +45,8 @@ EdgeLight::EdgeLight(const WorldMap &map, int32_t chunkX, int32_t chunkY, int32_
     for (int32_t i = 0; i < side; i++)
         for (int32_t j = 0; j < side; j++) {
             const int32_t x = x0 + i, y = y0 + j;
+            if (!withinWorld(x, y))
+                continue;
             const Zone *zone = map.zoneAt(x, y);
             const Column &c = zone->column(x, y);
             int32_t sky = c.bottom;
@@ -66,7 +77,7 @@ EdgeLight::EdgeLight(const WorldMap &map, int32_t chunkX, int32_t chunkY, int32_
     const auto neighbour = [&](int32_t i, int32_t j, int32_t k) -> int {
         if (i < 0 || j < 0 || i >= side || j >= side || k < 0 || k >= height) {
             const int32_t x = x0 + i, y = y0 + j, z = zlo + k;
-            if (x < 0 || y < 0 || x > 0xffffff || y > 0xffffff)
+            if (!withinWorld(x, y))
                 return 0;
             const Zone *zone = map.zoneAt(x, y);
             if (!zone)
