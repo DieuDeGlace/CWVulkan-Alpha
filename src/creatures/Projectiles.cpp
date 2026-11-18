@@ -65,6 +65,18 @@ namespace {
 
 constexpr float WU = 65536.f;
 
+int64_t addFixed(int64_t position, int64_t displacement) {
+    return std::bit_cast<int64_t>(uint64_t(position) + uint64_t(displacement));
+}
+
+int64_t scaleFixed(int64_t component, int64_t factor) {
+    return std::bit_cast<int64_t>(uint64_t(component) * uint64_t(factor)) / 65536;
+}
+
+float squaredLength(glm::vec3 value) {
+    return (value.x * value.x + value.y * value.y) + value.z * value.z;
+}
+
 bool hasChargeCue(int32_t action) {
     return action == 24 || action == 25 || action == 27 || action == 36 ||
            action == 59 || action == 63 || action == 64;
@@ -169,7 +181,7 @@ void endChain(Combatant &c) {
 
 // §5.2 step 6, §6.4: a landed hit raises the shooter's combo and restarts its combo timer.
 void continueChain(Combatant &c) {
-    c.combo += 1;
+    c.combo = std::bit_cast<int32_t>(uint32_t(c.combo) + 1u);
     c.comboElapsedMs = 0;
 }
 
@@ -595,24 +607,26 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
     const float tau = (float)dt * 0.001f;
     const auto find = [&](uint64_t id) -> const ShotTarget * {
         for (const ShotTarget &t : creatures)
-            if (t.fighter->id == id)
+            if (t.fighter && t.body && t.fighter->id == id)
                 return &t;
         return nullptr;
     };
+    const visibility::Scene scene{block, context.sightRecords ? *context.sightRecords : visibility::RecordLookup{}};
     std::vector<bool> removed(list.size(), false);
 
     for (size_t index = 0; index < list.size(); index++) {
         Projectile &p = list[index];
         const ShotTarget *shooter = find(p.shooter);
-        Combatant *mine = lookup ? lookup(p.shooter) : nullptr;
-        Combatant *from = mine ? mine : shooter ? shooter->fighter : nullptr;
-        const bool buffAuthority = mine && (mine == context.controlled || (!context.networkMode && mine->controller != 0));
-        const bool resourceAuthority = mine && (!context.networkMode || mine == context.controlled);
+        Combatant *from = lookup ? lookup(p.shooter) : nullptr;
+        if (!from && shooter)
+            from = shooter->fighter;
+        const bool buffAuthority = from && (from == context.controlled || (!context.networkMode && from->controller != 0));
+        const bool resourceAuthority = from && (!context.networkMode || from == context.controlled);
         const int32_t ageBefore = p.age;
 
         // §4 step 1: velocity.
         if (p.kind == BOOMERANG_SHOT) {
-            if (!shooter || p.age > 1200) {
+            if (!from || !shooter || p.age > 1200) {
                 removed[index] = true;
                 continue;
             }
@@ -630,16 +644,16 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 // §4 step 1: the catch, scaled twice by F = trunc(f x 65536) in 16.16 fixed point
                 // (each product divided by 65536 toward zero).
                 const float f = (float)(p.age - 1100) / 100.f;
-                const int64_t F = (int64_t)(f * 65536.f);
+                const int64_t factor = int64_t(f * WU);
                 for (int k = 0; k < 3; k++) {
                     const int64_t gap = std::bit_cast<int64_t>(uint64_t(shooter->body->position[k]) - uint64_t(p.position[k]));
-                    p.position[k] += (gap * F / 65536) * F / 65536;
+                    p.position[k] = addFixed(p.position[k], scaleFixed(scaleFixed(gap, factor), factor));
                 }
             } else if (p.age > 800) {
                 const int64_t none[3] = {0, 0, 0};
                 p.velocity = separation(none) * 10.f;
             } else {
-                const glm::vec3 aim = shooter->fighter->aim;
+                const glm::vec3 aim = from->aim;
                 const int64_t offset[3] = {int64_t(aim.x * 65536.f), int64_t(aim.y * 65536.f), int64_t(aim.z * 65536.f)};
                 const glm::vec3 target = separation(offset) * 5.f;
                 for (int32_t i = 0; i < dt; i++)
@@ -652,23 +666,25 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
         const glm::vec3 d = tau * p.velocity;
         p.age = std::bit_cast<int32_t>((uint32_t)p.age + (uint32_t)dt);
         if (p.kind != BOOMERANG_SHOT && p.age > 5000) {
-            if (p.kind != BURST && mine)
-                endChain(*mine);
+            if (p.kind != BURST && from)
+                endChain(*from);
             removed[index] = true;
             continue;
         }
 
         // §5: the flight in sub-steps (kind 3 too: n grows with its gravity-fed velocity).
-        const int n = (int)(glm::length(d) * 2.f + 1.f);
+        const float count = float(std::sqrt(double(squaredLength(d)))) * 2.f + 1.f;
+        if (!(count >= 1.f && count < 2147483648.f))
+            continue;
+        const int n = int(count);
         const glm::vec3 ds = d / (float)n;
         // k: the velocity, normalised only when not still, times 5c; then k.z := 3c, so a
         // still projectile pushes (0, 0, 3c).
         glm::vec3 knock = p.velocity;
-        if (glm::dot(knock, knock) > 0)
-            knock = unit(knock);
+        if (const float square = squaredLength(knock); square > 0)
+            knock *= 1.f / float(std::sqrt(double(square)));
         knock *= 5.f * p.strength;
         knock.z = 3 * p.strength;
-        const visibility::Scene scene{block, {}};
         // §5.1 step 2: the overlap in world units, half-sizes converted separately; all three
         // lower tests, then the strict upper ones.
         const auto overlaps = [&](const Body &b, float half) {
@@ -677,10 +693,10 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             for (int k = 0; k < 3; k++)
                 h[k] = (int64_t)(b.size[k] * 0.5f * WU);
             for (int k = 0; k < 3; k++)
-                if (!(p.position[k] + r >= b.position[k] - h[k]))
+                if (addFixed(p.position[k], r) < addFixed(b.position[k], -h[k]))
                     return false;
             for (int k = 0; k < 3; k++)
-                if (!(p.position[k] - r < b.position[k] + h[k]))
+                if (addFixed(p.position[k], -r) >= addFixed(b.position[k], h[k]))
                     return false;
             return true;
         };
@@ -705,12 +721,16 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 if (draw() % 8 == 0)
                     g *= 2;
                 if (resourceAuthority) {
-                    mine->mana += g;
-                    if (mine->mana > 1)
-                        mine->mana = 1;
+                    from->mana += g;
+                    if (from->mana > 1)
+                        from->mana = 1;
                 }
             }
-            const bool critical = from && u() < criticalChance(*from);
+            bool critical = false;
+            if (from) {
+                const float probability = criticalChance(*from);
+                critical = probability > u();
+            }
             float x = p.damage;
             if (critical)
                 x *= 2.f;
@@ -719,11 +739,11 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 // generic hit admission. Neither a failed producer nor a rejected
                 // generic hit refunds these draws.
                 if (contact) {
-                    if (procChance(*mine, .15f, draw) && !p.special &&
-                        mine->characterClass == 2 && mine->specialization == 1)
-                        gainBuff(*mine, 10, shooter ? shooter->body->blocks() : p.blocks(), out);
-                } else if (procChance(*mine, .25f, draw) && !p.special && p.kind == SPELL && p.element == 1) {
-                    gainBuff(*mine, 9, shooter ? shooter->body->blocks() : p.blocks(), out);
+                    if (procChance(*from, .15f, draw) && !p.special &&
+                        from->characterClass == 2 && from->specialization == 1)
+                        gainBuff(*from, 10, shooter ? shooter->body->blocks() : p.blocks(), out);
+                } else if (procChance(*from, .25f, draw) && !p.special && p.kind == SPELL && p.element == 1) {
+                    gainBuff(*from, 9, shooter ? shooter->body->blocks() : p.blocks(), out);
                 }
             }
             if (contact && x < 0)
@@ -738,7 +758,10 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     if (from->controller == 1)
                         h.amount *= .5f;
                     h.critical = critical;
-                    out.hits.push_back(h);
+                    out.hits.emplace_back(h, !context.networkMode);
+                    if (context.networkMode && from == context.controlled && C.fighter == context.controlled &&
+                        context.applySelfHit)
+                        context.applySelfHit(h);
                 }
                 return false;
             }
@@ -746,13 +769,12 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             // producer events have already happened.
             if (context.networkMode && C.fighter == context.controlled)
                 return false;
-            Combatant target = *C.fighter;
-            glm::vec3 velocity = C.body->velocity;
             HitInput in;
             in.amount = x;
             in.selector = 0; // both native projectile call sites pass the full-width zero selector
             in.critical = critical;
-            in.area = p.special != 0;
+            in.area = p.special;
+            in.power = p.strength;
             in.magic = p.kind == SPELL;
             in.knockBack = knock;
             in.targetOnGround = (C.body->contact & ON_GROUND) != 0;
@@ -761,8 +783,20 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             in.attackerPosition = shooter ? shooter->body->blocks() : p.blocks();
             if (shooter)
                 std::copy_n(shooter->body->position, in.attackerRecordPosition.size(), in.attackerRecordPosition.begin());
-            HitOutcome result = resolveHit(target, velocity, from, in, draw,
-                [&](const HitEmission &emission) { out.hits.push_back(emission); });
+            const auto resolve = [&](Combatant &target) {
+                return resolveHit(target, C.body->velocity, from, in, draw, [&](const HitEmission &emission) {
+                    out.hits.emplace_back(emission.record, emission.applyLocally && !context.networkMode);
+                });
+            };
+            HitOutcome result;
+            if (context.networkMode) {
+                result = resolve(*C.fighter);
+            } else {
+                // Standalone callers still deliver staged target hits at their world boundary.
+                Combatant target = *C.fighter;
+                result = resolve(target);
+            }
+            out.buffs.insert(out.buffs.end(), result.buffs.begin(), result.buffs.end());
             out.sounds.insert(out.sounds.end(), result.sounds.begin(), result.sounds.end());
             out.bursts.insert(out.bursts.end(), result.bursts.begin(), result.bursts.end());
             return result.hitAccepted;
@@ -772,7 +806,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
         const auto eligible = [&](const ShotTarget &C, HitPath path) {
             if (!from || (path == HitPath::Contact && p.kind == BURST && p.element == 2))
                 return true;
-            return C.fighter->id != p.shooter && hostilityTest(*from, *C.fighter);
+            return C.fighter->id != from->ordinaryLink && hostilityTest(*from, *C.fighter);
         };
         // §5.1 step 3: line of sight 0x19ee90 to the creature's position, option 1, limit 200.
         const auto sight = [&](const ShotTarget &C) {
@@ -782,8 +816,8 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
         for (int i = 0; i < n; i++) {
             bool landed = false, destroy = false, wall = false; // reset every sub-step
             for (const ShotTarget &C : creatures) {
-                if (C.fighter->health <= 0 || !eligible(C, HitPath::Contact) || !overlaps(*C.body, p.radius) ||
-                    !sight(C))
+                if (!C.fighter || !C.body || C.fighter->health <= 0 || !eligible(C, HitPath::Contact) ||
+                    !overlaps(*C.body, p.radius) || !sight(C))
                     continue;
                 if (C.fighter->dodgeMs != 0) {
                     evaded(C.fighter->id);
@@ -796,8 +830,12 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 case ARROW: case SPELL: case ROCK: gate = !p.special; break;
                 default: gate = false; break;
                 }
-                if (gate && hitCreature(C, HitPath::Contact))
-                    landed = true;
+                if (gate) {
+                    if (hitCreature(C, HitPath::Contact))
+                        landed = true;
+                    if (p.slow > C.fighter->slowMs)
+                        C.fighter->slowMs = p.slow;
+                }
                 if (p.kind != BOOMERANG_SHOT && p.kind != BURST) {
                     destroy = true;
                     break;
@@ -810,7 +848,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 out.sounds.push_back({p.blocks(), 15, 1 + 0.25f * u(), 1});
             const auto move = [&](float sign) {
                 for (int k = 0; k < 3; k++)
-                    p.position[k] += (int64_t)(sign * ds[k] * WU);
+                    p.position[k] = addFixed(p.position[k], int64_t(sign * ds[k] * WU));
             };
             move(1);
             if (solidAt(block, p.blocks())) {
@@ -828,11 +866,11 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     wall = true;
                 }
             }
-            if (wall && !destroy && mine)
-                endChain(*mine);
+            if (wall && !destroy && from)
+                endChain(*from);
             if (p.kind == BOOMERANG_SHOT) {
-                if (landed && mine)
-                    continueChain(*mine);
+                if (landed && from)
+                    continueChain(*from);
                 if (wall)
                     p.velocity = glm::vec3(0);
                 continue;
@@ -853,7 +891,8 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 for (const ShotTarget &C : creatures) {
                     if (skipCandidates)
                         break;
-                    if ((from && C.fighter->health <= 0) || !eligible(C, HitPath::Impact) || !overlaps(*C.body, 5.f) ||
+                    if (!C.fighter || !C.body || (from && C.fighter->health <= 0) ||
+                        !eligible(C, HitPath::Impact) || !overlaps(*C.body, 5.f) ||
                         !sight(C))
                         continue;
                     if (from && C.fighter->dodgeMs != 0) {
@@ -864,8 +903,8 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                         landed = true;
                 }
             }
-            if (landed && mine)
-                continueChain(*mine);
+            if (landed && from)
+                continueChain(*from);
             if (p.kind == SPELL && p.element == 2) { // a water spell leaves a puddle
                 p.kind = BURST;
                 p.age = p.special ? 0 : 3000;

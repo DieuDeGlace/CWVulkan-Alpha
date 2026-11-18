@@ -5,6 +5,7 @@
 #include "creatures/Abilities.h"
 #include "creatures/Combat.h"
 #include "creatures/Physics.h"
+#include "creatures/Visibility.h"
 #include <array>
 #include <functional>
 #include <span>
@@ -100,13 +101,16 @@ struct ShotTarget {
 struct ProjectileContext {
     bool networkMode = false;
     const Combatant *controlled = nullptr;
+    const visibility::RecordLookup *sightRecords = nullptr;
+    // The beneficial contact route can immediately apply a controlled self hit.
+    std::function<void(const HitRecord &)> applySelfHit;
 };
 
 class Projectiles {
   public:
     std::vector<Projectile> list;
 
-    // Apply section-four receipts after the frame's world pieces and hit input.
+    // Apply section-five receipts after the world's pieces and local hit effects.
     void receiveRemote(std::span<const std::array<uint8_t, 112>> records, uint64_t localId);
 
     // Mutable source lookup is independent of authority: resource writes and

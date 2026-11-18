@@ -705,6 +705,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Projectiles (alpha-projectiles.md): everything in flight, and their hits on NPCs for the
     // next offline step.
     creatures::Projectiles projectiles;
+    std::vector<creatures::ShotTarget> projectileTargets;
     // Particles §3.2: the one list, and the bursts gathered this frame for it (§2.1).
     creatures::Particles particles;
     std::vector<creatures::Burst> bursts;
@@ -2656,87 +2657,60 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         for (int32_t l = (int32_t)before + 1; l <= c.level; l++)
                             mods.levelUp(l); // (the notice and sound follow in the level-change step)
                     }
-                    // Flight follows every creature countdown. Player launches were inserted
-                    // before NPC launches; both participate in this frame in that order.
-                    {
+                    // After the actor turns use the resulting live positions and combat state.
+                    if (!projectiles.list.empty()) {
                         creatures::Combatant &c = player->combat();
-                        // §4-§6: the flight, on whole milliseconds. Offline every shot's hits count;
-                        // online only our own (the shooter's client decides, §6.2).
-                        const int32_t dt = elapsed;
-                        if (!projectiles.list.empty()) {
-                            std::vector<creatures::Combatant> fighters;
-                            std::vector<creatures::Body> bodies;
-                            const auto &others = receivedActors;
-                            fighters.reserve(others.size());
-                            bodies.reserve(others.size());
-                            for (const auto &[id, other] : others) {
-                                creatures::Combatant f = other.fighter();
-                                f.id = id;
-                                f.health = other.health();
-                                f.controller = other.controller();
-                                if (const auto resident = otherFighters.find(id); resident != otherFighters.end())
-                                    f.buffs = resident->second.fighter.buffs;
-                                creatures::Body b;
-                                for (int axis = 0; axis < 3; axis++)
-                                    b.position[axis] = other.position(axis);
-                                b.size = other.appearance().box;
-                                b.velocity = other.velocity();
-                                b.intent = other.intent();
-                                b.push = other.response();
-                                fighters.push_back(std::move(f));
-                                bodies.push_back(b);
-                            }
-                            std::vector<creatures::ShotTarget> targets{{&c, &player->body()}};
-                            for (size_t i = 0; i < fighters.size(); i++)
-                                targets.push_back({&fighters[i], &bodies[i]});
-                            if (!client.connected())
-                                for (creatures::Npc &n : npcs.npcs())
-                                    targets.push_back({&n.fighter, &n.body});
-                            const auto source = [&](uint64_t id) -> creatures::Combatant * {
-                                if (id == c.id)
-                                    return &c;
-                                if (!client.connected())
-                                    for (creatures::Npc &n : npcs.npcs())
-                                        if (n.fighter.id == id)
-                                            return &n.fighter;
-                                return nullptr;
-                            };
-                            creatures::ShotEffects flight;
-                            projectiles.step(dt, targets, source, [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
-                                             [&] { return worldRandom.draw(); }, flight, {client.connected(), &c});
-                            const bool connected = client.connected();
+                        const bool connected = client.connected();
+                        projectileTargets.clear();
+                        const auto addControlled = [&] { projectileTargets.push_back({&c, &player->body()}); };
+                        if (connected) {
+                            projectileTargets.reserve(otherFighters.size() + 1);
+                            creatures::visitReceivedActors(otherFighters, c.id, addControlled,
+                                [&](uint64_t id, net::RemoteFighter &actor) {
+                                    if (const auto *body = remotes.find(id))
+                                        projectileTargets.push_back({&actor.fighter, &body->live});
+                                });
+                        } else {
+                            projectileTargets.reserve(npcs.npcs().size() + 1);
+                            addControlled();
+                            for (creatures::Npc &n : npcs.npcs())
+                                projectileTargets.push_back({&n.fighter, &n.body});
+                        }
+                        creatures::ShotEffects flight;
+                        projectiles.step(elapsed, projectileTargets, frameActor, worldBlock, worldDraw, flight,
+                            {connected, &c, connected ? &npcs.sightRecords : nullptr,
+                             [&](const creatures::HitRecord &hit) { player->takeHit(hit); }});
+                        if (connected) {
+                            aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());
+                            aggregate.sounds.insert(aggregate.sounds.end(), flight.sounds.begin(), flight.sounds.end());
+                        }
+                        for (const creatures::HitEmission &emission : flight.hits) {
+                            const creatures::HitRecord &h = emission.record;
                             if (connected) {
-                                aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());
-                                aggregate.sounds.insert(aggregate.sounds.end(), flight.sounds.begin(), flight.sounds.end());
+                                aggregate.emittedHits.push_back(h);
+                                continue;
                             }
-                            for (const creatures::HitEmission &emission : flight.hits) {
-                                const creatures::HitRecord &h = emission.record;
-                                if (connected) {
-                                    aggregate.emittedHits.push_back(h);
-                                    continue;
-                                }
-                                glm::dvec3 at = player->body().blocks();
-                                for (const creatures::ShotTarget &t : targets)
-                                    if (t.fighter->id == h.target)
-                                        at = t.body->blocks();
-                                if (emission.applyLocally && h.target == c.id) {
-                                    player->takeHit(h);
-                                } else if (emission.applyLocally) {
-                                    shotHitsOnNpcs.push_back(h);
-                                }
-                                if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.area, h.target == c.id, at))
-                                    interface.floating.push_back(*text);
-                                mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
+                            glm::dvec3 at = player->body().blocks();
+                            for (const creatures::ShotTarget &t : projectileTargets)
+                                if (t.fighter->id == h.target)
+                                    at = t.body->blocks();
+                            if (emission.applyLocally && h.target == c.id) {
+                                player->takeHit(h);
+                            } else if (emission.applyLocally) {
+                                shotHitsOnNpcs.push_back(h);
                             }
-                            if (!connected)
-                                for (const auto &sound : flight.sounds)
-                                    playAt(sound.sound, sound.position, sound.volume, sound.pitch);
-                            auto &effects = connected ? aggregate.bursts : bursts;
-                            effects.insert(effects.end(), flight.bursts.begin(), flight.bursts.end());
-                            for (const auto &s : flight.struck) { // particles §5.7
-                                const worldgen::Block b = view.held().read(s.cell.x, s.cell.y, s.cell.z);
-                                effects.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
-                            }
+                            if (auto text = ui::hitText(h.amount, h.kind, h.critical, h.area, h.target == c.id, at))
+                                interface.floating.push_back(*text);
+                            mods.hitSeen(h.attacker, h.target, h.kind, h.amount);
+                        }
+                        if (!connected)
+                            for (const auto &sound : flight.sounds)
+                                playAt(sound.sound, sound.position, sound.volume, sound.pitch);
+                        auto &effects = connected ? aggregate.bursts : bursts;
+                        effects.insert(effects.end(), flight.bursts.begin(), flight.bursts.end());
+                        for (const auto &s : flight.struck) { // particles §5.7
+                            const worldgen::Block b = view.held().read(s.cell.x, s.cell.y, s.cell.z);
+                            effects.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
                         }
                     }
                     flushZoneState();

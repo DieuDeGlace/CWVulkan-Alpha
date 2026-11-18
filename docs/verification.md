@@ -2254,3 +2254,28 @@ using protocol 3 and seed 41. Both retrieved the same two 112-byte shot
 records in send order and with unchanged bytes. Resident admission
 dropped both echoes at the sender and retained both at the peer. Native
 flight effects and late capture behavior remain open.
+
+## Connected live projectile contact and steering (2026-11-17)
+
+RangedSchedulingTests checks that a resolved nonlocal arrow consumes its
+two gain draws and critical draw before the controlled target rejection.
+The direct clock still rises when the helper rejects that target. A live
+guard fixture observes the guard mutation before the pitch draw and checks
+that the hit record does not apply health damage. An ordinary linked
+target and an occluded target each skip contact before any draw. The
+charged impact retains all eight charge bits and leaves the direct clock
+untouched. The beneficial controlled self hit applies at the append site.
+
+The boomerang cases check the live zero-key source, the 800 and 1,100 ms
+edges, the full fixed aim and return offset, the repeated catch factor and
+the first removal above 1,200 ms. The Windows x64 build, nine focused
+suites, all 60 CTests, production player/controller diagnostic, five
+actual-client flows and 36 independent package digests passed. Spec
+revision 20 parsed with 55 links. Both held contracts matched their full
+hashes and saved line counts. The post-move terrain ray and original-client
+projectile effects remain open.
+
+An isolated production Vulkan client received remote arrow records at its
+live position through a loopback peer. Its next observed player state
+carried the exact 5,000 ms slow counter and the same 260 health. The client
+rendered its requested frame and disconnected successfully.

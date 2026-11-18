@@ -3747,3 +3747,31 @@ traces the queue order and two separate zone snapshots. The client retains
 one aggregate across pieces. Its earlier terrain records can contribute to
 more than one later history pass. That repeated append, the dedicated
 drains' separate cutoffs and later frame effects remain follow-up work.
+
+## Connected live projectile contact and steering (2026-11-17)
+
+The isolated author finalized [the steering and impact ruling](specs/alpha-rulings-projectile-steering-and-impact.md)
+and [the separate ray and variant ruling](specs/alpha-rulings-projectile-ray-and-variant.md).
+The implementer read all 228 and 292 physical lines and verified the respective
+SHA-256 hashes
+`e37f8d536e3945e290bf539cba994e35af24cf6c56365ec00282f8fee30de1e2` and
+`8b218f05331077716f2c15af817cd9b9d138c3036773e59a9aa79bbff7916377`.
+The connected world path builds one signed-ordered list of live actor and
+body references after each piece's actor turns. Flight uses their current
+health, guard, roll, ordinary link and actual position. The list reuses its
+storage between pieces. Direct contact queries the current visibility records.
+
+Generic hit generation sees the live connected target and suppresses its
+apply stage after the caller's draws. Direct contact still raises the signed
+slow counter after the helper returns or bypasses the local target. Resolved
+sources can retime and advance their combo regardless of connection ownership.
+The variant-two contact uses its separate relationship test and applies a
+controlled self heal at the append site. The collected hit remains available
+for presentation and send. The standalone path retains staged target delivery.
+Impact carries the raw charge byte and strength.
+
+Type-two outbound and return branches use full fixed differences and the
+catch performs two signed, low-64-bit products. The component arithmetic
+retains separate binary32 stages. The post-move terrain ray direction,
+placed-object clipping, dedicated hit application and original-client flight
+comparison are follow-up work.

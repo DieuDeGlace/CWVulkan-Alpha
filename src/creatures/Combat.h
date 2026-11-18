@@ -311,7 +311,8 @@ bool hitMoment(const Combatant &c, float beforeMs, float dtMs);
 struct HitInput {
     float amount = 0;
     int32_t selector = 0; // explicit resolver argument; independent of the attacker's current action
-    bool critical = false, area = false, magic = false, blockable = true;
+    bool critical = false, magic = false, blockable = true;
+    uint8_t area = 0; // raw charge for projectiles, a zero/one flag for strikes
     float power = 0; // the area value, what the blow spent: it feeds the stun (open points 6 §3.2)
     glm::vec3 knockBack{0};
     bool targetOnGround = true;

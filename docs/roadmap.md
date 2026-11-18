@@ -794,8 +794,14 @@ Differences from the Steam engine that shape the plan:
   (`alpha-rulings-connected-client-receipt-order.md`).
   Intervening object receipt, elapsed mode and native late capture effects
   remain open.
-- [ ] Complete connected live projectile contact, terrain rays and retirement.
-  Verify results from the original client and the dedicated server.
+- [x] Connected live projectile candidates, contact counters and boomerang
+  steering. Preserve caller draw order, live defensive state and raw impact
+  charge and strength. Use the separate beneficial contact relation. The
+  production client publishes a remote arrow's slow counter on its own
+  record while its health stays under network authority.
+- [ ] Complete the post-move projectile terrain and object ray, verify the
+  remaining retirement and dedicated application branches, and compare
+  matched results with the original client.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species

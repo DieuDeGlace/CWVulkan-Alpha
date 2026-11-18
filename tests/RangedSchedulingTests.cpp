@@ -171,10 +171,94 @@ int main() {
         c.source.specialization = 1;
         c.target.controller = 0;
         c.world.list[0].kind = ARROW;
+        c.world.list[0].slow = 403;
+        c.target.slowMs = 81;
+        const float health = c.target.health;
         int draws = 0;
         c.step([&] { return ++draws == 4 ? 0 : 32767; }, {true, &c.target});
-        check(draws == 3 && c.effects.hits.empty() && c.effects.buffs.empty(),
-              "controlled network target is rejected only after the preceding contact resource and critical draws");
+        check(draws == 3 && c.effects.hits.empty() && c.effects.buffs.empty() && c.target.slowMs == 403 &&
+                  c.target.health == health,
+              "the controlled target's clock rises after caller draws and generic connected rejection");
+    }
+    {
+        Collision c;
+        c.world.list[0].kind = ARROW;
+        c.world.list[0].slow = 601;
+        c.target.action = 8;
+        c.target.blockGauge = .5f;
+        c.target.mana = .1f;
+        c.target.charge = .2f;
+        const float health = c.target.health;
+        const float guard = std::max(-1.f, .5f - c.world.list[0].damage / damage(c.target));
+        int draws = 0;
+        c.step([&] {
+            if (++draws == 4)
+                check(c.target.blockGauge == guard && c.target.slowMs == 0,
+                      "guard mutation precedes its pitch draw and the caller's clock write");
+            return 32767;
+        }, {true});
+        check(draws == 4 && c.target.health == health && c.target.mana == .6f &&
+                  c.target.charge == .6f && c.target.slowMs == 601 && c.effects.hits.size() == 1 &&
+                  c.effects.hits[0].record.kind == HIT_BLOCKED && !c.effects.hits[0].applyLocally,
+              "connected guard changes the live target without applying the emitted record");
+    }
+    {
+        Collision c;
+        c.world.list[0].kind = ARROW;
+        c.world.list[0].slow = 1300;
+        c.source.ordinaryLink = c.target.id;
+        int draws = 0;
+        c.step([&] { draws++; return 32767; }, {true});
+        check(draws == 0 && c.effects.hits.empty() && c.target.slowMs == 0 && c.world.list.size() == 1,
+              "the full ordinary link excludes the target before any contact draw");
+    }
+    {
+        Collision c;
+        c.world.list[0].kind = ARROW;
+        c.world.list[0].special = 7;
+        c.world.list[0].slow = 250;
+        c.target.slowMs = 89;
+        int draws = 0;
+        c.step([&] { draws++; return 32767; }, {true});
+        check(draws == 2 && c.effects.hits.size() == 1 && c.effects.hits[0].record.area == 7 &&
+                  c.target.slowMs == 89,
+              "charged impact carries the entire charge byte and omits the direct target-clock write");
+    }
+    {
+        Collision c;
+        c.world.list[0].kind = BURST;
+        c.world.list[0].element = 2;
+        c.world.list[0].age = 999;
+        c.world.list[0].slow = 10;
+        c.sourceBody.place({0, 0, 0});
+        c.targetBody.place({20, 0, 0});
+        int applied = 0;
+        c.step([] { return 32767; }, {true, &c.source, nullptr, [&](const HitRecord &hit) {
+            ++applied;
+            check(hit.attacker == c.source.id && hit.target == c.source.id && hit.amount == -10.f &&
+                      c.source.slowMs == 0 && c.effects.hits.size() == 1,
+                  "a beneficial controlled self hit applies immediately after its append");
+        }});
+        check(applied == 1 && c.effects.hits.size() == 1 && !c.effects.hits[0].applyLocally &&
+                  c.source.slowMs == 10,
+              "the collected self hit has already been applied before its target-clock write");
+    }
+    {
+        Collision c;
+        c.targetBody.place({4, 0, 1});
+        auto &shot = c.world.list[0];
+        shot.kind = ARROW;
+        shot.position[2] = 65536;
+        shot.radius = 5;
+        const visibility::Record obstacle{3, {2 * 65536, 0, 0}, {1, 3, 3}, 0, 1};
+        const visibility::RecordLookup records = [&](int32_t x, int32_t y, const visibility::RecordVisitor &visit) {
+            if (x == 0 && y == 0)
+                visit(obstacle);
+        };
+        int draws = 0;
+        c.step([&] { draws++; return 32767; }, {true, nullptr, &records});
+        check(draws == 0 && c.effects.hits.empty() && c.world.list.size() == 1,
+              "a live opaque side face rejects direct contact before any draw");
     }
     for (bool impact : {false, true}) {
         Collision c;
@@ -501,6 +585,43 @@ int main() {
         const int64_t F = (int64_t)(0.33f * 65536.f);
         check(!world.list.empty() && world.list[0].position[0] == (gap * F / 65536) * F / 65536,
               "the catch moves by the 16.16 fixed-point product");
+    }
+    for (const int32_t age : {800, 801, 1100, 1200, 1201}) {
+        Combatant thrower;
+        thrower.id = 0; // a live zero-key source is resolved even at zero health
+        thrower.health = 0;
+        thrower.aim = {2, 0, 0};
+        Body home;
+        home.place({10, 0, 0});
+        Projectile shot;
+        shot.kind = BOOMERANG_SHOT;
+        shot.shooter = thrower.id;
+        shot.age = age;
+        Projectiles world;
+        world.list.push_back(shot);
+        ShotEffects effects;
+        const int32_t elapsed = age == 800 || age == 1200 ? 1 : 0;
+        int draws = 0;
+        world.step(elapsed, {{&thrower, &home}}, {}, [](int32_t, int32_t, int32_t) { return uint8_t(0); },
+                   [&] { draws++; return 0; }, effects, {true});
+        if (age == 1201) {
+            check(world.list.empty() && draws == 0, "boomerang checks signed expiry before any steering or draw");
+            continue;
+        }
+        check(world.list.size() == 1 && world.list[0].age == age + elapsed && draws == 0,
+              "boomerang uses the pre-increment age and a live zero-key source through the catch");
+        if (world.list.empty())
+            continue;
+        const auto &resident = world.list[0];
+        if (age == 800)
+            check(resident.velocity.x == 3.f && resident.position[0] == 196,
+                  "outbound steering samples the full aim offset before per-millisecond blending");
+        else if (age <= 1100)
+            check(resident.velocity.x == 100.f && resident.position[0] == 0,
+                  "return steering assigns ten times the full source separation even for zero elapsed");
+        else
+            check(resident.velocity.x == 0.f && resident.position[0] == home.position[0],
+                  "age 1200 catches at the source and remains resident until another world piece");
     }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

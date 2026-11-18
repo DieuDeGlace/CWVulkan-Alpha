@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 51 and the rulings. The 264 tracked contracts
-comprise 209 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 52 and the rulings. The 266 tracked contracts
+comprise 211 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -110,6 +110,8 @@ Batch 50 covers `alpha-native-startup-window-input-boundary.md` and
 Batch 51 covers `alpha-connected-projectile-receipt-step.md`,
 `alpha-rulings-connected-client-receipt-order.md` and the re-certified
 `alpha-world-call-phase-boundary.md`.
+Batch 52 covers `alpha-rulings-projectile-ray-and-variant.md` and
+`alpha-rulings-projectile-steering-and-impact.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -306,6 +308,8 @@ Batch 51 covers `alpha-connected-projectile-receipt-step.md`,
 | `alpha-rulings-packet6-bomb-default.md` | A | 112 | 0 |
 | `alpha-rulings-pose-49-50-mount.md` | A | 216 | 0 |
 | `alpha-rulings-pose-69-arc.md` | A | 179 | 0 |
+| `alpha-rulings-projectile-ray-and-variant.md` | A | 293 | 0 |
+| `alpha-rulings-projectile-steering-and-impact.md` | A | 229 | 0 |
 | `alpha-rulings-rendering-clouds-lights.md` | A | 487 | 1 |
 | `alpha-rulings-shimmer-phase.md` | A | 107 | 0 |
 | `alpha-rulings-spawn-rounds-ruin-routes.md` | A | 204 | 0 |
