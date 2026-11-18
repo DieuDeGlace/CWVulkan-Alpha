@@ -100,6 +100,9 @@ struct ProjectileContext {
     // The beneficial contact route can immediately apply a controlled self hit.
     std::function<void(const HitRecord &)> applySelfHit;
     const worldgen::WorldMap *terrain = nullptr; // complete cells for point impacts
+    // A world collector can consume each record and its preceding feedback in place.
+    const CombatFeedback *feedback = nullptr;
+    std::function<void(const HitEmission &)> emitHit;
 };
 
 class Projectiles {
@@ -113,7 +116,7 @@ class Projectiles {
     // buff production have different network/controlled-creature gates.
     void step(int32_t dtMs, const std::vector<ShotTarget> &creatures, const std::function<Combatant *(uint64_t)> &lookup,
               const BlockType &block, const std::function<int()> &draw, ShotEffects &out,
-              ProjectileContext context = {});
+              const ProjectileContext &context = {});
 };
 
 } // namespace creatures

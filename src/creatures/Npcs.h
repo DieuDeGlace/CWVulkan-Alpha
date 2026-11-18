@@ -233,7 +233,12 @@ class Npcs {
                   const std::vector<BuffEvent> &buffInput = {},
                   const std::function<void(int32_t)> &advanceControlled = {},
                   const std::function<void(PlayerView &)> &consumeItemRequests = {},
-                  const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState = {});
+                  const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState = {},
+                  const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld = {});
+    // The dedicated caller runs this after the actor and object passes, while
+    // their signed index and live state are still available.
+    void stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen::WorldMap &map,
+                         const BlockType &block, std::span<PlayerView> players, NpcFrame &frame);
     // Local player dispatch belongs between beginActionUpdate/endActionUpdate,
     // before movement. Carry its events into step and disable later strikes.
     void dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame);
@@ -466,6 +471,7 @@ class Npcs {
         bool local() const { return player && player->local; }
     };
     ActorMap<ActorEntry> actors;
+    std::vector<ShotTarget> projectileTargets;
     void createActor(const ActorEntry &current, int32_t step);
     Combatant *controlledActor = nullptr; // valid while the refreshed index is protected
     bool actorPassActive = false;

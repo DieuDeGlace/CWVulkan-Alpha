@@ -3813,4 +3813,24 @@ raw fixed point, per-component binary32 color division, velocity, 0.1
 size, four-particle field, style and spread survive into the frame's
 collector. The ray's shorter-distance path emits no burst. Dedicated
 defensive hit duplication is independently documented in the same ruling.
-Native playback and dedicated hit application remain open.
+Native particle playback remains open.
+
+## Dedicated projectile hit delivery (2026-11-17)
+
+The verified dedicated flight and defensive output rulings establish when
+the server applies each projectile hit and how those results enter the
+collector. The dedicated engine now runs flight while the post-actor
+index is live. It consumes each produced hit at its emission site. A
+qualifying role-zero delivery appends the same record a second time before
+the next result. Guard and ward take this path, along with ordinary and
+beneficial records. An NPC's local apply can change health, immediately
+removing a later living contact when the first hit is fatal.
+
+The producer's feedback uses the same frame buffers as immediate apply.
+Impact sounds precede the effects caused by applying the record. Updated
+player guard, resources, clock and combo persist in the resident wire
+baseline until later player packets replace those fields. Produced
+launch records are copied before the resident visit and retain original
+age. Packet 9 input continues through the separate verified raw relay.
+Matched original-client and dedicated runtime flight and full launch
+admission remain open.

@@ -803,8 +803,11 @@ Differences from the Steam engine that shape the plan:
   use the backward fixed traversal and the strict full-piece distance gate.
 - [x] Signed solid-cell point samples and arrow burst payload. Color comes
   from the restored point after rollback, even if that cell is passable.
-- [ ] Complete dedicated projectile hit application and compare matched
-  original flight and particle playback.
+- [x] Deliver dedicated projectile hits at the live producer boundary.
+  Preserve the role-zero duplicate for admitted guard, ward and ordinary
+  outputs and apply non-player hits before later projectiles visit.
+- [ ] Compare matched original flight and particle playback and close the
+  remaining dedicated launch admission conditions.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species

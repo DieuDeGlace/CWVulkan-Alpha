@@ -984,6 +984,7 @@ void Server::stepWorld(float dtMs) {
         b.push = c->creature.response();
         b.size = c->creature.appearance().box;
         b.mode = f.mode;
+        b.contact = f.contact;
         fighters.push_back(std::move(f));
         bodies.push_back(b);
         who.push_back(c);
@@ -1024,8 +1025,6 @@ void Server::stepWorld(float dtMs) {
         onNpcs.push_back(h.record());
     }
     hits.clear();
-    onNpcs.insert(onNpcs.end(), shotHits.begin(), shotHits.end());
-    shotHits.clear();
     std::vector<creatures::BuffEvent> buffInput;
     buffInput.reserve(events40.size());
     for (const auto &bytes : events40)
@@ -1202,15 +1201,17 @@ void Server::stepWorld(float dtMs) {
                 consumeItemRequests(sender, actor, frame, block);
         }, [&](int32_t elapsed, std::span<creatures::PlayerView> views) {
             advanceZoneState(elapsed, views, frame, block);
+        }, [&](int32_t elapsed, std::span<creatures::PlayerView> views) {
+            airships.step(elapsed, true, zones, [this](int64_t key, creatures::Airships::Carried &out) {
+                for (creatures::Npc &n : npcs.npcs())
+                    if (std::bit_cast<int64_t>(n.fighter.id) == key) {
+                        out = {n.body.position, n.body.follow, &n.yaw};
+                        return true;
+                    }
+                return false; // players retain their own motion
+            });
+            npcs.stepProjectiles(projectiles, elapsed, zones, block, views, frame);
         });
-    airships.step((int32_t)dtMs, true, zones, [this](int64_t key, creatures::Airships::Carried &out) {
-        for (creatures::Npc &n : npcs.npcs())
-            if (std::bit_cast<int64_t>(n.fighter.id) == key) {
-                out = {n.body.position, n.body.follow, &n.yaw};
-                return true;
-            }
-        return false; // (players' bodies are their clients'; see CLEANROOM.md)
-    });
     for (const creatures::NpcFrame::Death &death : frame.deaths) // mod SDK v6
         tellMods([this, id = death.fighter.id, type = death.fighter.type, level = death.fighter.level,
                   credited = death.credited] {
@@ -1287,34 +1288,6 @@ void Server::stepWorld(float dtMs) {
         if (!death.lootApplied) // retained non-hit death adapter
             dropLoot(lootVictim(death), items, (int32_t)clockDay, block, worldRandom);
 
-    // Projectiles §4-§6: the NPCs' shots fly; hits on players go to their clients, hits on
-    // NPCs come back in the next step.
-    projectiles.list.insert(projectiles.list.end(), frame.shots.begin(), frame.shots.end());
-    std::vector<creatures::ShotTarget> targets;
-    for (size_t i = 0; i < fighters.size(); i++)
-        targets.push_back({&fighters[i], &bodies[i]});
-    for (creatures::Npc &n : npcs.npcs())
-        targets.push_back({&n.fighter, &n.body});
-    const auto source = [this, &fighters](uint64_t id) -> creatures::Combatant * {
-        for (creatures::Npc &n : npcs.npcs())
-            if (n.fighter.id == id)
-                return &n.fighter;
-        for (auto &fighter : fighters)
-            if (fighter.id == id)
-                return &fighter;
-        return nullptr;
-    };
-    creatures::ShotEffects shot;
-    projectiles.step((int32_t)dtMs, targets, source, block, [this] { return worldRandom.draw(); }, shot,
-                     {.sightRecords = &npcs.sightRecords, .terrain = &zones});
-    bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
-    std::vector<creatures::HitRecord> outgoingHits = frame.emittedHits;
-    for (const auto &emission : shot.hits) {
-        const auto &record = emission.record;
-        outgoingHits.push_back(record);
-        if (!connections.count(record.target) && emission.applyLocally)
-            shotHits.push_back(record);
-    }
     for (size_t index = 0; index < fighters.size(); index++) {
         who[index]->buffs = std::move(fighters[index].buffs);
         who[index]->relations = std::move(fighters[index].relations);
@@ -1322,6 +1295,9 @@ void Server::stepWorld(float dtMs) {
         who[index]->linkedItemSnapshot = fighters[index].linkedItem.retained;
         who[index]->creature.setLinkedItem(fighters[index].linkedItem.source);
         who[index]->creature.setHealth(fighters[index].health);
+        who[index]->creature.setActionTimers(fighters[index]);
+        who[index]->creature.setComboState(fighters[index]);
+        who[index]->creature.setCombatResources(fighters[index]);
     }
 
     // World items §3.5: changed zones are listed to everyone; interaction §4.5: changed statics
@@ -1334,7 +1310,6 @@ void Server::stepWorld(float dtMs) {
     for (const auto &key : edits.takeChanged()) // block edits §3 step 4
         modifiedZones.insert(key);
     const auto objectsChanged = std::exchange(placedChanged, {});
-    frame.sounds.insert(frame.sounds.end(), shot.sounds.begin(), shot.sounds.end());
     std::vector<std::array<uint8_t, 288>> gifts;
     gifts.reserve(frame.grants.size());
     for (const auto &grant : frame.grants)
@@ -1349,15 +1324,11 @@ void Server::stepWorld(float dtMs) {
             const auto bytes = event.serialize();
             out.sections[11].emplace_back(bytes.begin(), bytes.end());
         }
-        for (const auto &event : shot.buffs) {
-            const auto bytes = event.serialize();
-            out.sections[11].emplace_back(bytes.begin(), bytes.end());
-        }
         for (const auto &s : frame.shots) { // section 5: every shot an NPC launched
             const auto bytes = s.serialize();
             out.sections[4].emplace_back(bytes.begin(), bytes.end());
         }
-        for (const creatures::HitRecord &r : outgoingHits) {
+        for (const creatures::HitRecord &r : frame.emittedHits) {
             const Hit h = Hit::from(r);
             out.sections[1].emplace_back(h.bytes.begin(), h.bytes.end());
         }

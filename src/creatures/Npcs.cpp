@@ -1806,7 +1806,7 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
     FlagScope indexScope{actorLookupActive};
     const ActorEntry recipient = lookupActor(hit.target, players);
     Combatant *target = recipient.combat();
-    if (!target || !(target->health > 0))
+    if (!target || target->health <= 0)
         return;
     if (!controlledActor && target->controller == 0) {
         frame.playerHits.push_back(hit);
@@ -2531,12 +2531,41 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
     }
 }
 
+void Npcs::stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen::WorldMap &map,
+                          const BlockType &block, std::span<PlayerView> players, NpcFrame &frame) {
+    flight.list.insert(flight.list.end(), frame.shots.begin(), frame.shots.end());
+    if (flight.list.empty())
+        return;
+    if (!actorLookupActive)
+        refreshActors(players);
+    FlagScope indexScope{actorLookupActive};
+    projectileTargets.clear();
+    projectileTargets.reserve(actors.size());
+    for (const auto &[key, actor] : actors)
+        projectileTargets.push_back({actor.combat(), actor.body()});
+    const auto source = [&](uint64_t key) { return lookupActor(key, players).combat(); };
+    const CombatFeedback feedback{frame.sounds, frame.buffs, frame.bursts};
+    ShotEffects output;
+    flight.step(elapsed, projectileTargets, source, block, [&] { return draw(); }, output,
+        {.sightRecords = &sightRecords, .terrain = &map, .feedback = &feedback, .emitHit = [&](const HitEmission &hit) {
+            frame.emittedHits.push_back(hit.record);
+            if (!hit.applyLocally)
+                return;
+            const size_t firstRelay = frame.playerHits.size();
+            applyWorldHit(hit.record, players, frame);
+            // Each player-target application can add a second wire record.
+            for (const auto &relay : std::span{frame.playerHits}.subspan(firstRelay))
+                frame.emittedHits.push_back(relay.record);
+        }});
+}
+
 void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                     int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming,
                     const std::vector<BuffEvent> &buffInput,
                     const std::function<void(int32_t)> &advanceControlled,
                     const std::function<void(PlayerView &)> &consumeItemRequests,
-                    const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState) {
+                    const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState,
+                    const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld) {
     leftoverMs += dtMs;
     const int32_t milliseconds = (int32_t)leftoverMs;
     leftoverMs -= (float)milliseconds;
@@ -2871,6 +2900,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         if (actor.npc)
             carryRidingPet(*actor.npc);
     }
+    if (finishWorld)
+        finishWorld(milliseconds, players);
 }
 
 NpcFrame::Added NpcFrame::addedSince(Cursor &cursor) const {

@@ -1,6 +1,7 @@
 // Bounded scheduling contracts; no reference-game instructions or assets.
 #include "creatures/Projectiles.h"
 #include "creatures/Npcs.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -136,11 +137,96 @@ void pointImpactSample() {
               effect.count == 4 && effect.style == LIT && effect.spread == 3.f,
           "the burst copies the restored fixed point and its water cell RGB with the native effect fields");
 }
+
+void dedicatedFlight() {
+    worldgen::WorldMap terrain;
+    terrain.add(std::make_shared<worldgen::Zone>(0, 0));
+    const BlockType block = [&](int32_t x, int32_t y, int32_t z) { return terrain.read(x, y, z).type(); };
+    for (const uint8_t kind : {uint8_t(HIT_DAMAGE), uint8_t(HIT_BLOCKED), uint8_t(HIT_ABSORBED)}) {
+        Combatant source, first, last;
+        source.id = 7;
+        source.controller = 1;
+        first.id = uint64_t(-3);
+        last.id = 3;
+        first.controller = last.controller = 0;
+        first.health = last.health = 20.f;
+        if (kind == HIT_BLOCKED) {
+            first.action = 8;
+            first.mana = .125f;
+            first.blockGauge = .5f;
+        } else if (kind == HIT_ABSORBED) {
+            first.buffs.push_back({ABSORB, 1000.f, 3000, 12});
+        }
+        Body sourceBody, firstBody, lastBody;
+        sourceBody.place({10, 10, 20});
+        firstBody.place({20, 10, 20});
+        lastBody.place({20, 10, 20});
+        std::array<PlayerView, 3> players{{{last, lastBody}, {source, sourceBody}, {first, firstBody}}};
+        Projectile arrow;
+        arrow.shooter = source.id;
+        std::copy_n(firstBody.position, 3, arrow.position);
+        arrow.damage = 19.f;
+        arrow.slow = 418;
+        NpcFrame frame;
+        frame.shots.push_back(arrow);
+        Projectiles flight;
+        worldgen::Random random(1);
+        Npcs world(random);
+        world.stepProjectiles(flight, 1, terrain, block, players, frame);
+        check(frame.emittedHits.size() == 2 && frame.playerHits.size() == 1 &&
+                  frame.emittedHits[0].target == first.id && frame.emittedHits[0].kind == kind &&
+                  frame.emittedHits[0].serialize() == frame.emittedHits[1].serialize() &&
+                  flight.list.empty() && frame.shots.front().serialize() == arrow.serialize(),
+              "the first signed player target receives two identical guard, ward or ordinary records in order");
+        check(first.health == 20.f && last.health == 20.f && first.slowMs == 418 && last.slowMs == 0,
+              "the role-zero relay keeps player health while the contact caller updates the admitted target clock");
+        if (kind == HIT_BLOCKED)
+            check(first.mana == .625f && first.blockGauge < .5f && frame.sounds.size() == 1 && frame.sounds[0].sound == 24,
+                  "guard's producer updates the live player state and sound before its delivery-only apply");
+        if (kind == HIT_ABSORBED)
+            check(first.buffs.front().value == 1000.f && frame.sounds.size() == 1 && frame.sounds[0].sound == 91,
+                  "ward emits twice for a player without locally consuming the resident ward");
+        if (kind != HIT_DAMAGE) {
+            worldgen::Random expected(1);
+            for (int i = 0; i < 5; i++)
+                expected.draw();
+            check(random.draw() == expected.draw(),
+                  "duplicate guard and ward delivery preserves gain, critical, proc and pitch draw counts");
+        }
+    }
+    Combatant source;
+    source.id = 9;
+    source.controller = 1;
+    Body sourceBody;
+    sourceBody.place({10, 10, 20});
+    std::array<PlayerView, 1> players{{{source, sourceBody}}};
+    Npcs world;
+    Npc target;
+    target.fighter.id = 20;
+    target.fighter.controller = 3;
+    target.fighter.health = 12.f;
+    target.body.place({20, 10, 20});
+    world.npcs().push_back(target);
+    Projectile arrow;
+    arrow.shooter = source.id;
+    std::copy_n(target.body.position, 3, arrow.position);
+    arrow.damage = 500.f;
+    NpcFrame frame;
+    frame.shots = {arrow, arrow};
+    Projectiles flight;
+    world.stepProjectiles(flight, 1, terrain, block, players, frame);
+    check(world.npcs().front().fighter.health == 0 && world.npcs().front().fatalPresented &&
+              frame.emittedHits.size() == 1 && frame.playerHits.empty() && flight.list.size() == 1 && frame.shots.size() == 2,
+          "the first shot kills the live actor before the second visit while both launch copies survive");
+    check(frame.sounds.size() >= 2 && frame.sounds.front().sound != 27 && frame.sounds.back().sound == 27,
+          "projectile impact feedback precedes the death sound produced by immediate application");
+}
 }
 
 int main() {
     trajectoryRay();
     pointImpactSample();
+    dedicatedFlight();
     {
         Collision c;
         c.source.action = 17;

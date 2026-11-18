@@ -306,7 +306,8 @@ std::array<const Item *, 2> spiritItems(const Combatant &source) {
     return items;
 }
 
-void appendItemEffects(const Combatant &source, const HitInput &input, float ratio, HitOutcome &out) {
+void appendItemEffects(const Combatant &source, const HitInput &input, float ratio,
+                       HitOutcome &out, std::vector<Burst> &bursts) {
     const glm::vec3 supplied = input.knockBack;
     const float squared = (supplied.y * supplied.y + supplied.x * supplied.x) + supplied.z * supplied.z;
     glm::vec2 direction(supplied);
@@ -350,7 +351,7 @@ void appendItemEffects(const Combatant &source, const HitInput &input, float rat
                 burst.size = .1f;
                 burst.style = BRIGHT;
                 burst.spread = 3.f;
-                out.bursts.push_back(burst);
+                bursts.push_back(burst);
             }
         }
 }
@@ -1025,8 +1026,10 @@ HitInput trapHitInput(glm::dvec3 targetAt, float damage, glm::vec3 push, bool re
 }
 
 HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker, const HitInput &in,
-                      const std::function<int()> &draw, const std::function<void(const HitEmission &)> &emit) {
+                      const std::function<int()> &draw, const std::function<void(const HitEmission &)> &emit,
+                      const CombatFeedback *feedback) {
     HitOutcome out;
+    const CombatFeedback effects = feedback ? *feedback : CombatFeedback{out.sounds, out.buffs, out.bursts};
     if (target.health <= 0)
         return out;
     if (attacker && (attacker->action == 91 || attacker->action == 74) && !in.targetOnGround)
@@ -1038,7 +1041,7 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         Burst sparks = Burst::at(glm::dvec3(0), {0, 0, 10}, {0.6f, 0.6f, 1, 1},
                                  (float)draw() * 0.1f / 32767.f + 0.1f, 8, FIRE); // attack-routine E4
         std::copy(in.targetRecordPosition.begin(), in.targetRecordPosition.end(), sparks.position);
-        out.bursts.push_back(sparks);
+        effects.bursts.push_back(sparks);
     }
     const auto targetPresentation = [&](int32_t kind, float scalar) {
         glm::dvec3 at;
@@ -1048,12 +1051,12 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         // outside the held producer contract.
         return SoundEvent{at, kind, scalar, 1};
     };
-    const auto sound = [&](int32_t id, float pitch) { out.sounds.push_back(targetPresentation(id, pitch)); };
+    const auto sound = [&](int32_t id, float pitch) { effects.sounds.push_back(targetPresentation(id, pitch)); };
     const auto earlyPresentation = [&](int32_t kind) {
         auto event = targetPresentation(kind, 1);
         const float scaledDraw = (float)draw() * .3f;
         event.pitch = scaledDraw / 32767.f + 1.f;
-        out.sounds.push_back(event);
+        effects.sounds.push_back(event);
     };
     auto record = [&](uint8_t kind, float amount, glm::vec3 k) {
         HitRecord h;
@@ -1115,7 +1118,7 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         // This fresh, cached ratio is not the upper-capped mitigation ratio.
         const float sweep = (float)attacker->combo / comboMax(*attacker);
         if (sweep > 0.25f)
-            appendItemEffects(*attacker, in, sweep, out);
+            appendItemEffects(*attacker, in, sweep, out, effects.bursts);
         if (in.area && sweep > 0) {
             const auto items = spiritItems(*attacker);
             const int count = (items[0] != nullptr) + (items[1] != nullptr);
@@ -1216,7 +1219,7 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         // deterministic zero padding; received records retain their opaque bytes.
         const BuffEvent event{attacker->id, target.id, {DAMAGE_OVER_TIME, .1f * x, 3000, attacker->id}};
         applyBuff(target, event.record);
-        out.buffs.push_back(event);
+        effects.buffs.push_back(event);
     }
     if (in.critical && target.controller != 6) {
         int voice = 0;
@@ -1279,7 +1282,7 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
         if (r() < chance) {
             out.records.back().stun = target.controller == 0 ? 1500 : 3000 - (1500 * target.powerTier >> 2);
             out.records.back().knockBack.z = 10;
-            out.sounds.push_back(targetPresentation(23, 1));
+            effects.sounds.push_back(targetPresentation(23, 1));
         }
     }
     consume();

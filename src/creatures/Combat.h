@@ -332,13 +332,21 @@ struct HitOutcome {
     std::vector<Burst> bursts; // particles §5.8, §5.9
 };
 
+struct CombatFeedback {
+    std::vector<SoundEvent> &sounds;
+    std::vector<BuffEvent> &buffs;
+    std::vector<Burst> &bursts;
+};
+
 // Produces hit records. Stable finite native inputs leave velocity unchanged;
 // response and velocity changes belong to the separate application phase.
 // emit preserves producer boundaries. Mode-zero callers apply target emissions
 // there so later calculation sees earlier mutations; source gains are record-only.
+// A supplied feedback sink retains the ordering across those application calls.
 HitOutcome resolveHit(Combatant &target, const glm::vec3 &targetVelocity, Combatant *attacker, const HitInput &hit,
                       const std::function<int()> &draw,
-                      const std::function<void(const HitEmission &)> &emit = {});
+                      const std::function<void(const HitEmission &)> &emit = {},
+                      const CombatFeedback *feedback = nullptr);
 
 // Hostility test (alpha-hostility-test.md §2.4): whether `source` may harm `other`. The same
 // object never; either role 6 always; exactly one role 1 always; two role-1 creatures when

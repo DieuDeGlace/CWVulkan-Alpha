@@ -205,7 +205,6 @@ class Server {
     // Projectiles §2: the NPCs' projectiles (players' own are simulated by their clients), and
     // their hits on NPCs, applied with the next step's incoming hits.
     creatures::Projectiles projectiles;
-    std::vector<creatures::HitRecord> shotHits;
     WorldItems items; // world items §1, per loaded zone
     StaticStates statics; // interaction §4.1, per loaded zone
     BlockEditLists edits;               // block edits §3, per loaded zone

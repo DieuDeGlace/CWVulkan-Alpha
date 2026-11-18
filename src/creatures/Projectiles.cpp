@@ -164,11 +164,11 @@ void spendBuff(Combatant &c, uint8_t kind, ShotEffects &out) {
         out.buffs.push_back(*event);
 }
 
-void gainBuff(Combatant &c, uint8_t kind, glm::dvec3 at, ShotEffects &out) {
+void gainBuff(Combatant &c, uint8_t kind, glm::dvec3 at, const CombatFeedback &feedback) {
     const Buff record{kind, 0, 30000};
     applyBuff(c, record);
-    out.buffs.push_back({c.id, c.id, record});
-    out.sounds.push_back({at, 47, 1, 1}); // upgrade2.wav
+    feedback.buffs.push_back({c.id, c.id, record});
+    feedback.sounds.push_back({at, 47, 1, 1}); // upgrade2.wav
 }
 
 // §4 step 4: the chain ends; the action clock is rescaled by Sold / Snew (the ratio first,
@@ -620,8 +620,16 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
 
 void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                        const std::function<Combatant *(uint64_t)> &lookup, const BlockType &block,
-                       const std::function<int()> &draw, ShotEffects &out, ProjectileContext context) {
+                       const std::function<int()> &draw, ShotEffects &out, const ProjectileContext &context) {
     const auto u = [&] { return (float)draw() / 32767.f; };
+    const CombatFeedback feedback =
+        context.feedback ? *context.feedback : CombatFeedback{out.sounds, out.buffs, out.bursts};
+    const auto emit = [&](const HitEmission &hit) {
+        if (context.emitHit)
+            context.emitHit(hit);
+        else
+            out.hits.push_back(hit);
+    };
     const float tau = (float)dt * 0.001f;
     const auto find = [&](uint64_t id) -> const ShotTarget * {
         for (const ShotTarget &t : creatures)
@@ -759,9 +767,9 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 if (contact) {
                     if (procChance(*from, .15f, draw) && !p.special &&
                         from->characterClass == 2 && from->specialization == 1)
-                        gainBuff(*from, 10, shooter ? shooter->body->blocks() : p.blocks(), out);
+                        gainBuff(*from, 10, shooter ? shooter->body->blocks() : p.blocks(), feedback);
                 } else if (procChance(*from, .25f, draw) && !p.special && p.kind == SPELL && p.element == 1) {
-                    gainBuff(*from, 9, shooter ? shooter->body->blocks() : p.blocks(), out);
+                    gainBuff(*from, 9, shooter ? shooter->body->blocks() : p.blocks(), feedback);
                 }
             }
             if (contact && x < 0)
@@ -776,7 +784,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     if (from->controller == 1)
                         h.amount *= .5f;
                     h.critical = critical;
-                    out.hits.emplace_back(h, !context.networkMode);
+                    emit({h, !context.networkMode});
                     if (context.networkMode && from == context.controlled && C.fighter == context.controlled &&
                         context.applySelfHit)
                         context.applySelfHit(h);
@@ -803,21 +811,14 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 std::copy_n(shooter->body->position, in.attackerRecordPosition.size(), in.attackerRecordPosition.begin());
             const auto resolve = [&](Combatant &target) {
                 return resolveHit(target, C.body->velocity, from, in, draw, [&](const HitEmission &emission) {
-                    out.hits.emplace_back(emission.record, emission.applyLocally && !context.networkMode);
-                });
+                    emit({emission.record, emission.applyLocally && !context.networkMode});
+                }, &feedback).hitAccepted;
             };
-            HitOutcome result;
-            if (context.networkMode) {
-                result = resolve(*C.fighter);
-            } else {
-                // Standalone callers still deliver staged target hits at their world boundary.
-                Combatant target = *C.fighter;
-                result = resolve(target);
-            }
-            out.buffs.insert(out.buffs.end(), result.buffs.begin(), result.buffs.end());
-            out.sounds.insert(out.sounds.end(), result.sounds.begin(), result.sounds.end());
-            out.bursts.insert(out.bursts.end(), result.bursts.begin(), result.bursts.end());
-            return result.hitAccepted;
+            if (context.networkMode || context.emitHit)
+                return resolve(*C.fighter);
+            // Offline client delivery still uses its staged world boundary.
+            Combatant target = *C.fighter;
+            return resolve(target);
         };
         // §5.1 step 1, §6.4: eligibility. With no shooter (or a water burst's contact) no test
         // runs; otherwise not the shooter and "can damage" (0x1988a0, owner first).
@@ -863,7 +864,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 continue;
             // §5.2: movement and blocks.
             if (p.kind == BOOMERANG_SHOT && ageBefore / 200 != p.age / 200)
-                out.sounds.push_back({p.blocks(), 15, 1 + 0.25f * u(), 1});
+                feedback.sounds.push_back({p.blocks(), 15, 1 + 0.25f * u(), 1});
             const auto move = [&](float sign) {
                 for (int k = 0; k < 3; k++)
                     p.position[k] = addFixed(p.position[k], int64_t(sign * ds[k] * WU));
@@ -873,7 +874,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 move(-1);
                 wall = true;
                 if (p.kind == ARROW)
-                    out.bursts.push_back(arrowBurst(p.position, pointCell(p.position, block, context.terrain)));
+                    feedback.bursts.push_back(arrowBurst(p.position, pointCell(p.position, block, context.terrain)));
             } else {
                 // Probe backward from the advanced point over the full world piece.
                 const float speed = float(std::sqrt(double(squaredLength(p.velocity))));
@@ -902,7 +903,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 if (!destroy) {
                     const int32_t sound = p.kind == SPELL ? (p.element == 2 ? 42 : 39) : 20;
                     const float pitch = (float)draw() * .4f / 32767.f + 1.f;
-                    out.sounds.push_back({p.blocks(), sound, pitch, 1});
+                    feedback.sounds.push_back({p.blocks(), sound, pitch, 1});
                 }
                 const bool skipCandidates = from && !context.networkMode && from->controller == 0 &&
                                             from != context.controlled;

@@ -2317,3 +2317,27 @@ matched its full hash and saved line count. The production player/controller
 diagnostic, five actual-client flows and all 36 archive digests passed.
 Original-client particle playback and dedicated defensive hit application
 remain open.
+
+## Dedicated projectile hit delivery (2026-11-17)
+
+RangedSchedulingTests gives two player targets the same geometry with
+opposite signed key order and inserts their views out of order. The first
+admitted signed target receives two byte-identical ordinary, guard or
+ward records. The duplicate keeps player health unchanged. Guard and
+ward retain the gain, critical, proc and pitch draw counts. The direct
+contact clock still updates the admitted target.
+
+A two-shot fixture verifies the first arrow's immediate lethal damage
+to an NPC, the second arrow's continued flight, and both unchanged
+outgoing launch copies. Impact feedback precedes the fatal sound. The
+Windows x64 build, ten focused suites and all 60 CTests passed. Revision
+23 parsed with 59 resolved links and the held dedicated and point-hit
+contracts matched their hashes and saved line counts.
+
+Two clients joined the production dedicated build on loopback, adopted
+seed 41, and retrieved both relayed shot records with their full bytes
+and order intact. The origin filtered the echoes. The server shut down
+cleanly. The production player/controller diagnostic, five actual-client
+flows and all 36 archive digests passed. Matched original dedicated hit
+playback, full launch admission and staged offline projectile application
+remain open.
