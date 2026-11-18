@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <iterator>
 #include <stb_image_write.h>
 
 #include "model_vert.h"
@@ -142,6 +143,7 @@ bool Renderer::createDevice(std::string *error) {
         *error = "no Vulkan 1.3 GPU can draw to this window";
         return false;
     }
+    vkGetPhysicalDeviceMemoryProperties(gpu, &memoryProperties);
 
     const float priority = 1;
     VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -560,12 +562,69 @@ bool Renderer::createScenePipelines() {
 }
 
 uint32_t Renderer::memoryType(uint32_t bits, VkMemoryPropertyFlags flags) const {
-    VkPhysicalDeviceMemoryProperties props;
-    vkGetPhysicalDeviceMemoryProperties(gpu, &props);
-    for (uint32_t i = 0; i < props.memoryTypeCount; i++)
-        if ((bits & (1u << i)) && (props.memoryTypes[i].propertyFlags & flags) == flags)
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
+        if ((bits & (1u << i)) && (memoryProperties.memoryTypes[i].propertyFlags & flags) == flags)
             return i;
     return 0;
+}
+
+namespace {
+constexpr VkDeviceSize BUFFER_PAGE_SIZE = 16 * 1024 * 1024;
+}
+
+// Each buffer keeps its own Vulkan handle and binds a disjoint, aligned range.
+// Pages contain buffer memory only.
+bool Renderer::useBufferPage(Buffer &buffer, const VkMemoryRequirements &requirements, uint32_t type, bool mapped) {
+    if (requirements.size > BUFFER_PAGE_SIZE)
+        return false;
+    const auto reserve = [&](size_t index) {
+        BufferPage &page = bufferPages[index];
+        for (auto range = page.freeRanges.begin(); range != page.freeRanges.end(); ++range) {
+            const auto [offset, size] = *range;
+            const VkDeviceSize padding = (requirements.alignment - offset % requirements.alignment) % requirements.alignment;
+            if (padding > size || requirements.size > size - padding)
+                continue;
+            const VkDeviceSize begin = offset + padding, end = begin + requirements.size;
+            page.freeRanges.erase(range);
+            if (padding)
+                page.freeRanges.emplace(offset, padding);
+            if (end < offset + size)
+                page.freeRanges.emplace(end, offset + size - end);
+            buffer.memory = page.memory;
+            buffer.memoryPage = uint32_t(index);
+            buffer.memoryOffset = begin;
+            buffer.allocationSize = requirements.size;
+            if (mapped)
+                buffer.mapped = static_cast<uint8_t *>(page.mapped) + begin;
+            return true;
+        }
+        return false;
+    };
+    for (size_t i = 0; i < bufferPages.size(); ++i) {
+        const BufferPage &page = bufferPages[i];
+        if (page.memory && page.memoryType == type && bool(page.mapped) == mapped && reserve(i))
+            return true;
+    }
+
+    BufferPage page;
+    page.memoryType = type;
+    VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation.allocationSize = BUFFER_PAGE_SIZE;
+    allocation.memoryTypeIndex = type;
+    if (vkAllocateMemory(device, &allocation, nullptr, &page.memory) != VK_SUCCESS)
+        return false; // the caller can still try its smaller individual allocation
+    if (mapped && vkMapMemory(device, page.memory, 0, BUFFER_PAGE_SIZE, 0, &page.mapped) != VK_SUCCESS) {
+        vkFreeMemory(device, page.memory, nullptr);
+        return false;
+    }
+    page.freeRanges.emplace(0, BUFFER_PAGE_SIZE);
+    const auto empty = std::find_if(bufferPages.begin(), bufferPages.end(), [](const auto &entry) { return !entry.memory; });
+    const size_t index = size_t(empty - bufferPages.begin());
+    if (empty == bufferPages.end())
+        bufferPages.push_back(std::move(page));
+    else
+        *empty = std::move(page);
+    return reserve(index);
 }
 
 // A host-visible buffer, mapped for its whole life.
@@ -582,6 +641,10 @@ Renderer::Buffer Renderer::makeBuffer(VkDeviceSize size, VkBufferUsageFlags usag
     alloc.allocationSize = req.size;
     alloc.memoryTypeIndex = memoryType(req.memoryTypeBits,
                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (useBufferPage(b, req, alloc.memoryTypeIndex, true)) {
+        vkBindBufferMemory(device, b.buffer, b.memory, b.memoryOffset);
+        return b;
+    }
     vkAllocateMemory(device, &alloc, nullptr, &b.memory);
     vkBindBufferMemory(device, b.buffer, b.memory, 0);
     vkMapMemory(device, b.memory, 0, size, 0, &b.mapped);
@@ -590,7 +653,38 @@ Renderer::Buffer Renderer::makeBuffer(VkDeviceSize size, VkBufferUsageFlags usag
 
 void Renderer::freeBuffer(Buffer &b) {
     vkDestroyBuffer(device, b.buffer, nullptr);
-    vkFreeMemory(device, b.memory, nullptr); // (also unmaps)
+    if (b.memoryPage == UINT32_MAX) {
+        vkFreeMemory(device, b.memory, nullptr); // also unmaps an individual allocation
+        b = {};
+        return;
+    }
+    BufferPage &page = bufferPages[b.memoryPage];
+    auto range = page.freeRanges.emplace(b.memoryOffset, b.allocationSize).first;
+    if (range != page.freeRanges.begin()) {
+        auto previous = std::prev(range);
+        if (previous->first + previous->second == range->first) {
+            previous->second += range->second;
+            page.freeRanges.erase(range);
+            range = previous;
+        }
+    }
+    auto next = std::next(range);
+    if (next != page.freeRanges.end() && range->first + range->second == next->first) {
+        range->second += next->second;
+        page.freeRanges.erase(next);
+    }
+    if (range->first == 0 && range->second == BUFFER_PAGE_SIZE) {
+        // Keep one empty page per memory type and mapping mode for the next frame.
+        const bool cached = std::any_of(bufferPages.begin(), bufferPages.end(), [&](const BufferPage &other) {
+            return &other != &page && other.memory && other.memoryType == page.memoryType &&
+                   bool(other.mapped) == bool(page.mapped) && other.freeRanges.size() == 1 &&
+                   other.freeRanges.begin()->second == BUFFER_PAGE_SIZE;
+        });
+        if (cached) {
+            vkFreeMemory(device, page.memory, nullptr);
+            page = {};
+        }
+    }
     b = {};
 }
 
@@ -607,6 +701,10 @@ Renderer::Buffer Renderer::makeDeviceBuffer(VkDeviceSize size, VkBufferUsageFlag
     VkMemoryAllocateInfo alloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     alloc.allocationSize = req.size;
     alloc.memoryTypeIndex = memoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (useBufferPage(b, req, alloc.memoryTypeIndex, false)) {
+        vkBindBufferMemory(device, b.buffer, b.memory, b.memoryOffset);
+        return b;
+    }
     vkAllocateMemory(device, &alloc, nullptr, &b.memory);
     vkBindBufferMemory(device, b.buffer, b.memory, 0);
     return b;
@@ -1255,6 +1353,8 @@ Renderer::~Renderer() {
     vkDestroySemaphore(device, renderDone, nullptr);
     vkDestroySemaphore(device, imageReady, nullptr);
     vkDestroyCommandPool(device, commandPool, nullptr);
+    for (const BufferPage &page : bufferPages)
+        vkFreeMemory(device, page.memory, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);

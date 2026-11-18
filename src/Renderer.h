@@ -16,6 +16,7 @@
 #include <volk.h>
 #include <glm/glm.hpp>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <span>
 #include <vector>
@@ -113,6 +114,14 @@ class Renderer {
         VkDeviceMemory memory = VK_NULL_HANDLE;
         VkDeviceSize size = 0;
         void *mapped = nullptr;
+        uint32_t memoryPage = UINT32_MAX;
+        VkDeviceSize memoryOffset = 0, allocationSize = 0;
+    };
+    struct BufferPage {
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        void *mapped = nullptr;
+        uint32_t memoryType = 0;
+        std::map<VkDeviceSize, VkDeviceSize> freeRanges;
     };
     struct Image {
         VkImage image = VK_NULL_HANDLE;
@@ -130,6 +139,7 @@ class Renderer {
     uint32_t memoryType(uint32_t bits, VkMemoryPropertyFlags flags) const;
     Buffer makeBuffer(VkDeviceSize size, VkBufferUsageFlags usage);
     Buffer makeDeviceBuffer(VkDeviceSize size, VkBufferUsageFlags usage);
+    bool useBufferPage(Buffer &buffer, const VkMemoryRequirements &requirements, uint32_t type, bool mapped);
     void recordUploads(VkCommandBuffer cmd);
     void freeRetired();
     bool prepareTerrainLights();
@@ -183,7 +193,9 @@ class Renderer {
     VkInstance instance = VK_NULL_HANDLE;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkPhysicalDevice gpu = VK_NULL_HANDLE;
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
     VkDevice device = VK_NULL_HANDLE;
+    std::vector<BufferPage> bufferPages;
     uint32_t queueFamily = 0;
     VkQueue queue = VK_NULL_HANDLE;
     VkCommandPool commandPool = VK_NULL_HANDLE;

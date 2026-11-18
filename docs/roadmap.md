@@ -634,6 +634,11 @@ Differences from the Steam engine that shape the plan:
   sources (+0x148/+0x154) and the swing count (+0x1314) with its spin variants.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
+- [x] Pool GPU buffer memory in aligned 16 MiB pages. Reuse free ranges,
+  preserve frame-fence retirement and bound the empty-page cache. The GPU
+  routing probe covers interleaved cancellation, reuse and large buffers.
+- [ ] Complete streaming frame-time and memory acceptance across larger
+  views, world changes and longer sessions.
 - [x] Shared water (`shaders/water.frag`). The client always uses the Steam surface
   with refraction, bank reflections, depth color and sun glints. The client and
   dedicated server always make natural shallows swimmable. Diagnostic generators

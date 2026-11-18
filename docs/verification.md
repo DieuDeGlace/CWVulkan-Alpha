@@ -2718,3 +2718,30 @@ passed. The production player/controller diagnostic and five actual
 client flows passed. Package inspection verified 36 hashes in 37 files. Revision 39
 parsed all 81 links and both held contracts matched their exact hashes
 and physical line counts. The native menu-scene focus remains open.
+
+## Pooled Vulkan buffer memory (2026-11-18)
+
+The GPU routing diagnostic adds 1,152 temporary meshes in three waves
+with varied vertex sizes. Each wave cancels interleaved uploads, submits
+the other ranges, then retires them across frame fences. The two retained
+quads keep exact sampled colors of (168, 0, 0) and (0, 0, 168). Replacement
+quads also draw those colors from the recycled ranges in each wave. A vertex
+buffer above 17 MiB also preserves those colors through upload and
+retirement. Storage growth, clearing and all existing light-source routing
+checks passed in the same Vulkan process.
+
+The first owned-content comparison reproduced a 4,098.31 ms world update
+during streaming and edits, with 25.2537 s for that stage. The paged run
+observed 79.7946 ms and 7.63031 s respectively. Both full floor captures,
+before and after live edits, were byte-identical between the two paths.
+Both paths also committed the exact 183/216 seam, preserved old snapshots,
+retried an intervening edit and kept the immediate destruction margin.
+These are isolated measurements on the local machine.
+In a consecutive baseline-then-paged repeat, the longest updates were
+1,462.2 ms and 111.19 ms. That stage took 10.9909 s and 8.62885 s. Both
+complete captures matched byte for byte again, and all light checks passed.
+
+The Windows x64 build, all 60 serial CTests, production player/controller
+diagnostic and five actual client flows passed. The package verified 36
+hashes in 37 files. Wider-view memory use and longer-session frame times
+remain open acceptance work.

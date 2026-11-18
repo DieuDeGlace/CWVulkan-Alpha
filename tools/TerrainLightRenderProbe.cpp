@@ -86,10 +86,10 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     if (!renderer.init(window, false, aa, shadows, &error))
         throw std::runtime_error(error);
     const MeshId left = renderer.addMesh(quad()), right = renderer.addMesh(quad());
-    const std::vector<DrawItem> draws{
+    std::vector<DrawItem> draws{
         {left, glm::mat4(1), false},
         {right, glm::translate(glm::mat4(1), glm::vec3(32, 0, 0)), false}};
-    const std::array<terrain_lights::Chunk, 2> chunks{{{{0, 0}, left}, {{1, 0}, right}}};
+    std::array<terrain_lights::Chunk, 2> chunks{{{{0, 0}, left}, {{1, 0}, right}}};
     Camera camera;
     camera.eye = {24, -32, 32};
     camera.pitchDegrees = glm::degrees(std::atan(32.f / 40.f));
@@ -125,7 +125,43 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
             throw std::runtime_error("Terrain storage rows did not route red/blue lights");
     };
     const std::vector colours{light({8, 8, 4}, 16, {1, 0, 0}), light({40, 8, 4}, 16, {0, 0, 1})};
-    requireColours(capture("chunk-colours", selector.rebuild(colours, chunks, {})));
+    const auto reference = capture("chunk-colours", selector.rebuild(colours, chunks, {}));
+    requireColours(reference);
+    for (int wave = 0; wave < 3; ++wave) {
+        std::vector<MeshId> temporary;
+        for (int i = 0; i < 384; ++i) {
+            auto mesh = quad();
+            mesh.vertices.resize(5 + (i * 113 + wave * 37) % 5000);
+            temporary.push_back(renderer.addMesh(mesh));
+        }
+        // Cancel interleaved pending copies, then retire the submitted ranges.
+        for (size_t i = 0; i < temporary.size(); i += 2)
+            renderer.removeMesh(temporary[i]);
+        const auto pendingName = "buffer-pending-" + std::to_string(wave);
+        if (capture(pendingName.c_str(), selector.rebuild(colours, chunks, {})) != reference)
+            throw std::runtime_error("Pending mesh replacement changed the retained GPU geometry");
+        for (size_t i = 1; i < temporary.size(); i += 2)
+            renderer.removeMesh(temporary[i]);
+        const auto retiredName = "buffer-retired-" + std::to_string(wave);
+        if (capture(retiredName.c_str(), selector.rebuild(colours, chunks, {})) != reference)
+            throw std::runtime_error("Retired mesh range reuse changed the retained GPU geometry");
+        for (size_t i = 0; i < draws.size(); ++i) {
+            renderer.removeMesh(draws[i].mesh);
+            draws[i].mesh = renderer.addMesh(quad());
+            chunks[i].mesh = draws[i].mesh;
+        }
+        const auto rebuiltName = "buffer-rebuilt-" + std::to_string(wave);
+        if (capture(rebuiltName.c_str(), selector.rebuild(colours, chunks, {})) != reference)
+            throw std::runtime_error("Newly drawn geometry did not survive recycled buffer ranges");
+    }
+    auto oversized = quad();
+    oversized.vertices.resize(17 * 1024 * 1024 / sizeof(ModelVertex) + 1);
+    const MeshId large = renderer.addMesh(oversized);
+    if (capture("buffer-oversized", selector.rebuild(colours, chunks, {})) != reference)
+        throw std::runtime_error("The oversized buffer allocation changed existing GPU geometry");
+    renderer.removeMesh(large);
+    if (capture("buffer-oversized-retired", selector.rebuild(colours, chunks, {})) != reference)
+        throw std::runtime_error("Retiring the oversized buffer changed existing GPU geometry");
     // Force a second allocation/descriptor update after earlier frames used the
     // buffer, and exercise nontrivial storage row offsets. Mesh zero is unused.
     std::vector<terrain_lights::Selection> grown(6);

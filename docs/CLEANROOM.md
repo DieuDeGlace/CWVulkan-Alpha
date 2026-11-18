@@ -4186,3 +4186,22 @@ the live drawn-height correction and preserves collision shortening and
 the prior focus. The background focus of the title and selection screens,
 complete native actor reset, saved selection and return-to-title lifetime,
 and original first-present playback are still open.
+
+## GPU buffer-memory pages (2026-11-18)
+
+Profiling project-owned Vulkan code localized streaming stalls to repeated
+mesh-buffer allocation. The implementation now binds each buffer to an
+aligned, disjoint range within a 16 MiB page of the selected memory type.
+Host-visible pages are mapped coherently. GPU-visible buffer lifetime
+continues through the existing frame fence. Canceled pending uploads
+return their ranges immediately. Free ranges coalesce, and each memory
+type and mapping mode can retain one empty page for reuse. Individual
+allocation handles buffers larger than a page and page-allocation fallback.
+
+This is an engine resource-management adapter. Verification compares frame
+bytes and exercises buffer reuse and the simulation contracts. Page ranges
+follow Vulkan's buffer binding size, alignment and memory
+type requirements. The current ordinary buffers have no external-memory or
+sparse flags. Images own their allocations. The implementation uses
+project-owned code and the Vulkan specification. [Buffer binding](https://docs.vulkan.org/refpages/latest/refpages/source/vkBindBufferMemory.html),
+[dedicated allocation requirements](https://docs.vulkan.org/refpages/latest/refpages/source/VkMemoryDedicatedRequirements.html).
