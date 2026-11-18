@@ -1216,7 +1216,7 @@ void Server::stepWorld(float dtMs) {
                 return false; // players retain their own motion
             });
             npcs.stepProjectiles(projectiles, elapsed, zones, block, views, frame);
-        });
+        }, &projectiles);
     for (const creatures::NpcFrame::Death &death : frame.deaths) // mod SDK v6
         tellMods([this, id = death.fighter.id, type = death.fighter.type, level = death.fighter.level,
                   credited = death.credited] {

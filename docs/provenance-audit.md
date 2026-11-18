@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-18 after batch 69 and the rulings. The 289 tracked contracts
-comprise 235 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-18 after batch 70 and the rulings. The 292 tracked contracts
+comprise 238 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -136,6 +136,9 @@ Batch 67 covers `alpha-start-menu-title-layout.md`.
 Batch 68 covers `alpha-character-creation-preview-entry.md` and
 `alpha-character-creation-facing-and-camera-height.md`.
 Batch 69 covers `alpha-menu-camera-focus-producer.md`.
+Batch 70 covers `alpha-dedicated-action-projectile-launch.md`,
+`alpha-ray-launch-fields-reconciliation.md` and
+`alpha-ray-post-hit-timing-evaluation.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -217,6 +220,7 @@ Batch 69 covers `alpha-menu-camera-focus-producer.md`.
 | `alpha-creatures-models.md` | A | 1920 | 0 |
 | `alpha-critical-and-haste-stat-numerics.md` | A | 342 | 1 |
 | `alpha-data-stores.md` | A | 155 | 0 |
+| `alpha-dedicated-action-projectile-launch.md` | A | 181 | 0 |
 | `alpha-dedicated-projectile-step.md` | A | 405 | 0 |
 | `alpha-descriptor-activation-refresh.md` | A | 89 | 1 |
 | `alpha-descriptor-equipment-setup.md` | A | 133 | 1 |
@@ -324,6 +328,8 @@ Batch 69 covers `alpha-menu-camera-focus-producer.md`.
 | `alpha-protection-state-producers.md` | B | 107 | 1 |
 | `alpha-ranged-action-scheduling.md` | B | 135 | 2 |
 | `alpha-ranged-audio-boundaries.md` | B | 148 | 1 |
+| `alpha-ray-launch-fields-reconciliation.md` | A | 66 | 0 |
+| `alpha-ray-post-hit-timing-evaluation.md` | A | 86 | 0 |
 | `alpha-recipe-grant-entry-boundary.md` | B | 86 | 1 |
 | `alpha-relationship-kind-89-admission.md` | A | 55 | 0 |
 | `alpha-remote-creature-interpolation.md` | A | 223 | 0 |

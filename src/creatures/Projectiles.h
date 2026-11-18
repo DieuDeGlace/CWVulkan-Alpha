@@ -71,18 +71,15 @@ void receivedActionEffects(const Combatant &c, const Body &body, int32_t dtMs, g
                            const std::function<int()> &draw, std::vector<SoundEvent> &sounds,
                            std::vector<Burst> &bursts);
 
-// §2.3-§2.6: the projectiles a creature's action makes this step (`beforeMs` as above; `aim`
-// is record field 26, from the creature to what it aims at). `block` finds how far a healer's
-// swing reaches (§2.6).
+// §2.3-§2.5: the travelling projectiles a creature's action makes this step.
+// The ray family dispatches through stepRayAction, including its stationary clouds.
 void launch(Combatant &c, const Body &body, glm::vec3 aim, float beforeMs, float dtMs, const std::function<int()> &draw,
-            std::vector<Projectile> &shots, ShotEffects &out, const BlockType &block = {});
+            std::vector<Projectile> &shots, ShotEffects &out, const BlockType &block = {},
+            const std::function<void(const Projectile &)> &resident = {});
 
-// §2.6: a healer's (class 3, specialization 1) healing burst at `at` (blocks): kind 3, element
-// 2, radius 4.
-Projectile healingBurst(const Combatant &healer, glm::dvec3 at);
-// Beam-leftovers contract §5.1: the ray case's water cloud, the same record with +0x48 from
-// the power query (stat-queries contract §5, the engine's magicBase) times 0.1.
-Projectile rayCloud(const Combatant &healer, glm::dvec3 at);
+// The ray family's water cloud keeps its exact fixed center and evaluates the
+// magic base afresh at each launch. The reconciliation contract fixes strength at zero.
+Projectile rayCloud(const Combatant &healer, const std::array<int64_t, 3> &center);
 
 // The actions whose hits travel as projectiles (§2) rather than strike at the hit moment.
 bool shootsProjectile(int32_t action);

@@ -1,4 +1,5 @@
 #include "creatures/Strike.h"
+#include "creatures/RayActions.h"
 #include "creatures/Npcs.h"
 #include "creatures/FatalRecipients.h"
 #include "creatures/TargetSelection.h"
@@ -1936,7 +1937,7 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
 }
 
 // §5 for one target of a strike or a beam; true when the hit was not blocked or refused.
-bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, NpcFrame &frame,
+bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, const Body &body, NpcFrame &frame,
                     HitInput in, std::span<PlayerView> players) {
     const glm::dvec3 from = attackerBody.blocks();
     in.targetOnGround = (body.contact & ON_GROUND) != 0;
@@ -1970,164 +1971,42 @@ bool Npcs::landBlow(Combatant &attacker, const Body &attackerBody, Combatant &ta
     return out.hitAccepted;
 }
 
-void Npcs::beamTick(Combatant &attacker, const Body &attackerBody, float t, float dt, std::span<PlayerView> players,
+void Npcs::beamTick(Combatant &attacker, const Body &body, int32_t milliseconds, std::span<PlayerView> players,
                     NpcFrame &frame, const BlockType &block) {
-    // Aim-triplet contract §3.1 (case 0x215C68) for actions 0x1C and 0x5F, with the held
-    // beam-leftovers contract: mana (§1), the empty-loop rescale (§2.2), the visiting order (§6),
-    // the per-hit critical draw (§8) and the water clouds of class pair (3, 1) (§5.2).
-    if (attacker.action != 28 && attacker.action != 95)
+    if (!isRayAction(attacker.action))
         return;
-    const Phases timing = phases(attacker, attacker.action);
-    const int32_t clock = int32_t(t), step = int32_t(dt);
-    const int32_t B = timing.windUp, C = timing.active;
-    const int32_t after = std::bit_cast<int32_t>(uint32_t(clock) + uint32_t(step));
-    const bool first = clock <= B && B < after;
-    // §1.2: action 0x1C drains s x 0.0002 on every update the case runs, whatever the clock.
-    // §1.3: action 0x5F pays its cost on the first crossing: 0.3, or nothing while a kind-9
-    // effect is present, which is then reset (with its notice).
-    if (attacker.action == 28) {
-        attacker.mana = attacker.mana - float(step) * std::bit_cast<float>(0x3951B717u);
-    } else if (first) {
-        const bool kind9 = attacker.hasBuff(9);
-        attacker.mana = attacker.mana - (kind9 ? 0.f : std::bit_cast<float>(0x3E99999Au));
-        if (kind9)
-            if (auto consumed = consumeBuff(attacker, 9))
-                frame.buffs.push_back(*consumed);
+    Combatant *controlled = actorLookupActive ? controlledActor : nullptr;
+    for (PlayerView &player : players)
+        if (player.local)
+            controlled = &player.fighter;
+    if (attacker.controller == 0 && &attacker != controlled)
+        return;
+    std::vector<ShotTarget> targets;
+    if (actorLookupActive) {
+        targets.reserve(actors.size());
+        for (const auto &[key, actor] : actors)
+            targets.push_back({actor.combat(), actor.body()});
+    } else {
+        targets.reserve(players.size() + list.size());
+        for (PlayerView &player : players)
+            targets.push_back({&player.fighter, &player.body});
+        for (Npc &npc : list)
+            targets.push_back({&npc.fighter, &npc.body});
     }
-    // §1.4: negative mana is set to zero and the rest of the case is skipped this update.
-    if (0.f > attacker.mana) {
-        attacker.mana = 0.f;
-        return;
-    }
-    if (after < B || clock >= B + C)
-        return;
-    const bool repeat = after > B && (after - B) / 200 != (clock - B) / 200;
-    if (!first && !repeat)
-        return;
-
-    const auto normalized = [](glm::vec3 v) {
-        const float squared = (v.x * v.x + v.y * v.y) + v.z * v.z;
-        const float inverse = 1.f / float(std::sqrt(double(squared)));
-        return glm::vec3(v.x * inverse, v.y * inverse, v.z * inverse);
+    RayActionWorld world;
+    world.controlled = controlled;
+    world.targets = targets;
+    world.sight = {block, sightRecords};
+    world.hit = [&](Combatant &target, const Body &targetBody, HitInput input) {
+        return landBlow(attacker, body, target, targetBody, frame, input, players);
     };
-    const glm::vec3 aim = attacker.aim;
-    const float aimSquared = (aim.x * aim.x + aim.y * aim.y) + aim.z * aim.z;
-    const glm::vec3 D = aimSquared > 0.f ? normalized(aim) : aim;
-    const std::array<int64_t, 3> sight = offsetPoint(attackerBody, attackerBody.yaw, attackerBody.appearanceFlags);
-    const glm::dvec3 from = glm::dvec3((double)sight[0], (double)sight[1], (double)sight[2]) / 65536.0;
-    // Ray routine 0x1A35D0 with the unconditionally normalized aim, maximum 200, flags 0 and 1.
-    // A zero aim is outside the contract; the engine gives it no length.
-    glm::vec3 unit(0);
-    float length = 0;
-    if (aimSquared > 0.f) {
-        unit = normalized(aim);
-        length = visibility::trace({sight[0], sight[1], sight[2]}, {unit.x, unit.y, unit.z}, 200.f, 0, 1,
-                                   {block, sightRecords});
-    }
-    const auto blocksOf = [](const std::array<int64_t, 3> &raw) {
-        return glm::dvec3(double(raw[0]), double(raw[1]), double(raw[2])) / 65536.0;
+    world.launch = [&](const Projectile &shot) {
+        if (projectileWorld)
+            projectileWorld->list.push_back(shot);
+        frame.shots.push_back(shot);
     };
-    const auto alongAim = [&](const std::array<int64_t, 3> &start) {
-        std::array<int64_t, 3> end{};
-        for (size_t k = 0; k < 3; k++)
-            end[k] = std::bit_cast<int64_t>(uint64_t(start[k]) + uint64_t(int64_t(unit[k] * length * 65536.f)));
-        return end;
-    };
-    // §5.2 path 1: class pair (3, 1) leaves a water cloud (the engine's healing burst) at the
-    // sight point plus the aim times the length on the first crossing, even for no length.
-    const bool clouds = first && attacker.characterClass == 3 && attacker.specialization == 1;
-    if (clouds)
-        frame.shots.push_back(rayCloud(attacker, blocksOf(alongAim(sight))));
-
-    // Open points 1 §3.1 step 4: a tick clears the hit set and the evaded set (+0x11B4).
-    attacker.deferred.clear();
-    std::set<uint64_t> touched;
-    bool admitted = false;
-    if (length > 0.f) {
-        // §6: the world map is visited in ascending signed 64-bit id.
-        struct Visit {
-            Combatant *fighter;
-            Body *body;
-        };
-        std::vector<Visit> order;
-        order.reserve(players.size() + list.size());
-        for (PlayerView &v : players)
-            order.push_back({&v.fighter, &v.body});
-        for (Npc &n : list)
-            order.push_back({&n.fighter, &n.body});
-        std::stable_sort(order.begin(), order.end(), [](const Visit &a, const Visit &b) {
-            return std::bit_cast<int64_t>(a.fighter->id) < std::bit_cast<int64_t>(b.fighter->id);
-        });
-        std::array<int64_t, 3> P = sight;
-        const int64_t advance[3] = {int64_t(D.x * 65536.f), int64_t(D.y * 65536.f), int64_t(D.z * 65536.f)};
-        const auto test = [&](Combatant &c, Body &body) {
-            if (c.id == attacker.id || !(c.health > 0) || touched.count(c.id) || c.dodgeMs != 0)
-                return;
-            const float r = body.size.x * .5f + 1.f;
-            int64_t horizontal = 0;
-            for (int k = 0; k < 2; k++) {
-                const uint64_t d = uint64_t(P[size_t(k)]) - uint64_t(body.position[k]);
-                horizontal = std::bit_cast<int64_t>(uint64_t(horizontal) +
-                                                    uint64_t(std::bit_cast<int64_t>(d * d) / 65536));
-            }
-            if (!(horizontal < int64_t(r * r * 65536.f)))
-                return;
-            const float dz = float(std::bit_cast<int64_t>(uint64_t(P[2]) - uint64_t(body.position[2]))) * (1.f / 65536.f);
-            if (!(std::fabs(double(dz)) < double(body.size.z * .5f + 1.f)))
-                return;
-            touched.insert(c.id);
-            // Strike-call-sites B4: the critical query's draw, then the S4 draw (whose consumer
-            // the beam-leftovers contract left open), both before admission.
-            const bool critical = (float)draw() / 32767.f < criticalChance(attacker);
-            const HitInput in = beamInput(attacker, critical, [&] { return draw(); });
-            // Hostility-test caller 0x21658E (striker, target).
-            if (hostilityTest(attacker, c)) {
-                const bool accepted = landBlow(attacker, attackerBody, c, body, frame, in, players);
-                // B6.1: class pair (_, 2) drains: a self record of -S4 and a direct health gain.
-                if (accepted && attacker.specialization == 2) {
-                    HitRecord drain;
-                    drain.attacker = drain.target = attacker.id;
-                    std::copy_n(attackerBody.position, 3, drain.position.begin());
-                    drain.critical = in.critical;
-                    drain.amount = std::bit_cast<float>(std::bit_cast<uint32_t>(in.amount) ^ 0x80000000u);
-                    frame.emittedHits.push_back(drain);
-                    attacker.health = attacker.health - drain.amount;
-                    if (attacker.health > maxHealth(attacker))
-                        attacker.health = maxHealth(attacker);
-                }
-                if (clouds) // §5.2 path 2 / B6.2: a cloud per creature that reached the call
-                    frame.shots.push_back(rayCloud(attacker, blocksOf(P)));
-                admitted = true; // B6.3: the hit-any flag, whatever the call returned
-            }
-        };
-        for (int32_t i = 0; length > float(i); i++) {
-            for (const Visit &v : order)
-                test(*v.fighter, *v.body);
-            for (size_t k = 0; k < 3; k++)
-                P[k] = std::bit_cast<int64_t>(uint64_t(P[k]) + uint64_t(advance[k]));
-        }
-    }
-    if (touched.empty()) {
-        // §4.1: the effect record at the position (not the sight point) plus the aim times the
-        // length, carrying -D; engine sparks present it.
-        frame.bursts.push_back(Burst::at(blocksOf(alongAim({attackerBody.position[0], attackerBody.position[1],
-                                                            attackerBody.position[2]})),
-                                         -D, {1, 0.2f, 0.5f, 1}, 0.1f, 5, FIRE));
-        // §2.2: the combo resets and the clock is rescaled by the speed query before and after
-        // (attackSpeed is the engine's query 0x047700).
-        const float q1 = attackSpeed(attacker);
-        attacker.combo = 0;
-        const float q2 = attackSpeed(attacker);
-        const float scaled = (q1 / q2) * float(attacker.actionMs);
-        attacker.actionMs = scaled >= -2147483648.f && scaled < 2147483648.f ? int32_t(scaled) : INT32_MIN;
-    } else if (admitted) {
-        attacker.combo += 1;
-        attacker.comboElapsedMs = 0;
-    }
-    // §8: the channel sound on the 200-ms grid of the action's own time, one pitch draw: 0x25
-    // when this pulse admitted a creature, else 0x24.
-    if (std::trunc((t + dt) / 200) != std::trunc(t / 200))
-        frame.sounds.push_back({from, admitted ? 37 : 36, 1 + 0.25f * (float)draw() / 32767.f, 1});
+    stepRayAction(attacker, body, milliseconds, world,
+                  {frame.emittedHits, frame.buffs, frame.sounds, frame.bursts}, [&] { return draw(); });
 }
 
 static float approachFacing(float value, float target, int32_t milliseconds, float rate) {
@@ -2416,7 +2295,7 @@ void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, co
         }
     for (PlayerView &p : players)
         if (p.strikes && p.fighter.health > 0)
-            beamTick(p.fighter, p.body, p.actionMsBefore, (float)dtMs, players, frame, block);
+            beamTick(p.fighter, p.body, dtMs, players, frame, block);
     for (PlayerView &p : players)
         if (p.strikes && p.fighter.health > 0)
             healStream(p.fighter, p.body, p.actionMsBefore, (float)dtMs, players, frame);
@@ -2424,8 +2303,9 @@ void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, co
 
 NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                     int32_t day, const BlockType &block, const std::vector<HitRecord> &incoming, NpcFrame frame,
-                    const std::vector<BuffEvent> &buffInput) {
-    stepInto(dtMs, map, std::move(players), timeOfDayMs, day, block, frame, incoming, buffInput);
+                    const std::vector<BuffEvent> &buffInput, Projectiles *projectiles) {
+    stepInto(dtMs, map, std::move(players), timeOfDayMs, day, block, frame, incoming, buffInput,
+             {}, {}, {}, {}, projectiles);
     return frame;
 }
 
@@ -2539,7 +2419,8 @@ void Npcs::stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen:
                           const BlockType &block, std::span<PlayerView> players, NpcFrame &frame,
                           size_t firstLaunch) {
     const auto launches = std::span<const Projectile>{frame.shots}.subspan(firstLaunch);
-    flight.list.insert(flight.list.end(), launches.begin(), launches.end());
+    if (&flight != projectileWorld)
+        flight.list.insert(flight.list.end(), launches.begin(), launches.end());
     if (flight.list.empty())
         return;
     if (!actorLookupActive)
@@ -2575,7 +2456,13 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
                     const std::function<void(int32_t)> &advanceControlled,
                     const std::function<void(PlayerView &)> &consumeItemRequests,
                     const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState,
-                    const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld) {
+                    const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld,
+                    Projectiles *projectiles) {
+    struct ProjectileScope {
+        Projectiles *&current;
+        Projectiles *previous;
+        ~ProjectileScope() { current = previous; }
+    } projectileScope{projectileWorld, std::exchange(projectileWorld, projectiles)};
     leftoverMs += dtMs;
     const int32_t milliseconds = (int32_t)leftoverMs;
     leftoverMs -= (float)milliseconds;
@@ -2775,7 +2662,15 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         chargeSound(c, before, milliseconds, npc.body.blocks(), shot);
         actionSounds(c, before, dtMs, npc.body.blocks(), [&] { return draw(); }, shot.sounds);
         const size_t launched = frame.shots.size();
-        launch(c, npc.body, c.aim, before, dtMs, [&] { return draw(); }, frame.shots, shot, block);
+        launch(c, npc.body, c.aim, before, dtMs, [&] { return draw(); }, frame.shots, shot, block,
+            [&](const Projectile &projectile) {
+                if (projectileWorld) {
+                    Projectile resident = projectile;
+                    if (resident.kind == BOOMERANG_SHOT)
+                        resident.scale = npc.looks.weaponScale;
+                    projectileWorld->list.push_back(resident);
+                }
+            });
         for (size_t k = launched; k < frame.shots.size(); k++) // §2.3: a boomerang has its thrower's weapon scale
             if (frame.shots[k].kind == BOOMERANG_SHOT)
                 frame.shots[k].scale = npc.looks.weaponScale;
@@ -2787,8 +2682,8 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             const int32_t end = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(milliseconds));
             if (before < period && end >= period)
                 bite(npc, players, frame);
-        } else if (c.action == 28 || c.action == 95) {
-            beamTick(c, npc.body, before, dtMs, players, frame, block);
+        } else if (isRayAction(c.action)) {
+            beamTick(c, npc.body, milliseconds, players, frame, block);
         } else if (c.action == 0x22) {
             healStream(c, npc.body, before, dtMs, players, frame);
         } else if (meleeAction(c.action)) {

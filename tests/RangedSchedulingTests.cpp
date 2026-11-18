@@ -1,7 +1,9 @@
 // Bounded scheduling contracts; no reference-game instructions or assets.
 #include "creatures/Projectiles.h"
 #include "creatures/Npcs.h"
+#include "creatures/RayActions.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 
@@ -49,6 +51,309 @@ struct Collision {
             [](int32_t, int32_t, int32_t) { return uint8_t(0); }, draw, effects, context);
     }
 };
+
+struct RayCase {
+    Combatant source;
+    Body body;
+    NpcFrame frame;
+    Projectiles resident;
+    std::vector<ShotTarget> targets;
+    std::vector<int64_t> order;
+    RayActionWorld world;
+    int draws = 0;
+
+    RayCase() {
+        source.id = 41;
+        source.controller = 1;
+        source.characterClass = 3;
+        source.specialization = 1;
+        source.action = 94;
+        source.actionMs = phases(source, source.action).windUp;
+        source.mana = 1;
+        source.aim = {1, 0, 0};
+        body.place({0, 0, 2});
+        world.sight.voxel = [](int32_t x, int32_t, int32_t) { return uint8_t(x >= 7 ? 1 : 0); };
+        world.hit = [&](Combatant &target, const Body &, HitInput) {
+            order.push_back(std::bit_cast<int64_t>(target.id));
+            return true;
+        };
+        world.launch = [&](const Projectile &shot) {
+            order.push_back(INT64_MIN);
+            resident.list.push_back(shot);
+            frame.shots.push_back(shot);
+        };
+    }
+    void step(int32_t milliseconds = 1) {
+        world.targets = targets;
+        stepRayAction(source, body, milliseconds, world,
+                      {frame.emittedHits, frame.buffs, frame.sounds, frame.bursts}, [&] { draws++; return 32767; });
+    }
+};
+
+void rayLaunches() {
+    {
+        RayCase ray;
+        ray.source.controller = 0;
+        ray.source.actionMs = phases(ray.source, 94).windUp;
+        Combatant target;
+        target.id = 72;
+        target.controller = 1;
+        Body targetBody;
+        targetBody.place({3, 0, 2});
+        std::array<PlayerView, 2> players{{{ray.source, ray.body, 0, ray.source.actionMs, true, false, true},
+                                         {target, targetBody, 0, 0, false}}};
+        Npcs world;
+        world.dispatchPlayerActions(players, 1, ray.world.sight.voxel, ray.frame);
+        check(ray.frame.shots.size() == 2 && ray.source.struck == std::vector<uint64_t>{target.id} &&
+                  !ray.frame.emittedHits.empty(),
+              "the actual offline player dispatcher gives action 94 its endpoint, actor hit and secondary cloud");
+        ray.frame.reset();
+        ray.source.actionMs = phases(ray.source, 94).windUp;
+        worldgen::WorldMap terrain;
+        world.stepInto(1, terrain, {players.begin(), players.end()}, 43200000, 0,
+            ray.world.sight.voxel, ray.frame, {}, {}, {}, {}, {},
+            [&](int32_t piece, std::span<PlayerView> views) {
+                check(ray.resident.list.size() == 2 && ray.frame.shots.size() == 2 &&
+                          ray.resident.list[0].age == 0,
+                      "the production world call has resident ray copies before its object and flight tail");
+                world.stepProjectiles(ray.resident, piece, terrain, ray.world.sight.voxel, views, ray.frame);
+            }, &ray.resident);
+        check(ray.resident.list.size() == 2 && ray.resident.list[0].age == 1 && ray.frame.shots[0].age == 0,
+              "bound flight steps each fresh resident once and retains the unchanged launch output");
+        ray.source.action = 0;
+        world.stepInto(1, terrain, {players.begin(), players.end()}, 43200000, 0,
+            ray.world.sight.voxel, ray.frame, {}, {}, {}, {}, {},
+            [&](int32_t piece, std::span<PlayerView> views) {
+                world.stepProjectiles(ray.resident, piece, terrain, ray.world.sight.voxel, views, ray.frame, 2);
+            }, &ray.resident);
+        check(ray.resident.list.size() == 2 && ray.resident.list[0].age == 2 && ray.frame.shots.size() == 2,
+              "a later bound world piece advances the residents without replaying their launch collector");
+    }
+    {
+        RayCase ray;
+        Combatant positive, negative, linked, dodging, dead;
+        positive.id = 5;
+        negative.id = uint64_t(-3);
+        linked.id = 9;
+        dodging.id = 10;
+        dodging.dodgeMs = -1;
+        dead.id = 11;
+        dead.health = 0;
+        ray.source.ordinaryLink = linked.id;
+        ray.source.struck = {777};
+        ray.source.deferred = {888};
+        Body targetBody;
+        targetBody.place({3, 0, 2});
+        targetBody.size = {2, 2, 2};
+        ray.targets = {{&positive, &targetBody}, {&ray.source, &ray.body}, {}, {&negative, &targetBody},
+                       {&linked, &targetBody}, {&dodging, &targetBody}, {&dead, &targetBody}};
+        ray.world.hit = [&](Combatant &target, const Body &, HitInput input) {
+            ray.order.push_back(std::bit_cast<int64_t>(target.id));
+            check(ray.source.struck.back() == target.id && input.selector == 0 && input.area == 0,
+                  "ray bookkeeping and selector are visible before the hit resolver");
+            check(ray.frame.shots.size() == (target.id == negative.id ? 1u : 2u),
+                  "the endpoint and prior secondary copy precede the next signed actor's resolver");
+            ray.source.multipliers[2] += 1.f;
+            return target.id != negative.id;
+        };
+        ray.step();
+        check(ray.order == std::vector<int64_t>{INT64_MIN, -3, INT64_MIN, 5, INT64_MIN} &&
+                  ray.source.struck == std::vector<uint64_t>{negative.id, positive.id} && ray.source.deferred.empty() &&
+                  ray.draws == 4 && ray.frame.sounds.empty(),
+              "action 94 clears both sets, skips linked and locked actors and launches after false and true returns");
+        check(ray.frame.shots.size() == 3 && ray.resident.list.size() == 3,
+              "the initial crossing produces separate resident and outgoing copies at both launch sites");
+        if (ray.frame.shots.size() == 3) {
+            check(ray.frame.shots[0].position[0] == 7 * 65536 && ray.frame.shots[1].position[0] == 2 * 65536 &&
+                      ray.frame.shots[2].position[0] == 2 * 65536,
+                  "the endpoint precedes the strict-radius sample shared by multiple admitted actors");
+            for (size_t index = 0; index < 3; index++) {
+                Projectile expected;
+                expected.shooter = ray.source.id;
+                expected.position[0] = (index == 0 ? 7 : 2) * 65536;
+                expected.position[2] = 2 * 65536;
+                expected.damage = float(index + 1) * .1f;
+                expected.radius = 4;
+                expected.strength = 0;
+                expected.kind = BURST;
+                expected.element = 2;
+                check(ray.frame.shots[index].serialize() == expected.serialize() &&
+                          ray.resident.list[index].serialize() == expected.serialize(),
+                      "each launch has the exact zero-strength record and freshly queried binary32 magic amount");
+            }
+            ray.resident.list[0].age = 123;
+            check(ray.frame.shots[0].age == 0, "resident flight mutations preserve the independent output record");
+        }
+        ray.frame.reset();
+        ray.source.actionMs = phases(ray.source, 94).windUp + 200;
+        ray.step(201);
+        check(ray.frame.shots.empty(), "action 94 has no later 200-ms launch or actor-hit sample");
+    }
+    for (const bool connected : {false, true})
+        for (const uint8_t role : {uint8_t(0), uint8_t(1)})
+            for (const bool controlled : {false, true}) {
+                RayCase ray;
+                ray.source.controller = role;
+                ray.source.action = 28;
+                ray.source.actionMs = 0;
+                ray.world.connected = connected;
+                ray.world.controlled = controlled ? &ray.source : nullptr;
+                ray.step();
+                const bool admitted = controlled || (!connected && role != 0);
+                check(ray.frame.shots.size() == size_t(admitted) &&
+                          (ray.source.mana < 1.f) == admitted && ray.draws == 0,
+                      "native mode, source role and exact controlled pointer gate the ray before its mana prelude");
+            }
+    for (const int32_t action : {28, 94, 95}) {
+        RayCase ray;
+        ray.source.action = action;
+        ray.source.actionMs = phases(ray.source, action).windUp - 1;
+        ray.step();
+        check(ray.frame.shots.empty(), "landing exactly on the signed ray threshold leaves its launch closed");
+        ray.source.actionMs = phases(ray.source, action).windUp;
+        ray.step();
+        check(ray.frame.shots.size() == 1, "an old age equal to the threshold launches when the new age exceeds it");
+    }
+    {
+        RayCase ray;
+        ray.source.mana = 0;
+        ray.source.buffs.push_back({9, 2.f, 500});
+        ray.step();
+        check(ray.frame.shots.size() == 1 && ray.source.mana == 0.f && ray.frame.buffs.size() == 1 &&
+                  ray.frame.buffs[0].record.kind == 9 && ray.frame.buffs[0].record.timeMs == 0,
+              "zero-cost action 94 still resets kind nine before its launch");
+    }
+    {
+        RayCase ray;
+        ray.source.action = 95;
+        ray.source.actionMs = phases(ray.source, 95).windUp;
+        ray.source.mana = .2f;
+        ray.step();
+        check(ray.source.mana == 0 && ray.frame.shots.empty() && ray.draws == 0,
+              "negative post-cost mana clamps and exits before timing, launches and draws");
+    }
+    {
+        RayCase ray;
+        ray.source.actionMs = INT32_MAX;
+        ray.step();
+        check(ray.frame.shots.empty() && ray.draws == 0, "signed age wrap rejects the common ray window");
+        ray.source.actionMs = 16777217;
+        ray.step();
+        check(ray.frame.shots.empty(), "a late integer age above binary32's exact range cannot become a fresh launch");
+    }
+    {
+        RayCase ray;
+        Combatant target;
+        target.id = 5;
+        Body body;
+        body.place({0, 0, 2});
+        ray.targets = {{&target, &body}};
+        ray.world.hit = [&](Combatant &, const Body &, HitInput) {
+            ray.source.actionMs += 1;
+            return true;
+        };
+        ray.step();
+        check(ray.frame.shots.size() == 1,
+              "a hit resolver's age mutation closes the independently reevaluated secondary launch gate");
+    }
+    for (const bool connected : {false, true}) {
+        RayCase ray;
+        ray.source.specialization = 2;
+        ray.source.actionMs = phases(ray.source, 94).windUp;
+        ray.source.health = 20;
+        ray.world.connected = connected;
+        ray.world.controlled = &ray.source;
+        Combatant target;
+        target.id = 5;
+        Body body;
+        body.place({0, 0, 2});
+        ray.targets = {{&target, &body}};
+        ray.step();
+        check(ray.frame.shots.empty() && ray.frame.emittedHits.size() == 1 &&
+                  ray.frame.emittedHits[0].attacker == ray.source.id &&
+                  ray.frame.emittedHits[0].target == ray.source.id && ray.frame.emittedHits[0].amount < 0 &&
+                  (ray.source.health > 20) == !connected,
+              "specialization two emits its drain after success and directly heals only in mode zero");
+    }
+    {
+        RayCase ray;
+        ray.source.action = 95;
+        ray.source.combo = 40;
+        const Phases timing = phases(ray.source, 95);
+        const float before = attackSpeed(ray.source);
+        Combatant cleared = ray.source;
+        cleared.combo = 0;
+        const float ratio = before / attackSpeed(cleared);
+        bool found = false;
+        for (int32_t clock = timing.windUp + 1; clock < timing.windUp + timing.active; clock++) {
+            constexpr int32_t piece = 20;
+            if ((clock + piece - timing.windUp) / 200 == (clock - timing.windUp) / 200)
+                continue;
+            const int32_t rescaled = int32_t(ratio * float(clock));
+            const bool originalSound = (clock + piece) / 200 != clock / 200;
+            const bool rescaledSound = (rescaled + piece) / 200 != rescaled / 200;
+            if (originalSound == rescaledSound)
+                continue;
+            found = true;
+            ray.source.actionMs = clock;
+            ray.step(piece);
+            check(ray.source.actionMs == rescaled && ray.frame.sounds.size() == size_t(rescaledSound) &&
+                      ray.draws == int(rescaledSound) && ray.frame.shots.empty(),
+                  "an empty repeated ray rescales the live age before its absolute sound-grid draw");
+            break;
+        }
+        check(found, "the empty-ray sound fixture distinguishes original and rescaled signed clocks");
+    }
+    {
+        RayCase ray;
+        ray.body.position[0] = (int64_t(1) << 55) + 3;
+        ray.body.position[1] = -(int64_t(1) << 55) - 5;
+        ray.source.aim = {0, 0, 0};
+        ray.step();
+        check(ray.frame.shots.size() == 1 && ray.frame.shots[0].position[0] == ray.body.position[0] &&
+                  ray.frame.shots[0].position[1] == ray.body.position[1],
+              "a zero-reach endpoint still launches with every original fixed-position bit");
+    }
+}
+
+void launchResidency() {
+    for (const int32_t action : {22, 50, 43, 89}) {
+        Combatant actor = ranger(action);
+        actor.mana = 1;
+        actor.charge = .2f;
+        actor.spentCharge = .2f;
+        if (action == 43) {
+            actor.characterClass = 3;
+            actor.buffs.push_back({9, 1, 1000});
+        }
+        const Phases timing = phases(actor, action);
+        const int32_t piece = action == 50 ? timing.active / 4 : 1;
+        Body body;
+        std::vector<Projectile> shots, residents;
+        ShotEffects events;
+        int draws = 0;
+        launch(actor, body, {1, 0, 0}, float(timing.windUp), float(piece), [&] { draws++; return 32767; },
+            shots, events, {}, [&](const Projectile &projectile) {
+                check(shots.empty(), "resident insertion precedes the travelling or stationary outgoing copy");
+                if (action == 43)
+                    check(actor.charge == .2f && events.buffs.empty() && events.sounds.empty() && draws == 1,
+                          "magic residents precede positive-charge spending, proc reset and firing sound");
+                else if (action == 50)
+                    check(events.sounds.size() == 1 && draws == 2,
+                          "volley pitch and damage draws precede resident insertion in their native order");
+                else if (action == 22)
+                    check(events.sounds.empty() && draws == 1,
+                          "single-shot damage precedes residency and its pitch draw follows the output copy");
+                residents.push_back(projectile);
+            });
+        check(shots.size() == 1 && residents.size() == 1 && shots[0].serialize() == residents[0].serialize(),
+              "each projectile creator publishes one value-identical resident and output pair");
+        if (action == 43)
+            check(actor.charge == 0 && events.buffs.size() == 1 && events.buffs[0].record.timeMs == 0 &&
+                      events.sounds.size() == 1,
+                  "magic output follows its launch-specific charge and buff work");
+    }
+}
 
 void trajectoryRay() {
     struct Case {
@@ -298,6 +603,8 @@ void offlineFlight() {
 }
 
 int main() {
+    rayLaunches();
+    launchResidency();
     trajectoryRay();
     pointImpactSample();
     dedicatedFlight();
@@ -658,6 +965,17 @@ int main() {
             const auto locked = npcs.step(32, map, {{player, body, 0, 0, false}}, 43200000, 0, floor);
             check(locked.shots.empty() && npc.fighter.actionLockMs == 1,
                   "real NPC's surviving action lock suppresses a would-be anticipation crossing");
+            npc.fighter.characterClass = 3;
+            npc.fighter.specialization = 1;
+            npc.fighter.action = 94;
+            npc.fighter.actionMs = phases(npc.fighter, 94).windUp;
+            npc.fighter.actionLockMs = 0;
+            npc.fighter.hitStun = 100;
+            npc.fighter.mana = 1;
+            npc.body.look = {1, 0, 0};
+            const auto ray = npcs.step(1, map, {{player, body, 0, 0, false}}, 43200000, 0, floor);
+            check(!ray.shots.empty() && ray.shots[0].kind == BURST && ray.shots[0].strength == 0,
+                  "the actual dedicated NPC turn dispatches action 94 through the shared ray family");
         }
     }
     {
@@ -759,8 +1077,7 @@ int main() {
         check(shots.size() == 1 && std::abs(shots[0].damage - 11.25f) < 1e-4f,
               "a bow counts alone in the weapon set: the off-hand shield adds nothing");
     }
-    for (int action : {5, 94}) {
-        // §2.6: only the handler of 28, 94, 95 places the healer's burst (28 and 95 in the beam).
+    for (int action : {5, 28, 94, 95}) {
         Combatant healer;
         healer.characterClass = 3, healer.specialization = 1;
         healer.action = action;
@@ -769,10 +1086,7 @@ int main() {
         ShotEffects effects;
         launch(healer, body, {1, 0, 0}, (float)phases(healer, action).windUp, 16, [] { return 0; }, shots, effects,
                [](int32_t x, int32_t, int32_t) { return uint8_t(x >= 7 ? 1 : 0); });
-        const bool burst = shots.size() == 1 && shots[0].kind == BURST && shots[0].element == 2;
-        check(action == 94 ? burst : shots.empty(), "the healer's burst comes from actions 28, 94, 95 only");
-        if (action == 94 && burst)
-            check(shots[0].position[0] == 7 * 65536, "the burst sits where the 200-block ray meets the wall");
+        check(shots.empty(), "generic projectile launch leaves stationary clouds with the shared ray dispatcher");
     }
     {
         // §2.5: the element applies to the thrown rock too.

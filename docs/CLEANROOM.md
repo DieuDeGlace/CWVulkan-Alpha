@@ -4224,3 +4224,42 @@ their supplied value. The camera uses the live resident extent on every
 frame, including frames without a world piece. Native first-present
 height, refresh-thread timing, alias writes and complete world selection
 and save handoff remain open.
+
+## Shared ray action launches (2026-11-18)
+
+The isolated author finalized the dedicated action-family launch contract and
+then reconciled its launch-specific fields against both original images.
+The implementer read all three complete held documents and verified their
+physical line counts and SHA-256 values.
+
+- [Dedicated launch family](specs/alpha-dedicated-action-projectile-launch.md),
+  180 lines, `7b15407b86271523b8d95d1ac846d5d8565e7b34d450a8b8e7ad5a6524d1bad7`.
+- [Launch field reconciliation](specs/alpha-ray-launch-fields-reconciliation.md),
+  65 lines, `9d1bcb0987177d9eef3f5c747b7743a6334db13fddd8c67d26e0fa84ed52ee65`.
+- [Post-hit timing](specs/alpha-ray-post-hit-timing-evaluation.md),
+  85 lines, `da118c42a9e3c7b69b09d7fe2d3537c95a0815fdbbce8407ccaf4cc26d37d492`.
+
+The reconciliation supersedes the first document's strength-field value.
+Both launch sites explicitly overwrite that field with zero, preserving the
+constructor's scale value of one. The prior held beam record agrees.
+The timing supplement establishes fresh threshold and current-age reads at
+each secondary gate and the late action-94 sound gate. The empty-ray rescale
+precedes the action-28/95 sound-grid calculation.
+
+One shared ray dispatcher now serves actions 28, 94 and 95 in dedicated,
+offline and connected play. Its source gate precedes resource work. It keeps
+the native signed age arithmetic, first-crossing and repeat rules, signed
+actor order, ordinary-link exclusion and struck-set lifetime. Each admitted
+resolver completes before the secondary cloud gate, including false returns.
+Every cloud evaluates its magic amount afresh and preserves its raw fixed
+center. Connected specialization-two drains emit their self record without
+the mode-zero direct health mutation.
+
+Production client and server world calls bind their resident projectile list
+during actor work. Each launch appends its resident value before its outgoing
+copy, and the flight tail advances those values once after objects. Magic
+launches insert residents before positive-charge spending and proc reset,
+then append their outgoing copy before the firing sound. Existing standalone
+callers retain the unbound launch-range import at the flight boundary.
+Native combat playback, full upstream eligibility, rate and amount formulas,
+unusual numeric inputs and inherited provenance gates remain open.

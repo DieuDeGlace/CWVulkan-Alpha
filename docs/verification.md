@@ -2768,3 +2768,55 @@ production player/controller diagnostic and five live client flows
 passed. The package verified 36 hashes in 37 files. Revision 41 parsed
 all 82 links and the held focus contract matched its exact hash and line
 count. Original first-present height and refresh scheduling remain open.
+
+## Shared ray launch and resident ordering (2026-11-18)
+
+RangedSchedulingTests runs the production shared ray dispatcher for actions
+28, 94 and 95. Source-role and exact controlled-pointer combinations cover
+both world modes, including rejection before mana work or draws. Boundary
+checks cover exact anticipation, signed age wrap and late integer ages.
+Zero-cost action 94 resets kind nine. Negative post-cost mana clamps and
+exits before producing a ray. Specialization-two self records retain the
+world-mode distinction for direct health gain.
+
+The ordered actor fixture starts with unsorted positive and negative IDs,
+null entries, a linked actor, a dead actor and a nonzero dodge lock. It
+verifies source bookkeeping before each resolver, one critical draw then
+one amount draw per geometrically admitted target, and the endpoint before
+the first hit. False and true resolver returns both reach secondary launch.
+Changing the source's magic multiplier during each resolver changes the
+following cloud amount. Changing its stored age closes the following gate.
+All 112 serialized bytes match independently initialized expected records,
+including zero strength, scale one and exact fixed centers.
+
+The first sample at the strict horizontal-radius boundary is rejected.
+Two admitted actors at the next sample each produce a cloud. Action 94
+has no later periodic actor sample. A raw center beyond binary64's exact
+integer range retains its low fixed-position bits through a zero-reach
+endpoint. That zero-aim behavior remains explicitly engine-defined.
+A repeated empty-ray fixture distinguishes the original and rescaled clock
+buckets and verifies the post-rescale sound draw. A successful class-3
+specialization-1 hit also verifies the late sound gate after combo changes.
+
+The ordinary offline player dispatcher and dedicated NPC turn both reach
+action 94's shared path. A bound world call has both ray residents before
+its object/flight tail. Flight advances each one exactly once, keeps launch
+output age zero and retains two residents through a second piece without
+reimport. This fixture caught the per-player target-list omission and now
+uses the full protected actor index. Existing unbound launch-range tests
+continue to cover standalone callers.
+
+Each generic projectile producer also exercises its resident callback.
+Single-shot damage precedes resident insertion and output, then its pitch
+draw follows. Volley pitch precedes damage and resident insertion. Magic
+inserts its resident before positive-charge spending and proc reset, then
+publishes its output and firing sound. Resident and output records match
+by value. Broader original fight playback and unusual numeric inputs remain
+open acceptance work.
+
+The Windows x64 build, focused ray and action-phase checks and all 60 serial
+CTests passed in 91.22 seconds. The production player/controller diagnostic
+and five actual client flows passed. Package inspection verified 36 hashes
+in 37 files. Revision 42 parsed all 85 links. All three held documents
+matched their exact hashes, line counts and final LF. Original fight playback
+and complete upstream launch admission remain open.

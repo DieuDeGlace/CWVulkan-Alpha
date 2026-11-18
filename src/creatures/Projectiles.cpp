@@ -2,6 +2,7 @@
 #include "creatures/Names.h"
 #include "creatures/Npcs.h"
 #include "creatures/Strike.h"
+#include "creatures/RayActions.h"
 #include "creatures/Visibility.h"
 #include "SoundRules.h"
 #include "worldgen/WorldMap.h"
@@ -212,22 +213,15 @@ Burst arrowBurst(const int64_t position[3], worldgen::Block colourCell) {
 
 } // namespace
 
-Projectile healingBurst(const Combatant &healer, glm::dvec3 at) {
+Projectile rayCloud(const Combatant &healer, const std::array<int64_t, 3> &center) {
     Projectile p;
     p.shooter = healer.id;
     p.kind = BURST;
     p.element = 2;
-    p.damage = 0.1f * weaponDamage(healer, false);
+    p.damage = magicBase(healer) * 0.1f;
     p.radius = 4;
     p.strength = 0;
-    for (int k = 0; k < 3; k++)
-        p.position[k] = (int64_t)(at[k] * 65536.0);
-    return p;
-}
-
-Projectile rayCloud(const Combatant &healer, glm::dvec3 at) {
-    Projectile p = healingBurst(healer, at);
-    p.damage = magicBase(healer) * 0.1f;
+    std::copy(center.begin(), center.end(), p.position);
     return p;
 }
 
@@ -415,6 +409,8 @@ void appendActionSounds(const Combatant &c, int32_t t, int32_t dt, glm::dvec3 at
 
 void actionSounds(const Combatant &c, float t, float dt, glm::dvec3 at, const std::function<int()> &draw,
                   std::vector<SoundEvent> &out) {
+    if (isRayAction(c.action))
+        return; // This family's pitch draw follows its actor-hit scans.
     appendActionSounds(c, int32_t(t), int32_t(dt), at, draw, out, nullptr, true);
 }
 
@@ -441,7 +437,10 @@ void receivedActionEffects(const Combatant &c, const Body &body, int32_t dt, glm
 }
 
 void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, const std::function<int()> &draw,
-            std::vector<Projectile> &shots, ShotEffects &out, const BlockType &block) {
+            std::vector<Projectile> &shots, ShotEffects &out, const BlockType &,
+            const std::function<void(const Projectile &)> &resident) {
+    if (isRayAction(c.action))
+        return;
     const auto u = [&] { return (float)draw() / 32767.f; };
     const auto crosses = [&](float x) { return t <= x && x < t + dt; };
     const Phases P = phases(c, c.action);
@@ -461,19 +460,6 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
     const bool staff = action >= 30 && action <= 33, explosion = action == 87 || action == 88;
     if ((explosion && t - dt < P1 && P1 <= t) || (staff && t < P1 && P1 <= t + dt))
         appendChannelBurst(c, body, c.aim, out.bursts);
-
-    // §2.6: the handler of actions 28, 94, 95 gives a healer (class 3, specialization 1) a
-    // healing burst at its reach point when P1 is crossed: the attack origin plus the block ray
-    // (limit 200) along the aim. Actions 28 and 95 place it in the beam tick (Npcs::beamTick).
-    if (action == 94 && c.characterClass == 3 && c.specialization == 1 && crosses(P1)) {
-        const visibility::Position origin = attackOrigin(body);
-        const glm::vec3 dir = unit(aim);
-        const float reach = aiming && block ? visibility::trace(origin, {dir.x, dir.y, dir.z}, 200.f, 0, 1, {block, {}}) : 0.f;
-        Projectile heal = healingBurst(c, {});
-        for (int k = 0; k < 3; k++)
-            heal.position[k] = std::bit_cast<int64_t>(uint64_t(origin[k]) + uint64_t(int64_t(dir[k] * reach * WU)));
-        shots.push_back(heal);
-    }
 
     switch (action) {
     case 22: case 23: case 26: { // §2.3: bow, crossbow, boomerang
@@ -510,6 +496,8 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
             B = 0;
         const float sigma = 1.25f - 0.5f * u();
         p.damage = sigma * ((actionShare(action) * weaponDamage(c, true)) * (s * s * K + B));
+        if (resident)
+            resident(p);
         shots.push_back(p);
         if (action == 26)
             out.sounds.push_back({at, 15, (float)(((double)draw() * 0.51) / 32767.0 + (double)0.7f), 1});
@@ -539,6 +527,8 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
         out.sounds.push_back({at, 22, 1 + 0.5f * u(), 1});
         const float sigma = 1.25f - 0.5f * u();
         p.damage = sigma * ((actionShare(action) * weaponDamage(c, true)) * (s * s * 5.f + (action == 55 ? 0.1f : 1.f)));
+        if (resident)
+            resident(p);
         shots.push_back(p);
         return;
     }
@@ -553,6 +543,8 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
         p.damage = actionShare(action) * weaponDamage(c, false) * 2;
         p.radius = 8;
         p.strength = 0;
+        if (resident)
+            resident(p);
         shots.push_back(p);
         return;
     }
@@ -605,13 +597,15 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
             p.strength = 1, p.scale = ch + 1.5f;
         p.special = action == 37 || action == 43 || action == 45 || action == 46;
     }
-    shots.push_back(p);
+    if (resident)
+        resident(p);
     if (ch > 0) {
         c.mana = std::max(0.f, c.mana - ch);
         c.charge = 0;
     }
     if (p.special)
         spendBuff(c, 9, out);
+    shots.push_back(p);
     if (p.element == 2)
         out.sounds.push_back({at, 41, action == 41 || action == 42 || action == 44 ? 1.25f : 1.f, 0.9f});
     else

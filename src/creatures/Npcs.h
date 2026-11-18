@@ -228,16 +228,19 @@ class Npcs {
     // activation, behaviour, actions and physics (server simulation §3).
     NpcFrame step(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                   int32_t day, const BlockType &block, const std::vector<HitRecord> &incoming = {}, NpcFrame frame = {},
-                  const std::vector<BuffEvent> &buffInput = {});
+                  const std::vector<BuffEvent> &buffInput = {}, Projectiles *projectiles = nullptr);
     void stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<PlayerView> players, double timeOfDayMs,
                   int32_t day, const BlockType &block, NpcFrame &frame, const std::vector<HitRecord> &incoming = {},
                   const std::vector<BuffEvent> &buffInput = {},
                   const std::function<void(int32_t)> &advanceControlled = {},
                   const std::function<void(PlayerView &)> &consumeItemRequests = {},
                   const std::function<void(int32_t, std::span<PlayerView>)> &advanceZoneState = {},
-                  const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld = {});
-    // Run after the actor and object passes, while the signed actor index is
-    // still live. A client frame shares its launch collector across pieces.
+                  const std::function<void(int32_t, std::span<PlayerView>)> &finishWorld = {},
+                  Projectiles *projectiles = nullptr);
+    // Bind the production projectile world to stepInto so launches gain resident
+    // copies during their actor turns. Older standalone callers can omit it.
+    // Run flight after actors and objects while the signed actor index is live.
+    // An unbound call imports the supplied launch range before stepping.
     void stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen::WorldMap &map,
                          const BlockType &block, std::span<PlayerView> players, NpcFrame &frame,
                          size_t firstLaunch = 0);
@@ -415,13 +418,13 @@ class Npcs {
     // players when an NPC does.
     // One blow of `attacker` (at `from`) on `target`: the hit, its sounds and bursts, and what the
     // attacker gains. True when it landed.
-    bool landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, Body &body, NpcFrame &frame,
+    bool landBlow(Combatant &attacker, const Body &attackerBody, Combatant &target, const Body &body, NpcFrame &frame,
                   HitInput in, std::span<PlayerView> players);
     // Aim-triplet contract §3.1 with the beam-leftovers contract: a beam (actions 28, 95) pays
     // its mana, pulses at the wind-up crossing and on the 200-ms grid, samples the held ray in
     // fixed point over the creatures in ascending id and hits the admitted ones; when nobody
     // was touched, sparks at its end, the combo resets and the clock is rescaled.
-    void beamTick(Combatant &attacker, const Body &attackerBody, float beforeMs, float dtMs, std::span<PlayerView> players,
+    void beamTick(Combatant &attacker, const Body &attackerBody, int32_t milliseconds, std::span<PlayerView> players,
                   NpcFrame &frame, const BlockType &block);
     // Head-pitch-and-pick contract §3.1 (world case 0x214C32): the healing stream (action 0x22).
     // A wind-up sound every 100 ms, then eight pulses over the active window, each paying its
@@ -476,6 +479,7 @@ class Npcs {
     };
     ActorMap<ActorEntry> actors;
     std::vector<ShotTarget> projectileTargets;
+    Projectiles *projectileWorld = nullptr; // bound only during a world call
     void createActor(const ActorEntry &current, int32_t step);
     Combatant *controlledActor = nullptr; // valid while the refreshed index is protected
     bool actorPassActive = false;

@@ -23,6 +23,15 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Shared ray actions 28, 94 and 95 use source-role and controlled-pointer
+  admission, signed clocks, resource work, ordered actor sampling and independent
+  cloud gates after each resolver. Production client/server launches insert
+  resident values during actor turns before separate output copies. Action 94
+  shares the actor-hit path. Late sounds observe current post-combo and
+  post-rescale timing. RangedSchedulingTests checks the scoped contracts.
+  Original fight playback, full upstream eligibility and unusual numeric edges
+  remain open.
+
 - [x] Project, build (`build.cmd`, CMake, pinned sources, no Vulkan SDK), shader compiler.
 - [x] Install lookup (`AlphaVulkan.ini [Game] Path`, else the usual folders).
 - [x] Data stores: read-only SQLite access and unscrambling; `--list`; StoreTests check that

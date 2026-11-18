@@ -187,6 +187,7 @@ add_library(engine STATIC
     src/creatures/Skills.cpp
     src/creatures/Spirits.cpp
     src/creatures/Projectiles.cpp
+    src/creatures/RayActions.cpp
     src/creatures/Abilities.cpp
     src/creatures/Npcs.cpp
     src/creatures/Pets.cpp
@@ -418,6 +419,7 @@ if(MSVC)
     set_source_files_properties(src/worldgen/NoiseMath.cpp src/creatures/Combat.cpp src/creatures/Strike.cpp
         src/creatures/FatalRecipients.cpp
         src/creatures/Projectiles.cpp
+        src/creatures/RayActions.cpp
         src/creatures/Physics.cpp
         src/creatures/Visibility.cpp tests/VisibilityTests.cpp
         src/creatures/TargetSelection.cpp tests/TargetSelectionTests.cpp

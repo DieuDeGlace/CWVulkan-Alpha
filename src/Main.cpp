@@ -31,6 +31,7 @@
 #include "CreatureShading.h"
 #include "Player.h"
 #include "creatures/Strike.h"
+#include "creatures/RayActions.h"
 #include "creatures/Inventory.h"
 #include "creatures/Credits.h"
 #include "creatures/Spirits.h"
@@ -790,7 +791,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         bursts.push_back(b);
         return true;
     };
-    std::vector<creatures::Projectile> playerLaunched;
     creatures::ShotEffects playerShot;
     creatures::NpcFrame playerActionFrame;
     creatures::creation::Configuration playerCreationConfig;
@@ -1651,11 +1651,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             creatures::chargeSound(actor, beforeMs, dtMs, player->body().blocks(), playerShot);
             creatures::actionSounds(actor, beforeMs, (float)dtMs, player->body().blocks(),
                                     [&] { return worldRandom.draw(); }, playerShot.sounds);
+            const size_t firstLaunch = playerActionFrame.shots.size();
             creatures::launch(actor, player->body(), actor.aim, beforeMs, (float)dtMs,
-                              [&] { return worldRandom.draw(); }, playerLaunched, playerShot,
-                              [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); });
+                [&] { return worldRandom.draw(); }, playerActionFrame.shots, playerShot, {},
+                [&](const creatures::Projectile &shot) {
+                    auto resident = shot;
+                    if (resident.kind == creatures::BOOMERANG_SHOT)
+                        resident.scale = player->appearance().weaponScale;
+                    projectiles.list.push_back(resident);
+                });
+            for (auto &shot : std::span{playerActionFrame.shots}.subspan(firstLaunch))
+                if (shot.kind == creatures::BOOMERANG_SHOT)
+                    shot.scale = player->appearance().weaponScale;
             if (!client.connected()) {
                 creatures::PlayerView local{actor, player->body(), player->facing(), beforeMs};
+                local.local = true;
                 local.appearance = &player->appearance();
                 local.creationConfig = &playerCreationConfig;
                 npcs.dispatchPlayerActions({&local, 1}, dtMs,
@@ -1669,6 +1679,40 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 playerShot.sounds.clear();
                 playerShot.bursts.clear();
                 playerShot.buffs.clear();
+                if (c.health > 0 && creatures::isRayAction(c.action)) {
+                    std::vector<creatures::ShotTarget> targets;
+                    targets.reserve(receivedActors.size());
+                    for (const auto &[id, record] : receivedActors) {
+                        auto [resident, created] = otherFighters.try_emplace(id);
+                        if (created)
+                            resident->second.receive(id, record);
+                        if (const auto *remote = remotes.find(id))
+                            targets.push_back({&resident->second.fighter, &remote->live});
+                    }
+                    creatures::RayActionWorld world;
+                    world.connected = true;
+                    world.controlled = &c;
+                    world.targets = targets;
+                    world.sight = {
+                        [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); },
+                        npcs.sightRecords};
+                    const auto rolls = [&] { return worldRandom.draw(); };
+                    world.hit = [&](creatures::Combatant &target, const creatures::Body &body, creatures::HitInput input) {
+                        const auto outcome = creatures::resolveHit(target, body.velocity, &c, input, rolls);
+                        frame.emittedHits.insert(frame.emittedHits.end(), outcome.records.begin(), outcome.records.end());
+                        frame.buffs.insert(frame.buffs.end(), outcome.buffs.begin(), outcome.buffs.end());
+                        frame.sounds.insert(frame.sounds.end(), outcome.sounds.begin(), outcome.sounds.end());
+                        frame.bursts.insert(frame.bursts.end(), outcome.bursts.begin(), outcome.bursts.end());
+                        return outcome.hitAccepted;
+                    };
+                    world.launch = [&](const creatures::Projectile &shot) {
+                        projectiles.list.push_back(shot);
+                        frame.shots.push_back(shot);
+                    };
+                    creatures::stepRayAction(c, player->body(), dtMs, world,
+                        {frame.emittedHits, frame.buffs, frame.sounds, frame.bursts}, rolls);
+                    return;
+                }
                 // Server simulation §1, §6.1: online the player's own client decides its hits on
                 // the creatures the server lists and sends them as packet 7.
                 const bool melee = c.health > 0 && creatures::meleeAction(c.action);
@@ -2367,17 +2411,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             player->body().position, aggregate.emittedHits, aggregate.sounds};
                         player->advance(actorElapsed, client.connected(), &consumables, sneakLight, liveActor);
                         publishPlayerEffects();
-                        // The actor records launches in the shared output.
-                        // Standalone flight takes this piece's launches after objects.
+                        // Launches already have distinct resident and output copies.
                         auto shot = std::exchange(playerShot, {});
-                        auto launched = std::exchange(playerLaunched, {});
-                        for (creatures::Projectile &p : launched) {
-                            if (p.kind == creatures::BOOMERANG_SHOT) // §2.3: the thrower's weapon scale
-                                p.scale = player->appearance().weaponScale;
-                            aggregate.shots.push_back(p);
-                            if (client.connected())
-                                projectiles.list.push_back(p);
-                        }
                         for (const creatures::SoundEvent &s : shot.sounds)
                             playAt(s.sound, s.position, s.volume, s.pitch);
                         bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
@@ -2650,7 +2685,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 stepAirships(dt);
                                 npcs.stepProjectiles(projectiles, dt, view.held(), worldBlock, actors,
                                                      aggregate, npcEvents.shots);
-                            });
+                            }, &projectiles);
                         const auto happened = aggregate.addedSince(npcEvents);
                         // Server §6.4, loot rolls §3: what the dead leave behind.
                         for (const creatures::NpcFrame::Death &death : happened.deaths)

@@ -655,6 +655,7 @@ int main() {
         target.zone = {0, 0};
         npcs.npcs().push_back(target);
         PlayerView player{actor, body, 0, actor.actionMs};
+        player.local = true;
         const BlockType floor = [](int32_t, int32_t, int32_t z) { return (uint8_t)(z <= 0 ? 1 : 0); };
         NpcFrame frame;
         beginActionUpdate(actor, 16);
