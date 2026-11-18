@@ -157,14 +157,6 @@ int main() {
                                {farChunk, farChunk}, farMissing),
               0x42c6e28e, "fixed deltas narrow before squaring and exclude height");
 
-        uint32_t previous = 0;
-        const auto first = alpha::fogElapsed(previous, 0xfffffff8u);
-        const auto wrapped = alpha::fogElapsed(previous, 16);
-        const auto backwards = alpha::fogElapsed(previous, 11);
-        const auto highBit = alpha::fogElapsed(previous, 0x8000000bu);
-        if (first != 0 || wrapped != 24 || backwards != -5 || highBit != std::numeric_limits<int32_t>::min())
-            ++failures, std::printf("FAIL signed frame ticks preserve the first sample and rollover\n");
-
         alpha::FogDistance fog;
         constexpr uint32_t floor = 0x38d1b717u;
         fog.update(617.6f, 0, true);

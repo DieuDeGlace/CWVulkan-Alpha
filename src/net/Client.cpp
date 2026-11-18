@@ -13,6 +13,14 @@
 
 namespace net {
 
+namespace {
+
+WorldIdentity onlineWorld(uint32_t seed) {
+    return {seed, "online_" + std::to_string(std::bit_cast<int32_t>(seed))};
+}
+
+} // namespace
+
 Client::~Client() { disconnect(); }
 
 bool Client::connect(const std::string &host, uint16_t port, std::string *error) {
@@ -45,12 +53,17 @@ bool Client::connect(const std::string &host, uint16_t port, std::string *error)
     // choice: Alpha's receiver thread reads packet 15; here the connect routine expects it).
     uint32_t packet = 0;
     uint64_t id = 0;
+    uint32_t seed = 0;
     CreatureRecord record;
     if (!socket.readU32(packet) || packet != CREATURE || !socket.readExact(&id, 8) ||
         !socket.readExact(record.bytes.data(), record.bytes.size()))
         return fail("Connection error.");
-    if (!socket.readU32(packet) || packet != SEED || !socket.readU32(worldSeed))
+    if (!socket.readU32(packet) || packet != SEED || !socket.readU32(seed))
         return fail("Connection error.");
+    {
+        std::lock_guard guard(lock);
+        requestedWorld = onlineWorld(seed);
+    }
     // The normal server supplies1..10; the native adoption boundary also admits
     // zero and preserves the prior actor identity for a signed-negative reply.
     if (std::bit_cast<int64_t>(id) >= 0)
@@ -92,6 +105,18 @@ void Client::disconnect() {
 void Client::setOwn(const CreatureRecord &record) {
     std::lock_guard guard(lock);
     own = record;
+}
+
+WorldIdentity Client::worldIdentity() const {
+    std::lock_guard guard(lock);
+    return requestedWorld;
+}
+
+std::optional<WorldIdentity> Client::worldChange(const WorldIdentity &active) const {
+    std::lock_guard guard(lock);
+    if (requestedWorld == active)
+        return std::nullopt;
+    return requestedWorld;
 }
 
 void Client::say(const std::string &text) {
@@ -668,9 +693,14 @@ void Client::receiveLoop() {
             uint32_t seed;
             ok = socket.readU32(seed);
             if (ok) {
+                auto world = onlineWorld(seed);
                 auto frame = lockFrame();
                 std::lock_guard guard(lock);
-                worldSeed = seed;
+                if (world != requestedWorld) {
+                    requestedWorld = std::move(world);
+                    creatures.clear();
+                    receipts.clear();
+                }
             }
             break;
         }

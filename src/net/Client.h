@@ -32,6 +32,12 @@ namespace net {
 class RemoteCreatures;
 struct RemoteFighter;
 
+struct WorldIdentity {
+    uint32_t seed = 0;
+    std::string name;
+    bool operator==(const WorldIdentity &) const = default;
+};
+
 struct CombatReceipts {
     std::vector<Hit> hits;
     std::vector<std::array<uint8_t, 112>> shots;
@@ -57,7 +63,10 @@ class Client {
     bool connected() const { return online; }
 
     uint64_t id() const { return ownId; }
-    uint32_t seed() const { std::lock_guard guard(lock); return worldSeed; }
+    uint32_t seed() const { std::lock_guard guard(lock); return requestedWorld.seed; }
+    WorldIdentity worldIdentity() const;
+    // Call under the frame gate. Repeated matching frames need no name copy.
+    std::optional<WorldIdentity> worldChange(const WorldIdentity &active) const;
 
     // Hold across frame mutations and queueing, publish setOwn at its end, then
     // release before rendering or disconnecting. Ordinary methods use a separate
@@ -154,7 +163,7 @@ class Client {
     Socket socket;
     std::atomic<bool> online{false};
     uint64_t ownId = 1; // native initial identity, retained when an adoption is bypassed
-    uint32_t worldSeed = 0;
+    WorldIdentity requestedWorld;
     std::thread receiver, sender;
 
     std::mutex frameGate;

@@ -18,6 +18,7 @@ class Player {
   public:
     // Stands the player on the ground at the view's start column, looking like `looks`.
     Player(WorldView &view, const creatures::Appearance &looks, worldgen::Random &random);
+    void changeWorldPosition(const std::array<int64_t, 3> &position);
 
     // Mouse look and wheel (counts since the last call).
     void look(float dx, float dy) { camera.look(dx, dy); }

@@ -13,6 +13,10 @@ class WorldSession {
     // characters.db, or -1 to play without one.
     bool open(const std::filesystem::path &folder, const std::string &name, uint32_t seed, int character,
               std::string *error = nullptr, const std::string &generationProfile = {});
+    // A connected world owns a local catalog entry and discovery map. Its
+    // authoritative terrain, clock and character lifetime belong to the caller.
+    bool openRemoteMap(const std::filesystem::path &folder, const std::string &name, uint32_t seed,
+                       std::string *error = nullptr);
 
     uint32_t seed() const { return entry.seed; }
     // The character playing, if one was chosen.
@@ -33,6 +37,8 @@ class WorldSession {
     std::optional<RegionSave> loadRegion(int32_t rx, int32_t ry);
     void saveRegion(int32_t rx, int32_t ry, const RegionSave &region);
     std::optional<TileSave> loadTile(int32_t zx, int32_t zy);
+    uint32_t discoveryCount();
+    void saveDiscoveryCount(uint32_t count);
 
     // §5.2: a zone's stored changes, and writing back its world items (the rest of the record
     // is kept as it was).
@@ -60,6 +66,7 @@ class WorldSession {
     SaveDb mapDb; // map_<name>.db, opened on the first tile
     bool mapOpen = false;
     bool openMap(); // opens map_<name>.db on first use
+    bool selectEntry(const std::string &name, uint32_t seed, bool matchSeed, std::string *error);
     WorldEntry entry;
     int entryIndex = -1;
     int characterIndex = -1;

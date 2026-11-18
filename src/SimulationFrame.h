@@ -7,6 +7,14 @@
 #include <bit>
 
 namespace simulation {
+// The frame clock uses signed, wrapping 32-bit millisecond differences. A
+// stored zero initializes the sample without adding any elapsed time.
+inline int32_t displayElapsed(uint32_t &previous, uint32_t current) {
+    const uint32_t elapsed = previous ? current - previous : 0;
+    previous = current;
+    return std::bit_cast<int32_t>(elapsed);
+}
+
 // Called after this world's elapsed-counter increment. The second quotient
 // deliberately looks one supplied piece ahead, not back to the former counter.
 inline bool clockWriteDue(uint32_t currentCounter, int32_t elapsed) {

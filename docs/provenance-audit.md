@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 63 and the rulings. The 281 tracked contracts
-comprise 227 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 64 and the rulings. The 283 tracked contracts
+comprise 229 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -128,6 +128,8 @@ Batch 62 covers `alpha-connected-receipt-supplement.md` and
 `alpha-taming-progress-and-capture.md`.
 Batch 63 covers `alpha-objective-state-one-late-interaction.md` and
 `alpha-objective-receipt-formatting-map-supplement.md`.
+Batch 64 covers `alpha-client-elapsed-adjustment-and-world-readiness.md`
+and `alpha-client-world-change-lifecycle.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -156,6 +158,7 @@ Batch 63 covers `alpha-objective-state-one-late-interaction.md` and
 | `alpha-client-buff-action-boundaries.md` | A | 183 | 3 |
 | `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
+| `alpha-client-elapsed-adjustment-and-world-readiness.md` | A | 219 | 0 |
 | `alpha-client-frame-world-step-order.md` | A | 84 | 1 |
 | `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
 | `alpha-client-incoming-hit-mutations.md` | B | 102 | 2 |
@@ -163,6 +166,7 @@ Batch 63 covers `alpha-objective-state-one-late-interaction.md` and
 | `alpha-client-projectile-hit-call-boundary.md` | B | 117 | 3 |
 | `alpha-client-receiver-publication-locks.md` | B | 131 | 1 |
 | `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
+| `alpha-client-world-change-lifecycle.md` | A | 173 | 0 |
 | `alpha-client-world-clock-input.md` | B | 52 | 2 |
 | `alpha-column-scalar-cache-publication.md` | B | 105 | 0 |
 | `alpha-column-value-production.md` | A | 413 | 0 |

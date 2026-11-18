@@ -4065,3 +4065,34 @@ descriptor lifetime still need verification. The ordinary controlled
 socket path derives the region from the actor position, with an independent
 resident gate and the existing strict sender interval. Embedded host,
 local objective producers and native UI playback remain open.
+
+## Connected world readiness and activation (2026-11-17)
+
+The implementer fully read the isolated authors' [elapsed and readiness](specs/alpha-client-elapsed-adjustment-and-world-readiness.md)
+and [world change lifecycle](specs/alpha-client-world-change-lifecycle.md) contracts.
+The first has 218 physical lines and SHA-256
+`d66fb2d16afa20b24e2a7dc0d5d79b2d2f296d0b17ae0062c9e53a5a1776f89a`.
+The second has 172 physical lines and SHA-256
+`846f93597fd0f39f017987e0738754f7f6ee1e5b1393f3427ed2da2de92d7743`.
+
+Packet 15 publishes one requested pair. An identical pair retains actor
+lifetimes. A new one discards received actors and their pending poses.
+In-flight preparation drains only previous-world worker jobs. The frame
+samples the latest pair under the existing gate, retires the old terrain,
+region, mesh and discovery state, and installs the current seed. The same
+controlled actor retains health, skills and inventory, and its position
+and mirror are set from the matching saved visit or the native home
+anchor. Velocity is cleared. The client reopens the named map archive
+and uses the exact pair in the local world catalog. It preserves the
+network clock and packet-4 lists and active projectiles. World generation
+uses the existing ordered seed offsets and asynchronous zone loading.
+
+Both world call paths now use the signed low-32 display tick difference
+and compare both identity fields. Receipt work, input and presentation
+continue while world calls skip. Fog uses the same display difference and
+the identity admission. GLFW sampling, in-flight worker completion and
+renderer resource retirement are engine adapters. Connected startup still
+uses the initial handshake seed. Native worker contention and cadence,
+disconnect races, complete discovery map allocation and shared CRT state
+across native threads remain open. No stock elapsed-mode control was
+verified.

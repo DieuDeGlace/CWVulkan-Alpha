@@ -132,6 +132,100 @@ static void checkIdentityAdoption() {
     }
 }
 
+static void checkWorldRequests() {
+    Socket listener;
+    if (!listener.listen(0, nullptr, "127.0.0.1")) {
+        check(false, "world-change fixture listens");
+        return;
+    }
+    constexpr uint64_t local = 0x100000003ull, firstActor = 17, intermediateActor = 19;
+    constexpr uint32_t negativeSeed = 0xfffffff9u;
+    const WorldIdentity initial{41, "online_41"}, final{negativeSeed, "online_-7"};
+    const auto actor = CreatureRecord::nativeDefaults();
+    const auto mission = MissionArea{}.record(-1, 0);
+    creatures::Projectile shot;
+    shot.shooter = firstActor;
+    shot.age = -12;
+    const auto projectile = shot.serialize();
+    std::atomic<int> stage{0};
+    std::thread peer([&] {
+        Socket socket = listener.accept();
+        if (!socket.valid())
+            return;
+        uint32_t id = 0, version = 0;
+        if (!socket.readU32(id) || id != HELLO || !socket.readU32(version) || version != VERSION)
+            return;
+        const auto writeActor = [&](ByteWriter &result, uint64_t key) {
+            result.u32(CREATURE);
+            result.bytes(compressed(encodeDelta(key, actor, uint64_t(1) << 27)));
+        };
+        const auto writeClock = [](ByteWriter &result, uint32_t day, uint32_t time) {
+            result.u32(CLOCK);
+            result.u32(day);
+            result.u32(time);
+        };
+        ByteWriter result;
+        result.u32(ACCEPTED);
+        result.u32(CREATURE);
+        result.u64(local);
+        result.write(actor.bytes.data(), actor.bytes.size());
+        result.u32(SEED);
+        result.u32(initial.seed);
+        writeActor(result, firstActor);
+        if (!socket.send(result.data()) || !waitFor([&] { return stage.load() >= 1; }))
+            return;
+        result.data().clear();
+        result.u32(SEED);
+        result.u32(initial.seed);
+        writeClock(result, 5, 160);
+        if (!socket.send(result.data()) || !waitFor([&] { return stage.load() >= 2; }))
+            return;
+        result.data().clear();
+        WorldUpdate update;
+        update.sections[4].emplace_back(projectile.begin(), projectile.end());
+        update.sections[12].emplace_back(mission.begin(), mission.end());
+        result.u32(WORLD_UPDATE);
+        result.bytes(compressed(update.encode()));
+        writeClock(result, 0xffffffffu, 46123459);
+        result.u32(SEED);
+        result.u32(55);
+        writeActor(result, intermediateActor);
+        result.u32(SEED);
+        result.u32(negativeSeed);
+        if (socket.send(result.data()))
+            waitFor([&] { return stage.load() >= 3; });
+    });
+
+    Client client;
+    const bool connected = client.connect("127.0.0.1", listener.boundPort());
+    check(connected, "world-change client connects");
+    if (connected) {
+        check(client.worldIdentity() == initial && waitFor([&] { return client.others().contains(firstActor); }),
+              "initial signed name accompanies the received actor");
+        stage = 1;
+        uint32_t day = 0, time = 0;
+        check(waitFor([&] { return client.clock(day, time) && day == 5; }) && time == 160 &&
+              client.others().contains(firstActor) && !client.worldChange(initial),
+              "a repeated requested pair preserves the remote actor and produces no world change");
+        stage = 2;
+        check(waitFor([&] { return client.worldIdentity() == final; }), "consecutive type-15 messages publish the last complete pair");
+        auto frame = client.lockFrame();
+        check(client.connected() && client.id() == local && client.others().empty() && client.takeReceipts().empty(),
+              "new requests remove the old remote lifetimes without replacing the connection or local key");
+        check(client.worldChange(initial) == final && client.worldChange({negativeSeed, "online_7"}) == final &&
+              !client.worldChange(final), "the frame compares seed and signed name as one exact pair");
+        const auto received = client.takeCombatReceipts();
+        check(received.shots.size() == 1 && received.shots[0] == projectile &&
+              received.missions.size() == 1 && received.missions[0] == mission &&
+              client.clock(day, time) && day == UINT32_MAX && time == 46123459,
+              "queued world records and the live connected clock survive a world request");
+    }
+    stage = 3;
+    client.disconnect();
+    listener.close();
+    peer.join();
+}
+
 // Packets §0.1, §3.2-§3.4, §3.10: the client's per-tick order, and the packets an Alpha server
 // never sends but its client understands.
 static void checkClientPackets() {
@@ -915,6 +1009,7 @@ int main() {
               "the two signed blueprint fields round-trip independently through the core record");
     }
     checkIdentityAdoption();
+    checkWorldRequests();
     checkClientPackets();
     checkCreatureReceiptPoses();
     checkCombatTransport();

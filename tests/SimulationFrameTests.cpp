@@ -18,6 +18,15 @@ void check(bool okay, const char *message) {
 }
 
 int main() {
+    {
+        uint32_t previous = 0;
+        const auto first = simulation::displayElapsed(previous, 0xfffffff8u);
+        const auto wrapped = simulation::displayElapsed(previous, 16);
+        const auto backwards = simulation::displayElapsed(previous, 11);
+        const auto highBit = simulation::displayElapsed(previous, 0x8000000bu);
+        check(first == 0 && wrapped == 24 && backwards == -5 && highBit == INT32_MIN,
+              "signed display ticks preserve the first sample and rollover");
+    }
     for (const auto &[duration, expected] : std::vector<std::pair<int32_t, std::vector<int32_t>>>{
              {0, {0}}, {-7, {-7}}, {1, {1}}, {20, {20}}, {21, {20, 1}}, {39, {20, 19}},
              {40, {20, 20}}, {41, {20, 20, 1}}, {60, {20, 20, 20}}, {101, {20, 20, 20, 20, 20, 1}}}) {
@@ -50,6 +59,19 @@ int main() {
             [&](auto &output) { inputs++; output.push_back(4); });
         check(calls == 0 && inputs == 1 && events == std::vector<int>{3, 4},
               "failed supplied world admission preserves prepared records and still reaches later input");
+    }
+    {
+        uint32_t previous = 120;
+        std::vector<int32_t> pieces;
+        int inputCalls = 0;
+        const auto frame = [&](uint32_t tick, bool matches) {
+            simulation::clientFrame(simulation::displayElapsed(previous, tick), matches, pieces,
+                [](int32_t elapsed, auto &output) { output.push_back(elapsed); }, [&](auto &) { ++inputCalls; });
+        };
+        frame(161, false);
+        frame(171, true);
+        check(inputCalls == 2 && pieces == std::vector<int32_t>{10},
+              "display intervals during a mismatch are consumed without catch-up, while later phases still run");
     }
     {
         worldgen::WorldMap world;

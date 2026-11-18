@@ -820,7 +820,16 @@ Differences from the Steam engine that shape the plan:
 - [x] Order the connected buff pass before objective writes, local-target
   hits, projectile insertion and the foreign-source hit pass
   (`alpha-rulings-connected-client-receipt-order.md`).
-  The requested and active world transition remains open.
+  The incoming queues also remain active while the requested and active worlds differ.
+- [x] Connected world identity and activation. Compare the requested signed
+  seed and name with the active pair and skip world calls on mismatch. A
+  later request can replace the pending pair while the old workers finish.
+  Retire old zone and discovery data, use the new map/catalog and restore
+  the same actor's raw visit position. Preserve connected clock, projectiles
+  and pending world records. The display interval is consumed without catch-up.
+- [ ] Verify native world lifecycle timing and cutoff races, startup and
+  disconnect paths, and cross-thread CRT state. The guarded elapsed mode
+  has no verified stock nonzero writer.
 - [x] Connected section-13 objective receipt. Write present cells in wire
   order and acknowledge the signed resident region independently. Retain
   the raw records for the late effects after the hit passes. State one

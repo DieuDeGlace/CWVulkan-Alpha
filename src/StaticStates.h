@@ -47,6 +47,7 @@ class StaticStates {
     void generated(const worldgen::Zone &zone);
     void restore(int32_t zx, int32_t zy, const std::vector<uint8_t> &states);
     void forget(int32_t zx, int32_t zy) { zones.erase({zx, zy}); spatial.erase({zx, zy}); }
+    void forgetWorld() { zones.clear(); spatial.clear(); changed.clear(); }
     const std::vector<StaticState> *zone(int32_t zx, int32_t zy) const;
     std::vector<uint8_t> stateBytes(int32_t zx, int32_t zy) const;
     // Physics §4.5: whether a static object's box overlaps the box `lo`..`hi` (blocks). Traps

@@ -180,6 +180,27 @@ int main(int argc, char **argv) {
         SaveDb worlds;
         check(worlds.open(folder / "Save" / "worlds.db", SaveDb::Mode::ReadOnly) && readWorlds(worlds).size() == 1,
               "one world entry");
+        worlds.close();
+        {
+            constexpr uint32_t lastSeed = 0xfffffff9u;
+            const std::array<int64_t, 3> raw{550398629740LL, 550398629741LL, -101};
+            CharacterRecord traveler;
+            traveler.saveVisit(lastSeed, "online_-7", raw);
+            check(traveler.visitPosition(lastSeed, "online_-7") == raw && !traveler.visitPosition(lastSeed, "online_7") &&
+                  !traveler.visitPosition(7, "online_-7"), "connected visits match both parts and keep every fixed coordinate bit");
+
+            WorldSession map;
+            check(map.openRemoteMap(folder, "online_-7", lastSeed, &error), "open connected discovery map: " + error);
+            map.saveDiscoveryCount(61);
+            check(map.openRemoteMap(folder, "online_42", 42, &error) && map.discoveryCount() == 0,
+                  "a different connected world starts with its own map and count");
+            check(map.openRemoteMap(folder, "online_-7", lastSeed, &error) && map.discoveryCount() == 61,
+                  "the same connected pair reopens its original discovery count");
+            check(worlds.open(folder / "Save" / "worlds.db", SaveDb::Mode::ReadOnly) && readWorlds(worlds).size() == 3 &&
+                  !fs::exists(folder / "Save" / "world_online_-7.db") && !fs::exists(folder / "Save" / "world_online_42.db"),
+                  "connected selection registers each pair once and creates no local terrain archive");
+            worlds.close();
+        }
         fs::remove_all(folder, ec);
     }
 

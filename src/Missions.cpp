@@ -562,6 +562,14 @@ const Missions::Cell *Missions::cell(int32_t cx, int32_t cy) const {
     return it == cells.end() ? nullptr : &it->second;
 }
 
+void Missions::forgetWorld() {
+    cells.clear();
+    done.clear();
+    changed.clear();
+    passed.clear();
+    receivedRegions.clear();
+}
+
 void Missions::receive(const World &world, const std::array<uint8_t, 56> &record) {
     int32_t cx, cy;
     const MissionArea mission = MissionArea::fromRecord(record.data(), cx, cy);

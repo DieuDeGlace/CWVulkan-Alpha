@@ -92,11 +92,15 @@ constexpr uint32_t MAX_ENTRIES = 1u << 16;
 
 } // namespace
 
-SaveDb::~SaveDb() { sqlite3_close(db); }
+SaveDb::~SaveDb() { close(); }
 
-bool SaveDb::open(const std::filesystem::path &file, Mode mode, std::string *error) {
+void SaveDb::close() {
     sqlite3_close(db);
     db = nullptr;
+}
+
+bool SaveDb::open(const std::filesystem::path &file, Mode mode, std::string *error) {
+    close();
     int result;
     if (mode == Mode::ReadOnly) {
         const std::string uri = sqliteReadOnlyUri(file);
@@ -289,6 +293,27 @@ std::vector<uint8_t> CharacterRecord::serialize() const {
     for (uint32_t i = 0; i < SKILLS; i++)
         w.i32(i < skills.size() ? skills[i] : 0);
     return std::move(w.data());
+}
+
+std::optional<std::array<int64_t, 3>> CharacterRecord::visitPosition(uint32_t seed, const std::string &world) const {
+    for (const auto &visit : visits)
+        if (visit.seed == seed && visit.name == world)
+            return std::to_array(visit.position);
+    return std::nullopt;
+}
+
+void CharacterRecord::saveVisit(uint32_t seed, const std::string &world, const std::array<int64_t, 3> &fixed) {
+    std::copy(fixed.begin(), fixed.end(), position);
+    lastWorldSeed = seed;
+    lastWorldName = world;
+    bool listed = false;
+    for (auto &visit : visits)
+        if (visit.seed == seed && visit.name == world) {
+            std::copy(fixed.begin(), fixed.end(), visit.position);
+            listed = true;
+        }
+    if (!listed)
+        visits.push_back({seed, world, {fixed[0], fixed[1], fixed[2]}});
 }
 
 std::vector<CharacterRecord> readCharacters(const SaveDb &db) {

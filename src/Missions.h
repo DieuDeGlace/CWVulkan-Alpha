@@ -131,6 +131,7 @@ class Missions {
     // §2.1: whether region (rx, ry)'s pass has run today; midnight and inn rests clear all.
     bool generated(int32_t rx, int32_t ry) const { return done.count({rx, ry}) != 0; }
     void clearGenerated() { done.clear(); }
+    void forgetWorld();
     // Server simulation §2.1 (S 0xd7960): a dropped region's cells and "missions generated" flag
     // are deleted (the caller saves them first).
     void forgetRegion(int32_t rx, int32_t ry) {

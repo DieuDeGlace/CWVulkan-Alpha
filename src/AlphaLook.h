@@ -81,10 +81,6 @@ template <class Loaded> float fogTarget(const std::array<int64_t, 3> &camera, gl
     return float(std::sqrt(double(nearest))) - std::bit_cast<float>(0x41b33333u);
 }
 
-// The frame caller keeps the low 32 bits of the tick difference. Zero is the
-// native sentinel for an unset previous sample.
-int32_t fogElapsed(uint32_t &previous, uint32_t current);
-
 class FogDistance {
   public:
     void update(float targetDistance, int32_t elapsedMs, bool worldMatches);

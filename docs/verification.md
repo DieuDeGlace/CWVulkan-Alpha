@@ -2563,3 +2563,32 @@ The production player/controller diagnostic and the five actual Vulkan
 flows passed. Package inspection verified 36 hashes in 37 archive files.
 Revision 33 parsed with all 73 links and both held objective contracts
 matched their exact hashes and line counts.
+
+## Connected world readiness (2026-11-17)
+
+`NetTests` sends an identical pair followed by two distinct requests.
+The repeated pair retains the actor. The new pair removes old actors and
+poses while preserving the local key, connection, queued projectile and
+objective records, and the connected clock. `SimulationFrameTests` checks
+signed display wrap, a skipped world interval and a later input phase.
+The next admitted frame keeps only its own interval. `SaveTests` checks
+exact fixed coordinates, independent connected discovery archives and
+the catalog. It verifies that a connected selection creates no local
+terrain database.
+
+The production Vulkan client received requests for seeds 55 and -7 on an
+existing loopback connection and activated `online_-7`. It published the
+saved fixed X and Y and retained health 93 after the hit within the request
+sequence. A duplicate -7 request left it active, and the next hit reduced
+health to 89. It asked for the new region and rendered its evening terrain
+with health 89. On exit the private character and two catalog entries
+reopened, and the target discovery map retained and advanced its count
+from 61 to 63. No terrain archive was created. An initial fixture used a
+saved height of 450 blocks and took fall damage after proving the cutover.
+The final exercise used a near-ground saved position. The original client's
+worker timing, unsaved-anchor playback and cross-thread state remain open.
+
+The Windows x64 build, ten focused suites, all 60 CTests, the production
+controller diagnostic and five actual client flows passed. The package
+verified 36 hashes in 37 files. Revision 34 parsed with all 75 links and
+both held source contracts matched their hashes and line counts.

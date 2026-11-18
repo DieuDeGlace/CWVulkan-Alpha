@@ -47,24 +47,23 @@ std::optional<TileSave> WorldSession::loadTile(int32_t zx, int32_t zy) {
     return value ? TileSave::parse(*value) : std::nullopt;
 }
 
-bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_t seed, int characterNumber,
-                        std::string *error, const std::string &generationProfile) {
-    saveFolder = folder / "Save";
-    std::error_code ec;
-    fs::create_directories(saveFolder, ec);
-    if (!ensureGenerationProfile(worldFile(saveFolder, name), generationProfile, error))
-        return false;
+uint32_t WorldSession::discoveryCount() {
+    return openMap() ? mapDb.number("discovered").value_or(0) : 0;
+}
 
-    // §4: find the world in the list, or add it. Engine choice: the entry is found by name
-    // (Alpha adds a new entry unless seed and name both match); the menus always pass the
-    // entry's own seed, so they behave alike.
+void WorldSession::saveDiscoveryCount(uint32_t count) {
+    if (openMap())
+        mapDb.putNumber("discovered", count);
+}
+
+bool WorldSession::selectEntry(const std::string &name, uint32_t seed, bool matchSeed, std::string *error) {
     SaveDb worlds;
     if (!worlds.open(saveFolder / "worlds.db", SaveDb::Mode::ReadWrite, error))
         return false;
     const std::vector<WorldEntry> list = readWorlds(worlds);
     entryIndex = -1;
     for (size_t i = 0; i < list.size(); i++)
-        if (list[i].name == name) {
+        if (list[i].name == name && (!matchSeed || list[i].seed == seed)) {
             entry = list[i];
             entryIndex = (int)i;
         }
@@ -80,6 +79,34 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
             return false;
         }
     }
+    return true;
+}
+
+bool WorldSession::openRemoteMap(const fs::path &folder, const std::string &name, uint32_t seed, std::string *error) {
+    mapDb.close();
+    mapOpen = false;
+    saveFolder = folder / "Save";
+    std::error_code ec;
+    fs::create_directories(saveFolder, ec);
+    if (!selectEntry(name, seed, true, error))
+        return false;
+    mapOpen = mapDb.open(saveFolder / ("map_" + entry.name + ".db"), SaveDb::Mode::ReadWrite, error);
+    return mapOpen;
+}
+
+bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_t seed, int characterNumber,
+                        std::string *error, const std::string &generationProfile) {
+    mapDb.close();
+    mapOpen = false;
+    saveFolder = folder / "Save";
+    std::error_code ec;
+    fs::create_directories(saveFolder, ec);
+    if (!ensureGenerationProfile(worldFile(saveFolder, name), generationProfile, error))
+        return false;
+    // Menus pass the selected entry's seed. Keep the existing name lookup for
+    // the offline command-line path as well.
+    if (!selectEntry(name, seed, false, error))
+        return false;
 
     // §5.1: the clock; a new world starts at noon of day 0. (Alpha's setup keeps whatever clock
     // its one world object holds when `time` is absent; each session here is a fresh world.)
@@ -114,10 +141,8 @@ std::optional<glm::dvec3> WorldSession::startPosition() const {
         return std::nullopt;
     // Saves §3.1: the list load does not apply the stored field-2 position; the place in a
     // world comes from the per-world table (field 19), which every save updates.
-    auto toBlocks = [](const int64_t p[3]) { return glm::dvec3(p[0] / FIXED, p[1] / FIXED, p[2] / FIXED); };
-    for (const auto &visit : character->visits)
-        if (visit.seed == entry.seed && visit.name == entry.name)
-            return toBlocks(visit.position);
+    if (const auto pos = character->visitPosition(entry.seed, entry.name))
+        return glm::dvec3((*pos)[0] / FIXED, (*pos)[1] / FIXED, (*pos)[2] / FIXED);
     return std::nullopt;
 }
 
@@ -214,25 +239,10 @@ void WorldSession::leave(const glm::dvec3 &position) {
         worlds.put(std::to_string(entryIndex), entry.serialize());
     if (!character)
         return;
-    int64_t fixed[3];
+    std::array<int64_t, 3> fixed;
     for (int axis = 0; axis < 3; axis++)
         fixed[axis] = (int64_t)(position[axis] * FIXED);
-    std::copy(fixed, fixed + 3, character->position);
-    character->lastWorldSeed = entry.seed;
-    character->lastWorldName = entry.name;
-    bool listed = false;
-    for (auto &visit : character->visits)
-        if (visit.seed == entry.seed && visit.name == entry.name) {
-            std::copy(fixed, fixed + 3, visit.position);
-            listed = true;
-        }
-    if (!listed) {
-        CharacterRecord::WorldVisit visit;
-        visit.seed = entry.seed;
-        visit.name = entry.name;
-        std::copy(fixed, fixed + 3, visit.position);
-        character->visits.push_back(visit);
-    }
+    character->saveVisit(entry.seed, entry.name, fixed);
     // Saves §3.1: the character is saved under its own key only.
     SaveDb characters;
     if (characterIndex >= 0 && characters.open(saveFolder / "characters.db", SaveDb::Mode::ReadWrite) &&

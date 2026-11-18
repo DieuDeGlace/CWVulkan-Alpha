@@ -29,6 +29,7 @@ class SaveDb {
     ~SaveDb();
 
     bool open(const std::filesystem::path &file, Mode mode, std::string *error = nullptr);
+    void close();
     std::optional<std::vector<uint8_t>> get(const std::string &key) const;
     bool put(const std::string &key, const std::vector<uint8_t> &value);
     // Atomic insert that preserves an existing value; true also means already present.
@@ -79,6 +80,8 @@ struct CharacterRecord {
 
     static std::optional<CharacterRecord> parse(const std::vector<uint8_t> &inflated);
     std::vector<uint8_t> serialize() const;
+    std::optional<std::array<int64_t, 3>> visitPosition(uint32_t seed, const std::string &world) const;
+    void saveVisit(uint32_t seed, const std::string &world, const std::array<int64_t, 3> &fixed);
 };
 
 // §3: the character list. Reading keeps one record per key 0..num-1 (indices are the keys).

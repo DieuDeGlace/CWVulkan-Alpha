@@ -56,8 +56,13 @@ class WorldView {
     // Once a frame: asks for the zones the camera needs, takes in finished work, lets go of far
     // zones.
     void update();
+    // Stop submitting previous-world work. Once ready, the caller can flush
+    // the old map and install the latest seed without blocking on a zone load.
+    bool prepareWorldChange();
+    void activateWorld(uint32_t seed, glm::dvec3 focus);
+    bool changingWorld() const { return worldChangePending; }
     // True while zones or chunks are still being made.
-    bool busy() { return !idle(); }
+    bool busy() { return worldChangePending || !idle(); }
     // Moves the camera by `delta` blocks (for scripted runs).
     void shift(glm::vec3 delta) { eye += delta; }
 
@@ -130,7 +135,9 @@ class WorldView {
     uint8_t zoneFlags(int32_t zx, int32_t zy) const;
     void restoreZone(int32_t zx, int32_t zy, uint8_t flags);
     // Talk §2.5, missions §8.1: marks one zone discovered on the world map.
-    void markDiscovered(int32_t zx, int32_t zy) { discoveredZones.insert({zx, zy}); }
+    void markDiscovered(int32_t zx, int32_t zy);
+    uint32_t discoveryCount() const { return discoveredCount; }
+    void restoreDiscoveryCount(uint32_t count) { discoveredCount = count; }
     // Restore saved cells with the general writer. The other sources use
     // the removal rule and mark the published mesh cache at frame end.
     void applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source);
@@ -141,11 +148,11 @@ class WorldView {
                                                glm::vec3 aim, int32_t day);
     std::string status() const;
     // The base height H of a column (terrain spec §4), for places not generated yet.
-    float groundHeight(int32_t x, int32_t y) const { return terrain.height(x, y); }
-    const worldgen::World &terrainWorld() const { return world; }
+    float groundHeight(int32_t x, int32_t y) const { return terrainGenerator().height(x, y); }
+    const worldgen::World &terrainWorld() const { return worldData->world; }
     // A prefab model of the content stores (null when missing), as world generation reads it.
-    std::shared_ptr<const worldgen::Prefab> prefab(const std::string &key) const { return terrain.prefabs(key); }
-    const worldgen::Terrain &terrainGenerator() const { return terrain; }
+    std::shared_ptr<const worldgen::Prefab> prefab(const std::string &key) const { return terrainGenerator().prefabs(key); }
+    const worldgen::Terrain &terrainGenerator() const { return worldData->terrain; }
     // Zones kept round the camera's in each direction (the options' render distance).
     void setRadius(int32_t zones) { radius = std::max(zones, 1); }
     // The zones held now (main thread).
@@ -226,8 +233,14 @@ class WorldView {
 
     Renderer &renderer;
     const Content &content;
-    worldgen::World world;
-    worldgen::Terrain terrain;
+    struct WorldData {
+        explicit WorldData(uint32_t seed) : world(seed), terrain(world), clouds(terrain) {}
+
+        worldgen::World world;
+        worldgen::Terrain terrain;
+        worldgen::CloudField clouds;
+    };
+    std::unique_ptr<WorldData> worldData;
     worldgen::WorldMap map; // the zones taken in (main thread)
     std::chrono::steady_clock::time_point lastZoneCleanup{}; // the last zone clean-up pass
     int32_t radius;
@@ -251,7 +264,6 @@ class WorldView {
     std::map<int32_t, std::pair<MeshId, glm::vec3>> staticModels;
     MeshId airshipModelMesh = 0;
     bool airshipModelTried = false;
-    worldgen::CloudField clouds;
     MeshId cloudMesh = 0;
     motion::MotionSettings motionSettings;
 
@@ -265,6 +277,8 @@ class WorldView {
     std::condition_variable jobsReady;
     std::deque<std::function<void()>> jobs;
     bool stopping = false;
+    unsigned activeJobs = 0; // under jobsLock
+    bool worldChangePending = false; // main thread only
     std::mutex doneLock;
     std::vector<std::shared_ptr<worldgen::Zone>> doneZones;
     // Screens §5.1.6: zone map tiles, meshed on the workers.
@@ -285,6 +299,7 @@ class WorldView {
     MeshId borderMarker = 0; // §5.1.2: the 4 x 4 x 1 marker tile
     MeshId placeholder = 0;  // §5.2.4: the `maptile` block of zones without a tile
     std::set<Key> discoveredZones;
+    uint32_t discoveredCount = 0;
     std::set<Key> tiledZones;     // zones that have had a tile (map record flag bit 1)
     std::set<Key> unreadableTiles; // flagged zones whose saved tile could not be read
     void loadSavedTiles();

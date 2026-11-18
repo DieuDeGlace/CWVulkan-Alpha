@@ -123,11 +123,12 @@ const char *staticModelName(int32_t kind) {
 } // namespace
 
 WorldView::WorldView(Renderer &r, const Content &c, const WorldViewOptions &options, TileReady tileReady)
-    : onTileReady(std::move(tileReady)), renderer(r), content(c), world(options.seed), terrain(world), radius(options.radius), clouds(terrain),
-      motionSettings(options.motion) {
+    : onTileReady(std::move(tileReady)), renderer(r), content(c), worldData(std::make_unique<WorldData>(options.seed)),
+      radius(options.radius), motionSettings(options.motion) {
     origin = {floorDiv(options.x, Zone::SIZE) * Zone::SIZE, floorDiv(options.y, Zone::SIZE) * Zone::SIZE};
     eye = glm::vec3(options.x - origin.x, options.y - origin.y, 0);
     startSeconds = nowSeconds();
+    auto &terrain = worldData->terrain;
     terrain.swimmableWater = options.swimmableWater;
     terrain.finishSpawn = creatures::finishSpawn; // spawn objects §3
     terrain.prefabs = [this](const std::string &key) -> std::shared_ptr<const Prefab> {
@@ -177,6 +178,64 @@ WorldView::~WorldView() {
         t.join();
 }
 
+bool WorldView::prepareWorldChange() {
+    std::lock_guard guard(jobsLock);
+    if (!worldChangePending) {
+        worldChangePending = true;
+        jobs.clear();
+    }
+    return activeJobs == 0;
+}
+
+void WorldView::activateWorld(uint32_t seed, glm::dvec3 focus) {
+    // prepareWorldChange has stopped jobs until update runs again.
+    auto next = std::make_unique<WorldData>(seed);
+    next->terrain.swimmableWater = worldData->terrain.swimmableWater;
+    next->terrain.prefabs = worldData->terrain.prefabs;
+    next->terrain.finishSpawn = worldData->terrain.finishSpawn;
+    for (const auto &[key, chunk] : chunks) {
+        renderer.removeMesh(chunk.solid);
+        renderer.removeMesh(chunk.water);
+    }
+    for (const auto &[key, tile] : tiles)
+        renderer.removeMesh(tile.mesh);
+    for (const auto &[key, land] : lands)
+        renderer.removeMesh(land.mesh);
+    renderer.dropHistory();
+
+    map = {};
+    plants.clear();
+    chunks.clear();
+    sectorSources = {};
+    cachedSources = {};
+    chunkLightUpdates = {};
+    changedLightColumns.clear();
+    editedChunks.clear();
+    tiles.clear();
+    lands.clear();
+    discoveredZones.clear();
+    discoveredCount = 0;
+    tiledZones.clear();
+    unreadableTiles.clear();
+    visitedLands.clear();
+    lastZoneCleanup = {};
+
+    doneZones.clear();
+    doneTiles.clear();
+    doneChunks.clear();
+    donePreparation.reset();
+    chunkRequests.clear();
+    preparingChunks = false;
+    zonesPending.clear();
+    chunksPending.clear();
+    chunksStale.clear();
+    worldData = std::move(next);
+    origin = {floorDiv(int32_t(std::floor(focus.x)), Zone::SIZE) * Zone::SIZE,
+              floorDiv(int32_t(std::floor(focus.y)), Zone::SIZE) * Zone::SIZE};
+    eye = toRender(focus);
+    worldChangePending = false;
+}
+
 void WorldView::post(std::function<void()> job) {
     {
         std::lock_guard guard(jobsLock);
@@ -195,8 +254,13 @@ void WorldView::workerLoop() {
                 return;
             job = std::move(jobs.front());
             jobs.pop_front();
+            ++activeJobs;
         }
         job();
+        {
+            std::lock_guard guard(jobsLock);
+            --activeJobs;
+        }
     }
 }
 
@@ -217,6 +281,7 @@ void WorldView::requestZone(Key key) {
             return;
     }
     post([this, key] {
+        const auto &terrain = terrainGenerator();
         std::shared_ptr<Zone> zone = terrain.generate(key.first, key.second);
         // Screens §5.1.6: its map tile, meshed like a .cub model with a black shade.
         auto tile = std::make_shared<const MapTile>(buildMapTile(*zone, terrain));
@@ -320,7 +385,7 @@ void WorldView::publishPreparedChunks(PreparedChunks &batch) {
         }
         auto around = map.neighbourhood(floorDiv(x0, Zone::SIZE), floorDiv(y0, Zone::SIZE));
         post([this, around = std::move(around), x0, y0, lightChange, prepared = std::move(prepared)] {
-            ChunkMeshes meshes = meshChunk(around, terrain, x0, y0, prepared.get());
+            ChunkMeshes meshes = meshChunk(around, terrainGenerator(), x0, y0, prepared.get());
             std::vector<terrain_lights::CachedSource> lights;
             if (const Zone *zone = around.zoneAt(x0, y0))
                 lights = terrain_lights::chunkSources(zone->sprites, {x0 / CHUNK, y0 / CHUNK});
@@ -375,7 +440,7 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSourc
     std::map<Key, std::shared_ptr<Zone>> replacements;
     for (const auto &[key, list] : byZone) {
         auto zone = std::make_shared<Zone>(*map.zone(key.first, key.second));
-        const GapFill rock = [&](int32_t x, int32_t y, int32_t z) { return terrain.gapBlock(x, y, z, *zone); };
+        const GapFill rock = [&](int32_t x, int32_t y, int32_t z) { return terrainGenerator().gapBlock(x, y, z, *zone); };
         for (const BlockEdit *e : list) {
             if (saved)
                 applySaved(*zone, *e, rock);
@@ -396,7 +461,7 @@ void WorldView::relightAfterDestruction(const std::array<int64_t, 3> &centre, fl
 void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, bool relightAreas) {
     for (auto &[key, zone] : edits) {
         if (relightAreas)
-            terrain.relight(*zone);
+            terrainGenerator().relight(*zone);
         sectorSources.update(*zone);
         map.add(std::move(zone));
     }
@@ -424,7 +489,7 @@ std::vector<BlockEdit> WorldView::placeQueuedBlueprint(int8_t number, int8_t rot
     const auto base = placementBase(position, aim);
     auto placed = stageBlueprint(map, model->second, base, rotation, day, [&](int32_t x, int32_t y, int32_t z) {
         if (const auto *zone = map.zoneAt(x, y))
-            return terrain.gapBlock(x, y, z, *zone);
+            return terrainGenerator().gapBlock(x, y, z, *zone);
         return IMPLICIT_SOLID;
     });
     for (const auto &[x, y] : placed.changedColumns)
@@ -474,6 +539,8 @@ void WorldView::placeChunk(DoneChunk &chunk) {
 }
 
 void WorldView::update() {
+    if (worldChangePending)
+        return;
     // Mark the cache coordinates that were already published during the frame.
     // An in-flight mesh keeps its snapshot and is requested again after completion.
     chunkLightUpdates.markChanged(changedLightColumns);
@@ -602,7 +669,7 @@ MeshId WorldView::airshipMesh() {
         return airshipModelMesh;
     airshipModelTried = true;
     // World objects §5: the model's pure red voxels are emptied when it loads.
-    if (const auto prefab = terrain.prefabs("airship.cub")) {
+    if (const auto prefab = terrainGenerator().prefabs("airship.cub")) {
         CubModel model;
         model.sx = prefab->sx, model.sy = prefab->sy, model.sz = prefab->sz;
         model.rgb = prefab->rgb;
@@ -669,11 +736,12 @@ std::vector<WorldView::PlantInstance> WorldView::plantsOf(const Zone &zone) {
         instance.sways = (p.flags & motion::SWAYS) != 0;
         out.push_back(instance);
     };
+    const bool bankWater = terrainGenerator().swimmableWater;
     for (size_t n = 0; n < zone.plants.size(); n++)
-        if (!terrain.swimmableWater || zone.plants[n].kind != 22)
+        if (!bankWater || zone.plants[n].kind != 22)
             addPlant(zone.plants[n], n);
-    if (terrain.swimmableWater) {
-        const auto reeds = bankReeds(map, zone, world.seed());
+    if (bankWater) {
+        const auto reeds = bankReeds(map, zone, terrainWorld().seed());
         for (const Plant &reed : reeds) {
             // Neighbor admission can add earlier reeds to the cache. A phase
             // derived from the place keeps existing bank plants from jumping.
@@ -695,6 +763,11 @@ void WorldView::refreshPlantsNear(Key key) {
 
 uint8_t WorldView::zoneFlags(int32_t zx, int32_t zy) const {
     return (uint8_t)((discovered(zx, zy) ? 1 : 0) | (tiledZones.count({zx, zy}) ? 2 : 0));
+}
+
+void WorldView::markDiscovered(int32_t zx, int32_t zy) {
+    if (uint32_t(zx) < 65536 && uint32_t(zy) < 65536 && discoveredZones.insert({zx, zy}).second)
+        ++discoveredCount;
 }
 
 void WorldView::restoreZone(int32_t zx, int32_t zy, uint8_t flags) {
@@ -741,8 +814,8 @@ void WorldView::loadSavedTiles() {
 void WorldView::discover(glm::dvec3 at) {
     for (const double dx : {-64.0, 64.0})
         for (const double dy : {-64.0, 64.0})
-            discoveredZones.insert({floorDiv((int32_t)std::floor(at.x + dx), Zone::SIZE),
-                                    floorDiv((int32_t)std::floor(at.y + dy), Zone::SIZE)});
+            markDiscovered(floorDiv((int32_t)std::floor(at.x + dx), Zone::SIZE),
+                           floorDiv((int32_t)std::floor(at.y + dy), Zone::SIZE));
     // The land stood in is visited; its picture is rebuilt at most every 2 s (new zones show).
     const Key land = landOf((int32_t)std::floor(at.x), (int32_t)std::floor(at.y));
     visitedLands.insert(land);
@@ -753,6 +826,7 @@ void WorldView::discover(glm::dvec3 at) {
 }
 
 WorldView::Key WorldView::landOf(int32_t x, int32_t y) const {
+    const auto &world = terrainWorld();
     const worldgen::RegionCell *c = world.owner(x, y);
     if (!c)
         return {-1, -1};
@@ -766,6 +840,7 @@ void WorldView::buildLand(Key cell) {
     LandPicture &land = lands[cell];
     land.builtAt = nowSeconds();
     land.knownZones = discoveredZones.size() + tiledZones.size();
+    const auto &world = terrainWorld();
     const worldgen::RegionCell *c = world.cell(cell.first, cell.second);
     if (!c)
         return;
@@ -841,7 +916,7 @@ std::vector<DrawItem> WorldView::mapItems(int32_t zx0, int32_t zy0, int32_t zx1,
             const bool known = discovered(zx, zy);
             // §5.2.4 step 1: a blue block where there is no tile yet, sinking as the tile rises.
             if (extras && placeholder && (!t || t->riseMs > 0)) {
-                const worldgen::RegionCell *cell = world.owner(zx * Zone::SIZE, zy * Zone::SIZE);
+                const worldgen::RegionCell *cell = terrainWorld().owner(zx * Zone::SIZE, zy * Zone::SIZE);
                 const float E = cell ? (float)cell->elevation : 0.f;
                 const float rise = t ? (t->riseMs / 250.f - 1.f) * 20.f : 0.f;
                 glm::mat4 m = glm::translate(glm::mat4(1), glm::vec3(zx * Zone::SIZE - origin.x, zy * Zone::SIZE - origin.y,
@@ -914,7 +989,7 @@ std::vector<DrawItem> WorldView::items(double clockMs) {
         const glm::vec2 drift = motionSettings.clouds
                                     ? motion::cloudDrift(clockMs / 1000.0, motionSettings.cloudDistance, motionSettings.cloudSpeed)
                                     : glm::vec2(0);
-        for (const auto &c : clouds.place(gate.x, gate.y, cx, cy)) {
+        for (const auto &c : worldData->clouds.place(gate.x, gate.y, cx, cy)) {
             const glm::vec3 at((float)(c.x - origin.x) + drift.x, (float)(c.y - origin.y) + drift.y, (float)c.z);
             // Rulings §6: the quarter turn is degrees x 0.01745329 in binary32, with binary64
             // cosine and sine rounded to binary32; a vertex maps (x, y) -> (xc - ys, xs + yc).
@@ -996,6 +1071,7 @@ void WorldView::fillScene(Scene &scene) const {
         // The regional sampler truncates the fixed camera coordinates toward zero.
         const int32_t x = int32_t(rawX / 65536);
         const int32_t y = int32_t(rawY / 65536);
+        const auto &world = terrainWorld();
         const float warmth = world.warmth(x, y);
         const float moisture = world.moisture(x, y);
         const float sea = warmth > .3f && moisture > .6f ? world.seaShare(x, y) : 0.f;

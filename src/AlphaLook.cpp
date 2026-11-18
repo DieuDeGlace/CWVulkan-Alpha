@@ -156,12 +156,6 @@ glm::vec4 material(float S, bool underwater) {
 
 float fogGradientTranslation(float zenithDegrees) { return (zenithDegrees - 80) / -30.f; }
 
-int32_t fogElapsed(uint32_t &previous, uint32_t current) {
-    const uint32_t elapsed = previous ? current - previous : 0;
-    previous = current;
-    return std::bit_cast<int32_t>(elapsed);
-}
-
 void FogDistance::update(float targetDistance, int32_t elapsedMs, bool worldMatches) {
     constexpr float minimum = std::bit_cast<float>(0x38d1b717u);
     constexpr float coefficient = std::bit_cast<float>(0x3a83126fu);

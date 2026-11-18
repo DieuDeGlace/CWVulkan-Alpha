@@ -356,15 +356,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Joining a server: its seed decides the world (packets §3.9).
     net::Client client;
     WorldViewOptions worldOptions = options.worldOptions;
+    net::WorldIdentity activeWorld{worldOptions.seed, options.saveWorld};
     if (!options.connect.empty()) {
         std::string error;
         if (!client.connect(options.connect, options.port, &error)) {
             std::fprintf(stderr, "Error: could not connect to %s: %s\n", options.connect.c_str(), error.c_str());
             return 1;
         }
-        worldOptions.seed = client.seed();
+        activeWorld = client.worldIdentity();
+        worldOptions.seed = activeWorld.seed;
         client.say("\x01" "AV1"); // AlphaVulkan's hello (docs/design/quests.md); Alpha servers pass it on as chat
-        std::fprintf(stderr, "Connected. Player id %llu, world online_%u.\n", (unsigned long long)client.id(), client.seed());
+        std::fprintf(stderr, "Connected. Player id %llu, world %s.\n", (unsigned long long)client.id(), activeWorld.name.c_str());
     }
     // Online, the character still comes from the saves (characters.db), and goes back there.
     std::optional<CharacterRecord> onlineCharacter;
@@ -375,6 +377,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             if (options.character < (int)all.size())
                 onlineCharacter = all[options.character];
         }
+    }
+    const auto onlineStart = onlineCharacter && worldOptions.x == worldgen::HOME && worldOptions.y == worldgen::HOME
+        ? onlineCharacter->visitPosition(activeWorld.seed, activeWorld.name) : std::nullopt;
+    if (onlineStart) {
+        worldOptions.x = int32_t(std::floor((*onlineStart)[0] / 65536.0));
+        worldOptions.y = int32_t(std::floor((*onlineStart)[1] / 65536.0));
+        worldOptions.z = float((*onlineStart)[2] / 65536.0);
     }
     // A single-player world from the saves: its seed, its clock, where the character stood.
     std::optional<WorldSession> session;
@@ -393,6 +402,24 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             worldOptions.z = (float)at->z;
         }
     }
+    if (session)
+        activeWorld = {session->seed(), session->name()};
+    std::optional<WorldSession> remoteMap;
+    const auto openRemoteMap = [&](const net::WorldIdentity &world) {
+        remoteMap.reset();
+        std::string error;
+        if (!remoteMap.emplace().openRemoteMap(executableFolder(), world.name, world.seed, &error)) {
+            remoteMap.reset();
+            std::fprintf(stderr, "Cannot open map for %s: %s\n", world.name.c_str(), error.c_str());
+        }
+    };
+    if (client.connected())
+        openRemoteMap(activeWorld);
+    const auto mapSession = [&]() -> WorldSession * {
+        if (session)
+            return &*session;
+        return remoteMap ? &*remoteMap : nullptr;
+    };
     // The character playing: the session's, or the one brought online.
     const auto playing = [&]() -> CharacterRecord * {
         if (session && session->playing())
@@ -401,8 +428,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     };
     std::fprintf(stderr, "generating the world round (%d, %d), seed %u...\n", worldOptions.x, worldOptions.y,
                  worldOptions.seed);
-    const auto persistMapTile = [&session](int32_t zx, int32_t zy, const worldgen::MapTile &tile) {
-        if (!session)
+    const auto persistMapTile = [&](int32_t zx, int32_t zy, const worldgen::MapTile &tile) {
+        WorldSession *saved = mapSession();
+        if (!saved)
             return;
         TileSave save;
         save.base = tile.base;
@@ -410,9 +438,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         save.rgb = tile.rgb;
         for (const glm::ivec3 &m : tile.markers)
             save.markers.push_back({m.x, m.y, m.z});
-        session->saveTile(zx, zy, save);
+        saved->saveTile(zx, zy, save);
     };
     WorldView view(renderer, content, worldOptions, persistMapTile);
+    if (remoteMap)
+        view.restoreDiscoveryCount(remoteMap->discoveryCount());
     activeView = &view;
     // World items §4: each zone's items as generated, replaced by its save.
     WorldItems worldItems;
@@ -513,7 +543,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     view.onZoneReady = zoneReady;
     // Screens §5.1.6: land pictures and map tiles go into map_<name>.db as they are made.
     view.onLandReady = [&](int32_t lx, int32_t ly, const worldgen::RegionCell &cell, glm::ivec2 origin, const CubModel &picture) {
-        if (!session)
+        WorldSession *saved = mapSession();
+        if (!saved)
             return;
         LandSave save;
         save.originX = origin.x, save.originY = origin.y;
@@ -528,12 +559,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         std::memcpy(&save.cell[16], &cell.warmth, 4);
         std::memcpy(&save.cell[20], &cell.id, 4);
         std::memcpy(&save.cell[24], &cell.elevation, 4);
-        session->saveLand(lx, ly, save);
+        saved->saveLand(lx, ly, save);
     };
     view.savedTile = [&](int32_t zx, int32_t zy) -> std::optional<worldgen::MapTile> {
-        if (!session)
+        WorldSession *mapSave = mapSession();
+        if (!mapSave)
             return std::nullopt;
-        const std::optional<TileSave> saved = session->loadTile(zx, zy);
+        const std::optional<TileSave> saved = mapSave->loadTile(zx, zy);
         if (!saved)
             return std::nullopt;
         worldgen::MapTile tile;
@@ -549,23 +581,29 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     std::map<std::pair<int32_t, int32_t>, std::pair<RegionSave, std::vector<uint8_t>>> mapRegions;
     double lastRegionPass = -1e9;
     auto regionPass = [&](glm::dvec3 at) {
-        if (!session)
+        WorldSession *mapSave = mapSession();
+        if (!mapSave)
             return;
+        const worldgen::World &world = view.terrainWorld();
         const int32_t rx = worldgen::floorDiv((int32_t)std::floor(at.x), worldgen::REGION);
         const int32_t ry = worldgen::floorDiv((int32_t)std::floor(at.y), worldgen::REGION);
         for (int32_t i = rx - 3; i <= rx + 3; i++)
             for (int32_t j = ry - 3; j <= ry + 3; j++) {
+                if (remoteMap && (uint32_t(i) >= 1024 || uint32_t(j) >= 1024))
+                    continue;
                 if (mapRegions.count({i, j}))
                     continue;
+                const auto saved = mapSave->loadRegion(i, j);
+                if (remoteMap && !saved && !world.region(i, j))
+                    continue;
                 auto &[record, written] = mapRegions[{i, j}];
-                if (const std::optional<RegionSave> saved = session->loadRegion(i, j)) {
+                if (saved) {
                     record = *saved;
                     written = record.serialize();
                     for (int32_t k = 0; k < 64 * 64; k++)
                         view.restoreZone(64 * i + k / 64, 64 * j + k % 64, record.zones[k].flags);
                 }
             }
-        const worldgen::World &world = view.terrainWorld();
         for (auto it = mapRegions.begin(); it != mapRegions.end();) {
             const auto [i, j] = it->first;
             auto &[record, written] = it->second;
@@ -576,7 +614,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const bool distant = std::abs(i - rx) > 8 || std::abs(j - ry) > 8;
             std::vector<uint8_t> bytes = record.serialize();
             if (bytes != written) {
-                session->saveRegion(i, j, record);
+                mapSave->saveRegion(i, j, record);
                 written = std::move(bytes);
             }
             it = distant ? mapRegions.erase(it) : std::next(it);
@@ -819,6 +857,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             choice = creatures::CharacterChoice::parse(playing()->extra.data());
         creatures::generate(type, looks, &choice, [] { return 0; });
         player.emplace(view, looks, worldRandom);
+        if (onlineStart)
+            player->changeWorldPosition(*onlineStart);
         player->objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *) {
             return statics.blocks(view.held(), lo, hi, axis, move);
         };
@@ -1565,8 +1605,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     const double start = last;
     uint64_t simulationWorldCalls = 0, simulationInputFrames = 0;
     int32_t simulationMaxPiece = 0;
-    double frameLeftoverMs = 0;
-    uint32_t previousFogTick = 0;
+    uint32_t previousFrameTick = 0;
     uint32_t lightClockMs = 0;
     std::vector<DrawItem> items;
     std::vector<EffectVertex> effects; // weapon trails (trails §1.3)
@@ -1784,8 +1823,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const auto mark = [&](int32_t zx, int32_t zy) {
                 if (uint32_t(zx) >= 65536 || uint32_t(zy) >= 65536)
                     return;
-                // Prepared zone summaries and restored regions back the engine's sparse map.
-                if (mapRegions.contains({zx / 64, zy / 64}) || world.zoneEntry(zx, zy))
+                // A saved map admits existing region records. Unsaved viewers
+                // use the prepared zone summaries as their map backing.
+                if (mapSession() ? mapRegions.contains({zx / 64, zy / 64}) : world.zoneEntry(zx, zy) != nullptr)
                     view.markDiscovered(zx, zy);
             };
             const uint32_t level = uint32_t(player->combat().level);
@@ -1917,17 +1957,45 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             while ((glfwGetTime() - last) * 1000.0 < step)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         const double now = glfwGetTime();
-        const int32_t fogElapsedMs = alpha::fogElapsed(previousFogTick, uint32_t(uint64_t(now * 1000.0)));
+        const int32_t frameElapsedMs = simulation::displayElapsed(previousFrameTick, uint32_t(uint64_t(now * 1000.0)));
         const float seconds = (float)(now - last);
-        frameLeftoverMs += (now - last) * 1000.0;
-        // GLFW supplies fractional seconds. Keep an integer-duration adapter
-        // for this engine clock; native timeGetTime/mode scheduling stays open.
-        const int32_t frameElapsedMs = int32_t(std::clamp(frameLeftoverMs, 0.0, double(INT32_MAX)));
-        frameLeftoverMs -= double(frameElapsedMs);
         last = now;
         std::unique_lock<std::mutex> networkFrame;
         if (client.connected())
             networkFrame = client.lockFrame();
+        auto worldChange = networkFrame.owns_lock() ? client.worldChange(activeWorld) : std::nullopt;
+        if ((worldChange || view.changingWorld()) && view.prepareWorldChange()) {
+            if (remoteMap) {
+                regionPass(player ? player->body().blocks() : view.worldPosition());
+                remoteMap->saveDiscoveryCount(view.discoveryCount());
+            }
+            if (worldChange) {
+                activeWorld = std::move(*worldChange);
+                worldChange.reset();
+            }
+            const auto visit = onlineCharacter ? onlineCharacter->visitPosition(activeWorld.seed, activeWorld.name) : std::nullopt;
+            constexpr int64_t home = int64_t(worldgen::HOME) * 65536;
+            const auto destination = visit.value_or(std::array<int64_t, 3>{home, home, 0});
+            const glm::dvec3 focus = glm::dvec3(destination[0], destination[1], destination[2]) / 65536.0;
+            view.activateWorld(activeWorld.seed, focus);
+            worldItems = {};
+            statics.forgetWorld();
+            blockEdits = {};
+            missions.forgetWorld();
+            missionRegionsRead.clear();
+            zonesForMissions.clear();
+            missionDay = -1;
+            questRemembered.reset();
+            mapRegions.clear();
+            lastRegionPass = -1e9;
+            openRemoteMap(activeWorld);
+            if (remoteMap)
+                view.restoreDiscoveryCount(remoteMap->discoveryCount());
+            if (player)
+                player->changeWorldPosition(destination);
+            std::fprintf(stderr, "Activated world %s.\n", activeWorld.name.c_str());
+        }
+        const bool worldMatches = !worldChange;
         if (const auto clock = client.takeClock()) {
             scene.day = std::bit_cast<int32_t>(clock->first);
             scene.timeOfDayMs = clock->second;
@@ -2234,7 +2302,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             frameBlockEdits.clear();
             creatures::NpcFrame::Cursor npcEvents;
             bool firstWorldCall = true;
-            simulation::clientFrame(frameElapsedMs, true, playerActionFrame,
+            simulation::clientFrame(frameElapsedMs, worldMatches, playerActionFrame,
                 [&](int32_t elapsed, creatures::NpcFrame &aggregate) {
                     simulationWorldCalls++;
                     simulationMaxPiece = std::max(simulationMaxPiece, elapsed);
@@ -2820,7 +2888,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             // A missing controlled actor does not suppress the world call.
             // Preview bootstrap and native creature selection remain separate.
             playerActionFrame.reset();
-            simulation::clientFrame(frameElapsedMs, true, playerActionFrame,
+            simulation::clientFrame(frameElapsedMs, worldMatches, playerActionFrame,
                 [&](int32_t elapsed, creatures::NpcFrame &aggregate) {
                     simulationWorldCalls++;
                     simulationMaxPiece = std::max(simulationMaxPiece, elapsed);
@@ -2870,8 +2938,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         {
             const auto reference = player && options.travel == 0.f ? std::optional(player->followCamera().eyeFixed()) : std::nullopt;
             const float target = view.fogTarget(reference);
-            const bool worldMatches = !client.connected() || client.seed() == view.terrainWorld().seed();
-            fogDistance.update(target, fogElapsedMs, worldMatches);
+            fogDistance.update(target, frameElapsedMs, worldMatches);
             scene.fogDistance = fogDistance.value();
             scene.currentFogAngle = player ? std::optional(player->cameraPitch()) : std::nullopt;
             scene.mapFog = interface.mapOpen;
@@ -3457,11 +3524,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         // starting map zoom (s 0.8).
         if (player && !interface.startScreen) {
             const glm::dvec3 at = player->body().blocks();
-            view.discover(at); // §5.1.6
             if (now - lastRegionPass > 1) {
                 regionPass(at);
                 lastRegionPass = now;
             }
+            view.discover(at); // §5.1.6
             const VkExtent2D sz = renderer.size();
             const float W = (float)sz.width, H = (float)sz.height, yaw = view.camera(sz).yawDegrees;
             // The corner map (§5.1) or, with M, the world map (§5.2.3): centred on the player
@@ -4835,10 +4902,18 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         saved.manaCubes = (uint32_t)manaCubes;
     }
     if (onlineCharacter && player) { // written back under its own key in characters.db (saves §3.1)
+        onlineCharacter->saveVisit(activeWorld.seed, activeWorld.name, std::to_array(player->body().position));
+        const auto requested = client.worldIdentity();
+        onlineCharacter->lastWorldSeed = requested.seed;
+        onlineCharacter->lastWorldName = requested.name;
         SaveDb db;
         if (db.open(executableFolder() / "Save" / "characters.db", SaveDb::Mode::ReadWrite) &&
             (uint32_t)options.character < db.number("num").value_or(0))
             saveCharacter(db, (uint32_t)options.character, *onlineCharacter);
+    }
+    if (remoteMap) {
+        regionPass(player ? player->body().blocks() : view.worldPosition());
+        remoteMap->saveDiscoveryCount(view.discoveryCount());
     }
     if (session) {
         regionPass(player ? player->body().blocks() : view.worldPosition());

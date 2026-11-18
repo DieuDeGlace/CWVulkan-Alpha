@@ -23,6 +23,13 @@ Player::Player(WorldView &v, const creatures::Appearance &a, worldgen::Random &r
     yaw = (float)(std::atan2(-f.x, f.y) * 180.0 / 3.141592653589793);
 }
 
+void Player::changeWorldPosition(const std::array<int64_t, 3> &position) {
+    std::copy(position.begin(), position.end(), state.position);
+    std::copy(position.begin(), position.end(), state.follow);
+    state.velocity = glm::vec3(0);
+    start = state.blocks();
+}
+
 uint8_t Player::lightAt(int32_t x, int32_t y, int32_t z) const {
     const worldgen::Zone *zone = view.held().zoneAt(x, y);
     if (!zone || x < 0 || y < 0)
