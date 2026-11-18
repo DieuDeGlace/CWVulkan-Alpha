@@ -4183,8 +4183,7 @@ generator. The preview applies its stats and kit only in unsaved sessions.
 Creation entry assigns the current and target orbit before the frame's
 camera calculation. It selects the held vertical route that subtracts
 the live drawn-height correction and preserves collision shortening and
-the prior focus. The background focus of the title and selection screens,
-complete native actor reset, saved selection and return-to-title lifetime,
+the prior focus. Complete native actor reset, saved selection and return-to-title lifetime,
 and original first-present playback are still open.
 
 ## GPU buffer-memory pages (2026-11-18)
@@ -4205,3 +4204,23 @@ type requirements. The current ordinary buffers have no external-memory or
 sparse flags. Images own their allocations. The implementation uses
 project-owned code and the Vulkan specification. [Buffer binding](https://docs.vulkan.org/refpages/latest/refpages/source/vkBindBufferMemory.html),
 [dedicated allocation requirements](https://docs.vulkan.org/refpages/latest/refpages/source/VkMemoryDedicatedRequirements.html).
+
+## Menu camera focus producer (2026-11-18)
+
+The isolated author finalized the [menu focus producer](specs/alpha-menu-camera-focus-producer.md).
+The implementer read all 41 physical lines and verified SHA-256
+`b661448b622ec98b920e51a65a167b8a75154702f9d8e9864b6af0164dd4dd63`.
+The production camera now uses the existing alternative-anchor solver on
+the title, character list, world list and connection screens. Every frame
+converts the reset home anchor and samples its current resident column.
+The signed base-plus-count sum supplies Z before the exact 50-block lift.
+A missing column supplies the stored anchor Z. This height is independent
+of the controlled actor's position and motion.
+
+Start mode initializes the actor at exact fixed home X/Y and zero Z, and
+ordinary world motion recovers it as terrain arrives. Its default seed
+uses the Windows millisecond timer. Explicit diagnostic seeds retain
+their supplied value. The camera uses the live resident extent on every
+frame, including frames without a world piece. Native first-present
+height, refresh-thread timing, alias writes and complete world selection
+and save handoff remain open.

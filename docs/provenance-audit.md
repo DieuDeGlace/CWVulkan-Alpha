@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-18 after batch 68 and the rulings. The 288 tracked contracts
-comprise 234 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-18 after batch 69 and the rulings. The 289 tracked contracts
+comprise 235 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -135,6 +135,7 @@ Batch 66 covers `alpha-client-offline-projectile-lifecycle.md`.
 Batch 67 covers `alpha-start-menu-title-layout.md`.
 Batch 68 covers `alpha-character-creation-preview-entry.md` and
 `alpha-character-creation-facing-and-camera-height.md`.
+Batch 69 covers `alpha-menu-camera-focus-producer.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -260,6 +261,7 @@ Batch 68 covers `alpha-character-creation-preview-entry.md` and
 | `alpha-loot-rolls.md` | A | 503 | 0 |
 | `alpha-materials-wildlife-routes.md` | A | 905 | 0 |
 | `alpha-maximum-health-numeric-contract-recovered.md` | B | 135 | 3 |
+| `alpha-menu-camera-focus-producer.md` | A | 42 | 0 |
 | `alpha-missions.md` | A | 1062 | 0 |
 | `alpha-mode-twenty-production.md` | A | 88 | 0 |
 | `alpha-native-fixed-coordinates-terrain-light.md` | A | 110 | 0 |

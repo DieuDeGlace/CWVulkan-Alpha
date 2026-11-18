@@ -2745,3 +2745,26 @@ The Windows x64 build, all 60 serial CTests, production player/controller
 diagnostic and five actual client flows passed. The package verified 36
 hashes in 37 files. Wider-view memory use and longer-session frame times
 remain open acceptance work.
+
+## Menu camera focus (2026-11-18)
+
+`CameraTests` runs the production follow camera with an actor away from
+the menu anchor. Every admitted frame queries the anchor's column once.
+Missing terrain gives exactly 50 blocks on repeated zero-duration frames.
+A negative base and positive count give their signed sum plus 50. An
+empty resident column contributes its base. The actor's height is retained.
+
+The production Vulkan title, character list and world list all recorded
+raw focus (550,301,073,408, 550,301,073,408, 19,333,120). This is the exact
+home X/Y and Z 295. The title actor recovered from zero to Z 246.08 while
+keeping exact home X/Y. The direct list modes used the diagnostic actor's
+half-block offset while their focus still used home X/Y. The creator
+used its actor-follow route and rendered the front-facing selected model.
+The title capture showed the elevated view across the tree canopy. These
+runs directly selected the screens and kept seed 123.
+
+The Windows x64 build, focused camera checks, all 60 serial CTests,
+production player/controller diagnostic and five live client flows
+passed. The package verified 36 hashes in 37 files. Revision 41 parsed
+all 82 links and the held focus contract matched its exact hash and line
+count. Original first-present height and refresh scheduling remain open.

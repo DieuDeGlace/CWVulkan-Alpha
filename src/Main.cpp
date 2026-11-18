@@ -118,6 +118,7 @@ struct Options {
 
 Options parse(int argc, char **argv) {
     Options o;
+    bool seedGiven = false;
     for (int i = 1; i < argc; i++) {
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
         if (!std::strcmp(argv[i], "--game"))
@@ -192,8 +193,10 @@ Options parse(int argc, char **argv) {
             o.saveWorld = next();
         else if (!std::strcmp(argv[i], "--character"))
             o.character = std::atoi(next().c_str());
-        else if (!std::strcmp(argv[i], "--seed"))
+        else if (!std::strcmp(argv[i], "--seed")) {
             o.worldOptions.seed = (uint32_t)std::strtoul(next().c_str(), nullptr, 10);
+            seedGiven = true;
+        }
         else if (!std::strcmp(argv[i], "--radius"))
             o.worldOptions.radius = std::clamp(std::atoi(next().c_str()), 0, 8);
         else if (!std::strcmp(argv[i], "--at")) {
@@ -226,6 +229,8 @@ Options parse(int argc, char **argv) {
                 o.list = argv[++i];
         }
     }
+    if (o.start && !seedGiven)
+        o.worldOptions.seed = GetTickCount();
     return o;
 }
 
@@ -855,8 +860,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             choice = creatures::CharacterChoice::parse(playing()->extra.data());
         creatures::generate(type, looks, &choice, [] { return 0; });
         player.emplace(view, looks, worldRandom);
-        if (options.start)
+        if (options.start) {
+            player->changeWorldPosition({int64_t(worldgen::HOME) * 65536, int64_t(worldgen::HOME) * 65536, 0});
             player->resetCreationPose();
+        }
         if (onlineStart)
             player->changeWorldPosition(*onlineStart);
         player->objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *) {
@@ -2861,8 +2868,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     using F = ui::Interface::Front;
                     const F front = interface.front;
                     const bool creationView = front == F::Creation || front == F::WorldCreation;
+                    const bool menuView = frontEndRotation();
                     creatures::FollowCamera &cam = player->followCamera();
-                    if (frontEndRotation()) {
+                    if (menuView) {
                         cam.targetDistance = 10, cam.targetPitch = 100;
                         cam.targetYaw = float(frameElapsedMs) * std::bit_cast<float>(0x3ba3d70au) + cam.targetYaw;
                     } else if (creationView && front != cameraFront) {
@@ -2871,9 +2879,21 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         cam.targetDistance = cam.distance = 5;
                     }
                     cameraFront = front;
+                    const camera_follow::Alternative menuFocus{
+                        {float(worldgen::HOME), float(worldgen::HOME), 0.f},
+                        [&](int32_t x, int32_t y) -> std::optional<camera_follow::Column> {
+                            if (uint32_t(x) >= 0x1000000u || uint32_t(y) >= 0x1000000u)
+                                return std::nullopt;
+                            const auto *area = view.held().zoneAt(x, y);
+                            if (!area)
+                                return std::nullopt;
+                            const auto &column = area->column(x, y);
+                            return camera_follow::Column{column.bottom, std::bit_cast<int32_t>(uint32_t(column.blocks.size()))};
+                        }};
                     // The engine world clock stands in for the native world member.
                     player->finishFrame(frameElapsedMs, [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); },
-                                        npcs.sightRecords, {.verticalOverride = creationView});
+                                        npcs.sightRecords, {.alternative = menuView ? &menuFocus : nullptr,
+                                                           .verticalOverride = creationView});
                 });
         } else {
             // A missing controlled actor does not suppress the world call.
@@ -4851,6 +4871,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 const glm::dvec3 feet = player->body().blocks();
                 std::printf("Capture player (%.2f, %.2f, %.2f), contact 0x%x, health %.1f\n", feet.x, feet.y, feet.z,
                             unsigned(player->body().contact), double(player->combat().health));
+                const auto &focus = player->followCamera().followAnchor();
+                std::printf("Capture focus raw (%lld, %lld, %lld)\n", (long long)focus[0], (long long)focus[1],
+                            (long long)focus[2]);
             }
             break;
         }

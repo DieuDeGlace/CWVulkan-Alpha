@@ -486,10 +486,40 @@ static void creationCamera() {
           "the unobstructed admitted creator camera places the eye five blocks on the positive Y side of its focus");
 }
 
+static void menuCamera() {
+    using namespace creatures;
+    constexpr int64_t home = 8396928;
+    Body actor;
+    actor.place({double(home + 23), double(home - 17), 40});
+    const visibility::Scene clear{[](int32_t, int32_t, int32_t) { return uint8_t(0); }, {}};
+    FollowCamera camera;
+    std::optional<camera_follow::Column> resident;
+    int lookups = 0;
+    const camera_follow::Alternative menu{{float(home), float(home), 0},
+        [&](int32_t x, int32_t y) {
+            check(x == home && y == home, "the menu samples its stored anchor's column independently of actor position");
+            ++lookups;
+            return resident;
+        }};
+    const auto update = [&] { camera.update(actor, 0, clear, [] { return 0; }, {}, {.alternative = &menu}); };
+    update();
+    update();
+    check(lookups == 2 && camera.followAnchor() == camera_view::Fixed3{home * UNIT, home * UNIT, 50 * UNIT},
+          "missing menu terrain gives exactly fifty blocks on each frame without accumulating");
+    resident = camera_follow::Column{-9, 20};
+    update();
+    check(camera.followAnchor()[2] == 61 * UNIT, "a resident column's signed base and stored count set the menu height");
+    resident = camera_follow::Column{100, 0};
+    update();
+    check(camera.followAnchor()[2] == 150 * UNIT && lookups == 4 && actor.blocks().z == 40,
+          "an empty resident column contributes its base while the focus lift preserves the actor's own height");
+}
+
 int main() {
     viewRelation();
     viewScalars();
     creationCamera();
+    menuCamera();
     conversions(); rotationsAndTranslations(); weightsAndShake(); finalConstruction();
     inputTargets(); smoothing(); anchorFollowing(); voxelsAndEye(); productionCamera();
     if (!failures) std::puts("PASS: camera conversions, view construction, input targets, smoothing, anchor following, corner sampling and production adapter");
