@@ -1,7 +1,7 @@
 // AlphaServer: a dedicated server for Cube World Alpha's protocol (src/net/Server.h). Original
 // Alpha clients and AlphaVulkan clients can join it on TCP port 12345.
 //
-//   AlphaServer [--folder DIR] [--port N] [--bind IPv4] [--game DIR] [--spawn X Y] [--native-water]
+//   AlphaServer [--folder DIR] [--port N] [--bind IPv4] [--game DIR] [--spawn X Y]
 //
 // The game's install (found as the client finds it, or --game) gives the building models the
 // zone generator places, so the server's zones match its players'.
@@ -35,7 +35,6 @@ int main(int argc, char **argv) {
     std::string bindAddress = "0.0.0.0";
     std::string game;
     int32_t spawnX = 0, spawnY = 0;
-    bool swimmableWater = true;
     for (int i = 1; i < argc; i++) {
         if (!std::strcmp(argv[i], "--game") && i + 1 < argc)
             game = argv[++i];
@@ -45,8 +44,6 @@ int main(int argc, char **argv) {
             port = (uint16_t)std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--bind") && i + 1 < argc)
             bindAddress = argv[++i];
-        else if (!std::strcmp(argv[i], "--native-water"))
-            swimmableWater = false;
         else if (!std::strcmp(argv[i], "--spawn") && i + 2 < argc) {
             spawnX = std::atoi(argv[++i]);
             spawnY = std::atoi(argv[++i]);
@@ -74,7 +71,6 @@ int main(int argc, char **argv) {
     options.folder = folder;
     options.spawnX = spawnX;
     options.spawnY = spawnY;
-    options.swimmableWater = swimmableWater;
     options.log = [](const std::string &line) {
         std::printf("%s\n", line.c_str());
         std::fflush(stdout); // (lines show at once, also in a log file)

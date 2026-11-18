@@ -538,7 +538,6 @@ bool Renderer::createScenePipelines() {
     PipelineDesc water = model;
     water.fragmentCode = spv_water_frag;
     water.fragmentBytes = sizeof(spv_water_frag);
-    water.blend = true;
     water.cull = false;       // seen from above and below
     water.depthWrite = true;  // the shader samples a separate opaque snapshot
     waterPipeline = makePipeline(water);

@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 34 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 35 · 2026-11-17</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -351,7 +351,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
           <tbody>
             <tr><td>Adaptation price fixes</td><td>Owner requirement; the native price stays documented as the reference</td></tr>
             <tr><td>Quests (non-opt-in)</td><td>Owner requirement; the server keeps each player's quest book, with a hidden hello for AlphaVulkan clients</td></tr>
-            <tr><td>Shared, swimmable water and bank reeds</td><td>Reuses the CubeVulkan engine's own water surface shader (GPL); all Alpha water, shallows included, is swimmable</td></tr>
+            <tr><td><a href="water-extension.md">Shared, swimmable water and bank reeds</a></td><td>The client always uses the Steam surface shader. The client and dedicated server always convert natural shallows for swimming. Reeds grow on dry banks beside the water.</td></tr>
             <tr><td>Gamepad and controller support</td><td>Owner requirement covering gameplay and menus, mapped through the engine's own input layer</td></tr>
             <tr><td>Shadows, sky and temporal anti-aliasing</td><td>Ports of the owner's own mods; documented as engine material, not Alpha contracts</td></tr>
             <tr><td>Network safeguards</td><td>A handshake timeout, packet size bounds and a reachable "server full" reply, each labelled in code as an engine choice</td></tr>

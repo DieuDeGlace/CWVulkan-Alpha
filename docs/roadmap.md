@@ -634,10 +634,11 @@ Differences from the Steam engine that shape the plan:
   sources (+0x148/+0x154) and the swing count (+0x1314) with its spin variants.
 - [x] Zone streaming (`WorldView`): background workers generate and mesh zones round the camera,
   neighbouring edges are re-meshed, far zones are let go; `--travel` tests it.
-- [x] Water (`shaders/water.frag`, `[Water] Style`): Alpha's own water (§6.4) and the Omega-style look
-  as default: clear over the shallows and deep saturated blue with depth (read from the solid
-  world's depth), small moving waves and white sun glints, Alpha's light and fog kept.
-- [x] Under water (Omega look): teal seabed and deep blue fog, dimming with the daylight.
+- [x] Shared water (`shaders/water.frag`). The client always uses the Steam surface
+  with refraction, bank reflections, depth color and sun glints. The client and
+  dedicated server always make natural shallows swimmable. Diagnostic generators
+  support native terrain comparisons.
+- [x] Submerged water. Teal terrain and deep blue fog dim with daylight.
 - [x] Lily pads and reeds in play: lakes (type-4 locations) fill with water, lilies float on them,
   reeds line the shore (checked in a capture of seed 123's home-region lake).
 - [x] Creatures, first part (`src/creatures/`, specs `alpha-creatures-models.md`, `alpha-physics-camera.md`):

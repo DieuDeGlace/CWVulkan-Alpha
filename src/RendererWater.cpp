@@ -19,7 +19,7 @@ void Renderer::updateWaterConstants(const FrameConstants &frame) {
     const auto scattering = submerged ? glm::vec4(fog, 1.f) : glm::vec4(.015f, .27f, .72f, brightness);
     const WaterConstants constants{
         {frame.water.x, frame.water.y, 24.f, .85f}, scattering, {.38f, .23f, .06f, 0},
-        {1.f / extent.width, 1.f / extent.height, submerged ? 1.f : 0.f, frame.water.w},
+        {1.f / extent.width, 1.f / extent.height, submerged ? 1.f : 0.f, frame.water.z},
         {fog, frame.params.x > 0 ? 1.f / frame.params.x : 640.f},
         {glm::vec3(.12f, .35f, .62f) * brightness, 1}};
     std::memcpy(waterBuffer.mapped, &constants, sizeof constants);

@@ -4096,3 +4096,17 @@ uses the initial handshake seed. Native worker contention and cadence,
 disconnect races, complete discovery map allocation and shared CRT state
 across native threads remain open. No stock elapsed-mode control was
 verified.
+
+## Required water behavior (2026-11-17)
+
+The [water extension](water-extension.md) records the owner's intentional
+changes to terrain and rendering. Both production entry points always
+use the existing swimmable generation profile. Wet surfaces are liquid
+and reeds grow on dry banks beside surface water. Native comparison
+tools use the native generator.
+
+The production water pass calls the shared Steam fragment algorithm
+directly. It reads the opaque background once, writes the resulting
+color and retains depth writes. The `swimmable-3-v1` save profile pins
+the generation policy. The engine checks for incompatible profiles before
+opening a save.

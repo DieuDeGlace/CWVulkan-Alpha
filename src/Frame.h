@@ -83,17 +83,14 @@ struct FrameConstants {
     glm::vec4 moonFront, moonBack; // Moon.h colours, already scaled by its strength
     glm::vec4 nightAmbient;        // rgb: the night floor; a: the moon's phase
     glm::vec4 moonSprite;          // xyz: towards the moon; w: how visible its disc is
-    glm::vec4 water;               // near, far, look (0 Alpha, 1 Omega), seconds
-    glm::vec4 underwater;          // Omega look under water: fog colour, density (0: off)
+    glm::vec4 water;               // near, far, seconds, padding
+    glm::vec4 underwater;          // submerged fog colour and density (0: off)
     glm::vec4 leaves;              // leaf sway: offset now (xy), full range, fade length
     glm::vec4 lightPositions[FRAME_LIGHTS]; // xyz: position; w: radius (0: off)
     glm::vec4 lightColours[FRAME_LIGHTS];
     glm::mat4 minimap;     // world blocks -> clip for the corner map (screens §5.1)
     glm::vec4 minimapTint; // its material colour
 };
-
-// [Water] Style: Alpha's own water or the Omega-style look (the default).
-enum class WaterLook { Alpha, Omega };
 
 struct Scene {
     double timeOfDayMs = 12 * 3600000.0;
@@ -104,7 +101,6 @@ struct Scene {
     bool mapFog = false;
     glm::vec3 focus{0};      // what the shadow map is centred on (the player, in play)
     int day = 0;             // world day, for the moon's phase
-    WaterLook water = WaterLook::Omega;
     double seconds = 0;      // a running clock for water waves and the leaf sway
     glm::vec2 leafSway{0};   // this frame's leaf offset (motion::leafOffset)
     float leafRange = 96, leafFade = 32;

@@ -112,7 +112,6 @@ struct Options {
     std::string connect, name;
     std::string saveWorld; // --save-world: a single-player world kept in Save/
     int character = -1;    // --character: who plays in it (characters.db index)
-    WaterLook water = WaterLook::Omega;
     bool extendedQuests = true; // required core engine quests (docs/design/quests.md)
     uint16_t port = 12345;
 };
@@ -956,7 +955,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         scene.timeOfDayMs = session->clock.timeOfDayMs;
         scene.day = (int)session->clock.day;
     }
-    scene.water = options.water;
     activeScene = &scene;
     npcs.onFatalObject = [&](const creatures::Combatant &fighter, creatures::NpcFrame &frame) {
         if (!client.connected())
@@ -5124,8 +5122,6 @@ int main(int argc, char **argv) {
         if (options.world) {
             Options worldRun = options;
             worldRun.worldOptions.motion.load(config);
-            worldRun.water = config.text("Water", "Style", "Omega") == "Alpha" ? WaterLook::Alpha : WaterLook::Omega;
-            worldRun.worldOptions.swimmableWater = config.number("Water", "Swimmable", 1) != 0;
             worldRun.extendedQuests = true; // core feature; no opt-in setting
             // Character screens §1.2: a world chosen on the front screens starts in this window.
             for (;;) {

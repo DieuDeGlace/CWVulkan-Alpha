@@ -38,7 +38,7 @@ using MeshId = uint32_t;
 enum class Shading : uint8_t {
     World, // terrain, models, plants (alpha-rendering.md §5, §6.2)
     Cloud, // cloud models (§4 cloud row, §6.3)
-    Water, // water surfaces (§6.4, or the Omega look), drawn after everything solid
+    Water, // shared water surface, drawn after the solid world
     // The corner map (screens §5.1): tiles, and markers drawn without writing depth.
     Map, MapOutline,
 };

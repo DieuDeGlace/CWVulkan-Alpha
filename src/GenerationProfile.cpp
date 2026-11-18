@@ -25,7 +25,7 @@ bool ensureGenerationProfile(const std::filesystem::path &worldFile, const std::
             if (stored == profile)
                 return true;
             if (error)
-                *error = "This world uses different water or mod settings. Restore them or create a new world.";
+                *error = "This world requires a different terrain or mod profile.";
             return false;
         }
     }

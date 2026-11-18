@@ -2592,3 +2592,27 @@ The Windows x64 build, ten focused suites, all 60 CTests, the production
 controller diagnostic and five actual client flows passed. The package
 verified 36 hashes in 37 files. Revision 34 parsed with all 75 links and
 both held source contracts matched their hashes and line counts.
+
+## Required water behavior (2026-11-17)
+
+`WaterTests` and `WaterLiveTests` passed. A player-sized body stayed in
+the swimming state for all 150 movement steps at both generated sites,
+with zero standing steps. The seed-123 lake shore and wet-ground region
+produced 11 and 48 dry-bank reeds. The emitted reeds had adjacent surface
+water. The wet-ground site gained swimming depth at all 3,532 sampled
+exposed wet surfaces.
+
+The previous and current Vulkan executables loaded isolated INI files with
+the older water settings. At the same former wet-ground site, the current
+client reported a submerged camera and rendered the blue fog and teal
+terrain. The previous client reported a dry camera. The current client
+also rendered the shared surface from above. The actual dedicated server
+accepted a fresh loopback bind with the old command-line flag present,
+exited normally and saved `Water=swimmable-3-v1`. Its profile database
+was read back by the test. The shared surface algorithm's source blob
+matches the previous checkpoint.
+
+The Windows x64 build, ten focused suites, all 60 CTests, the production
+controller diagnostic and five actual client flows passed. Package
+inspection checked 36 hashes in 37 files. Spec revision 35 parsed with
+all 76 links. Original-client movement and visual comparison remain open.

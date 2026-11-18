@@ -22,8 +22,8 @@ layout(set = 0, binding = 0) uniform Frame {
     vec4 moonBack;          // on faces away from it
     vec4 nightAmbient;      // rgb: the night floor on every face; a: the moon's phase
     vec4 moonSprite;        // xyz: towards the moon; w: how visible its disc is
-    vec4 water;             // x, y: near and far plane; z: 0 Alpha look, 1 Omega look; w: seconds
-    vec4 underwater;        // the Omega look under water: rgb fog colour, w density (0: off)
+    vec4 water;             // near plane, far plane, seconds, padding
+    vec4 underwater;        // submerged fog colour and density (0: off)
     vec4 leaves;            // leaf sway: xy offset now (blocks), z full range, w fade length
     vec4 lightPositions[16]; // §10: xyz position, w radius (0: off)
     vec4 lightColours[16];

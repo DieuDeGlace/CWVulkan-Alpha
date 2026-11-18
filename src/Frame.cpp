@@ -90,9 +90,8 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     c.nightAmbient = glm::vec4(moonLight.ambient, moon::phase(scene.day));
     const float disc = moonSettings.enabled && !scene.underwater ? moon::discVisibility(scene.timeOfDayMs) : 0;
     c.moonSprite = glm::vec4(moon::direction(scene.timeOfDayMs), disc);
-    c.water = glm::vec4(lens.nearPlane, lens.farPlane, scene.water == WaterLook::Omega ? 1.f : 0.f,
-                        (float)std::fmod(scene.seconds, 3600.0));
-    if (scene.underwater && scene.water == WaterLook::Omega) {
+    c.water = glm::vec4(lens.nearPlane, lens.farPlane, float(std::fmod(scene.seconds, 3600.0)), 0);
+    if (scene.underwater) {
         // The Omega look under water (references: water-underwater-reference.webp): the ground
         // turns teal instead of Alpha's blue, and deep blue fog closes in within a few dozen
         // blocks. It dims with the daylight, never quite to black.
