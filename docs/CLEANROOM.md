@@ -4110,3 +4110,19 @@ directly. It reads the opaque background once, writes the resulting
 color and retains depth writes. The `swimmable-3-v1` save profile pins
 the generation policy. The engine checks for incompatible profiles before
 opening a save.
+
+## Connected spawn recovery and support publication (2026-11-17)
+
+The isolated author finalized the [connected spawn recovery](specs/alpha-client-connected-spawn-recovery.md)
+contract and separately confirmed the gate for controller role six. The
+implementer read all 89 physical lines of the final ruling and verified
+SHA-256 `3bb62127332ae2ce46626ba1a0201e17cc3d0f5b349d972b8734b2a7c8c55cad`.
+
+The controlled actor starts an unsaved activation at the exact home fixed
+coordinates and zero Z. The ordinary collision box uses the binary32
+half extent and signed lower-cell rule. Its first solid overlap permits
+one upward correction and clears the drawn-height offset. An unloaded
+zone skips the lift and continues through ordinary solid movement fallback.
+The controlled creature snapshot now copies the actual contact flags from
+that update. The source investigation covers connected local terrain and
+leaves special teleport, object correction and original timing open.

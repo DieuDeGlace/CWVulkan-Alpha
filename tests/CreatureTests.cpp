@@ -335,6 +335,33 @@ int main() {
         step(held, 16, unloaded);
         same(held.blocks().z, 37, "no lift out of an unloaded zone", 0.05);
     }
+    {
+        Body controlled;
+        controlled.local = true;
+        controlled.place({10, 20, 0});
+        controlled.size = glm::vec3(2);
+        controlled.bob = .5f;
+        const auto initial = controlled;
+        const BlockType corner = [](int32_t x, int32_t y, int32_t z) {
+            return uint8_t(x == 11 && y == 21 && z == 1 ? 4 : 0);
+        };
+        step(controlled, 0, corner);
+        same(controlled.position[2], 6553, "inclusive upper corner lifts once from an exact negative bottom");
+        same(controlled.position[0], initial.position[0], "terrain lift keeps exact X");
+        same(controlled.position[1], initial.position[1], "terrain lift keeps exact Y");
+        same(controlled.bob, 0, "terrain lift clears drawn height offset");
+        step(controlled, 0, corner);
+        same(controlled.position[2], 72089, "the next update can lift the still-overlapping body again");
+
+        controlled = initial;
+        controlled.controller = 6;
+        step(controlled, 0, corner);
+        same(controlled.position[2], 0, "role six bypasses the terrain lift");
+        controlled = initial;
+        controlled.replica = true;
+        step(controlled, 0, corner);
+        same(controlled.position[2], 0, "the received replica has no local terrain lift");
+    }
 
     // Models §4.3: a male human with head 2, hair 7, colour 120/80/40.
     {

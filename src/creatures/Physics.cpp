@@ -66,7 +66,7 @@ struct Cells {
 Cells cellsOf(const int64_t p[3], glm::vec3 size, glm::vec3 lift = glm::vec3(0)) {
     Cells c;
     for (int k = 0; k < 3; k++) {
-        const int64_t half = fixedOf(size[k] * 0.5);
+        const int64_t half = fixedT(size[k] * 0.5f);
         const int64_t raise = fixedOf(lift[k]);
         c.lo[k] = boxBlock(p[k] - half + raise);
         c.hi[k] = boxBlock(p[k] + half + raise);
@@ -590,6 +590,7 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // block, even at head height, has its bottom set 1.1 blocks above the floor of the block
     // layer it is in, whether or not that is free; deep inside, it climbs a block a step. (Never
     // for inert objects, controller 6. Nothing like this exists for static objects.)
+    const int64_t halfHeight = fixedT(b.size.z * 0.5f);
     if (b.controller != 6 && !b.replica) {
         // (Cells of zones not loaded are passed over.)
         const auto solidHere = [&](int32_t x, int32_t y, int32_t z) {
@@ -598,9 +599,8 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
         };
         if (any(cellsOf(b.position, b.size), solidHere)) {
             constexpr int64_t LIFT = 72089; // 1.1 in fixed point, as the game has it
-            const int64_t half = fixedOf(b.size.z * 0.5);
-            const int64_t layer = snapLayer(b.position[2] - half); // (exact negatives go lower)
-            b.position[2] = layer * 65536 + half + LIFT;
+            const int64_t layer = snapLayer(b.position[2] - halfHeight); // exact negatives go lower
+            b.position[2] = layer * 65536 + halfHeight + LIFT;
             b.bob = 0;
         }
         // Airship steering §5: then, once, out of any airship's voxels.
@@ -623,7 +623,6 @@ void step(Body &b, int32_t dt, const BlockType &block, const ObjectTest &objects
     // Height §1.2 step 1: a static-object hit withdraws the step-up (and step-down) for the
     // rest of this update.
     bool stepAllowed = true;
-    const int64_t halfHeight = fixedT(b.size.z * 0.5f);
     const auto objectHere = [&](int axis, int64_t move) {
         if (!objects || move == 0) // §4.5: a d[k] of zero never hits
             return false;

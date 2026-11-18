@@ -4827,6 +4827,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     own.setPosition(axis, position[axis]);
                 own.setMotion(player->body().velocity, player->facing(), player->body().push, player->body().intent);
                 own.setFighter(player->combat());
+                own.setContactFlags(player->body().contact);
                 own.setManaCubeCounter(manaCubes);
                 const auto zone = net::zoneForRawPosition(position[0], position[1]);
                 if (view.held().needsZoneContents(zone))

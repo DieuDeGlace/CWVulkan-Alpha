@@ -2616,3 +2616,28 @@ The Windows x64 build, ten focused suites, all 60 CTests, the production
 controller diagnostic and five actual client flows passed. Package
 inspection checked 36 hashes in 37 files. Spec revision 35 parsed with
 all 76 links. Original-client movement and visual comparison remain open.
+
+## Connected spawn recovery (2026-11-18)
+
+`CreatureTests` exercises the inclusive upper corner of the overlap box
+and the exact negative lower layer. The first two pieces produce fixed Z
+values 6,553 and 72,089, preserve X and Y, and clear the drawn-height
+offset. Controller role six and received replicas skip the lift. The
+unloaded-zone case keeps ordinary solid movement fallback.
+
+An isolated loopback peer instructed the production Vulkan client to
+activate an unsaved seed. The peer first received the exact home X and Y,
+zero Z and zero velocity. Once terrain arrived, it observed seven distinct
+rising positions and grounded contact near Z 246.08636. Health stayed at
+100 throughout. The Vulkan capture showed the actor standing in the
+forest with contact `0x11`. Before the publication fix the actor reached
+the floor visually but the peer only received zero contact flags.
+
+The Windows x64 build, all 60 CTests in a serial run and the package
+inspection passed. The first concurrent focused run missed two periodic
+network-hit assertions. `NetTests` passed when rerun alone and within the
+full serial run. The package verified 36 hashes in 37 files, and revision
+36 parsed all 77 links. The held spawn contract matched its exact hash and
+line count. The production player/controller diagnostic and five actual
+client flows also passed. Original-client timing and special teleport
+cases remain open.

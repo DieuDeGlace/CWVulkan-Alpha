@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 64 and the rulings. The 283 tracked contracts
-comprise 229 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 65 and the rulings. The 284 tracked contracts
+comprise 230 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -130,6 +130,7 @@ Batch 63 covers `alpha-objective-state-one-late-interaction.md` and
 `alpha-objective-receipt-formatting-map-supplement.md`.
 Batch 64 covers `alpha-client-elapsed-adjustment-and-world-readiness.md`
 and `alpha-client-world-change-lifecycle.md`.
+Batch 65 covers `alpha-client-connected-spawn-recovery.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -157,6 +158,7 @@ and `alpha-client-world-change-lifecycle.md`.
 | `alpha-client-action-input-phase.md` | A | 187 | 1 |
 | `alpha-client-buff-action-boundaries.md` | A | 183 | 3 |
 | `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
+| `alpha-client-connected-spawn-recovery.md` | A | 90 | 0 |
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
 | `alpha-client-elapsed-adjustment-and-world-readiness.md` | A | 219 | 0 |
 | `alpha-client-frame-world-step-order.md` | A | 84 | 1 |

@@ -828,6 +828,10 @@ Differences from the Steam engine that shape the plan:
   Retire old zone and discovery data, use the new map/catalog and restore
   the same actor's raw visit position. Preserve connected clock, projectiles
   and pending world records. The display interval is consumed without catch-up.
+- [x] Connected spawn without a saved visit. Publish the native home anchor,
+  then let the controlled actor's ordinary motion update recover upward as
+  the terrain arrives. Keep the fixed signed box and role-six exclusion.
+  Send the recomputed support flags with the live network creature state.
 - [ ] Verify native world lifecycle timing and cutoff races, startup and
   disconnect paths, and cross-thread CRT state. The guarded elapsed mode
   has no verified stock nonzero writer.
