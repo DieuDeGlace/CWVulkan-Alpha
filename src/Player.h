@@ -46,7 +46,8 @@ class Player {
     // and of the interaction creature pass.
     uint8_t lightAt(int32_t x, int32_t y, int32_t z) const;
     void finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
-                     const creatures::visibility::RecordLookup &records); // camera, once per rendered frame
+                     const creatures::visibility::RecordLookup &records,
+                     const camera_follow::AnchorGates &anchorGates = {}); // camera, once per frame
     // Adds the player's creature to the draw list.
     // Also the player's footsteps (models §7.3), into the ability effects' sounds.
     void draw(std::vector<DrawItem> &items, CreatureView &creatureView, float dtMs,
@@ -59,7 +60,8 @@ class Player {
     float facing() const { return yaw; } // degrees, the creature's displayed rotation
     float &facing() { return yaw; }
     const creatures::Appearance &appearance() const { return looks; }
-    void setLooks(const creatures::Appearance &a) { looks = a; } // (character creation's preview)
+    void resetCreationPose();
+    void setCreationLook(int32_t type, const creatures::Appearance &appearance);
     // Stats, action and health (alpha-creatures-behaviour.md).
     creatures::Combatant &combat() { return fighter; }
     // Screens §5.8: R while dead. Stamina full, stealth and timers cleared, full health, back

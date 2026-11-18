@@ -78,7 +78,8 @@ glm::vec3 FollowCamera::right() const {
 }
 
 void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibility::Scene &scene,
-                          const camera_view::Clock &clock, const camera_view::Fixed3 &renderOrigin) {
+                          const camera_view::Clock &clock, const camera_view::Fixed3 &renderOrigin,
+                          const camera_follow::AnchorGates &anchorGates) {
     const camera_view::Trig trig = camera_view::platformTrig();
     camera_follow::State s = state();
     camera_follow::smooth(s, elapsedMs, options.smoothness);
@@ -88,7 +89,7 @@ void FollowCamera::update(const Body &player, int32_t elapsedMs, const visibilit
     subject.verticalOffset = player.bob;
     subject.extent = player.size;
     subject.action = uint8_t(player.action);
-    camera_follow::followAnchor(s, subject, elapsedMs);
+    camera_follow::followAnchor(s, subject, elapsedMs, anchorGates);
     camera_follow::placeEye(s, subject.position, camera_follow::offsetDirection(s.angles, trig), sceneQueries(scene));
     store(s);
 

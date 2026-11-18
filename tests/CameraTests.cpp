@@ -465,9 +465,31 @@ static void viewScalars() {
     check(worst < 1e-5f, "engine yaw and pitch from the native angles reproduce the native direction, straight down included");
 }
 
+static void creationCamera() {
+    using namespace creatures;
+    Body actor;
+    actor.place({100, 200, 20});
+    actor.bob = .25f;
+    const visibility::Scene clear{[](int32_t, int32_t, int32_t) { return uint8_t(0); }, {}};
+    FollowCamera creator;
+    creator.pitch = creator.targetPitch = 90;
+    creator.distance = creator.targetDistance = 5;
+    auto ordinary = creator;
+    creator.update(actor, 20, clear, [] { return 0; }, {}, {.verticalOverride = true});
+    ordinary.update(actor, 20, clear, [] { return 0; });
+    const auto &focus = creator.followAnchor();
+    const auto &eye = creator.eyeFixed();
+    check(focus[0] == actor.position[0] && focus[1] == actor.position[1] && focus[2] < actor.position[2] &&
+              ordinary.followAnchor()[2] > actor.position[2],
+          "creation follows the live actor minus its existing vertical correction without the normal height addition");
+    check(eye[0] == focus[0] && eye[1] == focus[1] + 5 * UNIT && eye[2] == focus[2] && creator.distance == 5,
+          "the unobstructed admitted creator camera places the eye five blocks on the positive Y side of its focus");
+}
+
 int main() {
     viewRelation();
     viewScalars();
+    creationCamera();
     conversions(); rotationsAndTranslations(); weightsAndShake(); finalConstruction();
     inputTargets(); smoothing(); anchorFollowing(); voxelsAndEye(); productionCamera();
     if (!failures) std::puts("PASS: camera conversions, view construction, input targets, smoothing, anchor following, corner sampling and production adapter");

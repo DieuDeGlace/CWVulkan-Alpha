@@ -30,6 +30,21 @@ void Player::changeWorldPosition(const std::array<int64_t, 3> &position) {
     start = state.blocks();
 }
 
+void Player::resetCreationPose() {
+    state.yaw = yaw = headPitch = 0.f;
+    state.velocity = state.intent = glm::vec3(0);
+    state.contact = 0;
+    state.stamina = 1.f;
+}
+
+void Player::setCreationLook(int32_t type, const creatures::Appearance &appearance) {
+    looks = appearance;
+    state.type = fighter.type = type;
+    state.size = looks.box;
+    state.swimmer = (looks.flags & creatures::SWIMMER) != 0;
+    fighter.appearanceFlags = looks.flags;
+}
+
 uint8_t Player::lightAt(int32_t x, int32_t y, int32_t z) const {
     const worldgen::Zone *zone = view.held().zoneAt(x, y);
     if (!zone || x < 0 || y < 0)
@@ -351,11 +366,12 @@ void Player::advance(int32_t dt, bool replica, const creatures::TimedConsumableE
 }
 
 void Player::finishFrame(int32_t dtMs, const camera_view::Clock &worldClock,
-                         const creatures::visibility::RecordLookup &records) {
+                         const creatures::visibility::RecordLookup &records,
+                         const camera_follow::AnchorGates &anchorGates) {
     // Camera following runs once after the frame's world calls, with the whole
     // frame duration rather than a world piece.
     const creatures::visibility::Scene scene{[&](int32_t x, int32_t y, int32_t z) { return blockType(x, y, z); }, records};
-    camera.update(state, dtMs, scene, worldClock, view.originFixed());
+    camera.update(state, dtMs, scene, worldClock, view.originFixed(), anchorGates);
     view.nativeView = camera.view();
     // Engine yaw turns from +y towards +x and engine pitch is positive looking
     // down; the native first angle is 90 when level and the native third angle

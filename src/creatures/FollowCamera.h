@@ -34,7 +34,7 @@ class FollowCamera {
     // whole frame duration; `clock` supplies the engine world clock twice.
     // `renderOrigin` is the engine's horizontal rebasing origin in raw units.
     void update(const Body &player, int32_t elapsedMs, const visibility::Scene &scene, const camera_view::Clock &clock,
-                const camera_view::Fixed3 &renderOrigin = {});
+                const camera_view::Fixed3 &renderOrigin = {}, const camera_follow::AnchorGates &anchorGates = {});
     // The constructed view relative to the render origin, shake included.
     const camera_view::Matrix &view() const { return rebased; }
 

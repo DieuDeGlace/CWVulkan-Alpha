@@ -1,0 +1,29 @@
+# Alpha character creation preview entry
+
+**FINAL / STABLE / HELD**
+
+This contract covers entry from the original character selection screen into character creation and the ordinary scene path while the creator is open. Evidence paths are relative to the original Alpha evidence directory. All executable addresses are RVAs. The supported `binary/Cube.exe` is the 32-bit x86 image with preferred base `0x400000`, timestamp `0x51EA955E`, image size `0x3BC000`, and SHA-256 `84A7A132A84D4282338E7EA45A1940D32066D64E39CBAFED8F2418D5A6DC30BF`.
+
+## Admission and lifetime
+
+The character selector's **Select** callback closes that selector, then checks its signed selection index at client `+0x800A0C`. The saved-character count is the number of four-byte entries between the pointers at `+0x800984` and `+0x800988`. A negative index or an index at or beyond the count admits character creation. An index in the saved range applies the selected character to the same controlled actor and opens world selection. [`binary/Cube.exe` `0x065661–0x0656B5`, `0x083E9C–0x083EF9`, `0x0806C0`]
+
+The client constructs its controlled actor at startup in a `0x1E60`-byte allocation with numeric ID 1, stores the pointer at `+0x8006D0`, and registers that same pointer under ID 1 in the client actor table at `+0x2E8`. It also assigns the startup position from the world helper. Entering creation opens the creator root at `+0x800880` and resets the existing actor in place. It clears the actor's displayed name and movement-related values, restores its initial level and actor state, replaces the appearance data allocation at actor `+0x1D28`, clears the GUI name field, and invokes the appearance selection handler with index zero. The actor address and registry membership persist through that admission. [`binary/Cube.exe` `0x061FDE–0x06205D`, `0x0621EF–0x06222C`, `0x083F54–0x08414F`, `0x046330`, `0x02C080`]
+
+Returning from creation clears the creator root and reopens character selection. Submitting creation clears the creator root and opens world selection, assigns the entered name to the controlled actor, and creates a separate character record from its data. The controlled actor persists through these menu transitions. [`binary/Cube.exe` `0x081510–0x0815A7`, `0x0821D0–0x08222A`, `0x08228C–0x0822B4`, `0x082352–0x0823CC`]
+
+## Draw eligibility
+
+The ordinary renderer builds its scene-actor candidates from the table at client `+0x2E8`. The start root `+0x800874`, character selector `+0x800888`, world selector `+0x80088C`, and another front-end screen `+0x800894` each empty that current frame's candidate range while active. An active creator root `+0x800880` leaves the candidate range available. This makes the registered controlled actor eligible for the ordinary world actor draw immediately after admission, once the frame reaches that path. The actor can be absent from the rendered scene while the same actor object remains live in the client table. [`binary/Cube.exe` `0x0B3801–0x0B3945`, `0x04BE20`, `0x0B39D5–0x0B3A06`]
+
+The actor uses the scene geometry path. Actor draw processing reads the actor's world position and can skip it on the scene visibility check around `0x0B4E4E`. The optional client gate at `+0x8006E6` keeps only the controlled actor when set. The surviving actor reaches the ordinary model submission and any eligible attachment draws. Creator controls are separate GUI objects and do not allocate or own this display actor. [`binary/Cube.exe` `0x0B4E1B–0x0B4E91`, `0x0B5D32–0x0B5EE5`, `0x0896AF–0x089703`]
+
+## Camera
+
+Admission sets both the current and desired orbit distances at client `+0x1BC` and `+0x1C0` to binary32 5. Both angle triples, at `+0x1A4` through `+0x1AC` and `+0x1B0` through `+0x1B8`, receive (90 degrees, 0 degrees, 0 degrees). These assignments occur before the creator root becomes active. Because the two states begin equal, no blend from the previous menu's angle or distance is needed on that entry. The normal client update still blends current toward desired fields as time advances. [`binary/Cube.exe` `0x083EFE–0x083F66`, `0x0965D5–0x096609`]
+
+The camera update composes the stored angle components in the third, second, then first component order. The first component uses the X-axis rotation. In the creator branch the camera follows the live controlled actor rather than the separate menu-scene location used by the start and selection screens. Its tracked position at `+0x158` blends horizontal components toward the actor position at actor `+0x10`; the creator's vertical target incorporates the actor's live binary32 field at `+0x1180`. The update rotates the orbital direction derived from the positive Z axis, applies the current distance, and checks scene clearance before recording the effective distance at client `+0x1CC`. The distance of 5 on entry is the requested orbit state. Terrain or collision processing can affect the effective view. [`binary/Cube.exe` `0x0243D0`, `0x09C2E6–0x09C410`, `0x09C44A–0x09C521`, `0x09C60A–0x09C7E8`, `0x09C802–0x09CA7A`]
+
+The ordinary scene projection uses the actual client width divided by client height, with the sign inverted for the scene's horizontal projection convention. Its near and far inputs are binary32 0.1 and 2,000. The vertical field of view is approximately 50 degrees (radians encoded as `0x3F5F66F4`), switching to approximately 30 degrees (`0x3F060A92`) when the controlled actor's word at `+0x124` has bit `0x0400` set. These projection inputs are read during rendering. The creator admission itself uses the same angle and distance assignments for every client aspect. [`binary/Cube.exe` `0x027910–0x0279D3`, `0x0AE4B3–0x0AE5D3`, `0x083EFE–0x083F66`]
+
+The static trace establishes eligibility and entry state. Exact first-present timing, pixel coverage, the complete set of actor visibility checks, and the camera's realized world coordinates under a particular menu terrain state remain unresolved.

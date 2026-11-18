@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-18 after batch 67 and the rulings. The 286 tracked contracts
-comprise 232 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-18 after batch 68 and the rulings. The 288 tracked contracts
+comprise 234 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -133,6 +133,8 @@ and `alpha-client-world-change-lifecycle.md`.
 Batch 65 covers `alpha-client-connected-spawn-recovery.md`.
 Batch 66 covers `alpha-client-offline-projectile-lifecycle.md`.
 Batch 67 covers `alpha-start-menu-title-layout.md`.
+Batch 68 covers `alpha-character-creation-preview-entry.md` and
+`alpha-character-creation-facing-and-camera-height.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -154,6 +156,8 @@ Batch 67 covers `alpha-start-menu-title-layout.md`.
 | `alpha-camera-ray-geometry.md` | A | 196 | 1 |
 | `alpha-camera-view-production.md` | A | 100 | 3 |
 | `alpha-category13-inventory-counter.md` | A | 76 | 0 |
+| `alpha-character-creation-facing-and-camera-height.md` | A | 26 | 0 |
+| `alpha-character-creation-preview-entry.md` | A | 30 | 0 |
 | `alpha-character-screens.md` | A | 913 | 0 |
 | `alpha-class-83-descriptor-production.md` | A | 157 | 0 |
 | `alpha-client-action-binding-producer.md` | A | 127 | 0 |

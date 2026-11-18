@@ -917,8 +917,11 @@ Differences from the Steam engine that shape the plan:
   title at integer viewport halves, and keep the publisher mark visible
   behind Options. Hide the gameplay panels, quick slot and corner map
   during the front-end screens.
-- [ ] Verify matched original startup pixels, restore and DPI behavior, and
-  the character-creation preview actor and camera through normal input.
+- [x] Keep the startup actor alive through the front end and draw it in the
+  ordinary creator scene. Apply zero facing and the creator camera before
+  drawing, keeping its live vertical correction and terrain clearance.
+- [ ] Verify matched original startup and creator pixels, restored window
+  geometry and DPI, the selection-scene focus and full save handoff.
 - [x] Interface, second part: masks (stencil; flags-4 masks left unclipped, P-5), the player's bars
   (life, XP, mana with charge, health, stamina; screens §5.3), the crosshair with "[R] Revive" and
   reviving (§5.8), the Esc menu row with Alpha's icons (§7; its system button opens the panel).

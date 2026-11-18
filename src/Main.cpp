@@ -177,7 +177,7 @@ Options parse(int argc, char **argv) {
         else if (!std::strcmp(argv[i], "--walk"))
             o.walk = o.world = true;
         else if (!std::strcmp(argv[i], "--start"))
-            o.start = o.world = true;
+            o.start = o.world = o.walk = true;
         else if (!std::strcmp(argv[i], "--z"))
             o.worldOptions.z = (float)std::atof(next().c_str());
         else if (!std::strcmp(argv[i], "--travel"))
@@ -855,6 +855,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             choice = creatures::CharacterChoice::parse(playing()->extra.data());
         creatures::generate(type, looks, &choice, [] { return 0; });
         player.emplace(view, looks, worldRandom);
+        if (options.start)
+            player->resetCreationPose();
         if (onlineStart)
             player->changeWorldPosition(*onlineStart);
         player->objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *) {
@@ -1942,6 +1944,19 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         [&]() -> creatures::Combatant * { return player ? &player->combat() : nullptr; }, 1, {}};
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
+        if (player && interface.front == ui::Interface::Front::Creation &&
+            cameraFront != ui::Interface::Front::Creation) {
+            player->resetCreationPose();
+            if (!playing()) {
+                auto &actor = player->combat();
+                actor.controller = actor.specialization = 0;
+                actor.characterClass = 1;
+                actor.level = 1;
+                actor.experience = 0;
+                actor.health = creatures::maxHealth(actor);
+                own.setName("");
+            }
+        }
         const bool closeQuickWheel = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS ||
                                      glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
         if (interface.optionsToApply) {
@@ -2817,9 +2832,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         }
                     }
                     player->timeOfDay = [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); };
-                    player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
-                                      interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates,
-                                      !wheel.open || closeQuickWheel);
+                    if (interface.front != ui::Interface::Front::Creation)
+                        player->readInput(window, frameElapsedMs, !interface.wantsMouse() && !interface.typing() && player->combat().health > 0,
+                                          interface.mapOpen ? nullptr : &pad, &mouseButtons, &npcs.sightRecords, aimCandidates,
+                                          !wheel.open || closeQuickWheel);
                     // Skills §1.3: every input pass with a non-zero walking intent (object +0x40)
                     // hides the inventory, crafting and skill windows. (The other nodes it hides are
                     // not identified; movement keys stay gated while a window holds the mouse.)
@@ -2842,16 +2858,22 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     publishPlayerEffects();
                     if (client.connected())
                         client.queueCombatFrame(aggregate.emittedHits, aggregate.buffs, aggregate.shots);
-                    // Held initial-state contract: the front-end rotation assigns
-                    // its targets before the same update's camera smoothing.
+                    using F = ui::Interface::Front;
+                    const F front = interface.front;
+                    const bool creationView = front == F::Creation || front == F::WorldCreation;
+                    creatures::FollowCamera &cam = player->followCamera();
                     if (frontEndRotation()) {
-                        creatures::FollowCamera &cam = player->followCamera();
                         cam.targetDistance = 10, cam.targetPitch = 100;
                         cam.targetYaw = float(frameElapsedMs) * std::bit_cast<float>(0x3ba3d70au) + cam.targetYaw;
+                    } else if (creationView && front != cameraFront) {
+                        cam.targetPitch = cam.pitch = 90;
+                        cam.targetYaw = cam.yaw = front == F::Creation ? 0.f : 180.f;
+                        cam.targetDistance = cam.distance = 5;
                     }
+                    cameraFront = front;
                     // The engine world clock stands in for the native world member.
                     player->finishFrame(frameElapsedMs, [&] { return std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs)); },
-                                        npcs.sightRecords);
+                                        npcs.sightRecords, {.verticalOverride = creationView});
                 });
         } else {
             // A missing controlled actor does not suppress the world call.
@@ -3033,7 +3055,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             look.camera = view.toRender(view.worldPosition()); // trails §1.1 point-0 shift
             return look;
         };
-        if (player) {
+        const bool drawActors = !frontEndRotation();
+        if (drawActors && player) {
             const CreatureLook look = creatureLook(player->combat(), player->body().position, player->body().velocity);
             player->draw(items, creatureView, seconds * 1000.f, &effects, &look);
             // (Less the landing bob, as for every other creature: open points 3 §3.3's base.)
@@ -3081,7 +3104,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         const auto refreshWeaponPoints = [&](uint64_t id, const creatures::PoseState &pose, glm::dvec3 displayed) {
             weaponPoints[id] = terrain_lights::weaponPoints(pose, displayed);
         };
-        if (player) {
+        if (drawActors && player) {
             const creatures::Body &body = player->body();
             const glm::dvec3 displayed = body.blocks() - glm::dvec3(0, 0, body.bob);
             creatureLights(player->combat(), {body.position[0], body.position[1], body.position[2]},
@@ -3089,6 +3112,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             refreshWeaponPoints(player->combat().id, player->poseState(), displayed);
         }
         for (creatures::Npc &npc : npcs.npcs()) {
+            if (!drawActors)
+                break;
             creatures::Motion motion;
             if (npc.body.ordinaryAttached)
                 motion.walk = &npc.body.walk;
@@ -3335,7 +3360,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                          shine});
                 }
         }
-        if (client.connected()) {
+        if (drawActors && client.connected()) {
             const auto &otherRecords = receivedActors;
             for (const auto &[id, other] : otherRecords) {
                 // Remote smoothing §2: drawn at the drawn pose (the record until the first update).
@@ -3464,24 +3489,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             }
         }
         interface.chatSubmitted.clear();
-        // Behind the start screen the camera turns slowly round the spawn.
-        if (interface.startScreen && !player)
-            view.turn(seconds * 3.f, 0);
-        // Character screens §7: behind the start, connect, character and world lists the game
-        // camera eases to 10 blocks at pitch 100 and turns (applied before the frame's camera
-        // smoothing, above); entering character or world creation snaps it level at 5 blocks
-        // (yaw 0, or 180 for a world).
-        if (player) {
-            using F = ui::Interface::Front;
-            creatures::FollowCamera &cam = player->followCamera();
-            const F front = interface.front;
-            if (!frontEndRotation() && (front == F::Creation || front == F::WorldCreation) && front != cameraFront) {
-                cam.targetPitch = cam.pitch = 90;
-                cam.targetYaw = cam.yaw = front == F::Creation ? 0.f : 180.f;
-                cam.targetDistance = cam.distance = 5;
-            }
-            cameraFront = front;
-        }
         std::optional<terrain_lights::FixedPosition> lightController;
         if (player) {
             const auto &position = player->body().position;
@@ -4548,9 +4555,16 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         creatures::Appearance looks;
                         int32_t type = 2;
                         creatures::generate(type, looks, &choice, [] { return 0; });
-                        player->setLooks(looks);
+                        player->setCreationLook(type, looks);
                     }
                     creationRecord = newCharacter("", choice, interface.creation.characterClass + 1, [&] { return worldRandom.draw(); });
+                    if (player && !playing()) {
+                        auto &actor = player->combat();
+                        actor.characterClass = creationRecord->characterClass;
+                        actor.specialization = creationRecord->specialization;
+                        inventory.equipment = creationRecord->equipment;
+                        wearInventory();
+                    }
                 }
                 const auto request = std::exchange(interface.frontRequest, ui::Interface::FrontRequest::None);
                 using R = ui::Interface::FrontRequest;

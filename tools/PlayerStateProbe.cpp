@@ -115,7 +115,23 @@ void run(GLFWwindow *window, const std::filesystem::path &install) {
     body.mode = 0x1200;
     player.advance(20);
     require(actor.mode == 0xf020 && body.mode == 0x1200, "A rejected dead update replaced state");
-    std::cout << "PlayerStateProbe passed: actual input, supplied controller, physics, stun, replacement, complete equipment/held item and dead admission\n";
+    const std::array<int64_t, 3> creationPosition{body.position[0], body.position[1], body.position[2]};
+    body.bob = .25f;
+    body.yaw = player.facing() = 145.f;
+    body.velocity = {1, 2, 3};
+    body.intent = {4, 5, 6};
+    player.resetCreationPose();
+    require(player.facing() == 0 && body.yaw == 0 && body.velocity == glm::vec3(0) && body.intent == glm::vec3(0) &&
+                body.bob == .25f && std::equal(creationPosition.begin(), creationPosition.end(), body.position),
+            "Creator entry did not reset facing and motion while preserving raw position and live correction");
+    auto creatorLook = player.appearance();
+    creatorLook.box = {1.25f, 1.5f, 2.5f};
+    creatorLook.flags |= creatures::SWIMMER;
+    player.setCreationLook(7, creatorLook);
+    require(actor.type == 7 && body.type == 7 && body.size == creatorLook.box && body.swimmer &&
+                actor.appearanceFlags == creatorLook.flags,
+            "Creator look did not update the existing actor and its collision body");
+    std::cout << "PlayerStateProbe passed: input, supplied controller, physics, stun, item backing, dead admission and creation pose\n";
 }
 }
 

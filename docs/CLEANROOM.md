@@ -4162,3 +4162,27 @@ gameplay panels and corner map are hidden on those screens. The background
 world still renders. The engine keeps its configured restored window size.
 Original pixel comparisons, native startup message timing and the complete
 creation preview state remain open.
+
+## Character creation actor and camera (2026-11-18)
+
+The isolated author finalized [creator admission](specs/alpha-character-creation-preview-entry.md)
+and [creator facing and camera height](specs/alpha-character-creation-facing-and-camera-height.md).
+The implementer read all 29 and 25 physical lines and verified SHA-256
+`85c561cdf02ae3e7d48ba04e9897cd847a63bf0b85959f6689415ca472551f8d` and
+`0cc665c27fcf93185df43b736e18ae53eecf6d0f76c48b8340b5d8a8e8a7e22c`.
+
+Start mode initializes the existing controlled actor with offline ID 1.
+The title, character list, world list and connection screen suppress
+scene actor draws while their world and actor state continue. Character
+creation reuses the actor, resets its motion and its positive-Y facing,
+and renders it through the world actor path. The unsaved preview takes
+the selected appearance, class and generated equipment. Preview grants
+keep the existing draw schedule and reuse the result of the existing kit
+generator. The preview applies its stats and kit only in unsaved sessions.
+
+Creation entry assigns the current and target orbit before the frame's
+camera calculation. It selects the held vertical route that subtracts
+the live drawn-height correction and preserves collision shortening and
+the prior focus. The background focus of the title and selection screens,
+complete native actor reset, saved selection and return-to-title lifetime,
+and original first-present playback are still open.

@@ -2693,3 +2693,28 @@ production player/controller diagnostic and five live client flows
 passed. Package inspection verified 36 hashes in 37 files. Revision 38
 parsed all 79 links. The held start contract matched its exact hash
 and physical line count.
+
+## Character creation actor and camera (2026-11-18)
+
+`CameraTests` exercises the production follow camera in open terrain. The
+creator focus uses the actor's raw position minus its existing vertical
+correction, and the eye is five blocks on the positive-Y side of that
+focus. `PlayerStateProbe` checks that creator entry resets motion and
+facing while retaining the raw position and correction. It then changes
+the existing actor's appearance and verifies its type and collision box.
+
+Four isolated production Vulkan runs recorded a live player on the title,
+character list, world list and creator. The first three frames hid their
+world actor. The creator frame showed the front-facing human and its
+selected generated kit. The creator eye was at (8,396,928.5, 8,396,933.5,
+246.08), with the actor at (8,396,928.5, 8,396,928.5, 246.08). The HUD and
+corner map stayed hidden. This exercise opens the named screens directly.
+Computer Use reached the isolated desktop window, then app approval and
+the subsequent capture timed out. The test process was stopped. Normal
+click-through, original pixels and saved-character handoff remain open.
+
+The Windows x64 build, focused camera checks and all 60 serial CTests
+passed. The production player/controller diagnostic and five actual
+client flows passed. Package inspection verified 36 hashes in 37 files. Revision 39
+parsed all 81 links and both held contracts matched their exact hashes
+and physical line counts. The native menu-scene focus remains open.
