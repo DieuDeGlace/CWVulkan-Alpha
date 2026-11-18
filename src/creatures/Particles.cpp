@@ -132,10 +132,6 @@ Burst blockBurst(const std::array<int64_t, 3> &at, glm::vec3 rgb) {
 
 Burst splashBurst(glm::dvec3 at) { return Burst::at(at, {0, 0, 10}, {0.2f, 0.7f, 1, 1}, 0.4f, 15, LIT); }
 
-Burst arrowBurst(glm::dvec3 at, glm::vec3 rgb) {
-    return Burst::at(at, {0, 0, 10}, glm::vec4(rgb / 255.f, 1), 0.1f, 4, LIT);
-}
-
 std::vector<FlameCube> flames(double t, float radius, float size, int count, glm::vec3 base, glm::vec3 tip, float twist) {
     std::vector<FlameCube> out;
     const double clock = std::max(t, 0.0);

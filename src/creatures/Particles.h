@@ -82,7 +82,6 @@ Burst bombBurst(glm::dvec3 at);                         // §5.1: a bomb goes of
 // §5.2 / strike-cell-helpers §8.1 step 6: a broken cell's burst at the unsnapped raw cell position.
 Burst blockBurst(const std::array<int64_t, 3> &at, glm::vec3 rgb);
 Burst splashBurst(glm::dvec3 at);                       // §5.5: water entered falling fast
-Burst arrowBurst(glm::dvec3 at, glm::vec3 rgb);         // §5.7: an arrow into a block
 
 // §8: one flame cube of a fire, centred on `position`, `edge` blocks on a side.
 struct FlameCube {

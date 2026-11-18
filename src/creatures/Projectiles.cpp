@@ -4,6 +4,7 @@
 #include "creatures/Strike.h"
 #include "creatures/Visibility.h"
 #include "SoundRules.h"
+#include "worldgen/WorldMap.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -185,12 +186,29 @@ void continueChain(Combatant &c) {
     c.comboElapsedMs = 0;
 }
 
-bool solidAt(const BlockType &block, glm::dvec3 p) {
-    const uint8_t t = block((int32_t)std::floor(p.x), (int32_t)std::floor(p.y), (int32_t)std::floor(p.z)) & 0x1f;
-    return t != 0 && t != 2;
+visibility::Position raw(const int64_t position[3]) { return {position[0], position[1], position[2]}; }
+
+worldgen::Block pointCell(const int64_t position[3], const BlockType &block, const worldgen::WorldMap *terrain) {
+    const int32_t x = worldgen::blockOfFixed(position[0]);
+    const int32_t y = worldgen::blockOfFixed(position[1]);
+    const int32_t z = worldgen::blockOfFixed(position[2]);
+    if (uint32_t(x) >= 0x1000000u || uint32_t(y) >= 0x1000000u)
+        return worldgen::IMPLICIT_SOLID;
+    if (!terrain)
+        return {200, 200, 200, block(x, y, z)};
+    const auto *zone = terrain->zoneAt(x, y);
+    return zone ? zone->read(x, y, z) : worldgen::IMPLICIT_SOLID;
 }
 
-visibility::Position raw(const int64_t position[3]) { return {position[0], position[1], position[2]}; }
+Burst arrowBurst(const int64_t position[3], worldgen::Block colourCell) {
+    Burst effect;
+    std::copy_n(position, 3, effect.position);
+    effect.velocity.z = 10.f;
+    effect.colour = {float(colourCell.r) / 255.f, float(colourCell.g) / 255.f, float(colourCell.b) / 255.f, 1.f};
+    effect.size = .1f;
+    effect.count = 4;
+    return effect;
+}
 
 } // namespace
 
@@ -851,12 +869,11 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     p.position[k] = addFixed(p.position[k], int64_t(sign * ds[k] * WU));
             };
             move(1);
-            if (solidAt(block, p.blocks())) {
-                const glm::dvec3 hit = p.blocks();
+            if (!worldgen::clear(pointCell(p.position, block, context.terrain).type())) {
                 move(-1);
                 wall = true;
-                if (p.kind == ARROW) // particles §5.7: only an arrow inside a solid block
-                    out.struck.push_back({p.blocks(), glm::ivec3(glm::floor(hit))});
+                if (p.kind == ARROW)
+                    out.bursts.push_back(arrowBurst(p.position, pointCell(p.position, block, context.terrain)));
             } else {
                 // Probe backward from the advanced point over the full world piece.
                 const float speed = float(std::sqrt(double(squaredLength(p.velocity))));

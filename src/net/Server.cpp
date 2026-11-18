@@ -1306,12 +1306,8 @@ void Server::stepWorld(float dtMs) {
     };
     creatures::ShotEffects shot;
     projectiles.step((int32_t)dtMs, targets, source, block, [this] { return worldRandom.draw(); }, shot,
-                     {.sightRecords = &npcs.sightRecords});
+                     {.sightRecords = &npcs.sightRecords, .terrain = &zones});
     bursts.insert(bursts.end(), shot.bursts.begin(), shot.bursts.end());
-    for (const auto &s : shot.struck) {
-        const worldgen::Block b = zones.read(s.cell.x, s.cell.y, s.cell.z);
-        bursts.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
-    }
     std::vector<creatures::HitRecord> outgoingHits = frame.emittedHits;
     for (const auto &emission : shot.hits) {
         const auto &record = emission.record;

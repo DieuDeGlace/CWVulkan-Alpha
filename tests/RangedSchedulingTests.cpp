@@ -73,14 +73,14 @@ void trajectoryRay() {
         int draws = 0;
         world.step(125, {}, {}, [&](int32_t x, int32_t, int32_t) { return x == test.occupiedX ? test.type : uint8_t(0); },
                    [&] { draws++; return 0; }, out, {true});
-        check((!world.list.empty()) == test.survives && out.struck.size() == size_t(test.pointContact) &&
+        check((!world.list.empty()) == test.survives && out.bursts.size() == size_t(test.pointContact) &&
                   draws == 0, test.description);
         if (!world.list.empty())
             check(world.list[0].position[0] == shot.position[0] + 16384,
                   "the unobstructed arrow advances a quarter block in fixed units");
-        if (!out.struck.empty())
-            check(out.struck[0].at.x == test.origin && out.struck[0].cell.x == test.occupiedX,
-                  "the point effect uses the rolled-back position and the struck cell");
+        if (!out.bursts.empty())
+            check(out.bursts[0].position[0] == shot.position[0],
+                  "the point effect uses the exact rolled-back position");
     }
     for (const uint8_t state : {uint8_t(1), uint8_t(0)}) {
         Projectile shot;
@@ -99,14 +99,48 @@ void trajectoryRay() {
         int draws = 0;
         world.step(125, {}, {}, [](int32_t, int32_t, int32_t) { return uint8_t(0); },
                    [&] { draws++; return 0; }, out, {true, nullptr, &records});
-        check(world.list.empty() == (state != 0) && out.struck.empty() && draws == 0,
+        check(world.list.empty() == (state != 0) && out.bursts.empty() && draws == 0,
               "the first of three substeps tests the object side within full piece distance");
     }
+}
+
+void pointImpactSample() {
+    auto zone = std::make_shared<worldgen::Zone>(0, 0);
+    auto &restored = zone->column(10, 2);
+    restored.bottom = -2;
+    restored.blocks = {{17, 127, 241, 0x82}, {9, 8, 7, worldgen::DRY_AIR}};
+    auto &advanced = zone->column(11, 2);
+    advanced.bottom = -2;
+    advanced.blocks = {{200, 40, 20, worldgen::SOLID}, {10, 11, 12, worldgen::DRY_AIR}};
+    worldgen::WorldMap terrain;
+    terrain.add(zone);
+    Projectile shot;
+    shot.position[0] = 10 * 65536 + 57344;
+    shot.position[1] = 2 * 65536;
+    shot.position[2] = -65536;
+    shot.velocity = {2, 0, .9375f};
+    Projectiles world;
+    world.list.push_back(shot);
+    ShotEffects effects;
+    int draws = 0;
+    world.step(125, {}, {}, [&](int32_t x, int32_t y, int32_t z) { return terrain.read(x, y, z).type(); },
+               [&] { draws++; return 0; }, effects, {.terrain = &terrain});
+    check(world.list.empty() && effects.bursts.size() == 1 && draws == 0,
+          "an exact negative Z plane reads the lower solid cell before the backward ray");
+    if (effects.bursts.empty())
+        return;
+    const auto &effect = effects.bursts.front();
+    check(std::equal(std::begin(effect.position), std::end(effect.position), std::begin(shot.position)) &&
+              effect.colour == glm::vec4(17.f / 255.f, 127.f / 255.f, 241.f / 255.f, 1.f) &&
+              effect.velocity == glm::vec3(0, 0, 10) && effect.size == .1f &&
+              effect.count == 4 && effect.style == LIT && effect.spread == 3.f,
+          "the burst copies the restored fixed point and its water cell RGB with the native effect fields");
 }
 }
 
 int main() {
     trajectoryRay();
+    pointImpactSample();
     {
         Collision c;
         c.source.action = 17;

@@ -11,6 +11,8 @@
 #include <span>
 #include <vector>
 
+namespace worldgen { class WorldMap; }
+
 namespace creatures {
 
 enum ProjectileKind : int32_t { ARROW = 0, SPELL = 1, BOOMERANG_SHOT = 2, BURST = 3, ROCK = 4 };
@@ -46,14 +48,7 @@ struct ShotEffects {
     std::vector<HitEmission> hits; // ordered payloads plus local application policy
     std::vector<SoundEvent> sounds;
     std::vector<BuffEvent> buffs;    // procs gained or spent ("event 40" records)
-    std::vector<Burst> bursts;       // particles §5.8, §5.9
-    // Particles §5.7: arrows that struck a block (where, and the block), for their bursts in
-    // the block's colour, which the caller knows.
-    struct Struck {
-        glm::dvec3 at{0};
-        glm::ivec3 cell{0};
-    };
-    std::vector<Struck> struck;
+    std::vector<Burst> bursts;
 };
 
 // §2.1: the charge (field 23) of the actions that build it, `beforeMs` being the action time
@@ -104,6 +99,7 @@ struct ProjectileContext {
     const visibility::RecordLookup *sightRecords = nullptr;
     // The beneficial contact route can immediately apply a controlled self hit.
     std::function<void(const HitRecord &)> applySelfHit;
+    const worldgen::WorldMap *terrain = nullptr; // complete cells for point impacts
 };
 
 class Projectiles {

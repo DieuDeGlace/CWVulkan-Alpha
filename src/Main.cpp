@@ -2679,7 +2679,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         creatures::ShotEffects flight;
                         projectiles.step(elapsed, projectileTargets, frameActor, worldBlock, worldDraw, flight,
                             {connected, &c, &npcs.sightRecords,
-                             [&](const creatures::HitRecord &hit) { player->takeHit(hit); }});
+                             [&](const creatures::HitRecord &hit) { player->takeHit(hit); }, &view.held()});
                         if (connected) {
                             aggregate.buffs.insert(aggregate.buffs.end(), flight.buffs.begin(), flight.buffs.end());
                             aggregate.sounds.insert(aggregate.sounds.end(), flight.sounds.begin(), flight.sounds.end());
@@ -2708,10 +2708,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 playAt(sound.sound, sound.position, sound.volume, sound.pitch);
                         auto &effects = connected ? aggregate.bursts : bursts;
                         effects.insert(effects.end(), flight.bursts.begin(), flight.bursts.end());
-                        for (const auto &s : flight.struck) { // particles §5.7
-                            const worldgen::Block b = view.held().read(s.cell.x, s.cell.y, s.cell.z);
-                            effects.push_back(creatures::arrowBurst(s.at, {b.r, b.g, b.b}));
-                        }
                     }
                     flushZoneState();
                     firstWorldCall = false;

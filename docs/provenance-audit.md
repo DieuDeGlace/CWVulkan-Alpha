@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 53 and the rulings. The 267 tracked contracts
-comprise 212 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 54 and the rulings. The 268 tracked contracts
+comprise 213 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -113,6 +113,7 @@ Batch 51 covers `alpha-connected-projectile-receipt-step.md`,
 Batch 52 covers `alpha-rulings-projectile-ray-and-variant.md` and
 `alpha-rulings-projectile-steering-and-impact.md`.
 Batch 53 covers `alpha-dedicated-projectile-step.md`.
+Batch 54 covers `alpha-rulings-projectile-point-impact.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -310,6 +311,7 @@ Batch 53 covers `alpha-dedicated-projectile-step.md`.
 | `alpha-rulings-packet6-bomb-default.md` | A | 112 | 0 |
 | `alpha-rulings-pose-49-50-mount.md` | A | 216 | 0 |
 | `alpha-rulings-pose-69-arc.md` | A | 179 | 0 |
+| `alpha-rulings-projectile-point-impact.md` | A | 209 | 0 |
 | `alpha-rulings-projectile-ray-and-variant.md` | A | 293 | 0 |
 | `alpha-rulings-projectile-steering-and-impact.md` | A | 229 | 0 |
 | `alpha-rulings-rendering-clouds-lights.md` | A | 487 | 1 |

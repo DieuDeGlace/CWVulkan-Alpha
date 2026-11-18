@@ -3795,3 +3795,22 @@ at the negative boundary and the complete solid-cell effect fields need
 separate verification. The server's live hit delivery and double-copy
 role-zero branch are documented in the held original contract and remain
 implementation work.
+
+## Projectile solid-cell sampling and particles (2026-11-17)
+
+The isolated author verified the two native point queries and effect fields
+in [the projectile point impact ruling](specs/alpha-rulings-projectile-point-impact.md).
+The implementer read all 208 physical lines and verified SHA-256
+`6e3ef17af324d74ab0b6019d3235f5269adef48a2015ad797e487fa78ed4f804`.
+The advanced point uses signed fixed integer division with the native
+negative-axis bias, including exact negative planes. A missing or
+out-of-range column supplies the grey solid fallback. Present columns
+use their stored cells and upper and lower fallbacks.
+
+An arrow whose advanced point is solid rolls back, reads color from the
+restored cell, and appends the burst there in projectile visit order. The
+raw fixed point, per-component binary32 color division, velocity, 0.1
+size, four-particle field, style and spread survive into the frame's
+collector. The ray's shorter-distance path emits no burst. Dedicated
+defensive hit duplication is independently documented in the same ruling.
+Native playback and dedicated hit application remain open.

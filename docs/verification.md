@@ -2300,3 +2300,20 @@ The production player/controller diagnostic, all five actual-client flows
 and the 36 package digests passed.
 Exact solid-cell effects and original-client projectile playback remain
 open.
+
+## Projectile solid-cell sampling and burst (2026-11-17)
+
+RangedSchedulingTests advances an arrow from one column into a different
+one at exact fixed Z of minus one block. The advanced column's lower
+cell is solid and the cell above it is clear. The burst uses all three
+original fixed positions after rollback and the distinct RGB of the
+restored water cell. It verifies the binary32 color values, vertical
+velocity, size, particle count, style, spread and zero producer draws.
+The separate ray cases still produce no point burst during rollback.
+
+The Windows x64 build, nine focused suites and all 60 CTests passed.
+Revision 22 parsed, all 57 links resolved, and the point-impact ruling
+matched its full hash and saved line count. The production player/controller
+diagnostic, five actual-client flows and all 36 archive digests passed.
+Original-client particle playback and dedicated defensive hit application
+remain open.

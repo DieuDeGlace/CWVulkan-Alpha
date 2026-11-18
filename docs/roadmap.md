@@ -801,9 +801,10 @@ Differences from the Steam engine that shape the plan:
   record while its health stays under network authority.
 - [x] Post-move projectile terrain and object ray. Both client and dedicated
   use the backward fixed traversal and the strict full-piece distance gate.
-- [ ] Complete exact solid-cell point samples and particles, the remaining
-  retirement and dedicated hit application branches, and matched original
-  flight comparison.
+- [x] Signed solid-cell point samples and arrow burst payload. Color comes
+  from the restored point after rollback, even if that cell is passable.
+- [ ] Complete dedicated projectile hit application and compare matched
+  original flight and particle playback.
 - [ ] Complete connected presentation bookkeeping and the other action-specific
   hit and timer branches. Verify original-client combat and linked movement.
 - [x] Wildlife (`worldgen/Wildlife.cpp`, `alpha-materials-wildlife-routes.md` §2, §3): the species
