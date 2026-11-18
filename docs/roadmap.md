@@ -555,6 +555,9 @@ Differences from the Steam engine that shape the plan:
 - [x] Track live terrain edits against matching mesh-cache coordinates and
   use four-cell dirty preparation ahead of the sixteen-cell seam rule.
   Revisit corner meshes when their diagonal area arrives.
+- [x] Share exact light propagation between area generation and mesh
+  preparation. Store all three light bytes in clear cells before area
+  publication. Verify the distinct margin and committed bytes.
 - [ ] Publish bounded light work and committed values to resident terrain.
   Verify destruction margins, original mesh scheduling and matched terrain
   appearance, including the bright-ground observation.

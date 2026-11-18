@@ -11,10 +11,11 @@
 
 namespace worldgen {
 
-// Terrain §1.3. Bytes R, G, B, then the type byte: type in bits 0-4 and flags above.
+// Terrain §1.3. Three colour or light bytes, then the type in bits 0–4 and flags above.
 struct Block {
     uint8_t r = 0, g = 0, b = 0, typeByte = 0;
     uint8_t type() const { return typeByte & 0x1f; }
+    bool implicitWaterAt(int32_t z) const;
 };
 
 // Block types (terrain §1.3; names from their use).
@@ -38,6 +39,10 @@ enum BlockType : uint8_t {
 constexpr uint8_t SURFACE_COLOURED = 0x20; // coloured by the surface-colour routine
 constexpr uint8_t DRY_AIR = 0x40;          // stays air even below sea level
 constexpr uint8_t KEEP = 0x80;
+
+inline bool Block::implicitWaterAt(int32_t z) const {
+    return type() == AIR && z <= 0 && !(typeByte & DRY_AIR);
+}
 
 // An empty or water cell lets light through (rendering §9.1, §9.2).
 inline bool clear(uint8_t type) { return type == AIR || type == WATER; }
@@ -276,10 +281,6 @@ struct Zone {
         int32_t ox = 0, oy = 0, size = 0, kind = 0, sub = 0, face = 0;
     };
     std::vector<TownPlot> townPlots;
-    // Rendering §9.2: the light of empty and water cells under the sky line, by cell. Cells
-    // not listed are lit fully (255) if clear, or are solid.
-    std::vector<std::pair<uint64_t, uint8_t>> shadedLight; // key: see lightKey
-
     int32_t originX() const { return zx * SIZE; }
     int32_t originY() const { return zy * SIZE; }
     bool contains(int32_t x, int32_t y) const {
@@ -293,14 +294,12 @@ struct Zone {
     // Terrain §1.5: writes a block. Below the stored range, the cells between it and the old
     // bottom are filled by `gapFill(z)` (the terrain passes rock-coloured blocks).
     void place(int32_t x, int32_t y, int32_t z, Block b, const std::function<Block(int32_t)> &gapFill = {});
-    // The propagated light of a clear cell (rendering §9.2).
+    // The stored committed light of an in-span clear cell.
     uint8_t light(int32_t x, int32_t y, int32_t z) const;
 };
 
 // The block of an implicit cell: under a column (z < bottom) and outside the world.
 constexpr Block IMPLICIT_SOLID{200, 200, 200, SOLID};
 constexpr Block UNHELD_CELL{200, 200, 200, UNHELD};
-
-uint64_t lightKey(int32_t x, int32_t y, int32_t z);
 
 } // namespace worldgen

@@ -2415,3 +2415,27 @@ actual client flows and 36 package digests passed. Revision 27 parsed with
 64 links, and the held cache contract matched its full hash and line count.
 Original worker timing, writes to resident light and matched native
 terrain images remain open.
+
+## Stored light rectangle propagation (2026-11-17)
+
+LightingTests verifies the native corridor values through round sixteen,
+the next cell's value of 4, and opaque bytes staying intact. Separate
+fixtures check a 200 work byte producing 170 across an area boundary,
+a stale bright committed byte producing 4, and an explicit-area lookup
+producing zero. The margin retains its original committed byte and
+exposes its final work byte to a later call. Flagged stored water
+contributes its own work byte. Implicit water contributes 255.
+
+The before-and-after seed 123 area fixture matched all 65,536 column
+headers, 233,386 solid records and 231,048 committed clear-cell values.
+All three light bytes held the final value in the new recording. One
+local diagnostic run took 2.48 s before the change and 0.94 s after it.
+The owned-content Vulkan probe verified all three bytes in 244,984 clear
+cells on area admission. Both floor captures matched the previous
+checkpoint byte for byte, including the bright terrain.
+
+The Windows x64 build, nine focused suites and all 60 CTests passed.
+The production player/controller diagnostic, five actual client flows and
+36 package digests passed. Revision 28 parsed with 65 links. The held
+contract matched its full hash and line count. Mesh and destruction
+writeback to resident areas and matched original-client visuals remain open.

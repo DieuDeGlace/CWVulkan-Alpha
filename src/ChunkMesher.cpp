@@ -1,5 +1,5 @@
 #include "ChunkMesher.h"
-#include "worldgen/EdgeLight.h"
+#include "worldgen/BlockLight.h"
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -11,6 +11,25 @@ namespace {
 bool validChunk(glm::ivec2 chunk) {
     constexpr uint32_t worldChunks = 0x1000000u / CHUNK;
     return uint32_t(chunk.x) < worldChunks && uint32_t(chunk.y) < worldChunks;
+}
+
+int32_t seamOffset(int32_t origin) {
+    const int32_t cell = origin % Zone::SIZE;
+    if (cell == 0)
+        return -CHUNK;
+    if (cell == Zone::SIZE - CHUNK)
+        return CHUNK;
+    return 0;
+}
+
+bool meshLightAdmitted(const WorldMap &map, int32_t x, int32_t y) {
+    if (!validChunk({x / CHUNK, y / CHUNK}))
+        return false;
+    const int32_t ax = x / Zone::SIZE, ay = y / Zone::SIZE;
+    const int32_t acrossX = (x + seamOffset(x)) / Zone::SIZE, acrossY = (y + seamOffset(y)) / Zone::SIZE;
+    constexpr uint32_t worldAreas = 0x1000000u / Zone::SIZE;
+    return uint32_t(acrossX) < worldAreas && uint32_t(acrossY) < worldAreas &&
+           map.zone(ax, ay) && map.zone(acrossX, acrossY) && map.zone(acrossX, ay) && map.zone(ax, acrossY);
 }
 
 // A face direction: its axis, the sign of its normal, and the two axes across it, ordered so
@@ -31,13 +50,7 @@ bool litWaterDefault(const Zone &zone, int32_t x, int32_t y, int32_t z) {
     const Column &c = zone.column(x, y);
     if (z < c.bottom || z >= c.top())
         return false;
-    const Block stored = c.blocks[(size_t)(z - c.bottom)];
-    return stored.type() == AIR && !(stored.typeByte & DRY_AIR);
-}
-
-// A cell's type and the light value the mesher reads from it.
-uint8_t cellLight(const Zone &zone, int32_t x, int32_t y, int32_t z) {
-    return litWaterDefault(zone, x, y, z) ? 255 : zone.light(x, y, z);
+    return c.blocks[z - c.bottom].implicitWaterAt(z);
 }
 
 // The cells round a chunk, read once: type and propagated light, over the chunk plus a border
@@ -46,8 +59,8 @@ class CellCache {
   public:
     static constexpr int32_t BORDER = 4;
 
-    CellCache(const WorldMap &map, int32_t x0, int32_t y0, const EdgeLight *lightPatch)
-        : map(map), x0(x0 - BORDER), y0(y0 - BORDER) {
+    CellCache(const WorldMap &map, int32_t x0, int32_t y0, const BlockLightUpdate *lightPatch)
+        : map(map), lightPatch(lightPatch), x0(x0 - BORDER), y0(y0 - BORDER) {
         zlo = INT32_MAX;
         zhi = 4; // at least past sea level, for the sea's surface
         for (int32_t i = 0; i < SIDE; i++)
@@ -65,14 +78,8 @@ class CellCache {
             for (int32_t j = 0; j < SIDE; j++) {
                 const int32_t x = this->x0 + i, y = this->y0 + j;
                 const Zone *zone = map.zoneAt(x, y);
-                for (int32_t k = 0; k < height; k++) {
-                    const int32_t z = zlo + k;
-                    const uint8_t t = zone ? zone->read(x, y, z).type() : SOLID;
-                    uint8_t light = 0;
-                    if (zone && clear(t))
-                        light = lightPatch && lightPatch->covers(x, y, z) ? lightPatch->at(x, y, z) : cellLight(*zone, x, y, z);
-                    cells[index(i, j, k)] = {t, light};
-                }
+                for (int32_t k = 0; k < height; k++)
+                    cells[index(i, j, k)] = read(zone, x, y, zlo + k);
             }
     }
 
@@ -84,16 +91,25 @@ class CellCache {
         const int32_t i = x - x0, j = y - y0, k = z - zlo;
         if (i >= 0 && j >= 0 && i < SIDE && j < SIDE && k >= 0 && k < height)
             return cells[index(i, j, k)];
-        const uint8_t t = map.read(x, y, z).type();
-        const Zone *zone = map.zoneAt(x, y);
-        return {t, zone && clear(t) ? cellLight(*zone, x, y, z) : (uint8_t)0};
+        return read(map.zoneAt(x, y), x, y, z);
     }
 
   private:
     static constexpr int32_t SIDE = CHUNK + 2 * BORDER;
     size_t index(int32_t i, int32_t j, int32_t k) const { return ((size_t)k * SIDE + j) * SIDE + i; }
 
+    Cell read(const Zone *zone, int32_t x, int32_t y, int32_t z) const {
+        const Block block = zone ? zone->read(x, y, z) : IMPLICIT_SOLID;
+        const uint8_t type = block.type();
+        if (!clear(type))
+            return {type, 0};
+        if (lightPatch && !litWaterDefault(*zone, x, y, z))
+            return {type, lightPatch->committed(x, y, z).value_or(block.r)};
+        return {type, block.r};
+    }
+
     const WorldMap &map;
+    const BlockLightUpdate *lightPatch;
     int32_t x0, y0, zlo, zhi, height;
     std::vector<Cell> cells;
 };
@@ -209,16 +225,16 @@ void ChunkLightUpdates::invalidate(glm::ivec2 chunk) {
 int32_t meshLightPadding(int32_t x0, int32_t y0, bool lightingRequested) {
     if (lightingRequested)
         return 4;
-    return atZoneEdge(x0, y0, CHUNK) ? EdgeLight::BORDER : 0;
+    return seamOffset(x0) || seamOffset(y0) ? 16 : 0;
 }
 
 ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, int32_t y0, bool lightingRequested) {
     ChunkMeshes out;
-    std::optional<EdgeLight> lightPatch;
-    if (const int32_t pad = meshLightPadding(x0, y0, lightingRequested))
-        lightPatch.emplace(map, x0, y0, CHUNK, pad);
-    out.preparedLighting = lightPatch && lightPatch->ready();
-    const CellCache cache(map, x0, y0, out.preparedLighting ? &*lightPatch : nullptr);
+    std::optional<BlockLightUpdate> lightPatch;
+    if (const int32_t pad = meshLightPadding(x0, y0, lightingRequested); pad && meshLightAdmitted(map, x0, y0))
+        lightPatch.emplace(map, LightRectangle{{x0 - pad, y0 - pad}, {x0 + CHUNK + pad, y0 + CHUNK + pad}});
+    out.preparedLighting = lightPatch.has_value();
+    const CellCache cache(map, x0, y0, lightPatch ? &*lightPatch : nullptr);
 
     for (int32_t x = x0; x < x0 + CHUNK; x++)
         for (int32_t y = y0; y < y0 + CHUNK; y++) {

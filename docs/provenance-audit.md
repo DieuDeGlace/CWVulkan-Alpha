@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 58 and the rulings. The 273 tracked contracts
-comprise 218 A, 50 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 59 and the rulings. The 274 tracked contracts
+comprise 219 A, 50 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -119,6 +119,7 @@ Batch 56 covers `alpha-native-terrain-vertex-light-alpha.md`.
 Batch 57 covers `alpha-native-fixed-coordinates-terrain-light.md` and
 `alpha-native-terrain-environment-palette.md`.
 Batch 58 covers `alpha-native-mesh-cache-light-padding.md`.
+Batch 59 covers `alpha-native-light-rectangle-propagation.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -241,6 +242,7 @@ Batch 58 covers `alpha-native-mesh-cache-light-padding.md`.
 | `alpha-native-fixed-coordinates-terrain-light.md` | A | 110 | 0 |
 | `alpha-native-initial-direct3d9-device.md` | A | 66 | 0 |
 | `alpha-native-startup-window-input-boundary.md` | A | 132 | 1 |
+| `alpha-native-light-rectangle-propagation.md` | A | 157 | 0 |
 | `alpha-native-mesh-cache-light-padding.md` | A | 158 | 0 |
 | `alpha-native-terrain-environment-palette.md` | A | 252 | 0 |
 | `alpha-native-terrain-vertex-light-alpha.md` | A | 194 | 0 |

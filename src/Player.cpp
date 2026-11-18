@@ -33,13 +33,13 @@ uint8_t Player::lightAt(int32_t x, int32_t y, int32_t z) const {
     if (z >= column.top())
         return 255;
     const worldgen::Block b = column.blocks[size_t(z - column.bottom)];
-    if (b.type() == worldgen::AIR && z <= 0 && !(b.typeByte & worldgen::DRY_AIR))
+    if (b.implicitWaterAt(z))
         return 255;
     if (b.type() == worldgen::GLOWING)
         return 255;
     if (b.type() != worldgen::AIR && b.type() != worldgen::WATER)
         return 0;
-    return std::max<uint8_t>(zone->light(x, y, z), 5);
+    return std::max<uint8_t>(b.r, 5);
 }
 
 void Player::revive() {

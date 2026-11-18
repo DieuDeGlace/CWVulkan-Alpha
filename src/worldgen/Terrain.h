@@ -114,10 +114,7 @@ class Terrain {
     // Block edits §4: the rock that fills a gap under a column, and the light flood run again
     // over a zone whose blocks changed.
     Block gapBlock(int32_t x, int32_t y, int32_t z, const Zone &zone) const { return rockBlock(x, y, z, zone); }
-    void relight(Zone &zone) const {
-        zone.shadedLight.clear();
-        blockLight(zone);
-    }
+    void relight(Zone &zone) const;
 
     // The models the structure builders place (dungeon arches); without it they are left out,
     // which changes no draws.
@@ -155,7 +152,6 @@ class Terrain {
     void locationCreatures(Zone &zone, Random &random, const Location &L,
                            const std::vector<std::array<int64_t, 3>> &candidates) const;
     void wildlifePass(Zone &zone, Random &random) const;
-    void blockLight(Zone &zone) const;
     Block rockBlock(int32_t x, int32_t y, int32_t z, const Zone &zone) const;
     float noiseAt(uint32_t ox, uint32_t oy, double k, int32_t x, int32_t y) const;
 

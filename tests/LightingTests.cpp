@@ -1,9 +1,9 @@
-// Bounded stored-light contracts from alpha-light-propagation-lifecycle.md.
+// Bounded stored-light contracts from alpha-native-light-rectangle-propagation.md.
 // Synthetic columns distinguish absent neighbors, dark open neighbors and
 // implicit water. No game installation or captured terrain is needed.
 #include "CreatureShading.h"
 #include "Frame.h"
-#include "worldgen/EdgeLight.h"
+#include "worldgen/BlockLight.h"
 #include "worldgen/Terrain.h"
 #include <algorithm>
 #include <cstdio>
@@ -34,6 +34,89 @@ void chamber(Zone &zone, int x, int y, int bottom = 1) {
                 wall(zone, x + dx, y + dy, bottom);
     zone.column(x, y).blocks[1] = Block{255, 255, 255, AIR};
 }
+
+bool storedAs(Block actual, Block expected) {
+    return actual.r == expected.r && actual.g == expected.g && actual.b == expected.b &&
+           actual.typeByte == expected.typeByte;
+}
+
+void lightRectangle() {
+    {
+        auto left = std::make_shared<Zone>(0, 0);
+        auto right = std::make_shared<Zone>(1, 0);
+        chamber(*left, 255, 32);
+        wall(*right, 256, 32);
+        auto &exterior = right->column(256, 32).blocks[1];
+        exterior = {255, 37, 200, uint8_t(WATER | KEEP)};
+        WorldMap map;
+        map.add(left);
+        map.add(right);
+        const LightRectangle destination{{255, 32}, {256, 33}};
+        BlockLightUpdate(map, destination).store(*left);
+        const auto &inside = left->column(255, 32).blocks[1];
+        expect(storedAs(inside, {170, 170, 170, AIR}), 1, "resident halo reads the exterior working byte");
+        expect(storedAs(exterior, {255, 37, 200, uint8_t(WATER | KEEP)}), 1, "the exterior bytes are untouched");
+        exterior.b = 0;
+        BlockLightUpdate(map, destination).store(*left);
+        expect(storedAs(inside, {4, 4, 4, AIR}), 1, "the exterior committed byte cannot seed the pass");
+        BlockLightUpdate(*left, destination).store(*left);
+        expect(storedAs(inside, {0, 0, 0, AIR}), 1, "explicit area access excludes the resident neighbor");
+    }
+    {
+        Zone zone;
+        for (int x = 99; x <= 103; ++x)
+            for (int y = 31; y <= 33; ++y)
+                wall(zone, x, y);
+        auto &inside = zone.column(100, 32).blocks[1];
+        auto &margin = zone.column(101, 32).blocks[1];
+        auto &outside = zone.column(102, 32).blocks[1];
+        inside = {80, 40, 20, AIR};
+        margin = {19, 42, 64, uint8_t(AIR | DRY_AIR)};
+        outside = {255, 90, 200, AIR};
+        const LightRectangle destination{{100, 32}, {101, 33}};
+        BlockLightUpdate(zone, destination, 1).store(zone);
+        expect(storedAs(inside, {144, 144, 144, AIR}), 1, "the destination commits the final round to all three lanes");
+        expect(storedAs(margin, {19, 170, 170, uint8_t(AIR | DRY_AIR)}), 1, "margin updates work while preserving committed light");
+        expect(storedAs(outside, {255, 90, 200, AIR}), 1, "cells outside the expanded pass are untouched");
+        BlockLightUpdate(zone, destination).store(zone);
+        expect(storedAs(inside, {144, 144, 144, AIR}), 1, "the next call samples retained margin work");
+
+        outside = {255, 11, 5, AIR};
+        const LightRectangle empty{{101, 32}, {101, 33}};
+        BlockLightUpdate(zone, empty, 1).store(zone);
+        expect(margin.r, 19, "even a nonempty work area preserves committed light with empty destination");
+        expect(margin.b != 170 && margin.b == margin.g, 1, "an empty destination still advances both work lanes");
+    }
+    {
+        Zone zone;
+        for (int x = 19; x <= 42; ++x)
+            for (int y = 31; y <= 33; ++y)
+                wall(zone, x, y);
+        for (int x = 20; x <= 41; ++x)
+            zone.column(x, 32).blocks[1] = {3, 90, 216, AIR};
+        zone.column(20, 32).blocks[2] = {3, 9, 18, AIR};
+        BlockLightUpdate(zone, {{20, 32}, {42, 33}}).store(zone);
+        constexpr uint8_t light[] = {255, 216, 183, 155, 131, 111, 94, 79, 67, 56, 47, 39, 33, 28, 23, 19, 16};
+        for (size_t n = 0; n < std::size(light); ++n)
+            expect(zone.light(20 + int32_t(n), 32, 2), light[n], "each synchronous corridor distance");
+        expect(zone.light(37, 32, 2), 4, "the seventeenth cell receives the floor after sixteen rounds");
+        expect(storedAs(zone.column(36, 32).blocks[2], {100, 100, 100, ROCK}), 1, "opaque fields stay untouched");
+    }
+    {
+        Zone zone;
+        chamber(zone, 32, 32, -2);
+        auto &other = zone.column(31, 32).blocks[1];
+        const LightRectangle destination{{32, 32}, {33, 33}};
+        other = {255, 255, 0, uint8_t(WATER | KEEP)};
+        BlockLightUpdate(zone, destination).store(zone);
+        expect(zone.light(32, 32, -1), 4, "stored flagged water reads its own low working byte");
+        other = {255, 255, 0, AIR};
+        BlockLightUpdate(zone, destination).store(zone);
+        expect(zone.light(32, 32, -1), 216, "implicit water contributes full light for the same bytes");
+        expect(storedAs(other, {255, 255, 0, AIR}), 1, "neighbor substitution keeps the raw tag and bytes");
+    }
+}
+
 bool same(glm::vec4 a, glm::vec4 b) { return a == b; }
 
 // alpha-rendering.md §11.2 and rulings §16: the creature material, the motion-trail test and
@@ -111,9 +194,9 @@ int main() {
         terrain.relight(zone);
         expect(zone.light(100, 100, 2), 4, "a dark open neighbor supplies the five-point floor");
         expect(zone.light(101, 100, 2), 4, "synchronous closed-room result");
-        const auto first = zone.shadedLight;
+        const auto first = zone.column(100, 100).blocks[1];
         terrain.relight(zone);
-        expect(zone.shadedLight == first, 1, "relighting resets rather than appending earlier results");
+        expect(storedAs(zone.column(100, 100).blocks[1], first), 1, "relighting resets every stored light lane");
     }
     for (bool dry : {false, true}) {
         Zone zone;
@@ -129,18 +212,7 @@ int main() {
         expect(zone.light(100, 100, -1), dry ? 4 : 216,
                dry ? "dry-air flag suppresses implicit water" : "stored underwater air samples full-bright implicit water");
     }
-    {
-        auto zone = std::make_shared<Zone>();
-        zone->zx = zone->zy = 0;
-        chamber(*zone, 16, 32);
-        zone->column(15, 32).blocks[1] = Block{255, 255, 255, AIR};
-        zone->shadedLight.emplace_back(lightKey(15, 32, 2), 128);
-        WorldMap map;
-        map.add(zone);
-        EdgeLight light(map, 32, 32, 1);
-        expect(light.ready(), 1, "rectangle has its admitted columns");
-        expect(light.at(16, 32, 2), 108, "exterior admitted light is sampled beyond the reset rectangle");
-    }
+    lightRectangle();
     creatureShading();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

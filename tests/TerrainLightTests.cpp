@@ -33,7 +33,7 @@ static void packedTerrainLight() {
         for (int32_t j = y - 3; j <= y + 2; j++) {
             auto &column = zone->column(i, j);
             column.bottom = z;
-            column.blocks = {{0, 0, 0, worldgen::AIR}};
+            column.blocks = {{255, 255, 255, worldgen::AIR}};
         }
     auto &support = zone->column(x, y);
     support.bottom = z - 1;
@@ -47,10 +47,9 @@ static void packedTerrainLight() {
         return glm::vec4(-1);
     };
     const auto uniform = [&](uint8_t intensity) {
-        zone->shadedLight.clear();
         for (int32_t i = x - 3; i <= x + 2; i++)
             for (int32_t j = y - 3; j <= y + 2; j++)
-                zone->shadedLight.emplace_back(worldgen::lightKey(i, j, z), intensity);
+                zone->column(i, j).blocks.back() = {intensity, intensity, intensity, worldgen::AIR};
     };
     check(topColour() == glm::vec4(128.f / 255.f, 64.f / 255.f, 32.f / 255.f, 254.f / 255.f),
           "an open top face uses the original normalized color bytes, including full-light alpha 254");
@@ -59,7 +58,7 @@ static void packedTerrainLight() {
     check(topColour(true).a == 254.f / 255.f, "a dirty interior mesh uses its newly prepared sky light");
     uniform(128);
     check(topColour().a == 128.f / 255.f, "a uniform intensity-128 layer packs alpha 128");
-    zone->shadedLight.clear();
+    uniform(255);
     zone->column(x - 1, y - 1).blocks[0].typeByte = worldgen::ROCK;
     check(topColour().a == 238.f / 255.f, "a nearest blocker keeps its weight in the native alpha denominator");
     zone->column(x - 1, y - 1).blocks[0].typeByte = worldgen::AIR;

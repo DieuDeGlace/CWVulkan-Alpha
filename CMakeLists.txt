@@ -197,7 +197,7 @@ add_library(engine STATIC
     src/creatures/Names.cpp
     src/worldgen/Zone.cpp
     src/worldgen/WorldMap.cpp
-    src/worldgen/EdgeLight.cpp
+    src/worldgen/BlockLight.cpp
     src/worldgen/WaterFeatures.cpp
     src/worldgen/Clouds.cpp
     src/worldgen/Trees.cpp

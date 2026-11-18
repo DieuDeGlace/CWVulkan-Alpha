@@ -18,7 +18,8 @@
 #include "DataStore.h"
 #include "Install.h"
 #include "creatures/Npcs.h"
-#include "worldgen/EdgeLight.h"
+#include "ChunkMesher.h"
+#include "worldgen/BlockLight.h"
 #include "worldgen/Terrain.h"
 #include <algorithm>
 #include <array>
@@ -94,29 +95,31 @@ bool sameBlock(const Block &a, const Block &b) {
 class EdgeFloods {
   public:
     EdgeFloods(Terrain &terrain, std::shared_ptr<const Zone> centre) {
+        WorldMap map;
         map.add(centre);
         for (int32_t i = -1; i <= 1; i++)
             for (int32_t j = -1; j <= 1; j++)
                 if (i || j)
                     map.add(terrain.generate(centre->zx + i, centre->zy + j));
-        for (int32_t cx = 0; cx < Zone::SIZE / CHUNK_SIDE; cx++)
-            for (int32_t cy = 0; cy < Zone::SIZE / CHUNK_SIDE; cy++) {
-                const int32_t x0 = centre->originX() + cx * CHUNK_SIDE, y0 = centre->originY() + cy * CHUNK_SIDE;
-                if (atZoneEdge(x0, y0, CHUNK_SIDE))
-                    floods.emplace(std::make_pair(cx, cy), EdgeLight(map, x0, y0, CHUNK_SIDE));
+        for (int32_t cx = 0; cx < Zone::SIZE / CHUNK; cx++)
+            for (int32_t cy = 0; cy < Zone::SIZE / CHUNK; cy++) {
+                const int32_t x0 = centre->originX() + cx * CHUNK, y0 = centre->originY() + cy * CHUNK;
+                if (const int32_t pad = meshLightPadding(x0, y0, false))
+                    floods.try_emplace({cx, cy}, map, LightRectangle{{x0 - pad, y0 - pad}, {x0 + CHUNK + pad, y0 + CHUNK + pad}});
             }
         originX = centre->originX(), originY = centre->originY();
     }
 
     int light(int32_t x, int32_t y, int32_t z, int fallback) const {
-        const auto it = floods.find({(x - originX) / CHUNK_SIDE, (y - originY) / CHUNK_SIDE});
-        return it != floods.end() && it->second.covers(x, y, z) ? it->second.at(x, y, z) : fallback;
+        const auto it = floods.find({(x - originX) / CHUNK, (y - originY) / CHUNK});
+        if (it != floods.end())
+            if (const auto prepared = it->second.committed(x, y, z))
+                return *prepared;
+        return fallback;
     }
 
   private:
-    static constexpr int32_t CHUNK_SIDE = 32;
-    WorldMap map;
-    std::map<std::pair<int32_t, int32_t>, EdgeLight> floods;
+    std::map<std::pair<int32_t, int32_t>, BlockLightUpdate> floods;
     int32_t originX = 0, originY = 0;
 };
 
@@ -166,8 +169,8 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
         for (int32_t z = lo; z < hi; z++) {
             const Block a = z >= bottom && z < bottom + (int32_t)count ? theirs[(size_t)(z - bottom)] : Block{};
             const Block b = z >= mine.bottom && z < mine.top() ? mine.blocks[(size_t)(z - mine.bottom)] : Block{};
-            // Air and water: Alpha keeps the cell's light in its colour bytes (rendering §9.2), the
-            // first byte for air and the third for water; ours is kept apart (Zone::light).
+            // Keep the first-air and third-water lanes used by existing AVZD comparisons.
+            // Initial area preparation writes the same value to both lanes.
             if (clear(a.type()) && a.type() == b.type()) {
                 if (z >= bottom && z < bottom + (int32_t)count) {
                     const int theirLight = a.type() == WATER ? a.b : a.r;
@@ -279,23 +282,12 @@ bool record(uint32_t seed, bool named, int32_t zx, int32_t zy, const char *path)
         return static_cast<bool>(file);
     }
     put("AVZD", 4), put(&version, 4), put(&seed, 4), put(&flags, 4), put(&zx, 4), put(&zy, 4);
-    for (size_t i = 0; i < zone->columns.size(); i++) {
-        const Column &c = zone->columns[i];
+    for (const Column &c : zone->columns) {
         const uint32_t count = (uint32_t)c.blocks.size();
         put(&c.bottom, 4), put(&count, 4);
-        for (size_t k = 0; k < c.blocks.size(); k++) {
-            Block b = c.blocks[k];
-            if (clear(b.type())) {
-                const uint8_t light = zone->light(zone->originX() + (int32_t)(i % Zone::SIZE),
-                                                 zone->originY() + (int32_t)(i / Zone::SIZE),
-                                                 c.bottom + (int32_t)k);
-                if (b.type() == AIR)
-                    b.r = light;
-                else
-                    b.b = light;
-            }
-            put(&b, 4);
-        }
+        static_assert(sizeof(Block) == 4);
+        if (count)
+            put(c.blocks.data(), c.blocks.size() * sizeof(Block));
     }
     std::ofstream file(path, std::ios::binary);
     file.write((const char *)out.data(), (std::streamsize)out.size());

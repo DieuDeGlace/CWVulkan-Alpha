@@ -3919,3 +3919,27 @@ preparation still feeds only the generated mesh. Edited areas still
 receive the existing area-wide relight. Native resident work and
 commit publication, destruction rectangles and original worker timing
 remain open.
+
+## Stored light rectangle propagation (2026-11-17)
+
+The isolated author finalized [the light rectangle contract](specs/alpha-native-light-rectangle-propagation.md).
+The implementer verified all 156 physical lines and SHA-256
+`0b988277a5d87e92d01101981b514ba2d34e058ac28fcdc549bf0f8aa4afd9b7`.
+The original client's instruction trace matched the seed, sixteen rounds
+and destination writes in 31 synthetic calls. It checked the quotient
+for all 256 neighbor maxima.
+
+Area generation and mesh preparation share the same stored-cell
+propagation. It reads a one-cell halo using the previous working byte,
+seeds the raw tags, and uses successive whole rounds. Commit stores
+the final work bytes throughout the bounded area and the committed
+byte inside the destination. Effective implicit water supplies full
+light during a neighbor read. Stored flagged water contributes its
+actual working byte. Solid cell bytes and material flags survive.
+Area generation writes the clear cells in the newly allocated area's
+own columns before publication. The generated diagnostic recording
+retains the actual four-byte records in the existing container.
+
+The renderer still uses mesh preparation from immutable snapshots.
+Cross-area resident mesh writes, live destruction margins and exact
+worker dispatch remain open.

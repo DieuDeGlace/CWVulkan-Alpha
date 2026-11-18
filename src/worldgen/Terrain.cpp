@@ -1,12 +1,12 @@
 #include "worldgen/Terrain.h"
 #include "EngineModules.h"
+#include "worldgen/BlockLight.h"
 #include "worldgen/Trees.h"
 #include "worldgen/WaterFeatures.h"
 #include "worldgen/SpatialScalars.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
-#include <unordered_map>
 
 namespace worldgen {
 namespace {
@@ -474,7 +474,7 @@ std::unique_ptr<Zone> Terrain::generate(int32_t zx, int32_t zy) const {
     av::modules::applyTerrainPasses(*zone, *this);
     if (swimmableWater)
         makeWaterSwimmable(*zone, [&](int32_t x, int32_t y, int32_t z) { return gapBlock(x, y, z, *zone); });
-    blockLight(*zone);
+    relight(*zone);
     return zone;
 }
 
@@ -875,76 +875,10 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
         }
 }
 
-// alpha-light-propagation-lifecycle.md: reset stored clear cells, run sixteen
-// synchronous rounds, then retain the shaded results. A new zone is isolated
-// from its neighbors until its initial lighting is complete.
-void Terrain::blockLight(Zone &zone) const {
-    const int32_t x0 = zone.originX(), y0 = zone.originY();
-    std::unordered_map<uint64_t, uint8_t> working;
-    std::vector<uint64_t> cells;
-    std::vector<int32_t> skyline(Zone::SIZE * Zone::SIZE);
-    for (int32_t i = 0; i < Zone::SIZE; i++)
-        for (int32_t j = 0; j < Zone::SIZE; j++) {
-            const int32_t x = x0 + i, y = y0 + j;
-            const Column &c = zone.column(x, y);
-            int32_t sky = c.bottom; // the first z that is sky-lit
-            for (int32_t z = c.top() - 1; z >= c.bottom; z--)
-                if (!clear(c.blocks[(size_t)(z - c.bottom)].type())) {
-                    sky = z + 1;
-                    break;
-                }
-            skyline[i + Zone::SIZE * j] = sky;
-            for (int32_t z = c.bottom; z < sky; z++)
-                if (clear(c.blocks[(size_t)(z - c.bottom)].type())) {
-                    working[lightKey(x, y, z)] = 0;
-                    cells.push_back(lightKey(x, y, z));
-                }
-        }
-    if (cells.empty())
-        return;
-    auto valueAt = [&](int32_t x, int32_t y, int32_t z) -> int {
-        if (!zone.contains(x, y))
-            return 0; // the generation pass cannot sample an adjacent zone
-        const Column &column = zone.column(x, y);
-        if (z < column.bottom)
-            return 0;
-        if (z >= column.top())
-            return 255;
-        const Block b = column.blocks[(size_t)(z - column.bottom)];
-        // Only neighbor reads apply Alpha's full-bright implicit water rule.
-        // The initialization and target passes still use the stored air cell.
-        if (b.type() == AIR && z <= 0 && !(b.typeByte & DRY_AIR))
-            return 255;
-        if (b.type() == GLOWING)
-            return 255;
-        if (!clear(b.type()))
-            return 0;
-        if (z >= skyline[(x - x0) + Zone::SIZE * (y - y0)])
-            return 255;
-        const auto it = working.find(lightKey(x, y, z));
-        return std::max(it == working.end() ? 255 : (int)it->second, 5);
-    };
-    std::vector<uint8_t> next(cells.size());
-    for (int sweep = 0; sweep < 16; sweep++) {
-        for (size_t n = 0; n < cells.size(); n++) {
-            const uint64_t key = cells[n];
-            const int32_t x = (int32_t)(key >> 40), y = (int32_t)((key >> 16) & 0xffffff), z = (int16_t)(key & 0xffff);
-            int best = 0;
-            const int32_t steps[6][3] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
-            for (const auto &s : steps) {
-                best = std::max(best, valueAt(x + s[0], y + s[1], z + s[2]));
-                if (best == 255)
-                    break;
-            }
-            next[n] = (uint8_t)(best * 85 / 100);
-        }
-        for (size_t n = 0; n < cells.size(); n++)
-            working[cells[n]] = next[n];
-    }
-    zone.shadedLight.reserve(cells.size());
-    for (uint64_t key : cells)
-        zone.shadedLight.emplace_back(key, working[key]);
-    std::sort(zone.shadedLight.begin(), zone.shadedLight.end());
+// Generation passes the area's own columns before the world table holds it.
+void Terrain::relight(Zone &zone) const {
+    const glm::ivec2 origin(zone.originX(), zone.originY());
+    BlockLightUpdate(zone, {origin, origin + glm::ivec2(Zone::SIZE)}).store(zone);
 }
 
 } // namespace worldgen

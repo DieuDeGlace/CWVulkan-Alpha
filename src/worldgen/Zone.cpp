@@ -10,11 +10,6 @@ constexpr Block WATER_BLOCK{255, 255, 255, 0x82};
 constexpr Block AIR_BLOCK{255, 255, 255, AIR};
 } // namespace
 
-uint64_t lightKey(int32_t x, int32_t y, int32_t z) {
-    // Columns are within one zone of the world (x, y < 2^24); z fits 16 bits around sea level.
-    return ((uint64_t)(uint32_t)x << 40) | ((uint64_t)(uint32_t)y << 16) | (uint16_t)(int16_t)z;
-}
-
 AirshipTemplate airshipTemplate(int32_t zx, int32_t zy, int32_t index, int32_t rotation, int32_t top, int32_t centreX,
                                 int32_t centreY) {
     constexpr double PI = 3.141592653589793; // binary64 0x400921FB54442D18
@@ -48,7 +43,7 @@ Block Zone::read(int32_t x, int32_t y, int32_t z) const {
     if (z >= c.top())
         return z > 0 ? AIR_BLOCK : WATER_BLOCK;
     const Block b = c.blocks[z - c.bottom];
-    if (b.type() == AIR && z <= 0 && !(b.typeByte & DRY_AIR))
+    if (b.implicitWaterAt(z))
         return WATER_BLOCK;
     return b;
 }
@@ -88,9 +83,13 @@ void Zone::place(int32_t x, int32_t y, int32_t z, Block b, const std::function<B
 }
 
 uint8_t Zone::light(int32_t x, int32_t y, int32_t z) const {
-    const auto key = lightKey(x, y, z);
-    const auto it = std::lower_bound(shadedLight.begin(), shadedLight.end(), std::make_pair(key, (uint8_t)0));
-    return it != shadedLight.end() && it->first == key ? it->second : 255;
+    const Column &c = column(x, y);
+    if (z >= c.bottom && z < c.top()) {
+        const Block &block = c.blocks[z - c.bottom];
+        if (clear(block.type()))
+            return block.r;
+    }
+    return 255;
 }
 
 } // namespace worldgen
