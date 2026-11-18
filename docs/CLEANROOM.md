@@ -4012,3 +4012,27 @@ requests, and the connected client's variable scan is gated out.
 Immediate publication writes all three bytes to the destination and
 only working bytes to its eight-cell margin. Original runtime playback
 and further action and network acceptance remain open.
+
+## Feeding progression and late capture (2026-11-17)
+
+The isolated author finalized [taming and capture](specs/alpha-taming-progress-and-capture.md)
+and [the connected receipt supplement](specs/alpha-connected-receipt-supplement.md).
+The implementer read all 261 and 284 physical lines and verified SHA-256
+`5757945384ee93c044d22301728e174a337d099ea93e6ce89a6735f41ad41511` and
+`07a4c300f7a56d5653ae36bf96bc227f995611ee78b44ffdc771d39967c9c172`.
+
+Action 110 admits the bite when the old signed age is strictly before
+its period and the end reaches it. The pitch uses the one existing
+draw, multiplying before division. The world emits a zero-amount hit
+and kind-seven resident progress. At threshold the creature changes
+ownership before publishing its full duration. The world piece then
+ages the live resident.
+
+Received type-six hits reach ordinary local health and stun processing.
+The late hit pass resolves the live source after resident updates.
+Capture requires food and the first kind-seven resident with ordered
+strength of at least one and the full controlled identity. It writes
+the default pet record with the source species, level and experience,
+clears the action and links the actor. The offline producer's mod
+notification remains at its existing event boundary. Native play,
+all offering controls and the separate objective receipt remain open.

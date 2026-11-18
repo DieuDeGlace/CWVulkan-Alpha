@@ -2776,8 +2776,11 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
         frame.sounds.insert(frame.sounds.end(), shot.sounds.begin(), shot.sounds.end());
         frame.buffs.insert(frame.buffs.end(), shot.buffs.begin(), shot.buffs.end());
         frame.bursts.insert(frame.bursts.end(), shot.bursts.begin(), shot.bursts.end());
-        if (c.action == 110 && hitMoment(c, before, dtMs)) {
-            bite(npc, players, frame); // pets §7.3: a bite of the food held out
+        if (c.action == 110) {
+            const int32_t period = phases(c, 110).windUp;
+            const int32_t end = std::bit_cast<int32_t>(uint32_t(before) + uint32_t(milliseconds));
+            if (before < period && end >= period)
+                bite(npc, players, frame);
         } else if (c.action == 28 || c.action == 95) {
             beamTick(c, npc.body, before, dtMs, players, frame, block);
         } else if (c.action == 0x22) {

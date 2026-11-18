@@ -2506,3 +2506,27 @@ The production player/controller diagnostic, five actual client flows
 and 36 package digests passed. Revision 31 parsed with all 69 links and
 the held combat terrain-lighting contract matched its hash and full
 readback. Original-client and dedicated combat playback remain open.
+
+## Feeding progression and late capture (2026-11-17)
+
+ActorOrderTests checks both endpoints of the action-110 crossing and
+the exact one-draw pitch. Five bites match each original binary32
+progress value. The wire event retains 5,000 ms while the resident
+ages in the producer's piece. The threshold changes ownership before
+publication. An earlier hit in the aggregate can capture after the
+threshold. Wrong upper identity bits, unordered progress and a later
+duplicate resident leave the food equipped.
+
+The production Vulkan client joined an isolated loopback peer with a
+food item. Received type-six hits changed health from 100 to 97 and
+then 95. Partial progress and a threshold with the wrong high owner
+word both preserved the food. The live threshold with the matching
+owner converted it to species 19, level 3 and experience 287,454,020
+while health stayed at 95. The peer's actor record had controller 3
+and owner zero.
+
+The Windows x64 build, ten focused suites and all 60 CTests passed.
+The production player/controller diagnostic, five actual client flows
+and 36 package digests passed. Revision 32 parsed with all 71 links and
+both held contracts matched their hashes and line counts. Original
+client and dedicated feeding playback remain open.

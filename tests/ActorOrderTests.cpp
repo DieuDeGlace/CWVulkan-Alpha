@@ -4,11 +4,14 @@
 #include "WorldItems.h"
 #include "creatures/Abilities.h"
 #include "creatures/ActorMap.h"
+#include "creatures/Inventory.h"
 #include "creatures/Npcs.h"
+#include "creatures/Pets.h"
 #include "creatures/Strike.h"
 #include "net/RemoteCreatures.h"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -95,6 +98,107 @@ void checkOverlappingStrikes() {
               frame.sounds.front().position.x == 20.25 && random.count() == 1,
           "only the first strike spends the removal sound draw");
     check(relights == 1, "a rejected removal performs no immediate lighting");
+}
+
+void checkTaming() {
+    worldgen::WorldMap map;
+    map.add(std::make_shared<worldgen::Zone>(0, 0));
+    worldgen::Random random{1583};
+    Npcs npcs(random);
+    Combatant offerer;
+    offerer.id = 0x8000000100000001ull;
+    offerer.level = 4;
+    offerer.health = maxHealth(offerer);
+    offerer.action = 82;
+    offerer.equipment[12].type = 20;
+    offerer.equipment[12].subtype = 18;
+    Body offererBody;
+    offererBody.place({11.5, 10.5, 3});
+    constexpr uint64_t creatureId = 0x8000000200000004ull;
+    npcs.npcs().push_back(fixture(creatureId));
+    auto &creature = npcs.npcs().front();
+    creature.spawn = Npc::NO_SPAWN;
+    creature.fighter.buffs.clear();
+    creature.fighter.type = 19;
+    creature.fighter.level = 12;
+    creature.fighter.experience = -42;
+    creature.fighter.relations.contact = offerer.id;
+    creature.fighter.action = 110;
+
+    const auto step = [&] { return npcs.step(1, map, {{offerer, offererBody, 0, 0}}, 1000, 12, floorBlock); };
+    auto &fighter = creature.fighter;
+    const int32_t period = phases(fighter, 110).windUp;
+    fighter.actionMs = period - 1;
+    check(step().emittedHits.empty() && random.count() == 0, "a wrong food subtype produces neither a bite nor a draw");
+    offerer.equipment[12].subtype = 19;
+    fighter.actionMs = phases(fighter, 110).windUp;
+    const auto equality = step();
+    check(equality.emittedHits.empty() && equality.buffs.empty(), "the exact old boundary has already passed the bite");
+
+    random.seed(1583);
+    const uint32_t priorDraws = random.count();
+    HitRecord first;
+    constexpr uint32_t strengths[] = {0x3e4ccccd, 0x3ecccccd, 0x3f19999a, 0x3f4ccccd, 0x3f800000};
+    for (size_t cycle = 0; cycle < std::size(strengths); ++cycle) {
+        fighter.actionMs = phases(fighter, 110).windUp - 1;
+        const auto out = step();
+        const bool threshold = cycle + 1 == std::size(strengths);
+        check(out.emittedHits.size() == 1 && out.emittedHits.front().kind == 6 &&
+                  out.emittedHits.front().attacker == creatureId && out.emittedHits.front().target == offerer.id &&
+                  std::bit_cast<uint32_t>(out.emittedHits.front().amount) == 0 && random.count() == priorDraws + cycle + 1,
+              "the inclusive crossing publishes one zero-amount hit and uses one draw");
+        if (cycle == 0 && !out.emittedHits.empty())
+            first = out.emittedHits.front();
+        if (cycle == 0)
+            check(out.sounds.size() == 1 && out.sounds.front().sound == 44 &&
+                      std::bit_cast<uint32_t>(out.sounds.front().pitch) == 0x3f6e89a9,
+                  "bite pitch multiplies before dividing");
+        check(out.buffs.size() == 1 && out.buffs.front().source == creatureId && out.buffs.front().target == creatureId &&
+                  out.buffs.front().record.kind == 7 && out.buffs.front().record.timeMs == 5000 &&
+                  out.buffs.front().record.source == (threshold ? offerer.id : 0) &&
+                  std::bit_cast<uint32_t>(out.buffs.front().record.value) == strengths[cycle],
+              "every progression record keeps its binary32 value, original duration and full IDs");
+        const auto resident = std::find_if(fighter.buffs.begin(), fighter.buffs.end(), [](const Buff &b) { return b.kind == 7; });
+        check(resident != fighter.buffs.end() && resident->timeMs == 4999 &&
+                  fighter.combo == int32_t(cycle + 1) && fighter.comboElapsedMs == 1,
+              "the live resident and inactivity clock age in the producer's piece");
+        check(out.tamed.size() == size_t(threshold), "the ownership notification is issued at threshold");
+    }
+    check(fighter.controller == 5 && fighter.ownerId == offerer.id && fighter.level == offerer.level &&
+              offerer.linkedId == creatureId,
+          "ownership changes before the final progress publication");
+
+    // The earlier hit is still eligible when the aggregate sees the live threshold.
+    ItemRecord held;
+    held.fill(0xaa);
+    held[0] = 20;
+    Combatant source = fighter;
+    auto resident = std::find_if(source.buffs.begin(), source.buffs.end(), [](const Buff &b) { return b.kind == 7; });
+    if (resident == source.buffs.end())
+        return;
+    resident->source = offerer.id ^ (uint64_t(1) << 48);
+    check(!captureTamedPet(offerer, held, source, first) && held[0] == 20 && offerer.action == 82,
+          "matching low ID bits cannot capture the local food");
+    resident->source = offerer.id;
+    resident->value = std::numeric_limits<float>::quiet_NaN();
+    check(!captureTamedPet(offerer, held, source, first), "unordered progress leaves the food equipped");
+    resident->value = .8f;
+    source.buffs.push_back({7, 1.f, 100, offerer.id});
+    check(!captureTamedPet(offerer, held, source, first), "a later duplicate cannot replace the first live type-seven decision");
+    source.buffs.pop_back();
+    resident = std::find_if(source.buffs.begin(), source.buffs.end(), [](const Buff &b) { return b.kind == 7; });
+    resident->value = 1.f;
+    source.controller = 3;
+    source.ownerId = 0;
+    ItemRecord want{};
+    want[0] = 19;
+    want[1] = 19;
+    const uint32_t experience = uint32_t(-42);
+    std::memcpy(want.data() + 4, &experience, sizeof experience);
+    setItemLevel(want, 4);
+    check(captureTamedPet(offerer, held, source, first) && held == want && offerer.linkedId == creatureId && offerer.action == 0,
+          "late capture uses the live resident and writes the default pet record");
+    check(!captureTamedPet(offerer, held, source, first), "the next signal observes an equipped pet");
 }
 
 void checkRidingRefillOrder() {
@@ -1404,6 +1508,7 @@ int main() {
     checkOrdinaryCreatureLink();
     checkConnectedSneakLighting();
     checkOverlappingStrikes();
+    checkTaming();
     checkRidingRefillOrder();
     checkConnectedRidingOrder();
     {

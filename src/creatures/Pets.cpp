@@ -2,12 +2,15 @@
 // player's pet in step with the Pet slot, the pet's Combat and Companion behaviours, its return
 // after death, sharing the owner's kill experience, T to call it back and the pet under its
 // rider. These run where the world is decided: offline and on the server.
+#include "creatures/Inventory.h"
 #include "creatures/Npcs.h"
+#include "creatures/Pets.h"
 #include "creatures/Physics.h"
 #include "worldgen/Regions.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstring>
 
 namespace creatures {
 
@@ -16,6 +19,25 @@ namespace {
 constexpr int PET_SLOT = 12;
 
 } // namespace
+
+bool captureTamedPet(Combatant &local, ItemRecord &held, const Combatant &source, const HitRecord &hit) {
+    if (hit.kind != 6 || hit.target != local.id || itemType(held) != 20)
+        return false;
+    const auto resident = std::find_if(source.buffs.begin(), source.buffs.end(),
+        [](const Buff &record) { return record.kind == 7; });
+    if (resident == source.buffs.end() || !(resident->value >= 1.f) || resident->source != local.id)
+        return false;
+
+    held = {};
+    local.action = 0;
+    local.linkedId = source.id;
+    held[0] = 19;
+    held[1] = uint8_t(source.type);
+    const uint32_t experience = uint32_t(source.experience);
+    std::memcpy(held.data() + 4, &experience, sizeof experience);
+    setItemLevel(held, std::bit_cast<int16_t>(uint16_t(source.level)));
+    return true;
+}
 
 bool rideable(int32_t type) {
     return type == 19 || type == 20 || type == 22 || type == 23 || (type >= 25 && type <= 40) ||
@@ -239,8 +261,9 @@ void Npcs::bite(Npc &n, std::vector<PlayerView> &players, NpcFrame &frame) {
     if (food.type != 20 || int32_t(food.subtype) != c.type)
         return;
     const uint64_t feederId = feeder->id;
-    const float r = (float)draw() / 32767.f; // the bite's only draw: the sound's pitch
-    frame.sounds.push_back({n.body.blocks(), 44, 0.9f + 0.2f * r, 1}); // drink2.wav
+    const float scaledDraw = float(draw()) * 0.2f;
+    const float pitch = scaledDraw / 32767.f + 0.9f;
+    frame.sounds.push_back({n.body.blocks(), 44, pitch, 1}); // drink2.wav
     // A kind-6 signal at the creature's position, straight into section 2 (not the hit routine).
     HitRecord signal;
     signal.attacker = c.id, signal.target = feederId, signal.kind = 6;

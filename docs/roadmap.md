@@ -726,6 +726,10 @@ Differences from the Steam engine that shape the plan:
   field and crashes, sailing speed, buoyancy and drag, the riding rules (speed, energy, Ctrl
   dismounts), climbing (hold, stamina by skill, the ledge shove, facing the wall), and fall damage.
   The glider and boat are drawn. CreatureTests check the spec's worked examples.
+- [x] Feed on the native inclusive end crossing and retain exact bite
+  pitch and progress. The client consumes the food in the late hit pass
+  using the live kind-seven resident, including for connected actors.
+  Original playback and all feeding UI admission paths remain open.
 - [x] Pets (`alpha-pets-bombs.md` Part B, `creatures/Pets.cpp`): holding pet food out (action 82),
   tempted creatures walking up, five bites of action 110 (+0.2 each, kept 5 s; pacified 20 s on
   failure), the food turning into the pet item; the pet pass (find, rebuild on item or skill

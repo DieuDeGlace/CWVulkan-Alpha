@@ -38,6 +38,7 @@
 #include "net/RemoteCreatures.h"
 #include "creatures/Airships.h"
 #include "creatures/Npcs.h"
+#include "creatures/Pets.h"
 #include "worldgen/Items.h"
 #include "Dictionary.h"
 #include "GameOptions.h"
@@ -1779,37 +1780,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 creatures::applyBuff(*target, event.record);
     };
     const auto applyConnectedHit = [&](creatures::NpcFrame &frame, creatures::HitRecord &hit) {
-        auto &local = player->combat();
-        if (hit.kind != 6) {
-            mods.playerHit(hit.attacker, hit.kind, hit.amount);
-            player->receiveHit(hit, &frame.buffs);
-            return;
-        }
-        // Pets §7.4: a capture signal can turn the item in the pet slot into the pet.
-        const auto other = receivedActors.find(hit.attacker);
-        if (creatures::itemType(inventory.equipment[12]) != 20 || other == receivedActors.end() ||
-            other->second.controller() != 5)
-            return;
-        const auto tamed = other->second.fighter();
-        if (tamed.ownerId != local.id)
-            return;
-        creatures::ItemRecord pet{};
-        pet[0] = 19;
-        pet[1] = uint8_t(tamed.type);
-        const uint32_t experience = uint32_t(tamed.experience);
-        std::memcpy(pet.data() + 4, &experience, sizeof experience);
-        creatures::setItemLevel(pet, int16_t(tamed.level));
-        inventory.equipment[12] = pet;
-        local.action = 0;
-        local.linkedId = hit.attacker;
-        wearInventory();
+        mods.playerHit(hit.attacker, hit.kind, hit.amount);
+        player->receiveHit(hit, &frame.buffs);
+    };
+    const auto capturePet = [&](const creatures::HitRecord &hit, const creatures::Combatant *source) {
+        if (source && creatures::captureTamedPet(player->combat(), inventory.equipment[12], *source, hit))
+            wearInventory();
     };
     const auto presentConnectedHits = [&](const std::vector<creatures::HitRecord> &hits, size_t produced) {
         const auto *local = &player->combat();
         for (size_t index = 0; index < hits.size(); index++) {
             const auto &hit = hits[index];
-            if (index >= produced && hit.kind == 6) // Received capture signals use the pet adapter.
-                continue;
             const auto *target = frameActor(hit.target);
             const auto *source = frameActor(hit.attacker);
             const bool toLocal = target == local;
@@ -1830,6 +1811,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     }
                 }
             }
+            if (toLocal && hit.kind == 6)
+                capturePet(hit, source);
             if (index >= produced || toLocal || fromLocal || timedHeal)
                 mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
         }
@@ -2625,22 +2608,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             mods.hitSeen(hit.attacker, hit.target, hit.kind, hit.amount);
                         }
                         bursts.insert(bursts.end(), happened.bursts.begin(), happened.bursts.end());
-                        // Pets §7.4: a creature tamed by this player turns the food in the Pet slot into
-                        // its pet item; §12: the pet item follows the pet's level and experience.
                         for (const auto &t : happened.tamed) // mod SDK v10
                             mods.creatureTamed(t.creature, t.type, t.owner);
-                        for (const auto &t : happened.tamed)
-                            if (t.owner == c.id && creatures::itemType(inventory.equipment[12]) == 20) {
-                                creatures::ItemRecord pet{};
-                                pet[0x00] = 19, pet[0x01] = (uint8_t)t.type;
-                                const uint32_t experience = (uint32_t)t.experience;
-                                std::memcpy(pet.data() + 0x04, &experience, 4);
-                                creatures::setItemLevel(pet, (int16_t)t.level);
-                                inventory.equipment[12] = pet;
-                                c.action = 0;
-                                c.linkedId = t.creature; // alpha-fatal-context-field-producers.md, frame assignment
-                                wearInventory();
-                            }
+                        // Pets §12: the pet item follows the pet's level and experience.
                         for (const auto &p : happened.petItems)
                             if (p.owner == c.id && creatures::itemType(inventory.equipment[12]) == 19) {
                                 const uint32_t experience = (uint32_t)p.experience;
@@ -2723,6 +2693,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         client.takeCombatReceipts().apply(player->combat().id, aggregate, projectiles, frameActor,
                             [&](creatures::HitRecord &hit) { applyConnectedHit(aggregate, hit); });
                         presentConnectedHits(aggregate.emittedHits, produced);
+                    } else {
+                        for (const auto &hit : aggregate.emittedHits)
+                            if (hit.kind == 6 && hit.target == player->combat().id)
+                                capturePet(hit, frameActor(hit.attacker));
                     }
                     applyReceivedZoneContents();
                     if (client.connected())

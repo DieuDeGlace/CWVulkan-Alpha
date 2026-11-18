@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-17 after batch 61 and the rulings. The 277 tracked contracts
-comprise 223 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-17 after batch 62 and the rulings. The 279 tracked contracts
+comprise 225 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -124,6 +124,8 @@ Batch 60 covers `alpha-primary-terrain-fog-upload-state.md`,
 `alpha-native-terrain-rgb-and-composition.md` and the re-certified
 `alpha-light-propagation-lifecycle.md`.
 Batch 61 covers `alpha-combat-terrain-lighting.md`.
+Batch 62 covers `alpha-connected-receipt-supplement.md` and
+`alpha-taming-progress-and-capture.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -182,6 +184,7 @@ Batch 61 covers `alpha-combat-terrain-lighting.md`.
 | `alpha-connected-melee-candidates.md` | A | 452 | 0 |
 | `alpha-connected-projectile-receipt-step.md` | A | 459 | 0 |
 | `alpha-connected-ranged-dispatch.md` | A | 257 | 0 |
+| `alpha-connected-receipt-supplement.md` | A | 285 | 0 |
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
 | `alpha-crafting.md` | A | 649 | 2 |
@@ -357,6 +360,7 @@ Batch 61 covers `alpha-combat-terrain-lighting.md`.
 | `alpha-strike-call-sites.md` | A | 277 | 0 |
 | `alpha-strike-cell-helpers.md` | A | 280 | 0 |
 | `alpha-talk-vendors.md` | A | 698 | 1 |
+| `alpha-taming-progress-and-capture.md` | A | 262 | 0 |
 | `alpha-target-relation.md` | A | 178 | 0 |
 | `alpha-template-stamping-markers.md` | A | 504 | 0 |
 | `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
