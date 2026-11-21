@@ -4511,3 +4511,13 @@ Preload and free-camera modes use the engine camera until a player eye is
 available. Work beyond the native window in wider engine views remains an
 extension. First native publication timing, worker pacing and vertex-budget
 eviction require separate evidence or implementation.
+
+## Original client startup prerequisites (2026-11-21)
+
+The source author traced startup independently, including dependencies,
+initialization order, file failure paths and when the window is shown.
+The clean team read all 51 lines of `alpha-client-menu-startup-prerequisites.md`
+and verified SHA-256
+`b0a161c4e8b1b3f3232065b2daeadb6803278f2a0aee2e184c939ed3e19db820`.
+The verifier separately compared isolated native launches and queried
+the availability of the two system DirectInput devices in a 32-bit process.

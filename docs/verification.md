@@ -3040,3 +3040,18 @@ eye on 15 frames and changed the chunk origin on one. The next edited
 batch followed that origin. The checker rejected both a one-chunk origin
 error and an exchanged pair of geometry submissions. Native worker pacing
 and exact GPU presentation remain separate checks.
+
+## Stock startup before save access (2026-11-21)
+
+The six isolated launches described under save import failed at the same
+offset in the original client's DirectInput initialization, before it opens
+the save catalogs. A separate 32-bit desktop program obtained a DirectInput
+object and a system keyboard. Its system mouse creation returned HRESULT
+`0x80040154` and a null device. Windows reported zero for the mouse-present
+metric. The sandbox and ordinary desktop runs agreed. The program released
+the objects immediately without acquiring a device or reading input.
+
+This is consistent with the original client's unchecked use of the returned
+mouse. It establishes a host limitation for these runs. A successful original
+client selection, play and reload on a desktop with a usable mouse still
+requires observation.

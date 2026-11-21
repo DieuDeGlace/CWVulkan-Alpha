@@ -38,6 +38,8 @@ Differences from the Steam engine that shape the plan:
   payloads, and the copied worlds use the unmodded swimmable-water profile.
   Normal startup still checks the saved profile. Returning engine-written
   character and map records to an original Alpha client remains open.
+  The isolated stock startup stopped during DirectInput setup. Complete
+  this comparison on a desktop where the 32-bit system mouse can be created.
 
 - [x] Class B provenance, first batch: eleven held-but-unpinned contracts were
   re-certified and pinned, with a ruling for the creature codec count and the

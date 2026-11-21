@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 78 and the rulings. The 300 tracked contracts
-comprise 264 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 79 and the rulings. The 301 tracked contracts
+comprise 265 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -158,6 +158,7 @@ Batch 75 re-certifies `alpha-spatial-scalars-1ef040-1f0720.md`,
 Batch 76 re-certifies `alpha-fatal-credit-level-consumer.md`.
 Batch 77 records `alpha-client-terrain-mesh-dispatch.md`.
 Batch 78 records the terrain mesh distance ties and window origin.
+Batch 79 records the original client's menu startup prerequisites.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -193,6 +194,7 @@ Batch 78 records the terrain mesh distance ties and window origin.
 | `alpha-client-frame-world-step-order.md` | A | 84 | 1 |
 | `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
 | `alpha-client-incoming-hit-mutations.md` | B | 102 | 2 |
+| `alpha-client-menu-startup-prerequisites.md` | A | 52 | 0 |
 | `alpha-client-offline-projectile-lifecycle.md` | A | 164 | 0 |
 | `alpha-client-primary-start-boundary.md` | A | 221 | 3 |
 | `alpha-client-projectile-hit-call-boundary.md` | B | 117 | 3 |
