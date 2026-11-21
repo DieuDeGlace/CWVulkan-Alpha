@@ -94,8 +94,15 @@ void Npcs::resetCreature(Npc &n) {
     c.behaviorReference = n.fighter.behaviorReference; // the held body reset preserves field40
     n.fighter = std::move(c);
     n.body.mode = n.fighter.mode; // the reset leaves the reverse ID zero (alpha-fatal-context-field-producers.md)
+    // Held created-companion navigation, reset defaults: the body reset clears actor
+    // +0x34..+0x57 (velocity, movement input, response) with the complete mode word.
+    n.body.velocity = n.body.intent = n.body.push = glm::vec3(0);
     n.looks = Appearance{};       // the default appearance
     n.path.clear();
+    // After its path clear the actor reset stores 0xFFFFFFFF in each start-cell word
+    // (+0x141C/+0x1420/+0x1424) and zero in the arrival radius (+0x1458).
+    n.path.state.anchor = {-1, -1, -1};
+    n.path.state.radius = 0;
     n.path.state.reference = {-1, -1, 0};
     n.spawn = Npc::NO_SPAWN;
     n.target = 0; // legacy continuation cache of the cleared target

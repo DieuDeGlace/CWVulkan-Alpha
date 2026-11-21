@@ -58,8 +58,12 @@ const RegionCell *World::makeCell(int32_t rx, int32_t ry) const {
     const uint32_t a = (uint32_t)A();
     Random r((uint32_t)rx + 0x108au + 1024u * (uint32_t)ry + 3u * a);
     c->id = (int32_t)(1024u * (uint32_t)ry + (uint32_t)rx + a);
-    const int32_t homeRegion = (HOME >> 8) >> 6;
-    const bool home = rx == homeRegion && ry == homeRegion;
+    // The special reference: i against the first reference float, then j against the
+    // second, each truncated and divided by 256 then 64 toward zero. Both floats hold
+    // HOME (binary32 0x4B002080), giving indices (512, 512). Engine choice: the
+    // reference point is fixed; other native writers of it are not modelled.
+    constexpr int32_t referenceIndex = HOME / 256 / 64;
+    const bool home = rx == referenceIndex && ry == referenceIndex;
 
     // Steps 3-5: the climate draws.
     const int r1 = r.draw();
@@ -82,7 +86,8 @@ const RegionCell *World::makeCell(int32_t rx, int32_t ry) const {
         c->y = REGION * ry + r.draw() % 15360 + 512;
         c->x = REGION * rx + 512 + r.draw() % 15360;
     }
-    // The snap truncates toward zero (2048 tdiv(v, 2048) + 1024); points are never negative.
+    // The snap truncates toward zero (2048 tdiv(v, 2048) + 1024, the native "add 2047 when
+    // negative, clear 11 bits, add 1024"); points are never negative. HOME snaps to 8397824.
     c->x = c->x / SUBCELL * SUBCELL + SUBCELL / 2;
     c->y = c->y / SUBCELL * SUBCELL + SUBCELL / 2;
 

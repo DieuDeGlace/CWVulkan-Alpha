@@ -1470,10 +1470,13 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         c.actionMs = 0;
         c.hitLanded = false;
     };
-    // A special interrupts whatever runs.
+    // A special interrupts whatever runs. Held created-actor behaviour, action-choice
+    // admission (0x02D869): exactly the interval, action byte, clock and aim triplet (stored
+    // above as D, after flag 0x0004) are written; the class-dispatch marker is untouched.
     if (special != 0) {
         npc.specialMs = 20000;
-        start(special);
+        c.action = uint8_t(special);
+        c.actionMs = 0;
         return true;
     }
     // Open points 3 §1: the action pools of some big creatures. A new action is drawn only when

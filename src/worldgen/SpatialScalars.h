@@ -1,6 +1,7 @@
 #pragma once
 // Ordered queries over stable region samples. Instantiate in a strict-float
 // translation unit. Native cache population and lifetime are separate contracts.
+// The two selected-fraction queries follow alpha-spatial-scalars-1ef040-1f0720.md.
 #include "worldgen/Random.h"
 #include <glm/vec2.hpp>
 #include <bit>
@@ -12,6 +13,18 @@
 #endif
 
 namespace worldgen::scalars {
+
+// Stored operands, by exact bit pattern.
+inline constexpr double DISTORTION_FREQUENCY = std::bit_cast<double>(uint64_t{0x3F40624DD2F1A9FC}); // 0.0005
+inline constexpr float WEIGHT_SCALE = std::bit_cast<float>(0x350637BDu);                          // 0.0000005
+inline constexpr float WEIGHT_ONE = std::bit_cast<float>(0x3F800000u);
+static_assert(DISTORTION_FREQUENCY == 0.0005 && WEIGHT_ONE == 1.f);
+
+// A caller's fixed-point component (1/65536 block) as a query coordinate: signed
+// 64-bit division truncating toward zero (-65535 .. -1 give 0), low 32 bits kept.
+inline int32_t queryCoordinate(int64_t fixed) {
+    return static_cast<int32_t>(static_cast<uint32_t>(static_cast<uint64_t>(fixed / 65536)));
+}
 
 struct Window {
     int32_t firstX, lastX, firstY, lastY;
@@ -39,14 +52,17 @@ inline int32_t truncate(float value) {
 #endif
 }
 
+// Each distortion lies in [-768, 768] because the helper returns [-1, 1].
 inline glm::ivec2 distort(int32_t x, int32_t y) {
-    const float first = noise(double(y) * 0.0005, 3423.0);
+    const float first = noise(double(y) * DISTORTION_FREQUENCY, 3423.0);
     const float dx = (first * 3.f) * 256.f;
-    const float second = noise(double(x) * 0.0005, 23421.0);
+    const float second = noise(double(x) * DISTORTION_FREQUENCY, 23421.0);
     const float dy = (second * 3.f) * 256.f;
     return {truncate(float(x) + dx), truncate(float(y) + dy)};
 }
 
+// The 16-bit shift and the 1/65536 scale cancel exactly: each difference is the
+// exact integer difference rounded once to binary32. No 64-bit overflow occurs.
 inline int32_t distance(int32_t x, int32_t y, glm::ivec2 query) {
     const int64_t fixedX = (int64_t(x) - int64_t(query.x)) * 65536;
     const int64_t fixedY = (int64_t(y) - int64_t(query.y)) * 65536;
@@ -85,10 +101,10 @@ Result reduce(Window bounds, glm::ivec2 query, float fallback, Read read, Accumu
                 return {fallback, false};
             const int32_t current = distance(sample->x, sample->y, query);
             const int32_t delta = wrapSubtract(current, *nearest);
-            float scaled = float(delta) * std::bit_cast<float>(0x350637bdu);
-            if (scaled > 1.f)
-                scaled = 1.f;
-            const float weight = 1.f - scaled;
+            float scaled = float(delta) * WEIGHT_SCALE;
+            if (scaled > WEIGHT_ONE) // no lower clamp
+                scaled = WEIGHT_ONE;
+            const float weight = WEIGHT_ONE - scaled;
             total = total + weight;
             accumulate(*sample, weight, selected);
         }

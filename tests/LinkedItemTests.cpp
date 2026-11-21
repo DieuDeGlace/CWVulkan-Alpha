@@ -150,8 +150,16 @@ static void maintenancePublication() {
     child.path.state.path = {{1, 2, 3}};
     child.path.state.exclusions.insert(1234);
     child.path.state.reference = {8, 9, 10};
+    child.path.state.anchor = {1, 2, 3};
+    child.path.state.radius = 7;
+    child.body.velocity = {1, 2, 3};
+    child.body.intent = {4, 5, 6};
+    child.body.push = {7, 8, 9};
     f.owner.equipment[12].cubes[0].x++;
     f.step();
+    check(child.path.state.anchor == search::Cell{-1, -1, -1} && child.path.state.radius == 0 &&
+          child.body.velocity == glm::vec3(0) && child.body.intent == glm::vec3(0) && child.body.push == glm::vec3(0),
+          "actual creature reset stores all-ones start-cell words, a zero radius and clears the body motion triplets");
     check(!child.fighter.cooldowns.contains(1234) && child.fighter.linkedItem.retained.word == 123 &&
           child.fighter.linkedItem.retained.item[0] == 0x77 && itemLevel(child.fighter.linkedItem.source) == 0,
           "a compared coordinate reconstructs the real child without discarding its resident snapshot");

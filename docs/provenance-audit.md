@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 74 and the rulings. The 297 tracked contracts
-comprise 257 A, 35 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 75 and the rulings. The 297 tracked contracts
+comprise 260 A, 32 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -153,6 +153,8 @@ with the ruling `alpha-rulings-creature-codec-and-join.md`.
 Batch 74 re-certifies `alpha-ranged-action-scheduling.md`,
 `alpha-maximum-health-numeric-contract-recovered.md` and
 `alpha-client-receiver-publication-locks.md`.
+Batch 75 re-certifies `alpha-spatial-scalars-1ef040-1f0720.md`,
+`alpha-created-actor-behavior.md` and `alpha-created-companion-navigation.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -222,10 +224,10 @@ Batch 74 re-certifies `alpha-ranged-action-scheduling.md`,
 | `alpha-connected-walk-phases.md` | A | 317 | 0 |
 | `alpha-controller-aim-writers.md` | A | 186 | 1 |
 | `alpha-crafting.md` | A | 649 | 2 |
-| `alpha-created-actor-behavior.md` | B | 122 | 2 |
+| `alpha-created-actor-behavior.md` | A | 183 | 1 |
 | `alpha-created-actor-combat.md` | A | 379 | 0 |
 | `alpha-created-candidate-appearances.md` | A | 95 | 1 |
-| `alpha-created-companion-navigation.md` | B | 120 | 2 |
+| `alpha-created-companion-navigation.md` | A | 152 | 2 |
 | `alpha-creature-light-attachment-producers.md` | A | 91 | 1 |
 | `alpha-creature-map-key-order.md` | B | 70 | 1 |
 | `alpha-creature-receipt-order.md` | A | 146 | 0 |
@@ -394,7 +396,7 @@ Batch 74 re-certifies `alpha-ranged-action-scheduling.md`,
 | `alpha-spatial-association-producers.md` | A | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |
-| `alpha-spatial-scalars-1ef040-1f0720.md` | B | 130 | 1 |
+| `alpha-spatial-scalars-1ef040-1f0720.md` | A | 169 | 1 |
 | `alpha-spawn-objects.md` | A | 590 | 1 |
 | `alpha-start-menu-title-layout.md` | A | 33 | 0 |
 | `alpha-stock-blueprint-placement.md` | A | 253 | 0 |

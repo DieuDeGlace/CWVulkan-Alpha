@@ -1,6 +1,7 @@
 #include "creatures/ActorCreation.h"
 #include "creatures/CreatedBehavior.h"
 #include "creatures/Npcs.h"
+#include "creatures/SearchState.h"
 #include "net/Protocol.h"
 #include "net/RemoteFighter.h"
 #include <algorithm>
@@ -761,6 +762,60 @@ void configuredActivation() {
               "real action dispatch also publishes each reachable candidate appearance with fresh independent resident configuration");
     }
 }
+// Held created-actor behaviour re-certification, correction 12: an accepted drawn entry
+// stores the 20000 interval, its action byte and a zero clock, then the route returns.
+void actionChoiceAdmission() {
+    worldgen::WorldMap map;
+    map.add(std::make_shared<worldgen::Zone>(0, 0));
+    const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); };
+    Npcs world;
+    Npc created;
+    created.fighter.id = 50;
+    created.fighter.controller = 1;
+    created.fighter.characterClass = 0;
+    created.fighter.health = 100;
+    created.fighter.actionMs = 100;
+    created.fighter.specials = {69};
+    created.behaviour = 7;
+    created.specialMs = 0;
+    created.thinkMs = 32;
+    created.body.place({10.5, 10.5, 3.5});
+    created.home = created.body.blocks();
+    world.npcs().push_back(created);
+    Entity player;
+    player.fighter.id = 1;
+    player.fighter.health = maxHealth(player.fighter);
+    player.body.place({11.5, 10.5, 3.5});
+    world.step(0, map, {{player.fighter, player.body, 0, 0, false}}, 1000, 0, floor);
+    const Npc &result = world.all()[0];
+    check(result.specialMs == 20000 && result.fighter.action == 69 && result.fighter.actionMs == 0 &&
+          (result.fighter.mode & AIMING) && result.chaseMs == 0,
+          "an in-reach drawn entry with a zero interval is accepted with interval, action and zero clock");
+}
+
+// Held created-companion navigation re-certification, correction 4: the first traversed
+// pending key is the default choice and is removed even when no key yields a record.
+void expansionDefaultChoice() {
+    int classified = 0;
+    const search::ClassificationLookup classify = [&](const search::Cell &) {
+        classified++;
+        return search::Classification{};
+    };
+    search::State state;
+    state.records[{5, 5, 5}] = {1, 2, 3, {5, 5, 5}};
+    state.pending = {{0, 0, 0}, {7, 0, 0}};
+    state.goal = {0, 0, 0};
+    check(!state.step(classify) && state.pending == std::set<search::Cell>{{7, 0, 0}} && classified == 0,
+          "a recordless traversal chooses and removes the first pending key before the goal test");
+    state.goal = {65536 * 9, 0, 0};
+    check(!state.step(classify) && state.pending.empty() && state.records.size() == 1 && classified == 0,
+          "a recordless non-goal choice is still removed and the early exit returns zero");
+    state.pending = {{0, 0, 0}, {1, 0, 0}};
+    state.records[{1, 0, 0}] = {1, 2, 3, {1, 0, 0}};
+    state.goal = {65536, 0, 0};
+    check(!state.step(classify) && state.pending == std::set<search::Cell>{{0, 0, 0}} && classified == 0,
+          "a later key that yields a record replaces the default choice");
+}
 } // namespace
 int main() {
     admission();
@@ -775,6 +830,8 @@ int main() {
     companionCaller();
     controlledAndDescriptor();
     configuredActivation();
+    actionChoiceAdmission();
+    expansionDefaultChoice();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }

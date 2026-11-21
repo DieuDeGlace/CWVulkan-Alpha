@@ -3,6 +3,7 @@
 #include "DataStore.h"
 #include "worldgen/BlockLight.h"
 #include "worldgen/MapTile.h"
+#include "worldgen/SpatialScalars.h"
 #include "worldgen/WaterFeatures.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
@@ -1069,8 +1070,8 @@ void WorldView::fillScene(Scene &scene) const {
     if (const auto reference = terrain_lights::fromBlocks(worldPosition())) {
         const auto &[rawX, rawY, rawZ] = *reference;
         // The regional sampler truncates the fixed camera coordinates toward zero.
-        const int32_t x = int32_t(rawX / 65536);
-        const int32_t y = int32_t(rawY / 65536);
+        const int32_t x = worldgen::scalars::queryCoordinate(rawX);
+        const int32_t y = worldgen::scalars::queryCoordinate(rawY);
         const auto &world = terrainWorld();
         const float warmth = world.warmth(x, y);
         const float moisture = world.moisture(x, y);

@@ -4423,3 +4423,28 @@ Record correction: in checkpoint c538c4a the batch-73 sentence of
 provenance-audit.md lost its code-span backticks and carried control
 characters in place of the leading letters of the names. This checkpoint
 restores that sentence; the table rows and counts were unaffected.
+
+## Class B re-certification, third batch (2026-11-21)
+
+Fresh source-only authors re-certified three more held-but-unpinned
+contracts. Fresh implementers read each whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [spatial scalars 0x1EF040 and 0x1F0720](specs/alpha-spatial-scalars-1ef040-1f0720.md) | 168 | `6db93a4dcc20bc17cc906deeba7373bbb332b25554a9869a28e20a71faf0696b` |
+| [created actor behavior](specs/alpha-created-actor-behavior.md) | 182 | `73250f0f10475b3cf453178d1a1b11d94f371a1e7b741b11a68f54e5a30f9a0d` |
+| [created companion navigation](specs/alpha-created-companion-navigation.md) | 151 | `36fd84bb0eafd718338c9e9eb5d9157f1d65c5533050dc6d902aaa2c1ccf53db` |
+
+The spatial-scalar engine already matched every correction; its constants,
+truncating caller division and reference pairing are now named and pinned
+by bit-exact tests against an independent restatement of the contract.
+Engine changes: an accepted created-actor special writes only the interval
+20000, the action and a zero clock; the path-expansion step takes the first
+pending key as its default choice and always removes the choice (this also
+removes an end-iterator dereference); the creature reset clears the motion
+triplets, sets the start cell to all ones and the arrival radius to zero.
+
+Not modelled: actor +0x13E0 (no engine field, reader untraced), the
+constructor discriminator default, world byte +0xB4 (no replica NPC world),
+record eviction, and the helper internals and later first-child dispatch
+each contract leaves open.

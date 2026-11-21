@@ -489,6 +489,30 @@ void readinessAndCounters() {
     }
 }
 
+// Held created-actor behaviour re-certification (2026-11-21), corrections 4 and 9: both the
+// target and the no-target routes reduce +0x04; flag 0x0040 follows the final target.
+void createdRecertification() {
+    {
+        Fixture f;
+        Entity target{9, 0};
+        f.world[0] = target.actor();
+        f.subject.fighter.mode = 0xa604;
+        const auto result = f.run(32);
+        check(result.outcome == Outcome::ContinueWithTarget && f.special == 18 && f.chase == 70 &&
+              f.subject.fighter.mode == 0xa640,
+              "a preliminary target reduces the interval and an idle final target sets the run flag");
+    }
+    {
+        Fixture f;
+        f.cooldown = 40;
+        f.subject.fighter.mode = 0xa644;
+        const auto result = f.run(32);
+        check(result.outcome == Outcome::ReturnFalse && f.special == 18 && f.cooldown == 8 && f.chase == 0 &&
+              f.subject.fighter.mode == 0xa600 && f.drawIndex == 0,
+              "the no-target route also reduces the interval, clears both flags, the cooldown and chase");
+    }
+}
+
 Npc npc(uint64_t id, double x, double y = 10.5) {
     Npc n;
     n.fighter.id = id;
@@ -610,6 +634,7 @@ int main() {
     linkedChoices();
     fallbackAndNumerics();
     readinessAndCounters();
+    createdRecertification();
     production();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

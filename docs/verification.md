@@ -2923,3 +2923,19 @@ No world-generation code changed in this batch. All 60 serial CTests passed
 in 91.68 seconds. The production player/controller diagnostic and five
 actual client flows passed. Package inspection verified 36 hashes in 37
 files. Revision 46 parsed all 88 links.
+
+## Class B re-certification, third batch (2026-11-21)
+
+SpatialScalarTests compares the creator and both queries bit for bit with a
+restatement of the held contract for seeds 0, 123 and 4000000000, and checks
+every constant pattern, the truncating caller division, the distance
+rounding, the distortion bound and the fill reseed. TargetSelectionTests,
+ActorCreationTests and LinkedItemTests cover the counter reduction on both
+routes, special acceptance at interval 20000, the expansion default choice
+and the creature reset fields. ZoneCompare of the retained native corpus is
+unchanged: all 209 zones with all columns equal, 87,447,092 of 87,447,092
+solid blocks equal and 42,240,313 of 42,336,200 light cells equal.
+
+All 60 serial CTests passed in 86.31 seconds. The production
+player/controller diagnostic and five actual client flows passed. Package
+inspection verified 36 hashes in 37 files. Revision 47 parsed all 88 links.

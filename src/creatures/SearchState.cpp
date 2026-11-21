@@ -94,18 +94,26 @@ bool State::step(const ClassificationLookup &classify) {
     const Cell destination = coordinate(goal);
     if (pending.empty())
         return false;
+    // Held navigation contract (0x1AAAB0): the first traversed pending key is the default
+    // choice; a found record replaces it first, later ones only on a strictly smaller
+    // selection field. The choice is removed before the goal-equality test.
+    Cell here = *pending.begin();
     auto selected = records.end();
     for (const Cell &key : pending) {
         const auto found = records.find(key);
-        if (found != records.end() && (selected == records.end() || found->second.selection < selected->second.selection))
+        if (found != records.end() && (selected == records.end() || found->second.selection < selected->second.selection)) {
             selected = found;
+            here = key;
+        }
     }
-    // Well-formed pending/map storage is a precondition, not a repair policy.
-    const Cell here = selected->first;
-    const Node current = selected->second;
     pending.erase(here);
     if (here == destination)
         return false;
+    // A recordless choice leaves the unresolved expansion without a source record; this
+    // engine stops after the removal (an engine boundary, not a native result claim).
+    if (selected == records.end())
+        return false;
+    const Node current = selected->second;
     const Classification geometry = classify(here);
     std::array<bool, 4> updated{};
     for (size_t n = 0; n < offsets.size(); n++) {
