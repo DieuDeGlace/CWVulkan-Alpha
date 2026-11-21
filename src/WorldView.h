@@ -55,7 +55,8 @@ class WorldView {
 
     // Once a frame: asks for the zones the camera needs, takes in finished work, lets go of far
     // zones.
-    void update();
+    void update(std::optional<terrain_lights::FixedPosition> adjustedEye = {});
+    glm::ivec2 chunkWindow() const { return windowOrigin; }
     // Stop submitting previous-world work. Once ready, the caller can flush
     // the old map and install the latest seed without blocking on a zone load.
     bool prepareWorldChange();
@@ -319,6 +320,8 @@ class WorldView {
     std::vector<DoneChunk> doneChunks;
     std::shared_ptr<PreparedChunks> donePreparation;
     std::vector<Key> chunkRequests;
+    ChunkMeshPriority chunkPriority{alpha::FOG_WINDOW_CHUNKS};
+    glm::ivec2 windowOrigin{}; // main-thread publication, sampled before preparing a mesh batch
     bool preparingChunks = false;
     std::set<Key> zonesPending;
     std::map<Key, bool> chunksPending; // true once preparation or geometry is dispatched

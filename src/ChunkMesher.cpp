@@ -1,6 +1,7 @@
 #include "ChunkMesher.h"
 #include "worldgen/BlockLight.h"
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 using namespace worldgen;
@@ -165,6 +166,72 @@ int32_t lowestOpen(const WorldMap &map, int32_t x, int32_t y) {
 
 } // namespace
 
+glm::ivec2 chunkMeshWindowOrigin(const std::array<int64_t, 3> &eye, int32_t width) {
+    const auto axis = [width](int64_t raw) {
+        const int64_t scaledEye = int64_t(double(raw) / double(CHUNK));
+        const int64_t relative = scaledEye - int64_t(width / 2) * 65536;
+        const float origin = float(relative) * 0x1p-16f;
+        // Reject coordinates beyond the signed conversion range at this engine boundary.
+        return origin >= -0x1p31f && origin < 0x1p31f ? int32_t(origin) : INT32_MIN;
+    };
+    return {axis(eye[0]), axis(eye[1])};
+}
+
+void ChunkMeshPriority::prioritize(glm::ivec2 origin, std::vector<Corner> &corners) {
+    if (corners.size() < 2 || width <= 0)
+        return;
+    const auto clip = [&](int32_t boundary, int32_t start) {
+        return int32_t(std::clamp<int64_t>(int64_t(boundary) - start, 0, width));
+    };
+    constexpr int32_t worldChunks = 0x1000000 / CHUNK;
+    const glm::ivec2 first(clip(0, origin.x), clip(0, origin.y));
+    const glm::ivec2 last(clip(worldChunks, origin.x), clip(worldChunks, origin.y));
+    if (first != lower || last != upper) {
+        lower = first;
+        upper = last;
+        const size_t count = size_t(upper.x - lower.x) * (upper.y - lower.y);
+        requested.assign(count, 0);
+        ordered.clear();
+        ordered.reserve(count);
+        for (int32_t x = lower.x; x < upper.x; ++x)
+            for (int32_t y = lower.y; y < upper.y; ++y) {
+                const uint32_t dx = uint32_t(x - width / 2), dy = uint32_t(y - width / 2);
+                ordered.push_back({{x, y}, std::bit_cast<int32_t>(dx * dx + dy * dy)});
+            }
+        // The Windows build's key-only sort is pinned by complete tied-window hashes.
+        std::sort(ordered.begin(), ordered.end(), [](const Candidate &a, const Candidate &b) {
+            return a.distance < b.distance;
+        });
+    }
+    const auto index = [&](glm::ivec2 offset) {
+        return size_t(offset.x - lower.x) * (upper.y - lower.y) + (offset.y - lower.y);
+    };
+    const glm::ivec2 begin = origin + lower, end = origin + upper;
+    size_t outside = 0;
+    for (const Corner corner : corners) {
+        const glm::ivec2 chunk(corner.first / CHUNK, corner.second / CHUNK);
+        if (chunk.x >= begin.x && chunk.x < end.x && chunk.y >= begin.y && chunk.y < end.y)
+            requested[index(chunk - origin)] = 1;
+        else
+            corners[outside++] = corner;
+    }
+    if (outside == corners.size())
+        return;
+    result.clear();
+    result.reserve(corners.size());
+    for (const auto &candidate : ordered) {
+        auto &waiting = requested[index(candidate.offset)];
+        if (waiting) {
+            const glm::ivec2 corner = (origin + candidate.offset) * CHUNK;
+            result.emplace_back(corner.x, corner.y);
+            waiting = 0;
+        }
+    }
+    // Retain the engine's wider streaming radii. These requests follow the native window.
+    result.insert(result.end(), corners.begin(), corners.begin() + outside);
+    corners.swap(result);
+}
+
 bool chunkMeshSourcesResident(const WorldMap &map, glm::ivec2 chunk) {
     if (!validChunk(chunk))
         return false;
@@ -187,9 +254,9 @@ ChunkLightUpdates::Slot &ChunkLightUpdates::slot(glm::ivec2 chunk) {
     return slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
 }
 
-void ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
+bool ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
     if (columns.empty())
-        return;
+        return true;
     const uint64_t change = ++changes;
     for (const auto column : columns) {
         const glm::ivec2 centre = column / CHUNK;
@@ -197,12 +264,13 @@ void ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
             for (int32_t dy = -1; dy <= 1; ++dy) {
                 const glm::ivec2 chunk = centre + glm::ivec2(dx, dy);
                 if (!validChunk(chunk))
-                    return;
+                    return false;
                 Slot &entry = slot(chunk);
                 if (entry.published == chunk)
                     entry.change = change;
             }
     }
+    return true;
 }
 
 std::optional<uint64_t> ChunkLightUpdates::beginBuild(const WorldMap &map, glm::ivec2 chunk) {

@@ -1,4 +1,5 @@
 #include "ChunkMesher.h"
+#include "FileHash.h"
 #include "TerrainLights.h"
 #include "creatures/Spirits.h"
 #include <bit>
@@ -80,7 +81,7 @@ static void meshLightRequests() {
     updates.publish(chunk, 0, false);
     updates.publish(neighbour, 0, false);
     const std::array<glm::ivec2, 2> edits{{{96, 96}, {96, 96}}};
-    updates.markChanged(edits);
+    check(updates.markChanged(edits), "interior marking reaches the window publication");
     const auto first = change(chunk);
     check(first != 0 && change(neighbour) == first && change(unpublished) == 0,
           "a frame coalesces edits on its matching published neighbours only");
@@ -103,7 +104,7 @@ static void meshLightRequests() {
     updates.publish(edge, 0, false);
     updates.publish(chunk, 0, false);
     const std::array<glm::ivec2, 2> edgeThenInterior{{edge * CHUNK, chunk * CHUNK}};
-    updates.markChanged(edgeThenInterior);
+    check(!updates.markChanged(edgeThenInterior), "the out-of-range traversal skips the window publication");
     check(change(edge - glm::ivec2(40, 0)) != 0 && change(chunk) == 0,
           "world bounds retain marks before cleanup and skip later records");
 
@@ -169,10 +170,68 @@ static void meshDispatch() {
           "the last interior index admits while the last edge needs the invalid region 65536");
 }
 
+static void meshDistanceOrder() {
+    const std::array<std::pair<int64_t, int32_t>, 9> origins{{
+        {0, -20}, {1, -20}, {32, -19}, {65536, -19}, {41877504, 0}, {41943040, 0},
+        {44040192, 1}, {2097151999, 980}, {1099511562240, 524267}
+    }};
+    for (const auto &[raw, expected] : origins) {
+        const auto actual = chunkMeshWindowOrigin({raw, 32, INT64_MIN}, 40);
+        check(actual == glm::ivec2(expected, -19), "adjusted raw eye follows the held origin conversion on each axis");
+    }
+    check(chunkMeshWindowOrigin({0, 0, 0}, 5) == glm::ivec2(-2), "odd widths use the signed integer half");
+    using Corner = ChunkMeshPriority::Corner;
+    const auto at = [](int32_t x, int32_t y) { return Corner{x * CHUNK, y * CHUNK}; };
+    const auto window = [&](ChunkMeshPriority &priority, glm::ivec2 origin, int32_t width) {
+        std::vector<Corner> queue;
+        for (int32_t x = origin.x + width - 1; x >= origin.x; --x)
+            for (int32_t y = origin.y + width - 1; y >= origin.y; --y)
+                if (uint32_t(x) < 0x80000u && uint32_t(y) < 0x80000u)
+                    queue.push_back(at(x, y));
+        priority.prioritize(origin, queue);
+        const glm::ivec2 centre = origin + glm::ivec2(width / 2);
+        std::vector<glm::ivec2> offsets;
+        for (const auto &[x, y] : queue)
+            offsets.emplace_back(x / CHUNK - centre.x, y / CHUNK - centre.y);
+        return offsets;
+    };
+    const auto hash = [](const auto &offsets) {
+        std::string pairs;
+        for (const auto offset : offsets)
+            pairs += std::to_string(offset.x) + "," + std::to_string(offset.y) + "\n";
+        return bytesSha256({reinterpret_cast<const uint8_t *>(pairs.data()), pairs.size()});
+    };
+    ChunkMeshPriority priority(40);
+    const auto full = window(priority, {100, 100}, 40);
+    check(full.size() == 1600 && hash(full) == "707a7e8569fdd443bb78e180e4c7311d2b9640ed7d183703a7cd078603f42b62",
+          "all 1600 offsets match the held full-window visit sequence");
+    check(window(priority, {0, 0}, 40) == full, "translation to the first unclipped origin preserves all ranks");
+    const auto left = window(priority, {-20, 100}, 40);
+    check(left.size() == 800 && hash(left) == "b866783955323e71fdb83a19e0311a3ca20e4e98d4a016de0d786f3bfecf8501",
+          "all 800 offsets match the held lower-X visit sequence");
+    const auto bottom = window(priority, {100, -20}, 40);
+    const std::array<glm::ivec2, 4> lowerY{{{0, 0}, {0, 1}, {-1, 0}, {1, 0}}};
+    check(bottom.size() == 800 && std::equal(lowerY.begin(), lowerY.end(), bottom.begin()),
+          "lower-Y clipping has its own central tie order");
+    ChunkMeshPriority shortWindow(5);
+    const auto small = window(shortWindow, {100, 100}, 5);
+    const std::array<glm::ivec2, 5> stable{{{0, 0}, {-1, 0}, {0, -1}, {0, 1}, {1, 0}}};
+    check(small.size() == 25 && std::equal(stable.begin(), stable.end(), small.begin()),
+          "the full width-five window keeps enumeration order within the distance-one tie");
+
+    std::vector<Corner> sparse{at(151, 121), at(121, 120), at(120, 119), at(119, 120), at(98, 117),
+                               at(120, 121), at(120, 120)};
+    priority.prioritize({100, 100}, sparse);
+    check(sparse == std::vector<Corner>{at(120, 120), at(120, 121), at(119, 120), at(120, 119), at(121, 120),
+                                        at(151, 121), at(98, 117)},
+          "sparse requests inherit the full-window ranks before wider-radius requests in arrival order");
+}
+
 int main() {
     packedTerrainLight();
     meshLightRequests();
     meshDispatch();
+    meshDistanceOrder();
     FadingSources timed;
     const FixedPosition precise{(int64_t(1) << 54) + 1, 17, -33};
     timed.append({precise, {1, .5f, .25f}, 20, 0, 400});

@@ -4493,3 +4493,21 @@ zone reconsiders affected side and corner chunks. A dirty chunk keeps its
 published mesh while waiting for a replacement. The contract also describes
 the worker cadence, sorting and vertex allowance. Those require separate
 implementation and verification.
+
+## Terrain mesh distance order and camera origin (2026-11-21)
+
+The source author independently finalized the following two contracts. The
+clean team read both in full before implementing the ordering and conversion.
+
+- `alpha-terrain-mesh-distance-ties.md`, 94 lines, SHA-256
+  `dd5d1c17f5aad2743a7dac94586967651fe16de2be7eef1805b8336692fffc44`.
+- `alpha-terrain-mesh-window-origin.md`, 57 lines, SHA-256
+  `781a5c4f9b83278179fab0c88968263ae7a08f49fe6326576c11c966b94d3619`.
+
+The engine derives the window from the adjusted fixed-point player camera
+and clips each candidate before ordering the complete window. It filters
+that order to queued requests. Fog and ambience read the published origin.
+Preload and free-camera modes use the engine camera until a player eye is
+available. Work beyond the native window in wider engine views remains an
+extension. First native publication timing, worker pacing and vertex-budget
+eviction require separate evidence or implementation.

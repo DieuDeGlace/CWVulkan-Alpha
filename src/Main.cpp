@@ -2980,12 +2980,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             view.shift({step, 0, 0});
             travelled += step;
         }
-        view.update();
+        const auto terrainEye = player && player->followCamera().placed() && options.travel == 0.f ?
+            std::optional(player->followCamera().eyeFixed()) : std::nullopt;
+        view.update(terrainEye);
         const bool settling = travelled < options.travel || (options.travel > 0 && view.busy());
         view.fillScene(scene);
         {
-            const auto reference = player && options.travel == 0.f ? std::optional(player->followCamera().eyeFixed()) : std::nullopt;
-            const float target = view.fogTarget(reference);
+            const float target = view.fogTarget(terrainEye);
             fogDistance.update(target, frameElapsedMs, worldMatches);
             scene.fogDistance = fogDistance.value();
             scene.currentFogAngle = player ? std::optional(player->cameraPitch()) : std::nullopt;
@@ -4779,10 +4780,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         sound::ambientRecord(r, scene.timeOfDayMs, clock, frameElapsedMs,
                                              [&] { return (int32_t)worldRandom.draw(); }, calls);
                 };
-                const glm::ivec2 cameraChunk(worldgen::floorDiv((int32_t)std::floor(eye.x), 32),
-                                             worldgen::floorDiv((int32_t)std::floor(eye.y), 32));
-                ambienceGrid.walk(cameraChunk - glm::ivec2(alpha::FOG_WINDOW_CHUNKS / 2), alpha::FOG_WINDOW_CHUNKS,
-                                  listener(), source);
+                ambienceGrid.walk(view.chunkWindow(), alpha::FOG_WINDOW_CHUNKS, listener(), source);
                 for (const sound::Request &call : calls) // (playing draws nothing)
                     playFixed(call.id, call.position, call.volume, call.pitch);
                 zoneAmbience.retain([&](int32_t zx, int32_t zy) { return view.held().zone(zx, zy) != nullptr; });

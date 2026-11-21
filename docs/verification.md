@@ -3012,3 +3012,31 @@ Original-client visual comparison at that coordinate remains open.
 The production controller diagnostic and five live client flows passed.
 The revision 50 specification check resolved all 91 links, and package
 inspection verified 36 digests across 37 files.
+
+## Terrain mesh distance order and camera origin (2026-11-21)
+
+TerrainLightTests serializes the complete ordered window and checks it
+against the source author's hashes for 1,600 interior candidates and 800
+at the lower X edge. A different tied order at the lower Y edge, a width
+of five, sparse requests, and signed camera conversion boundaries have
+separate checks. These sequences exercise the supported Windows build.
+Exact tie permutations for other clipping patterns remain unverified.
+
+The focused test and all 60 serial tests passed in 3.55 and 197.96 seconds
+respectively. The production controller diagnostic and the reward, health,
+network, save/reload and town-render flows passed. The three radius-one
+renders retained the 484, 225 and 196 chunk counts at the interior, lower
+corner and upper corner. Package inspection verified 36 digests in 37 files.
+
+An instrumented copy of the integrated client recorded the proposed and
+adjusted fixed-point eyes, published origin, requested chunks, resident
+sources, preparation starts and geometry submissions. All 484 submissions
+in the three natural batches and all 526 submissions in the five edited
+batches matched an independent reading of the full-window rank table.
+Sorting only the sparse requests gave a different order in every batch.
+
+The edited run published 17 follow-camera origins. Collision changed the
+eye on 15 frames and changed the chunk origin on one. The next edited
+batch followed that origin. The checker rejected both a one-chunk origin
+error and an exchanged pair of geometry submissions. Native worker pacing
+and exact GPU presentation remain separate checks.

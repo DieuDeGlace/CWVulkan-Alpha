@@ -316,6 +316,7 @@ void WorldView::requestChunk(int32_t x0, int32_t y0) {
 void WorldView::dispatchChunks() {
     if (preparingChunks || chunkRequests.empty())
         return;
+    chunkPriority.prioritize(windowOrigin, chunkRequests);
     auto batch = std::make_shared<PreparedChunks>();
     batch->builds.reserve(chunkRequests.size());
     {
@@ -529,12 +530,19 @@ void WorldView::placeChunk(DoneChunk &chunk) {
     chunkLightUpdates.publish(coordinate, chunk.lightChange, meshes.preparedLighting);
 }
 
-void WorldView::update() {
+void WorldView::update(std::optional<terrain_lights::FixedPosition> adjustedEye) {
     if (worldChangePending)
         return;
     // Mark the cache coordinates that were already published during the frame.
     // An in-flight mesh keeps its snapshot and is requested again after completion.
-    chunkLightUpdates.markChanged(changedLightColumns);
+    if (chunkLightUpdates.markChanged(changedLightColumns)) {
+        // The followed eye retains its fixed precision after camera collision correction.
+        // Free camera, scripted travel and constructor preloading supply the engine eye.
+        if (!adjustedEye)
+            adjustedEye = terrain_lights::fromBlocks(worldPosition());
+        if (adjustedEye)
+            windowOrigin = chunkMeshWindowOrigin(*adjustedEye, alpha::FOG_WINDOW_CHUNKS);
+    }
     changedLightColumns.clear();
     for (const Key &corner : editedChunks)
         requestChunk(corner.first, corner.second);
@@ -1005,19 +1013,11 @@ std::vector<DrawItem> WorldView::items(double clockMs) {
 }
 
 float WorldView::fogTarget(std::optional<terrain_lights::FixedPosition> reference) const {
-    // The window's first chunk: 20 chunks before the camera's on each axis. (The engine's
-    // window placement; the native window origin is not part of the fog contract.)
     if (!reference)
         reference = terrain_lights::fromBlocks(worldPosition());
     if (!reference)
         return alpha::RENDER_RADIUS - 22.4f;
-    const auto windowStart = [](int64_t raw) {
-        constexpr int64_t units = int64_t(CHUNK) * 65536;
-        const int64_t chunk = raw / units - (raw < 0 && raw % units != 0);
-        return int32_t(chunk - alpha::FOG_WINDOW_CHUNKS / 2);
-    };
-    const glm::ivec2 window(windowStart((*reference)[0]), windowStart((*reference)[1]));
-    return alpha::fogTarget(*reference, window, [&](int32_t i, int32_t j) {
+    return alpha::fogTarget(*reference, windowOrigin, [&](int32_t i, int32_t j) {
         const auto it = chunks.find({i * CHUNK, j * CHUNK});
         return it != chunks.end() && (it->second.solid != 0 || it->second.water != 0);
     });

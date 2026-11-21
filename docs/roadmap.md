@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Order terrain mesh requests using the adjusted follow-camera eye, the
+  full clipped native window and its distance ties. Reuse the order while its
+  clipping stays the same. Wide engine views can request additional chunks
+  after that window. Native worker pacing and budget eviction remain open.
+
 - [x] Defer terrain chunks until their required source zones are resident.
   Sides require the zone across the seam and corners require both sides and
   their diagonal. Late arrivals retry pending work. Native mesh scheduling,

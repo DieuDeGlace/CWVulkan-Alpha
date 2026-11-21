@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 77 and the rulings. The 298 tracked contracts
-comprise 262 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 78 and the rulings. The 300 tracked contracts
+comprise 264 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -157,6 +157,7 @@ Batch 75 re-certifies `alpha-spatial-scalars-1ef040-1f0720.md`,
 `alpha-created-actor-behavior.md` and `alpha-created-companion-navigation.md`.
 Batch 76 re-certifies `alpha-fatal-credit-level-consumer.md`.
 Batch 77 records `alpha-client-terrain-mesh-dispatch.md`.
+Batch 78 records the terrain mesh distance ties and window origin.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -417,6 +418,8 @@ Batch 77 records `alpha-client-terrain-mesh-dispatch.md`.
 | `alpha-terrain-chunk-point-lights.md` | A | 102 | 0 |
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
+| `alpha-terrain-mesh-distance-ties.md` | A | 95 | 0 |
+| `alpha-terrain-mesh-window-origin.md` | A | 58 | 0 |
 | `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
 | `alpha-timed-consumables.md` | A | 263 | 0 |

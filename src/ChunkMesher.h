@@ -20,6 +20,27 @@ struct ChunkMeshes {
 
 constexpr int32_t CHUNK = 32;
 
+glm::ivec2 chunkMeshWindowOrigin(const std::array<int64_t, 3> &eye, int32_t width);
+
+// Sort the complete clipped candidate window before selecting from the unique queued requests.
+class ChunkMeshPriority {
+  public:
+    explicit ChunkMeshPriority(int32_t windowWidth) : width(windowWidth) {}
+    using Corner = std::pair<int32_t, int32_t>; // a queued chunk's corner in whole blocks
+    void prioritize(glm::ivec2 origin, std::vector<Corner> &corners);
+
+  private:
+    struct Candidate {
+        glm::ivec2 offset; // relative to the unclipped origin
+        int32_t distance;
+    };
+    int32_t width;
+    glm::ivec2 lower{-1}, upper{-1}; // cached clipping offsets, upper exclusive
+    std::vector<Candidate> ordered;
+    std::vector<uint8_t> requested;
+    std::vector<Corner> result;
+};
+
 // Region admission for the mesh builder, in 32-column chunk coordinates.
 bool chunkMeshSourcesResident(const worldgen::WorldMap &map, glm::ivec2 chunk);
 
@@ -46,7 +67,8 @@ template <class Visit> void visitZoneMeshChunks(glm::ivec2 zone, Visit visit) {
 // independent streaming cache. A nonzero change identifies one edit marking phase.
 class ChunkLightUpdates {
   public:
-    void markChanged(std::span<const glm::ivec2> columns);
+    // False when a world-edge traversal exits before the frame's window publication.
+    bool markChanged(std::span<const glm::ivec2> columns);
     // Empty means this candidate must wait. Zero is an admitted, clean build.
     std::optional<uint64_t> beginBuild(const worldgen::WorldMap &map, glm::ivec2 chunk);
     void publish(glm::ivec2 chunk, uint64_t buildChange, bool preparedLighting);
