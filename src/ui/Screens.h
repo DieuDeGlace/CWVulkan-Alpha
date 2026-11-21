@@ -251,6 +251,15 @@ class Interface {
     // when `creationChanged` is set.
     enum class Front { None, Characters, Creation, Worlds, WorldCreation, Connect };
     Front front = Front::None;
+    bool menuAnchorVisible() const {
+        return startScreen || front == Front::Characters || front == Front::Connect || front == Front::Worlds;
+    }
+    bool creationCursorVisible() const {
+        return creationCursor.has_value() && (front == Front::Creation || front == Front::WorldCreation);
+    }
+    bool terrainWaitVisible(bool worldMatches, float smoothedFog) const {
+        return !worldMatches || (smoothedFog < 8.f && !menuAnchorVisible());
+    }
     bool inGameVisible() const { return !startScreen && front == Front::None; }
     struct CharacterSummary {
         std::string name;
@@ -400,7 +409,7 @@ class Interface {
 
     // The triangles of everything showing, for a window of `size` pixels with the mouse at
     // `mouse` (window pixels).
-    Frame draw(glm::vec2 size, glm::vec2 mouse, double seconds);
+    Frame draw(glm::vec2 size, glm::vec2 mouse, double seconds, bool terrainWait = false);
     // A left click at `mouse`; returns what it asks for.
     Action click(glm::vec2 size, glm::vec2 mouse);
 
@@ -478,7 +487,8 @@ class Interface {
     void scrollRange();
     // The character and world screens, in FrontScreens.cpp.
     void loadFront();
-    void drawFront(Painter &painter, glm::vec2 window, glm::vec2 mouse, float dtMs, double seconds);
+    void drawFront(Painter &painter, glm::vec2 window, glm::vec2 mouse, float dtMs, double seconds,
+                   bool terrainWait = false);
     void drawStylePanel(Painter &painter, glm::vec2 window, glm::vec2 mouse);
     void drawButton(Painter &painter, glm::vec2 at, glm::vec2 size, const std::u16string &caption, glm::vec2 mouse);
     void drawEdit(Painter &painter, glm::vec2 labelAt, const std::u16string &label, const std::u16string &text, bool focused,
@@ -629,7 +639,7 @@ class Interface {
 
     Fonts fonts;
     plasma::Document start, gui;
-    std::optional<plasma::Document> logo, picroma, systemPanel;
+    std::optional<plasma::Document> logo, picroma, systemPanel, creationCursor;
 };
 
 } // namespace ui

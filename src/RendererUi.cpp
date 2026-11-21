@@ -2,6 +2,7 @@
 // (alpha-ui-plasma.md §5.1), textured from one atlas.
 #include "Renderer.h"
 #include "VulkanSync.h"
+#include <cmath>
 #include <cstring>
 
 #include "ui_vert.h"
@@ -181,13 +182,19 @@ void Renderer::prepareInterface() {
         std::memcpy(uiVertices.mapped, uiTriangles.data(), bytes);
 }
 
-void Renderer::recordInterface(VkCommandBuffer cmd, uint32_t imageIndex) {
-    if (uiTriangles.empty() && uiItems.empty())
+void Renderer::recordInterface(VkCommandBuffer cmd, uint32_t imageIndex, bool clearBackground) {
+    if (!clearBackground && uiTriangles.empty() && uiItems.empty())
         return;
     VkRenderingAttachmentInfo colour{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     colour.imageView = swapViews[imageIndex];
     colour.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colour.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colour.loadOp = clearBackground ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    if (clearBackground) {
+        constexpr float green = 112.f / 255.f;
+        const bool srgb = colourFormat == VK_FORMAT_B8G8R8A8_SRGB || colourFormat == VK_FORMAT_R8G8B8A8_SRGB ||
+                          colourFormat == VK_FORMAT_A8B8G8R8_SRGB_PACK32;
+        colour.clearValue.color = {{0.f, srgb ? std::pow((green + .055f) / 1.055f, 2.4f) : green, 1.f, 1.f}};
+    }
     colour.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     VkRenderingInfo ri{VK_STRUCTURE_TYPE_RENDERING_INFO};
     const VkRect2D sc{{0, 0}, extent};
@@ -204,10 +211,12 @@ void Renderer::recordInterface(VkCommandBuffer cmd, uint32_t imageIndex) {
     ri.pStencilAttachment = &stencil;
     if (uiStencilFormat != VK_FORMAT_S8_UINT)
         ri.pDepthAttachment = &stencil;
-    // The post pass wrote the swap image; the interface blends over it.
-    auto ready = barrier(swapImages[imageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+    // A wait frame draws directly to the acquired image. Ordinary UI blends over the post pass.
+    auto ready = barrier(swapImages[imageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+                         clearBackground ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                         clearBackground ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         clearBackground ? 0 : VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
     const VkImageAspectFlags stencilAspect = uiStencilFormat == VK_FORMAT_S8_UINT
                                                  ? VK_IMAGE_ASPECT_STENCIL_BIT

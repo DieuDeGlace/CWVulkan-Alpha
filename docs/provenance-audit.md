@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 81 and the rulings. The 304 tracked contracts
-comprise 268 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 82 and the rulings. The 307 tracked contracts
+comprise 271 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -161,6 +161,7 @@ Batch 78 records the terrain mesh distance ties and window origin.
 Batch 79 records the original client's menu startup prerequisites.
 Batch 80 records terrain vertex accounting and fog mesh-slot population.
 Batch 81 records the terrain group bounds and renderer transfer window.
+Batch 82 records local front-end terrain readiness, the wait presentation and the creation cursor.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -265,6 +266,9 @@ Batch 81 records the terrain group bounds and renderer transfer window.
 | `alpha-floating-point-environment.md` | A | 499 | 1 |
 | `alpha-fog-mesh-slot-population.md` | A | 48 | 0 |
 | `alpha-forward-link-zero-gates.md` | A | 99 | 1 |
+| `alpha-front-end-terrain-readiness.md` | A | 40 | 0 |
+| `alpha-front-end-wait-cursor.md` | A | 24 | 0 |
+| `alpha-front-end-wait-presentation.md` | A | 35 | 0 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
 | `alpha-generic-hit-presentation-draws.md` | B | 65 | 1 |

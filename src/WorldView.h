@@ -43,6 +43,7 @@ struct WorldViewOptions {
     motion::MotionSettings motion;
     bool swimmableWater = true;
     int32_t renderDistance = 50;  // signed native mesh-cache allowance setting
+    bool preloadTerrain = true;   // settled initial geometry for engine diagnostics
 };
 
 enum class TerrainEditSource { Live, Saved, Queued, Destruction };
@@ -50,8 +51,7 @@ enum class TerrainEditSource { Live, Saved, Queued, Destruction };
 class WorldView {
   public:
     using TileReady = std::function<void(int32_t zx, int32_t zy, const worldgen::MapTile &tile)>;
-    // Generates and meshes the zones round the start before returning.
-    // Install persistence before the constructor can finish the initial map tiles.
+    // Starts the world workers. Diagnostic callers can wait for the initial geometry.
     WorldView(Renderer &renderer, const Content &content, const WorldViewOptions &options, TileReady tileReady = {});
     ~WorldView();
 

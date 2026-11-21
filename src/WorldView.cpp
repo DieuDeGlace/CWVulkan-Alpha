@@ -164,10 +164,10 @@ WorldView::WorldView(Renderer &r, const Content &c, const WorldViewOptions &opti
         if (model.load(bytes->data(), bytes->size()))
             cloudMesh = renderer.addMesh(model.mesh(glm::vec3(0, 100, 200) / 255.f));
     }
-    // The first zones, before the first frame.
+    // Submit the first source requests before returning to the frame pump.
     while (true) {
         update();
-        if (idle())
+        if (!options.preloadTerrain || idle())
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }

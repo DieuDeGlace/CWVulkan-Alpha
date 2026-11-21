@@ -85,10 +85,12 @@ class Renderer {
     MeshId addMesh(const ModelMesh &mesh);
     // Frees a mesh once the GPU no longer uses it. Its id may be handed out again.
     void removeMesh(MeshId id);
+    // The previous client session and its view have finished. Retire its meshes and draw lists.
+    void releaseWorld();
     // Draws one frame: `items` outside the view (or, for the shadow, outside the shadow map)
     // are skipped. With `capture` set, the finished image is also written there as a PNG.
     bool draw(const FrameConstants &frame, bool stars, const std::vector<DrawItem> &items,
-              const std::filesystem::path &capture = {});
+              const std::filesystem::path &capture = {}, bool interfaceOnly = false);
     // How many items the last frame drew in the scene and in the shadow map.
     uint32_t drawnItems() const { return lastDrawn; }
     uint32_t shadowItems() const { return lastShadowDrawn; }
@@ -182,7 +184,7 @@ class Renderer {
     bool createUiResources();
     void destroyUiResources();
     void prepareInterface();
-    void recordInterface(VkCommandBuffer cmd, uint32_t imageIndex);
+    void recordInterface(VkCommandBuffer cmd, uint32_t imageIndex, bool clearBackground);
     bool createMinimapPipeline();
     void recordMinimap(VkCommandBuffer cmd, uint32_t imageIndex, const FrameConstants &frame);
 

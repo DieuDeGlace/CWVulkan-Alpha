@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Run the local title and pickers during terrain streaming. Present
+  the wait frame for world changes and low-fog creation or gameplay.
+  Continue the input and presentation loop as old world work drains.
+
 - [x] Keep pending terrain geometry separate from the active renderer state
   that controls fog. Visit the clipped window after counting dirty keys
   across the full cache, accept geometry before the visibility check and

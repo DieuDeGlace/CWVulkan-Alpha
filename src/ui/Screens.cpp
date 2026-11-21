@@ -77,6 +77,11 @@ bool Interface::load(const std::filesystem::path &install, std::string *error) {
         return false;
     start = std::move(*startDoc);
     gui = std::move(*guiDoc);
+    creationCursor = plasma::load(install / "cursor.plx", nullptr);
+    if (creationCursor)
+        for (auto &shape : creationCursor->shapes)
+            if (shape.kind == plasma::Shape::Kind::Text)
+                shape.text.text.value.clear(); // the ordinary creation hand has no action caption
     // §1: the start screen's two logos, kept as clones.
     if (const int32_t n = start.find("cubeworld"); n >= 0)
         logo = clone(start, n);
@@ -1046,7 +1051,7 @@ void Interface::drawQuestIcon(Painter &painter, QuestIcon icon, glm::vec2 foot, 
     painter.image(p.rect, glm::round(foot - glm::vec2(s.x / 2, s.y)), glm::round(foot + glm::vec2(s.x / 2, 0)));
 }
 
-Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
+Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds, bool terrainWait) {
     Painter painter(fonts, atlas);
     const float dtMs = lastSeconds < 0 ? 0.f : (float)((seconds - lastSeconds) * 1000.0);
     lastSeconds = seconds;
@@ -1058,6 +1063,26 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
         if (hud && manaCubeBar)
             showManaCubeIcons(*manaCubeBar, manaCubes);
         advanceSequences(dtMs);
+    }
+    const auto drawCursor = [&] {
+        if (creationCursorVisible())
+            painter.draw(*creationCursor, 0, translate(mouse), true);
+    };
+    if (terrainWait) {
+        // Two coincident resource1 text shapes, the outlined parent followed by its white face.
+        TextStyle style;
+        style.flags = plasma::CENTRE;
+        style.outline = style.lineSpacing = 3;
+        const glm::vec2 at = glm::floor(size * 0.5f);
+        painter.text(u"Please wait...", at, style);
+        style.outline = 0;
+        painter.text(u"Please wait...", at, style);
+        if (front != Front::None)
+            drawFront(painter, size, mouse, dtMs, seconds, true);
+        if (controllerKeyboardOpen())
+            drawControllerKeyboard(painter, size, mouse);
+        drawCursor();
+        return painter.take();
     }
     if (startScreen) {
         if (logo && !optionsOpen) {
@@ -1173,6 +1198,7 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds) {
         drawOptions(painter, size, mouse);
     if (controllerKeyboardOpen())
         drawControllerKeyboard(painter, size, mouse);
+    drawCursor();
     return painter.take();
 }
 

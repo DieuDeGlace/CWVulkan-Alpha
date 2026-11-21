@@ -451,6 +451,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         game[GameOptions::RESOLUTION_X] = desktop->width, game[GameOptions::RESOLUTION_Y] = desktop->height;
     game.load(optionsFile);
     worldOptions.renderDistance = game[GameOptions::RENDER_DISTANCE];
+    const bool localEntry = options.start || (options.walk && options.connect.empty() && !options.saveWorld.empty());
+    worldOptions.preloadTerrain = !localEntry || !options.capture.empty() || options.travel != 0 ||
+                                  options.crater || options.quest;
     WorldView view(renderer, content, worldOptions, persistMapTile);
     if (remoteMap)
         view.restoreDiscoveryCount(remoteMap->discoveryCount());
@@ -942,7 +945,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             std::fprintf(stderr, "--crater: %zu blocks removed\n", removed.size());
         }
     }
-    std::fprintf(stderr, "%s\n", view.status().c_str());
+    if (worldOptions.preloadTerrain)
+        std::fprintf(stderr, "%s\n", view.status().c_str());
     float travelled = 0;
     view.setLook(options.lookGiven ? options.yaw : 30.f, options.lookGiven ? options.pitch : 15.f);
     Scene scene;
@@ -1013,12 +1017,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     };
     activeInterface = &interface;
     interface.speechDraw = [&] { return worldRandom.draw(); }; // talk §0: the one shared stream
-    // The engine screens that stand in for the native front-end rotation state.
-    const auto frontEndRotation = [&] {
-        using F = ui::Interface::Front;
-        const F front = interface.front;
-        return interface.startScreen || front == F::Characters || front == F::Worlds || front == F::Connect;
-    };
     mods.hooks().say = [&](const std::string &text) {
         interface.chatSubmitted.push_back(text); // (as if typed, /commands included)
         return true;
@@ -1311,6 +1309,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         Gamepad::PointerButtons pointerButtons;
         std::function<void(int, int, Gamepad::PointerButtons::Source)> mouseDispatch;
     } input{&view, &scene, &interface, &renderer, player ? &*player : nullptr};
+    auto syncCursor = [&] {
+        const int mode = !interface.wantsMouse() ? GLFW_CURSOR_DISABLED :
+                         interface.creationCursorVisible() ? GLFW_CURSOR_HIDDEN : GLFW_CURSOR_NORMAL;
+        if (glfwGetInputMode(window, GLFW_CURSOR) != mode) {
+            glfwSetInputMode(window, GLFW_CURSOR, mode);
+            input.cursorKnown = false;
+        }
+    };
     glfwSetWindowUserPointer(window, &input);
     glfwSetKeyCallback(window, [](GLFWwindow *w, int key, int, int action, int) {
         auto *in = (Input *)glfwGetWindowUserPointer(w);
@@ -1999,8 +2005,15 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // supplied mode-zero rules. Reuse this world view across incoming frames.
     const creatures::CreditWorld creditWorld{frameActor,
         [&]() -> creatures::Combatant * { return player ? &player->combat() : nullptr; }, 1, {}};
+    std::optional<Options> requestedLocalWorld;
+    if (options.start && !glfwGetWindowAttrib(window, GLFW_VISIBLE)) {
+        glfwShowWindow(window);
+        glfwFocusWindow(window);
+    }
     while (!glfwWindowShouldClose(window) && !restart) {
         glfwPollEvents();
+        if (glfwWindowShouldClose(window))
+            break;
         if (player && interface.front == ui::Interface::Front::Creation &&
             cameraFront != ui::Interface::Front::Creation) {
             player->resetCreationPose();
@@ -2033,7 +2046,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if (client.connected())
             networkFrame = client.lockFrame();
         auto worldChange = networkFrame.owns_lock() ? client.worldChange(activeWorld) : std::nullopt;
-        if ((worldChange || view.changingWorld()) && view.prepareWorldChange()) {
+        if (!requestedLocalWorld && (worldChange || view.changingWorld()) && view.prepareWorldChange()) {
             if (remoteMap) {
                 regionPass(player ? player->body().blocks() : view.worldPosition());
                 remoteMap->saveDiscoveryCount(view.discoveryCount());
@@ -2063,7 +2076,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 player->changeWorldPosition(destination);
             std::fprintf(stderr, "Activated world %s.\n", activeWorld.name.c_str());
         }
-        const bool worldMatches = !worldChange;
+        const bool worldMatches = !worldChange && (!requestedLocalWorld ||
+            (requestedLocalWorld->worldOptions.seed == activeWorld.seed && requestedLocalWorld->saveWorld == activeWorld.name));
         if (const auto clock = client.takeClock()) {
             scene.day = std::bit_cast<int32_t>(clock->first);
             scene.timeOfDayMs = clock->second;
@@ -2110,11 +2124,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         input.pointerButtons.cancelController();
                     controllerMouse.fill(false);
                 }
-                const int cursor = interface.wantsMouse() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED;
-                if (glfwGetInputMode(window, GLFW_CURSOR) != cursor) {
-                    glfwSetInputMode(window, GLFW_CURSOR, cursor);
-                    input.cursorKnown = false;
-                }
+                syncCursor();
             };
             syncControllerContext();
             if (pad.connected) {
@@ -2908,7 +2918,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     using F = ui::Interface::Front;
                     const F front = interface.front;
                     const bool creationView = front == F::Creation || front == F::WorldCreation;
-                    const bool menuView = frontEndRotation();
+                    const bool menuView = interface.menuAnchorVisible();
                     creatures::FollowCamera &cam = player->followCamera();
                     if (menuView) {
                         cam.targetDistance = 10, cam.targetPitch = 100;
@@ -2995,6 +3005,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             scene.currentFogAngle = player ? std::optional(player->cameraPitch()) : std::nullopt;
             scene.mapFog = interface.mapOpen;
         }
+        // An active group transferred by items() later in this frame first affects the next update.
+        const bool terrainWait = player && options.connect.empty() &&
+                                 interface.terrainWaitVisible(worldMatches, fogDistance.value());
         scene.seconds = now - start;
         const auto &motionSettings = options.worldOptions.motion;
         scene.leafSway = motionSettings.leaves
@@ -3116,7 +3129,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             look.camera = view.toRender(view.worldPosition()); // trails §1.1 point-0 shift
             return look;
         };
-        const bool drawActors = !frontEndRotation();
+        const bool drawActors = !interface.menuAnchorVisible();
         if (drawActors && player) {
             const CreatureLook look = creatureLook(player->combat(), player->body().position, player->body().velocity);
             player->draw(items, creatureView, seconds * 1000.f, &effects, &look);
@@ -4564,7 +4577,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     SaveDb db;
                     return db.open(saves / "worlds.db", SaveDb::Mode::ReadWrite) ? readWorlds(db) : std::vector<WorldEntry>{};
                 };
-                if (frontListsStale) {
+                const bool picker = interface.front == ui::Interface::Front::Characters ||
+                                    interface.front == ui::Interface::Front::Worlds;
+                if (frontListsStale && (!picker || !terrainWait)) {
                     interface.characterList.clear();
                     panelFigures.clear();
                     for (const CharacterRecord &r : characters()) {
@@ -4636,7 +4651,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     next.saveWorld = name;
                     next.worldOptions.seed = seed;
                     next.character = chosenCharacter;
-                    restart = next;
+                    interface.front = ui::Interface::Front::None;
+                    requestedLocalWorld = std::move(next);
                 };
                 if (request == R::ListWorlds)
                     frontListsStale = true;
@@ -4724,7 +4740,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (width > 0 && height > 0)
                     uiMouse *= glm::vec2(float(size.width) / width, float(size.height) / height);
             }
-            renderer.setInterface(interface.draw({float(size.width), float(size.height)}, uiMouse, now - start));
+            if (player)
+                syncCursor(); // the front form can change after controller input
+            renderer.setInterface(interface.draw({float(size.width), float(size.height)}, uiMouse, now - start, terrainWait));
             if (interface.atlas.takeChanged())
                 renderer.setInterfaceAtlas(interface.atlas.size(), interface.atlas.size(), interface.atlas.pixels());
         }
@@ -4896,7 +4914,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             networkFrame.unlock();
         }
         renderer.setEffects(effects);
-        const bool drawn = renderer.draw(frame, drawStars(scene), items, capturing ? pathOfUtf8(options.capture) : fs::path());
+        const bool drawn = renderer.draw(frame, drawStars(scene), items,
+                                         capturing ? pathOfUtf8(options.capture) : fs::path(), terrainWait);
+        // Old source jobs may still hold the old world's generator. Keep polling input and drawing
+        // the wait frame until they finish, then run the chosen session with its own persistent state.
+        if (requestedLocalWorld && view.prepareWorldChange())
+            restart = std::move(requestedLocalWorld);
         if (capturing) {
             if (!drawn) {
                 std::fprintf(stderr, "capture failed\n");
@@ -4917,6 +4940,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         if (framesUntilCapture > 0 && drawn && !settling)
             framesUntilCapture--;
+    }
+    // Window operations can dispatch input synchronously, including while the next world opens.
+    glfwSetKeyCallback(window, nullptr);
+    glfwSetCharCallback(window, nullptr);
+    glfwSetMouseButtonCallback(window, nullptr);
+    glfwSetCursorPosCallback(window, nullptr);
+    glfwSetScrollCallback(window, nullptr);
+    glfwSetWindowUserPointer(window, nullptr);
+    if (glfwWindowShouldClose(window)) {
+        view.prepareWorldChange();
+        glfwHideWindow(window);
     }
     if (!options.capture.empty())
         std::printf("Simulation: %llu world calls, %llu input frames, max piece %d ms\n",
@@ -4980,6 +5014,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     }
     if (options.travel > 0)
         std::fprintf(stderr, "after travelling %.0f blocks: %s\n", travelled, view.status().c_str());
+    activeScene = nullptr;
+    activeView = nullptr;
+    activePlayer = nullptr;
+    activeInterface = nullptr;
     return status;
 }
 
@@ -5149,6 +5187,7 @@ int main(int argc, char **argv) {
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_MAXIMIZED, options.start ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_VISIBLE, options.start && options.capture.empty() ? GLFW_FALSE : GLFW_TRUE);
     GLFWwindow *window = glfwCreateWindow(config.number("Window", "Width", 1280), config.number("Window", "Height", 720),
                                           "AlphaVulkan", nullptr, nullptr);
     int status = 0;
@@ -5179,14 +5218,11 @@ int main(int argc, char **argv) {
                 std::optional<Options> restart;
                 status = runWorld(window, renderer, content, game, worldRun, shadowSettings, moonSettings, mods,
                                   activeScene, activeView, activePlayer, activeInterface, audio, restart);
-                if (!restart)
+                renderer.releaseWorld();
+                if (!restart || glfwWindowShouldClose(window))
                     break;
                 worldRun = *restart;
             }
-            activeScene = nullptr;
-            activeView = nullptr;
-            activePlayer = nullptr;
-            activeInterface = nullptr;
             mods.shutdown();
             glfwDestroyWindow(window);
             glfwTerminate();

@@ -297,9 +297,12 @@ void Interface::pointerPress(float mouseY, int button) {
         leftHeld = true;
 }
 
-void Interface::drawFront(Painter &painter, glm::vec2 W, glm::vec2 mouse, float dtMs, double seconds) {
-    frontUpdate(W, mouse, dtMs);
+void Interface::drawFront(Painter &painter, glm::vec2 W, glm::vec2 mouse, float dtMs, double seconds, bool terrainWait) {
+    if (!terrainWait)
+        frontUpdate(W, mouse, dtMs);
     drawButton(painter, backButton().at, backButton().size, u"Back", mouse);
+    if (terrainWait && (front == Front::Characters || front == Front::Worlds))
+        return;
     if (front == Front::Worlds) {
         // §4.3: the multiplayer toggle (its caption as Alpha writes it) and Connect to server.
         drawButton(painter, multiplayerButton(W).at, multiplayerButton(W).size,
@@ -368,20 +371,24 @@ void Interface::drawFront(Painter &painter, glm::vec2 W, glm::vec2 mouse, float 
         if (b.remove)
             drawButton(painter, b.at + glm::vec2(620, 0), {300, 30}, chars ? u"Delete Character" : u"Delete World", mouse);
     } else if (front == Front::Creation) {
-        drawStylePanel(painter, W, mouse);
-        drawEdit(painter, {std::trunc(W.x / 2), W.y - 50}, nameCaptionCleared ? u"" : u"Name", nameText, true, seconds);
+        if (!terrainWait) {
+            drawStylePanel(painter, W, mouse);
+            drawEdit(painter, {std::trunc(W.x / 2), W.y - 50}, nameCaptionCleared ? u"" : u"Name", nameText, true, seconds);
+        }
         if (characterNameTaken())
             outlined(painter, u"There is already a character with that name.", {std::trunc(W.x / 2), W.y - 200}, 12, 3,
                      glm::vec4(1), plasma::CENTRE);
-        else if (createCharacterShown())
+        else if (!terrainWait && createCharacterShown())
             drawButton(painter, createButton(W).at, createButton(W).size, u"Create Character", mouse);
     } else if (front == Front::WorldCreation) {
-        drawEdit(painter, {std::trunc(W.x / 2), W.y - 100}, u"Seed (must be a number)", seedText, editFocus == 1, seconds);
-        drawEdit(painter, {std::trunc(W.x / 2), W.y - 50}, u"Name", nameText, editFocus == 0, seconds);
+        if (!terrainWait) {
+            drawEdit(painter, {std::trunc(W.x / 2), W.y - 100}, u"Seed (must be a number)", seedText, editFocus == 1, seconds);
+            drawEdit(painter, {std::trunc(W.x / 2), W.y - 50}, u"Name", nameText, editFocus == 0, seconds);
+        }
         if (worldNameTaken())
             outlined(painter, u"There is already a world with that name.", {std::trunc(W.x / 2), W.y - 200}, 12, 3,
                      glm::vec4(1), plasma::CENTRE);
-        else if (worldReady())
+        else if (!terrainWait && worldReady())
             drawButton(painter, createButton(W).at, createButton(W).size, u"Create World", mouse);
     }
 }

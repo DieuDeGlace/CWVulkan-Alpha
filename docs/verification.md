@@ -3174,3 +3174,47 @@ lower corner showed stepped terrain. A matched original-client image for
 these three camera positions is still outstanding.
 The production controller diagnostic and the five reward, health,
 network, save/reload and town-render flows passed.
+
+## Front-end terrain readiness and wait display (2026-11-21)
+
+An instrumented Vulkan client launched through the ordinary local start
+path with owned assets. In one run, measured from entry to the process's
+main function, it requested the window at 1.530 seconds and completed its
+first successful Vulkan presentation at 2.364 seconds. The title was
+active at minimum fog distance with zero zones and zero chunks. A second
+run captured the title with Start Game, Options and Exit over the sky.
+Its later capture showed the same menu over nine zones and 484 chunks.
+These timings describe this machine and these runs.
+
+An independent test held a terrain job while exercising the title,
+character picker and world picker. All three accepted input. On early
+world selection, the frame loop continued through three wait frames
+while the old job finished. The selected world's gameplay became visible
+after its smoothed fog distance reached eight, with more terrain still
+loading. Early exit retired the in-flight work without uploading a late
+mesh.
+
+A separate Vulkan run exercised the production input handlers with
+synthetic local inputs. It selected a character and a different world
+after the third presentation, while the previous world was still
+loading. The new world displayed its wait frame, then displayed gameplay
+at a smoothed fog distance of 8.05799. The previous session detached its
+window callbacks and cleared its active pointers and draw lists before
+the next session began. Both sessions queued their remaining mesh
+buffers for release after the renderer's frame fence.
+
+The creation-wait capture showed the blue background, outlined wait text,
+Back button and white hand cursor while the world still had zero zones.
+Back returned to the character picker before the first zone arrived.
+The owned UI tests initially caught the cursor using the document's
+editor zoom and pan. Drawing its child artwork at the live pointer
+position fixed both creation forms. A pointer displacement of 120 by
+64 pixels moved the hand by that amount and left the wait label in place.
+The five focused UI, camera, gamepad, controller-keyboard and terrain
+tests passed in 3.73 seconds.
+The creation frame had 99.44% exact RGB (0, 112, 255) background pixels.
+With the pointer at (360, 260), the hand occupied a 25 by 24 pixel area
+starting at (353, 260). All 60 serial tests passed in 107.17
+seconds and the final package passed all 36 digests across 37 files.
+The ordinary client passed its controller diagnostic and all five reward,
+health, network, save/reload and town-render checks.

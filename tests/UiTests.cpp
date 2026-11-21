@@ -23,6 +23,24 @@ static void check(bool ok, const std::string &what) {
     }
 }
 
+static void checkTerrainWait() {
+    using F = Interface::Front;
+    Interface ui;
+    for (const F front : {F::None, F::Characters, F::Connect, F::Worlds, F::Creation, F::WorldCreation}) {
+        ui.front = front;
+        const bool exempt = front == F::Characters || front == F::Connect || front == F::Worlds;
+        check(ui.terrainWaitVisible(true, std::nextafter(8.f, 0.f)) == !exempt &&
+                  !ui.terrainWaitVisible(true, 8.f) && !ui.terrainWaitVisible(true, std::nextafter(8.f, 9.f)),
+              "matching identity uses the strict low-fog threshold for each front root");
+        check(ui.terrainWaitVisible(false, 8.f), "an identity mismatch selects the wait draw on every screen");
+    }
+    ui.front = F::None;
+    ui.startScreen = true;
+    check(!ui.terrainWaitVisible(true, 0.0001f) && ui.terrainWaitVisible(false, 200.f) &&
+              ui.click({1280, 720}, {640, 440}) == Action::StartGame,
+          "the ordinary title accepts Start Game at the terrain floor with matching identity");
+}
+
 static void checkFrontRendering(const fs::path &game) {
     Interface screens;
     std::string error;
@@ -56,6 +74,43 @@ static void checkFrontRendering(const fs::path &game) {
           "character creation hides resident gameplay HUD, quick slot and panels");
     screens.front = Interface::Front::None;
     check(screens.inGameVisible(), "closing the front end admits the in-game root");
+    const auto waiting = screens.draw(size, mouse, 0, true);
+    screens.front = Interface::Front::Creation;
+    const auto hiddenCreator = screens.draw(size, mouse, 0, true);
+    check(!waiting.triangles.empty() && waiting.triangles.size() < hiddenCreator.triangles.size() &&
+              hiddenCreator.items.empty() && screens.front == Interface::Front::Creation,
+          "the creation wait preserves its independent Back control and the selected form");
+    for (auto form : {Interface::Front::Creation, Interface::Front::WorldCreation}) {
+        screens.front = form;
+        const glm::vec2 p(330, 240), delta(120, 64);
+        const auto first = screens.draw(size, p, 0, true);
+        const auto second = screens.draw(size, p + delta, 0, true);
+        glm::vec2 lo(1e8f), hi(-1e8f);
+        bool follows = first.triangles.size() == second.triangles.size();
+        for (size_t i = 0; follows && i < first.triangles.size(); ++i) {
+            const auto a = first.triangles[i].position, b = second.triangles[i].position;
+            if (glm::length(b - a) > .01f) {
+                follows = glm::length((b - a) - delta) < .01f;
+                lo = glm::min(lo, a);
+                hi = glm::max(hi, a);
+            }
+        }
+        check(screens.creationCursorVisible() && follows && hi.x - lo.x > 15 && hi.y - lo.y > 15 &&
+                  hi.x - lo.x < 40 && hi.y - lo.y < 40 &&
+                  glm::length(glm::clamp(p, lo, hi) - p) < 3.f,
+              "only the caption-free owned creation hand follows pointer movement on the wait frame");
+    }
+    screens.front = Interface::Front::None;
+    check(!screens.creationCursorVisible(), "a gameplay wait alone does not enable the creation cursor");
+    screens.front = Interface::Front::Creation;
+    screens.characterList.push_back({"Occupied"});
+    screens.nameText = u"Occupied";
+    check(screens.draw(size, mouse, 0, true).triangles.size() > hiddenCreator.triangles.size(),
+          "duplicate-name validation remains visible while the creation form is hidden");
+    screens.frontPress(size, {100, 40}, 0);
+    screens.frontRelease({100, 40});
+    check(screens.front == Interface::Front::Characters && !screens.terrainWaitVisible(true, 0.0001f),
+          "the shared Back button on a waiting creation form returns to the exempt character picker");
 }
 
 // A click on the character screens as the game delivers it: an update, the press, `held`
@@ -671,6 +726,7 @@ int main(int argc, char **argv) {
     checkInteractionTargets();
     checkPlatinumAdaption();
     checkMenuRequests();
+    checkTerrainWait();
     checkCharacterScreens();
     checkSkillTooltip();
     checkObjectiveDialogue();

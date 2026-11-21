@@ -4588,3 +4588,21 @@ Drawing still checks the coordinate and visibility. Vulkan stores its
 terrain and liquid streams by material. Their nonempty state supplies the
 fog predicate. The native vertical bands and their exact lower bound are
 documented in the contract.
+
+## Local front-end terrain readiness (2026-11-21)
+
+The clean team read all three final source-author records before using
+their findings. The front-end terrain readiness record has 39 lines,
+SHA-256 `868f6742d9fb7a05cb10a9e9b4b7ca602ffbf1825ebe5ce0f48eb37782ffd708`.
+The wait presentation has 34 lines,
+SHA-256 `9036b34cf8ee9507fb0aec07ab3620ae4bc2dfade7cab4cc20aa927af4e311c5`.
+The creation cursor supplement has 23 lines,
+SHA-256 `f1ff918ae2f027d7bd53da63afc85d6f3fd9e6ab8a8db161d471ade8725a45a0`.
+
+Ordinary local front-end entry allows terrain generation to overlap
+display and input. The selected world, visible screens and current
+smoothed fog distance determine whether the scene or wait UI appears.
+The renderer can accept terrain on either path. A creation wait retains
+its independently visible controls. The renderer's window and GPU
+lifetime management are engine implementation choices. The original
+records establish no fixed elapsed time for the first visible scene.

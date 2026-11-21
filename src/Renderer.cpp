@@ -767,6 +767,19 @@ void Renderer::removeMesh(MeshId id) {
     freeIds.push_back(id);
 }
 
+// Client sessions exclusively own the user mesh IDs between runWorld calls. Already recorded
+// commands retain their buffers through the frame fence even if a later session reuses an ID.
+void Renderer::releaseWorld() {
+    setInterface({});
+    setMinimap({});
+    setEffects({});
+    setTerrainLights({});
+    for (size_t i = 0; i < meshes.size(); ++i)
+        if (meshes[i].used)
+            removeMesh(MeshId(i + 1));
+    dropHistory();
+}
+
 void Renderer::freeRetired() {
     for (Buffer &b : retired)
         freeBuffer(b);
@@ -1179,11 +1192,11 @@ bool Renderer::prepareTerrainLights() {
 }
 
 bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector<DrawItem> &items,
-                    const std::filesystem::path &capture) {
+                    const std::filesystem::path &capture, bool interfaceOnly) {
     if (!swapchain && (!createSwapchain() || !swapchain))
         return false; // still minimised
     vkWaitForFences(device, 1, &frameDone, VK_TRUE, UINT64_MAX);
-    if (!prepareTerrainLights())
+    if (!interfaceOnly && !prepareTerrainLights())
         return false;
     uint32_t index = 0;
     VkResult acquired = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageReady, VK_NULL_HANDLE, &index);
@@ -1198,7 +1211,7 @@ bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector
     // TAA: an eight-frame Halton sub-pixel jitter; the scene moves by `jitter` pixels and the
     // resolve samples back at the same offset.
     glm::vec2 jitter(0);
-    if (aa.taa) {
+    if (aa.taa && !interfaceOnly) {
         auto halton = [](uint32_t i, uint32_t base) {
             float f = 1, r = 0;
             for (; i; i /= base) {
@@ -1230,11 +1243,15 @@ bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(commands, &begin);
     recordUploads(commands);
-    recordShadow(commands, frame, items);
-    recordScene(commands, frame, stars, items);
-    recordPost(commands, index, jitter, clipToPrevious);
-    recordMinimap(commands, index, frame);
-    recordInterface(commands, index);
+    if (interfaceOnly) {
+        lastDrawn = lastShadowDrawn = 0;
+    } else {
+        recordShadow(commands, frame, items);
+        recordScene(commands, frame, stars, items);
+        recordPost(commands, index, jitter, clipToPrevious);
+        recordMinimap(commands, index, frame);
+    }
+    recordInterface(commands, index, interfaceOnly);
     auto toPresent = barrier(swapImages[index], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_NONE, 0);
@@ -1252,10 +1269,12 @@ bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector
     submit.pSignalSemaphores = &renderDone;
     vkQueueSubmit(queue, 1, &submit, frameDone);
 
-    historyValid = true;
-    previousJitter = jitter;
-    previousViewProjection = frame.viewProjection;
-    parity = 1 - parity;
+    historyValid = !interfaceOnly;
+    if (!interfaceOnly) {
+        previousJitter = jitter;
+        previousViewProjection = frame.viewProjection;
+        parity = 1 - parity;
+    }
 
     bool saved = true;
     if (!capture.empty()) {
