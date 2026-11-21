@@ -19,6 +19,7 @@
 #include "worldgen/Terrain.h"
 #include "worldgen/WorldMap.h"
 #include <chrono>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -207,17 +208,14 @@ class WorldView {
     void requestZone(Key zone);
     void requestChunk(int32_t x0, int32_t y0);
     void dispatchChunks();
-    struct ChunkBuild {
-        Key corner;
-        uint64_t lightChange;
-        std::shared_ptr<const worldgen::BlockLightUpdate> prepared;
+    struct MeshBatch {
+        std::vector<Key> corners;
+        worldgen::WorldMap terrain; // worker-owned copy of the admitted terrain
+        std::atomic_bool cancel{false};
+        bool discard = false; // main thread: an external terrain write superseded the remaining results
     };
-    struct PreparedChunks {
-        std::vector<ChunkBuild> builds;
-        worldgen::WorldMap source;
-        std::map<Key, std::shared_ptr<worldgen::Zone>> editedAreas;
-    };
-    void publishPreparedChunks(PreparedChunks &batch);
+    void meshWorkerLoop();
+    void cancelMeshBatch(bool discard);
     void addZone(std::shared_ptr<worldgen::Zone> zone);
     void dropZone(Key zone);
     struct DoneChunk {
@@ -225,6 +223,7 @@ class WorldView {
         ChunkMeshes meshes;
         std::vector<terrain_lights::CachedSource> lights;
         uint64_t lightChange;
+        std::shared_ptr<const worldgen::BlockLightUpdate> prepared;
     };
     void placeChunk(DoneChunk &chunk);
     std::vector<PlantInstance> plantsOf(const worldgen::Zone &zone);
@@ -318,11 +317,15 @@ class WorldView {
     void buildLand(Key cell);
     std::map<Key, TileEntry> tiles;
     std::vector<DoneChunk> doneChunks;
-    std::shared_ptr<PreparedChunks> donePreparation;
+    std::vector<Key> deniedChunks;
+    std::optional<size_t> firstUnbuilt; // worker finished this batch; queued suffix still needs consideration
+    std::shared_ptr<MeshBatch> meshBatch; // main thread
+    std::shared_ptr<MeshBatch> scheduledMesh; // handed to the mesh thread under jobsLock
+    bool meshBuilding = false; // under jobsLock
+    std::thread meshWorker;
     std::vector<Key> chunkRequests;
     ChunkMeshPriority chunkPriority{alpha::FOG_WINDOW_CHUNKS};
     glm::ivec2 windowOrigin{}; // main-thread publication, sampled before preparing a mesh batch
-    bool preparingChunks = false;
     std::set<Key> zonesPending;
     std::map<Key, bool> chunksPending; // true once preparation or geometry is dispatched
     std::set<Key> chunksStale;         // requested again after worker dispatch

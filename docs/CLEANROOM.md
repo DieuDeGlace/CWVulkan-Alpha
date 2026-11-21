@@ -4521,3 +4521,15 @@ and verified SHA-256
 `b0a161c4e8b1b3f3232065b2daeadb6803278f2a0aee2e184c939ed3e19db820`.
 The verifier separately compared isolated native launches and queried
 the availability of the two system DirectInput devices in a 32-bit process.
+
+## Terrain mesh worker cadence (2026-11-21)
+
+The clean implementation follows the held mesh-dispatch contract recorded
+in batch 77. A dedicated below-normal-priority worker completes at most one
+eligible chunk's CPU lighting and geometry per pass. It requests five
+milliseconds of sleep after each pass. The render thread accepts completed work
+and owns Vulkan uploads and retirement. Region replacement, edits and world
+transitions invalidate superseded work. A prior drawable mesh remains in use
+while its replacement is being built. Elapsed wall time depends on the work
+and Windows scheduling. Native buffer transfer and budget eviction are
+separate checkpoints.

@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Prepare terrain lighting and geometry on one below-normal-priority mesh
+  worker. Each pass can build one eligible chunk and requests five milliseconds
+  of sleep. The renderer can receive several completions after a long frame.
+  Stale work retries and the old mesh stays drawable while its replacement is
+  pending. Exact native transfer and vertex-budget eviction remain open.
+
 - [x] Order terrain mesh requests using the adjusted follow-camera eye, the
   full clipped native window and its distance ties. Reuse the order while its
   clipping stays the same. Wide engine views can request additional chunks

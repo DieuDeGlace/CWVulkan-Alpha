@@ -3055,3 +3055,25 @@ This is consistent with the original client's unchecked use of the returned
 mouse. It establishes a host limitation for these runs. A successful original
 client selection, play and reload on a desktop with a usable mouse still
 requires observation.
+
+## Terrain mesh worker cadence (2026-11-21)
+
+An instrumented WorldView ran the production generator, lighting and geometry
+worker against a CPU renderer that recorded uploads and retirement. Pausing
+render updates allowed multiple builds to complete. Resuming updates published
+the queued replacements on the render thread. A second edit invalidated
+completed work before upload, and a world change drained the old worker
+before discarding its zones.
+
+On the integrated build, three completions accumulated during the render
+pause. One update published all three replacements. Two superseded results
+produced zero stale uploads, and the newer edit survived. Across 55 samples,
+the shortest interval from build completion to the next build start was
+5.500 ms and the median was 16.429 ms. Idle periods can extend the interval.
+
+The production Vulkan client flew 384 blocks east, settled at the requested
+coordinate and rendered the forest there after 204 input frames. The
+focused terrain test passed, followed by all 60 serial tests in 112.24
+seconds. Package inspection verified 36 digests across 37 files.
+The production controller diagnostic and the five reward, health, network,
+save/reload and town-render flows also passed.
