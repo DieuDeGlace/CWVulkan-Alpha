@@ -3148,3 +3148,29 @@ a diagnostic surface spawn. The same blast then removed 172 blocks.
 All 172 edits survived reload. The inspected captures showed the player,
 health and quick-item bars, terrain and minimap on both runs. The production
 controller, reward, health, network and town-render checks also passed.
+
+## Terrain fog on renderer acceptance (2026-11-21)
+
+A Vulkan client observer sampled the central chunk immediately before and
+after the draw-list visit. On the first frame its geometry was pending.
+The fog target was −22.4 blocks before the visit and 73.6 afterward.
+That frame used the previously sampled fog distance of 0.0001. At the next
+update the target was 73.6. The first three draws succeeded.
+
+The production build at zone radius one reported 484 chunks in the
+interior, 225 at the lower corner and 196 at the upper corner. A separate
+CPU renderer exercised blocked dirty groups, an off-window dirty slot,
+coordinate aliases, water-only geometry, empty rebuilds and departure.
+It counted 49 uploads, 14 retirements before teardown and complete
+retirement of the remaining terrain buffers at teardown.
+
+The focused terrain test passed in 1.05 seconds and all 60 serial tests
+passed in 120.00 seconds. The package passed 36 digests across 37 files.
+
+At the upper corner the short capture showed blue fog across the scene.
+With the camera unchanged and a 200 ms minimum frame interval, the ground
+and a tree were visible. The interior capture showed the forest and the
+lower corner showed stepped terrain. A matched original-client image for
+these three camera positions is still outstanding.
+The production controller diagnostic and the five reward, health,
+network, save/reload and town-render flows passed.

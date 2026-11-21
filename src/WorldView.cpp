@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <utility>
 #include <windows.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 
 using namespace worldgen;
 
@@ -185,6 +187,10 @@ WorldView::~WorldView() {
     meshWorker.join();
     for (auto &t : workers)
         t.join();
+    for (const auto &[key, chunk] : chunks) {
+        releaseGroups(chunk.active);
+        releaseGroups(chunk.pending);
+    }
 }
 
 bool WorldView::prepareWorldChange() {
@@ -205,8 +211,8 @@ void WorldView::activateWorld(uint32_t seed, glm::dvec3 focus) {
     next->terrain.prefabs = worldData->terrain.prefabs;
     next->terrain.finishSpawn = worldData->terrain.finishSpawn;
     for (const auto &[key, chunk] : chunks) {
-        renderer.removeMesh(chunk.solid);
-        renderer.removeMesh(chunk.water);
+        releaseGroups(chunk.active);
+        releaseGroups(chunk.pending);
     }
     for (const auto &[key, tile] : tiles)
         renderer.removeMesh(tile.mesh);
@@ -217,6 +223,7 @@ void WorldView::activateWorld(uint32_t seed, glm::dvec3 focus) {
     map = {};
     plants.clear();
     chunks.clear();
+    renderSlots.fill(nullptr);
     sectorSources = {};
     cachedSources = {};
     chunkLightUpdates = {};
@@ -536,6 +543,11 @@ std::vector<BlockEdit> WorldView::placeQueuedBlueprint(int8_t number, int8_t rot
     return std::move(placed.records);
 }
 
+void WorldView::releaseGroups(TerrainMeshBuffers groups) {
+    renderer.removeMesh(groups.solid);
+    renderer.removeMesh(groups.water);
+}
+
 void WorldView::removeChunk(Key corner) {
     const auto it = chunks.find(corner);
     const glm::ivec2 at(corner.first / CHUNK, corner.second / CHUNK);
@@ -543,8 +555,11 @@ void WorldView::removeChunk(Key corner) {
     chunkLightUpdates.invalidate(at);
     if (it == chunks.end())
         return;
-    renderer.removeMesh(it->second.solid);
-    renderer.removeMesh(it->second.water);
+    auto &physical = renderSlots[ChunkMeshCache::index(at)];
+    if (physical == &it->second)
+        physical = nullptr;
+    releaseGroups(it->second.active);
+    releaseGroups(it->second.pending);
     cachedSources.reset(at);
     chunks.erase(it);
 }
@@ -575,22 +590,27 @@ void WorldView::placeChunk(DoneChunk &chunk) {
     if (!chunkMeshSourcesResident(map, coordinate))
         return; // A source was evicted after the geometry worker took its snapshot.
     requestedEdits.erase({corner.x, corner.y});
+    if (chunk.operation == DoneChunk::Operation::Exterior && meshCache.owns(coordinate))
+        return; // A wider-radius completion cannot replace a native slot's active or pending lists.
     cachedSources.stage(coordinate, std::move(chunk.lights));
     // Engine jobs supply geometry and source state from the same snapshot. The
     // original cache-key lookup and geometry counter producer remain unverified.
     const bool geometryReady = !meshes.solid.indices.empty() || !meshes.water.indices.empty();
     cachedSources.refresh(coordinate, true, geometryReady ? 1 : 0);
-    ChunkEntry &entry = chunks[{corner.x, corner.y}];
-    // A matching native empty rebuild replaces the charged count with zero while its active geometry survives.
-    if (geometryReady || chunk.operation == DoneChunk::Operation::Exterior || !meshCache.owns(coordinate)) {
-        renderer.removeMesh(entry.solid);
-        renderer.removeMesh(entry.water);
-        entry.solid = meshes.solid.indices.empty() ? 0 : renderer.addMesh(meshes.solid);
-        entry.water = meshes.water.indices.empty() ? 0 : renderer.addMesh(meshes.water);
-    }
+    auto &entry = chunks[{corner.x, corner.y}];
+    const TerrainMeshBuffers incoming{meshes.solid.vertices.empty() ? 0 : renderer.addMesh(meshes.solid),
+                                     meshes.water.vertices.empty() ? 0 : renderer.addMesh(meshes.water)};
     if (chunk.operation == DoneChunk::Operation::Publish) {
+        if (!meshCache.owns(coordinate))
+            releaseGroups(std::exchange(entry.active, {})); // an exterior mesh can predate its native slot
+        releaseGroups(entry.publish(incoming));
+        renderSlots[ChunkMeshCache::index(coordinate)] = &entry;
         meshCache.publish(coordinate, meshes.vertexRecords());
         chunkLightUpdates.publish(coordinate, chunk.lightChange, meshes.preparedLighting);
+    } else {
+        // The wider streaming radius draws exterior geometry without owning a native fog slot.
+        releaseGroups(entry.publish({}));
+        releaseGroups(std::exchange(entry.active, incoming));
     }
 }
 
@@ -599,7 +619,7 @@ void WorldView::update(std::optional<terrain_lights::FixedPosition> adjustedEye)
         return;
     // Mark the cache coordinates that were already published during the frame.
     // An in-flight mesh keeps its snapshot and is requested again after completion.
-    const bool marked = chunkLightUpdates.markChanged(changedLightColumns);
+    const bool marked = changedLightColumns.empty() || chunkLightUpdates.markChanged(changedLightColumns, timeGetTime());
     if (marked) {
         // The followed eye retains its fixed precision after camera collision correction.
         // Free camera, scripted travel and constructor preloading supply the engine eye.
@@ -1073,12 +1093,23 @@ std::vector<DrawItem> WorldView::mapItems(int32_t zx0, int32_t zy0, int32_t zx1,
 std::vector<DrawItem> WorldView::items(double clockMs) {
     std::vector<DrawItem> out;
     out.reserve(chunks.size() * 2 + 4096);
+    visitChunkRenderWindow(windowOrigin, [&](glm::ivec2 visited) {
+        auto *entry = renderSlots[ChunkMeshCache::index(visited)];
+        if (entry && entry->pending.populated())
+            releaseGroups(entry->renderVisit(chunkLightUpdates.transferBlocked(visited)));
+    });
     for (const auto &[corner, entry] : chunks) {
+        const glm::ivec2 chunk{corner.first / CHUNK, corner.second / CHUNK};
+        if (renderSlots[ChunkMeshCache::index(chunk)] == &entry) {
+            const int64_t dx = int64_t(chunk.x) - windowOrigin.x, dy = int64_t(chunk.y) - windowOrigin.y;
+            if (!meshCache.owns(chunk) || dx < 0 || dy < 0 || dx >= ChunkMeshCache::SIDE || dy >= ChunkMeshCache::SIDE)
+                continue;
+        }
         const glm::mat4 place = glm::translate(glm::mat4(1), glm::vec3(corner.first - origin.x, corner.second - origin.y, 0));
-        if (entry.solid)
-            out.push_back({entry.solid, place, true, Shading::World});
-        if (entry.water)
-            out.push_back({entry.water, place, false, Shading::Water});
+        if (entry.active.solid)
+            out.push_back({entry.active.solid, place, true, Shading::World});
+        if (entry.active.water)
+            out.push_back({entry.active.water, place, false, Shading::Water});
     }
     for (const auto &[key, list] : plants)
         for (const PlantInstance &p : list) {
@@ -1117,8 +1148,9 @@ float WorldView::fogTarget(std::optional<terrain_lights::FixedPosition> referenc
     if (!reference)
         return alpha::RENDER_RADIUS - 22.4f;
     return alpha::fogTarget(*reference, windowOrigin, [&](int32_t i, int32_t j) {
-        const auto it = chunks.find({i * CHUNK, j * CHUNK});
-        return it != chunks.end() && (it->second.solid != 0 || it->second.water != 0);
+        const glm::ivec2 at{i, j};
+        const auto *slot = renderSlots[ChunkMeshCache::index(at)];
+        return slot && slot->active.populated() && meshCache.owns(at);
     });
 }
 
@@ -1224,8 +1256,8 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
     lightChunks.clear();
     lightChunks.reserve(chunks.size());
     for (const auto &[corner, entry] : chunks)
-        if (entry.solid || entry.water)
-            lightChunks.push_back({{corner.first / 32, corner.second / 32}, entry.solid, entry.water});
+        if (entry.active.populated())
+            lightChunks.push_back({{corner.first / 32, corner.second / 32}, entry.active.solid, entry.active.water});
     renderer.setTerrainLights(lightSelector.rebuild(lightCandidates, lightChunks, shift));
 }
 

@@ -319,7 +319,94 @@ static void meshVertexBudget() {
           "the zero charge of the previous empty rebuild admits the next chunk at equality");
 }
 
+static void fogMeshTransfers() {
+    std::vector<glm::ivec2> visited;
+    const auto record = [&](glm::ivec2 at) { visited.push_back(at); };
+    visitChunkRenderWindow({-1, 10}, record);
+    check(visited.size() == 1560 && visited.front() == glm::ivec2(0, 10) && visited[39] == glm::ivec2(0, 49) &&
+              visited[40] == glm::ivec2(1, 10) && visited.back() == glm::ivec2(38, 49),
+          "the lower-edge transfer window omits physical column 39 and visits Y within X");
+    visited.clear();
+    visitChunkRenderWindow({0x7ffff, 0x7fffe}, record);
+    check(visited == std::vector<glm::ivec2>{{0x7ffff, 0x7fffe}, {0x7ffff, 0x7ffff}},
+          "the transfer window clips both upper world edges");
+
+    ChunkRenderState state;
+    state.publish({});
+    check(!state.renderVisit(false).populated() && !state.active.populated(), "the first empty publication leaves a fog hole");
+    check(!state.publish({0, 11}).populated() && !state.active.populated() && state.pending.water == 11,
+          "a water-only publication awaits the terrain renderer");
+    check(!state.renderVisit(true).populated() && state.pending.water == 11, "a blocked visit retains pending water");
+    check(!state.renderVisit(false).populated() && state.active.water == 11 && !state.pending.populated(),
+          "an admitted renderer visit activates water-only terrain");
+    state.publish({12, 0});
+    check(state.publish({}).solid == 12 && !state.renderVisit(false).populated() && state.active.water == 11,
+          "an empty worker result discards pending terrain and retains the old active buffers");
+    state.publish({13, 14});
+    check(state.renderVisit(false).water == 11 && state.active.solid == 13 && state.active.water == 14,
+          "the next admitted nonempty replacement retires the active geometry");
+
+    ChunkLightUpdates updates;
+    worldgen::WorldMap map;
+    map.add(std::make_shared<worldgen::Zone>(0, 0));
+    const glm::ivec2 a{2, 2}, b{6, 6};
+    updates.publish(a, 0, false);
+    updates.publish(b, 0, false);
+    updates.markChanged(std::array{a * CHUNK}, 700);
+    updates.markChanged(std::array{b * CHUNK}, 700); // distinct edits sampled in the same millisecond
+    auto finish = [&](glm::ivec2 chunk) {
+        const auto change = updates.beginBuild(map, chunk);
+        check(change.has_value(), "fixture chunk has all its source areas");
+        updates.publish(chunk, change.value_or(0), true);
+    };
+    finish(a);
+    check(!updates.dirty(a) && updates.transferBlocked(a) && updates.dirty(b), "a sibling dirty slot holds the same clock key");
+    updates.markChanged(std::array{b * CHUNK}, 701);
+    check(!updates.transferBlocked(a) && updates.transferBlocked(b), "remarking a slot moves its dirty count to the new key");
+    updates.markChanged(std::array{a * CHUNK}, 701);
+    finish(a);
+    updates.invalidate(b);
+    check(updates.transferBlocked(a), "coordinate reset leaves the physical slot's dirty byte and key in the count");
+    finish(b);
+    check(!updates.transferBlocked(a), "clearing the last dirty sibling releases its whole batch");
+    updates.markChanged(std::array{a * CHUNK}, 0);
+    check(updates.dirty(a) && !updates.transferBlocked(a), "zero timestamp marks lighting dirty but never blocks transfer");
+
+    const glm::ivec2 omitted{39, 12}, alias{42, 42};
+    updates.publish(omitted, 0, false);
+    updates.markChanged(std::array{a * CHUNK, omitted * CHUNK}, 702);
+    finish(a);
+    check(updates.transferBlocked(alias), "an omitted dirty column blocks the visited physical slot independently of its owner");
+    updates.markChanged(std::array{omitted * CHUNK}, 0);
+    check(!updates.transferBlocked(alias), "clearing the omitted key unblocks the same physical slot");
+}
+
+static void fogMeshElevations() {
+    using namespace worldgen;
+    WorldMap map;
+    auto zone = std::make_shared<Zone>(0, 0);
+    map.add(zone);
+    for (int x = 28; x < 69; ++x)
+        for (int y = 28; y < 69; ++y)
+            zone->column(x, y).bottom = 18; // exposed top of implicit solid at elevation 17
+    auto &buried = zone->column(43, 43);
+    buried.bottom = -10;
+    buried.blocks.assign(28, {130, 130, 130, SOLID});
+    for (const int z : {266, 267}) {
+        auto &column = zone->column(z == 266 ? 42 : 45, 42);
+        column.blocks.assign(z - column.bottom + 1, {255, 255, 255, AIR});
+        column.blocks.back().typeByte = z == 266 ? SOLID : WATER;
+    }
+    const World world(41);
+    const Terrain terrain(world);
+    const auto mesh = meshChunk(map, terrain, 32, 32);
+    check(mesh.solid.vertices.size() == CHUNK * CHUNK * 4 + 24 && mesh.water.vertices.size() == 24,
+          "the buried base emits nothing extra while ordinary and liquid cells across the 250-elevation boundary reach the Vulkan streams");
+}
+
 int main() {
+    fogMeshTransfers();
+    fogMeshElevations();
     packedTerrainLight();
     meshLightRequests();
     meshDispatch();

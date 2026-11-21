@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Keep pending terrain geometry separate from the active renderer state
+  that controls fog. Visit the clipped window after counting dirty keys
+  across the full cache, accept geometry before the visibility check and
+  preserve active geometry across an empty rebuild.
+
 - [x] Restore the selected offline character's full per-world position before
   motion and write the live actor's fixed coordinates directly on exit.
   Start a first visit at the world's home anchor.

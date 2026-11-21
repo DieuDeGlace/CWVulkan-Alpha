@@ -243,17 +243,33 @@ bool chunkMeshSourcesResident(const WorldMap &map, glm::ivec2 chunk) {
 }
 
 ChunkLightUpdates::Slot &ChunkLightUpdates::slot(glm::ivec2 chunk) {
-    return slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
+    return slots[ChunkMeshCache::index(chunk)];
 }
 
 bool ChunkLightUpdates::dirty(glm::ivec2 chunk) const {
     if (!validChunk(chunk))
         return false;
-    const Slot &entry = slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
+    const Slot &entry = slots[ChunkMeshCache::index(chunk)];
     return entry.published == chunk && entry.change != 0;
 }
 
-bool ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
+bool ChunkLightUpdates::transferBlocked(glm::ivec2 chunk) const {
+    if (!validChunk(chunk))
+        return false;
+    const auto &entry = slots[ChunkMeshCache::index(chunk)];
+    return dirtyCounts.contains(entry.batchTick);
+}
+
+void ChunkLightUpdates::clearDirty(Slot &entry) {
+    if (entry.change && entry.batchTick) {
+        const auto it = dirtyCounts.find(entry.batchTick);
+        if (--it->second == 0)
+            dirtyCounts.erase(it);
+    }
+    entry.change = 0;
+}
+
+bool ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns, uint32_t batchTick) {
     if (columns.empty())
         return true;
     const uint64_t change = ++changes;
@@ -265,8 +281,15 @@ bool ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
                 if (!validChunk(chunk))
                     return false;
                 Slot &entry = slot(chunk);
-                if (entry.published == chunk)
+                if (entry.published == chunk) {
+                    if (!entry.change || entry.batchTick != batchTick) {
+                        clearDirty(entry);
+                        entry.batchTick = batchTick;
+                        if (batchTick)
+                            ++dirtyCounts[batchTick];
+                    }
                     entry.change = change;
+                }
             }
     }
     return true;
@@ -290,7 +313,7 @@ void ChunkLightUpdates::publish(glm::ivec2 chunk, uint64_t buildChange, bool pre
     entry.published = chunk;
     // Preserve edits marked after this worker took its terrain snapshot.
     if (preparedLighting && entry.change == buildChange)
-        entry.change = 0;
+        clearDirty(entry);
 }
 
 void ChunkLightUpdates::invalidate(glm::ivec2 chunk) {

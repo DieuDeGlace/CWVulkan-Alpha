@@ -9,6 +9,8 @@
 #include <array>
 #include <optional>
 #include <span>
+#include <unordered_map>
+#include <utility>
 
 namespace worldgen { class BlockLightUpdate; }
 
@@ -21,6 +23,26 @@ struct ChunkMeshes {
 };
 
 constexpr int32_t CHUNK = 32;
+
+// Native 250-elevation bands begin at the lowest cell with an exposed face.
+// Batching their faces in two Vulkan streams preserves whether any band has a buffer.
+struct TerrainMeshBuffers {
+    uint32_t solid = 0, water = 0;
+    bool populated() const { return solid || water; }
+};
+
+struct ChunkRenderState {
+    TerrainMeshBuffers active, pending;
+    // The returned buffers are retired by their Vulkan owner.
+    TerrainMeshBuffers publish(TerrainMeshBuffers groups) { return std::exchange(pending, groups); }
+    TerrainMeshBuffers renderVisit(bool blocked) {
+        if (blocked || !pending.populated())
+            return {};
+        const auto previous = active;
+        active = std::exchange(pending, {});
+        return previous;
+    }
+};
 
 glm::ivec2 chunkMeshWindowOrigin(const std::array<int64_t, 3> &eye, int32_t width);
 
@@ -45,6 +67,7 @@ class ChunkMeshPriority {
 class ChunkMeshCache {
   public:
     static constexpr int32_t SIDE = 40;
+    static size_t index(glm::ivec2 chunk) { return size_t(chunk.y % SIDE) * SIDE + chunk.x % SIDE; }
     struct Candidate {
         glm::ivec2 coordinate;
         bool requested, hasSources;
@@ -87,9 +110,20 @@ class ChunkMeshCache {
         glm::ivec2 coordinate{-1};
         int32_t vertices = 0;
     };
-    static size_t index(glm::ivec2 chunk) { return size_t(chunk.y % SIDE) * SIDE + chunk.x % SIDE; }
     std::array<Slot, SIDE * SIDE> slots;
 };
+
+// Draw visits physical slots through the clipped coordinate window. Stored owners and
+// frustum visibility are tested only after the pending group transfer.
+template <class Visit> void visitChunkRenderWindow(glm::ivec2 origin, Visit visit) {
+    const auto end = [](int32_t start) {
+        return int32_t(std::clamp<int64_t>(int64_t(start) + ChunkMeshCache::SIDE, 0, 0x80000));
+    };
+    const int32_t endX = end(origin.x), endY = end(origin.y);
+    for (int32_t x = std::max(origin.x, 0); x < endX; ++x)
+        for (int32_t y = std::max(origin.y, 0); y < endY; ++y)
+            visit(glm::ivec2(x, y));
+}
 
 // Region admission for the mesh builder, in 32-column chunk coordinates.
 bool chunkMeshSourcesResident(const worldgen::WorldMap &map, glm::ivec2 chunk);
@@ -118,8 +152,9 @@ template <class Visit> void visitZoneMeshChunks(glm::ivec2 zone, Visit visit) {
 class ChunkLightUpdates {
   public:
     // False when a world-edge traversal exits before the frame's window publication.
-    bool markChanged(std::span<const glm::ivec2> columns);
+    bool markChanged(std::span<const glm::ivec2> columns, uint32_t batchTick = 0);
     bool dirty(glm::ivec2 chunk) const;
+    bool transferBlocked(glm::ivec2 chunk) const;
     // Empty means this candidate must wait. Zero is an admitted, clean build.
     std::optional<uint64_t> beginBuild(const worldgen::WorldMap &map, glm::ivec2 chunk);
     void publish(glm::ivec2 chunk, uint64_t buildChange, bool preparedLighting);
@@ -130,8 +165,11 @@ class ChunkLightUpdates {
     struct Slot {
         glm::ivec2 published{-1};
         uint64_t change = 0;
+        uint32_t batchTick = 0; // retained when the worker clears dirty
     };
     Slot &slot(glm::ivec2 chunk);
+    void clearDirty(Slot &entry);
+    std::unordered_map<uint32_t, uint32_t> dirtyCounts; // nonzero clock keys of physical dirty slots
     std::array<Slot, SIDE * SIDE> slots;
     uint64_t changes = 0;
 };

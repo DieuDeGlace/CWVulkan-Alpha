@@ -85,7 +85,7 @@ class WorldView {
     // "populated" test (zone-fields ruling 1 §1.2).
     bool chunkBuilt(int32_t cx, int32_t cy) const {
         const auto it = chunks.find({cx * CHUNK, cy * CHUNK});
-        return it != chunks.end() && (it->second.solid != 0 || it->second.water != 0);
+        return it != chunks.end() && it->second.active.populated();
     }
     // The render origin as raw fixed coordinates; heights are not rebased.
     std::array<int64_t, 3> originFixed() const { return {int64_t(origin.x) * 65536, int64_t(origin.y) * 65536, 0}; }
@@ -201,9 +201,7 @@ class WorldView {
         int phase;
         bool sways;
     };
-    struct ChunkEntry {
-        MeshId solid = 0, water = 0;
-    };
+    void releaseGroups(TerrainMeshBuffers groups);
 
     void post(std::function<void()> job);
     void workerLoop();
@@ -266,7 +264,8 @@ class WorldView {
     mutable terrain_lights::Selector lightSelector;
     mutable std::vector<terrain_lights::Candidate> lightCandidates;
     mutable std::vector<terrain_lights::Chunk> lightChunks;
-    std::map<Key, ChunkEntry> chunks; // by chunk corner
+    std::map<Key, ChunkRenderState> chunks; // active and pending Vulkan streams, by chunk corner
+    std::array<ChunkRenderState *, ChunkMeshCache::SIDE * ChunkMeshCache::SIDE> renderSlots{}; // stable map entries
     ChunkLightUpdates chunkLightUpdates;
     std::vector<glm::ivec2> changedLightColumns;
     std::set<Key> editedChunks;

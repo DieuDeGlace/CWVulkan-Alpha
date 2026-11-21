@@ -4571,3 +4571,20 @@ uses the reset home anchor. The actor copies all three signed coordinates
 to its drawable position and clears velocity before motion. Terrain and
 camera setup use a separate view of the coordinates. Offline character
 saving records the body's fixed position directly.
+
+## Terrain fog and renderer transfer (2026-11-21)
+
+The source author traced the physical dirty-key census and clipped renderer
+visit independently. The clean team read all 47 lines of
+`alpha-terrain-mesh-group-transfer-window.md` and verified SHA-256
+`c5b45cf4a14d4994d5d4844e5f052d24656be15273400a4f3738b8eddea458fb`.
+This supplements the held fog population and vertex accounting records.
+
+Fog samples active geometry before renderer transfer. A nonzero dirty
+timestamp anywhere in the physical cache can delay acceptance for another
+slot sharing that timestamp. The renderer visits valid window coordinates
+in X-major order and can accept pending geometry for an offscreen slot.
+Drawing still checks the coordinate and visibility. Vulkan stores its
+terrain and liquid streams by material. Their nonempty state supplies the
+fog predicate. The native vertical bands and their exact lower bound are
+documented in the contract.
