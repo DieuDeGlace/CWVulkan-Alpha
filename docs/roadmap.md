@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Defer terrain chunks until their required source zones are resident.
+  Sides require the zone across the seam and corners require both sides and
+  their diagonal. Late arrivals retry pending work. Native mesh scheduling,
+  vertex accounting and the stored-light comparison remain open.
+
 - [x] AlphaSetup imports closed native character and world catalogs into a fresh
   engine Save folder. Referenced maps and world state retain their original
   payloads, and the copied worlds use the unmodded swimmable-water profile.

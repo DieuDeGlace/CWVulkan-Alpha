@@ -318,17 +318,25 @@ void WorldView::dispatchChunks() {
         return;
     auto batch = std::make_shared<PreparedChunks>();
     batch->builds.reserve(chunkRequests.size());
-    batch->source = map;
     {
         std::lock_guard guard(doneLock);
         for (const auto &corner : chunkRequests) {
             const auto [x0, y0] = corner;
-            const uint64_t change = chunkLightUpdates.beginBuild({x0 / CHUNK, y0 / CHUNK});
-            batch->builds.push_back({corner, change, {}});
+            const auto change = chunkLightUpdates.beginBuild(map, {x0 / CHUNK, y0 / CHUNK});
+            if (!change) {
+                // Arrival of any required zone reconsiders its entire perimeter. A
+                // blocked chunk has no queued job and keeps its old published mesh.
+                chunksPending.erase(corner);
+                continue;
+            }
+            batch->builds.push_back({corner, *change, {}});
             chunksPending.at(corner) = true;
         }
     }
     chunkRequests.clear();
+    if (batch->builds.empty())
+        return;
+    batch->source = map;
     preparingChunks = true;
     post([this, batch = std::move(batch)] {
         // Each preparation reads earlier work bytes in this ordered batch.
@@ -378,7 +386,7 @@ void WorldView::publishPreparedChunks(PreparedChunks &batch) {
         map.add(std::move(area));
     for (auto &[corner, lightChange, prepared] : batch.builds) {
         const auto [x0, y0] = corner;
-        if (!map.zoneAt(x0, y0)) {
+        if (!chunkMeshSourcesResident(map, {x0 / CHUNK, y0 / CHUNK})) {
             std::lock_guard guard(doneLock);
             chunksPending.erase(corner);
             chunksStale.erase(corner);
@@ -403,27 +411,9 @@ void WorldView::addZone(std::shared_ptr<Zone> zone) {
     if (onZoneReady)
         onZoneReady(zx, zy);
     refreshPlantsNear({zx, zy});
-    // Its own chunks, and the neighbours' chunks along the shared edges (their faces towards it
-    // were closed while it was missing).
-    const int32_t x0 = zx * Zone::SIZE, y0 = zy * Zone::SIZE;
-    for (int32_t i = 0; i < Zone::SIZE; i += CHUNK)
-        for (int32_t j = 0; j < Zone::SIZE; j += CHUNK)
-            requestChunk(x0 + i, y0 + j);
-    for (int32_t k = 0; k < Zone::SIZE; k += CHUNK) {
-        if (map.zone(zx - 1, zy))
-            requestChunk(x0 - CHUNK, y0 + k);
-        if (map.zone(zx + 1, zy))
-            requestChunk(x0 + Zone::SIZE, y0 + k);
-        if (map.zone(zx, zy - 1))
-            requestChunk(x0 + k, y0 - CHUNK);
-        if (map.zone(zx, zy + 1))
-            requestChunk(x0 + k, y0 + Zone::SIZE);
-    }
-    // A corner's lighting also needs the diagonal. This area can supply the
-    // last missing dependency without sharing a face with that corner.
-    for (const int32_t dx : {-CHUNK, Zone::SIZE})
-        for (const int32_t dy : {-CHUNK, Zone::SIZE})
-            requestChunk(x0 + dx, y0 + dy);
+    visitZoneMeshChunks({zx, zy}, [&](glm::ivec2 chunk) {
+        requestChunk(chunk.x * CHUNK, chunk.y * CHUNK);
+    });
 }
 
 void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source) {
@@ -523,9 +513,9 @@ void WorldView::dropZone(Key key) {
 void WorldView::placeChunk(DoneChunk &chunk) {
     const glm::ivec2 corner = chunk.corner;
     ChunkMeshes &meshes = chunk.meshes;
-    if (!map.zoneAt(corner.x, corner.y))
-        return; // its zone was let go meanwhile
     const glm::ivec2 coordinate = corner / CHUNK;
+    if (!chunkMeshSourcesResident(map, coordinate))
+        return; // A source was evicted after the geometry worker took its snapshot.
     cachedSources.stage(coordinate, std::move(chunk.lights));
     // Engine jobs supply geometry and source state from the same snapshot. The
     // original cache-key lookup and geometry counter producer remain unverified.
@@ -590,12 +580,18 @@ void WorldView::update() {
     }
     std::vector<Key> again;
     for (auto &chunk : meshed) {
-        placeChunk(chunk);
         const auto corner = chunk.corner;
-        std::lock_guard guard(doneLock);
-        chunksPending.erase({corner.x, corner.y});
-        if (chunksStale.erase({corner.x, corner.y}))
-            again.push_back({corner.x, corner.y});
+        const Key key{corner.x, corner.y};
+        {
+            std::lock_guard guard(doneLock);
+            chunksPending.erase(key);
+            if (chunksStale.erase(key)) {
+                // An edit or a reloaded source superseded this geometry snapshot.
+                again.push_back(key);
+                continue;
+            }
+        }
+        placeChunk(chunk);
     }
     for (const Key &k : again)
         requestChunk(k.first, k.second);
@@ -611,8 +607,9 @@ void WorldView::update() {
     std::vector<Key> wanted;
     for (int32_t i = -radius; i <= radius; i++)
         for (int32_t j = -radius; j <= radius; j++)
-            if (!map.zone(here.first + i, here.second + j))
-                wanted.push_back({here.first + i, here.second + j});
+            if (const Key key{here.first + i, here.second + j};
+                uint32_t(key.first) < 65536u && uint32_t(key.second) < 65536u && !map.zone(key.first, key.second))
+                wanted.push_back(key);
     std::sort(wanted.begin(), wanted.end(), [&](const Key &a, const Key &b) {
         auto d = [&](const Key &k) { return std::abs(k.first - here.first) + std::abs(k.second - here.second); };
         return d(a) < d(b);

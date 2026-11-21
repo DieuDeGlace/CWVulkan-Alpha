@@ -2979,3 +2979,36 @@ import from the same installation passed the record comparison, both Vulkan
 sessions and the source hash check. The production controller diagnostic and
 the reward, health, network, save/reload and town-render client runs passed.
 The package passed all 36 recorded digests across 37 files.
+
+Six isolated stock-client launches used the same original executable with
+three save conditions (unchanged, engine-written and empty) and two options
+files (the isolated reference configuration and the installed configuration).
+All six exited in Cube.exe at the same offset with an access violation before
+a main window was observed. Both empty Save folders remained empty. This
+comparison leaves original-client readback unverified.
+
+## Terrain mesh source residency (2026-11-21)
+
+TerrainLightTests covers an interior chunk, an edge waiting on its side zone,
+a corner waiting on its diagonal, and both world limits. It checks that a
+late side or diagonal retries the original dirty request. An old immutable
+snapshot still has its source after live eviction, so publication checks the
+current map again.
+
+The production Vulkan client at seed 123 and zone radius one published
+484 chunks from nine interior zones. At the lower corner it published
+225 chunks from four zones. At the upper corner it published 196 from four.
+These match squares of 22, 15 and 14 admitted chunks per side. The
+focused test passed, followed by all 60 serial tests in 333.29 seconds.
+
+At the upper corner the previous build requested nine zones, including
+coordinates outside the world. The corrected build requested four. The
+initial outward-facing capture showed sky while the downward view showed
+ground. Repeating with a 200 ms minimum frame time showed ground and a
+tree in the outward view as the fog settled. The settled downward view
+showed the same ground features with denser fog than the previous build.
+Original-client visual comparison at that coordinate remains open.
+
+The production controller diagnostic and five live client flows passed.
+The revision 50 specification check resolved all 91 links, and package
+inspection verified 36 digests across 37 files.

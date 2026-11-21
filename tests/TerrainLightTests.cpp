@@ -68,58 +68,111 @@ static void packedTerrainLight() {
 
 static void meshLightRequests() {
     ChunkLightUpdates updates;
+    worldgen::WorldMap map;
+    for (const int32_t x : {0, 5, 65530, 65531})
+        map.add(std::make_shared<worldgen::Zone>(x, 0));
+    const auto change = [&](glm::ivec2 at) {
+        const auto admitted = updates.beginBuild(map, at);
+        check(admitted.has_value(), "the light request fixture has all required source zones");
+        return admitted.value_or(0);
+    };
     const glm::ivec2 chunk(2, 2), neighbour(2, 3), unpublished(3, 3), alias(42, 2);
     updates.publish(chunk, 0, false);
     updates.publish(neighbour, 0, false);
     const std::array<glm::ivec2, 2> edits{{{96, 96}, {96, 96}}};
     updates.markChanged(edits);
-    const auto first = updates.beginBuild(chunk);
-    check(first != 0 && updates.beginBuild(neighbour) == first && updates.beginBuild(unpublished) == 0,
+    const auto first = change(chunk);
+    check(first != 0 && change(neighbour) == first && change(unpublished) == 0,
           "a frame coalesces edits on its matching published neighbours only");
     const std::array<glm::ivec2, 1> aliasEdit{{alias * CHUNK}};
     updates.markChanged(aliasEdit);
-    check(updates.beginBuild(chunk) == first, "a different coordinate in the same slot does not mark it");
+    check(change(chunk) == first, "a different coordinate in the same slot does not mark it");
 
     updates.markChanged(edits);
-    const auto second = updates.beginBuild(chunk);
+    const auto second = change(chunk);
     updates.publish(chunk, first, true);
-    check(second != first && updates.beginBuild(chunk) == second, "a newer mark survives older worker publication");
+    check(second != first && change(chunk) == second, "a newer mark survives older worker publication");
     updates.publish(chunk, second, false);
-    check(updates.beginBuild(chunk) == second, "fallback geometry leaves the waiting light request intact");
+    check(change(chunk) == second, "an unprepared publication preserves a pending light request");
     updates.invalidate(chunk);
-    check(updates.beginBuild(alias) == second, "slot reuse carries a pending lighting change");
+    check(change(alias) == second, "slot reuse carries a pending lighting change");
     updates.publish(alias, second, true);
-    check(updates.beginBuild(alias) == 0, "prepared publication clears the matching change");
+    check(change(alias) == 0, "prepared publication clears the matching change");
 
     const glm::ivec2 edge(0x7ffff, 4);
     updates.publish(edge, 0, false);
     updates.publish(chunk, 0, false);
     const std::array<glm::ivec2, 2> edgeThenInterior{{edge * CHUNK, chunk * CHUNK}};
     updates.markChanged(edgeThenInterior);
-    check(updates.beginBuild(edge) != 0 && updates.beginBuild(chunk) == 0,
+    check(change(edge - glm::ivec2(40, 0)) != 0 && change(chunk) == 0,
           "world bounds retain marks before cleanup and skip later records");
 
     check(meshLightPadding(32, 32, false) == 0 && meshLightPadding(32, 32, true) == 4 &&
               meshLightPadding(224, 32, false) == 16 && meshLightPadding(32, 256, false) == 16 &&
               meshLightPadding(224, 224, true) == 4,
           "dirty padding takes priority over both zone seam axes");
+}
 
-    worldgen::WorldMap corner;
-    for (const auto cell : {glm::ivec2(0), glm::ivec2(1, 0), glm::ivec2(0, 1)})
-        corner.add(std::make_shared<worldgen::Zone>(cell.x, cell.y));
+static void meshDispatch() {
+    worldgen::WorldMap map;
+    auto origin = std::make_shared<worldgen::Zone>(0, 0);
+    auto &column = origin->column(230, 230);
+    column.bottom = 4;
+    column.blocks.push_back({64, 80, 100, worldgen::GRASS});
+    map.add(origin);
     const worldgen::World world(1);
     const worldgen::Terrain terrain(world);
-    check(meshChunk(corner, terrain, 0, 0).preparedLighting, "the world origin clips the negative light pad");
-    check(!meshChunk(corner, terrain, 224, 224, true).preparedLighting,
-          "a corner with both sides held still awaits its diagonal");
-    corner.add(std::make_shared<worldgen::Zone>(1, 1));
-    check(meshChunk(corner, terrain, 224, 224, true).preparedLighting,
-          "the diagonal admits the dirty corner mesh");
+    ChunkLightUpdates updates;
+    check(!updates.beginBuild(map, {-1, 0}) && !updates.beginBuild(map, {0, 524288}),
+          "out-of-world candidates cannot enter the builder");
+    check(meshChunk(map, terrain, 0, 0).preparedLighting, "the world origin admits both outward samples in region zero");
+
+    const glm::ivec2 corner(7, 7), edge(7, 3);
+    const auto arrival = [&](glm::ivec2 area, glm::ivec2 watched) {
+        map.add(std::make_shared<worldgen::Zone>(area.x, area.y));
+        std::optional<uint64_t> admitted;
+        visitZoneMeshChunks(area, [&](glm::ivec2 candidate) {
+            if (candidate == watched)
+                admitted = updates.beginBuild(map, candidate);
+        });
+        return admitted;
+    };
+    check(!updates.beginBuild(map, corner) && !updates.beginBuild(map, edge) && updates.beginBuild(map, {3, 3}) == 0,
+          "missing edge sources leave a later clean interior candidate available for dispatch");
+    check(arrival({1, 0}, edge) == 0, "the side arrival reconsiders and admits a clean edge");
+    check(!arrival({0, 1}, corner), "two side regions still leave a clean corner waiting");
+    for (const bool dirty : {false, true}) {
+        const auto denied = meshChunk(map, terrain, 224, 224, dirty);
+        check(denied.solid.indices.empty() && denied.water.indices.empty() && !denied.preparedLighting,
+              "a missing diagonal prevents clean and dirty geometry as well as lighting");
+    }
+    check(arrival({1, 1}, corner) == 0, "the diagonal arrival reconsiders and admits the clean corner");
+    const auto built = meshChunk(map, terrain, 224, 224);
+    check(!built.solid.indices.empty() && built.preparedLighting, "the admitted corner produces real geometry and lighting");
+
+    updates.publish(corner, 0, true);
+    updates.markChanged(std::array{corner * CHUNK});
+    const auto change = updates.beginBuild(map, corner);
+    check(change && *change != 0, "the published corner acquired the edit");
+    for (const glm::ivec2 missing : {glm::ivec2(1, 1), glm::ivec2(0, 1), glm::ivec2(1, 0)}) {
+        const auto snapshot = map;
+        map.remove(missing.x, missing.y);
+        check(!updates.beginBuild(map, corner) && chunkMeshSourcesResident(snapshot, corner) &&
+                  !chunkMeshSourcesResident(map, corner),
+              "an evicted required source disqualifies the still-readable geometry snapshot");
+        check(arrival(missing, corner) == change, "late side or diagonal arrival retries the original dirty request");
+    }
+
+    map.add(std::make_shared<worldgen::Zone>(65535, 0));
+    map.add(std::make_shared<worldgen::Zone>(65536, 0));
+    check(updates.beginBuild(map, {524286, 2}) == 0 && !updates.beginBuild(map, {524287, 2}),
+          "the last interior index admits while the last edge needs the invalid region 65536");
 }
 
 int main() {
     packedTerrainLight();
     meshLightRequests();
+    meshDispatch();
     FadingSources timed;
     const FixedPosition precise{(int64_t(1) << 54) + 1, 17, -33};
     timed.append({precise, {1, .5f, .25f}, 20, 0, 400});

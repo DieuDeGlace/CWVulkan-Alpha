@@ -21,16 +21,6 @@ int32_t seamOffset(int32_t origin) {
     return 0;
 }
 
-bool meshLightAdmitted(const WorldMap &map, int32_t x, int32_t y) {
-    if (!validChunk({x / CHUNK, y / CHUNK}))
-        return false;
-    const int32_t ax = x / Zone::SIZE, ay = y / Zone::SIZE;
-    const int32_t acrossX = (x + seamOffset(x)) / Zone::SIZE, acrossY = (y + seamOffset(y)) / Zone::SIZE;
-    constexpr uint32_t worldAreas = 0x1000000u / Zone::SIZE;
-    return uint32_t(acrossX) < worldAreas && uint32_t(acrossY) < worldAreas &&
-           map.zone(ax, ay) && map.zone(acrossX, acrossY) && map.zone(acrossX, ay) && map.zone(ax, acrossY);
-}
-
 // A face direction: its axis, the sign of its normal, and the two axes across it, ordered so
 // that u x v points outwards (counter-clockwise seen from outside).
 struct Face {
@@ -175,6 +165,24 @@ int32_t lowestOpen(const WorldMap &map, int32_t x, int32_t y) {
 
 } // namespace
 
+bool chunkMeshSourcesResident(const WorldMap &map, glm::ivec2 chunk) {
+    if (!validChunk(chunk))
+        return false;
+    const glm::ivec2 corner = chunk * CHUNK;
+    const glm::ivec2 area = corner / Zone::SIZE;
+    if (!map.zone(area.x, area.y))
+        return false;
+    const glm::ivec2 offset(seamOffset(corner.x), seamOffset(corner.y));
+    // Signed division maps the lower outward sample at -32 back to region zero.
+    const glm::ivec2 across = (corner + offset) / Zone::SIZE;
+    constexpr int32_t worldAreas = 0x1000000 / Zone::SIZE;
+    if (across.x >= worldAreas || across.y >= worldAreas)
+        return false;
+    if (offset.x && offset.y && !map.zone(across.x, across.y))
+        return false;
+    return (!offset.x || map.zone(across.x, area.y)) && (!offset.y || map.zone(area.x, across.y));
+}
+
 ChunkLightUpdates::Slot &ChunkLightUpdates::slot(glm::ivec2 chunk) {
     return slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
 }
@@ -197,12 +205,14 @@ void ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
     }
 }
 
-uint64_t ChunkLightUpdates::beginBuild(glm::ivec2 chunk) {
+std::optional<uint64_t> ChunkLightUpdates::beginBuild(const WorldMap &map, glm::ivec2 chunk) {
     if (!validChunk(chunk))
-        return 0;
+        return {};
     Slot &entry = slot(chunk);
     if (entry.published != chunk)
         entry.published = glm::ivec2(-1);
+    if (!chunkMeshSourcesResident(map, chunk))
+        return {};
     return entry.change;
 }
 
@@ -230,7 +240,7 @@ int32_t meshLightPadding(int32_t x0, int32_t y0, bool lightingRequested) {
 std::shared_ptr<const BlockLightUpdate> prepareChunkLight(const WorldMap &map, int32_t x0, int32_t y0,
                                                          bool lightingRequested) {
     const int32_t pad = meshLightPadding(x0, y0, lightingRequested);
-    if (!pad || !meshLightAdmitted(map, x0, y0))
+    if (!pad || !chunkMeshSourcesResident(map, {floorDiv(x0, CHUNK), floorDiv(y0, CHUNK)}))
         return {};
     const LightRectangle rectangle{{x0 - pad, y0 - pad}, {x0 + CHUNK + pad, y0 + CHUNK + pad}};
     return std::make_shared<const BlockLightUpdate>(map, rectangle);
@@ -243,6 +253,8 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
 
 ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, int32_t y0, const BlockLightUpdate *lightPatch) {
     ChunkMeshes out;
+    if (!chunkMeshSourcesResident(map, {floorDiv(x0, CHUNK), floorDiv(y0, CHUNK)}))
+        return out;
     out.preparedLighting = lightPatch != nullptr;
     const CellCache cache(map, x0, y0, lightPatch);
 

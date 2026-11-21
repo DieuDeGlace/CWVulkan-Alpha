@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 76 and the rulings. The 297 tracked contracts
-comprise 261 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 77 and the rulings. The 298 tracked contracts
+comprise 262 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -156,6 +156,7 @@ Batch 74 re-certifies `alpha-ranged-action-scheduling.md`,
 Batch 75 re-certifies `alpha-spatial-scalars-1ef040-1f0720.md`,
 `alpha-created-actor-behavior.md` and `alpha-created-companion-navigation.md`.
 Batch 76 re-certifies `alpha-fatal-credit-level-consumer.md`.
+Batch 77 records `alpha-client-terrain-mesh-dispatch.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -196,6 +197,7 @@ Batch 76 re-certifies `alpha-fatal-credit-level-consumer.md`.
 | `alpha-client-projectile-hit-call-boundary.md` | B | 117 | 3 |
 | `alpha-client-receiver-publication-locks.md` | A | 162 | 2 |
 | `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
+| `alpha-client-terrain-mesh-dispatch.md` | A | 51 | 0 |
 | `alpha-client-world-change-lifecycle.md` | A | 173 | 0 |
 | `alpha-client-world-clock-input.md` | B | 52 | 2 |
 | `alpha-column-initial-color-observation-boundaries.md` | A | 58 | 0 |

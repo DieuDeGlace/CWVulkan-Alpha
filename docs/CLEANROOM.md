@@ -4481,3 +4481,15 @@ unrecognized blob metadata travel with their databases.
 The clean team designed the import and its filesystem handling independently.
 Original saves are read-only inputs to verification. Runtime interchange in
 the reverse direction requires separate original-client evidence.
+
+## Terrain mesh source residency (2026-11-21)
+
+A separate source author finalized `alpha-client-terrain-mesh-dispatch.md`.
+The clean team read all 50 lines and recorded SHA-256
+`6da3401a77468922723c60e63cafea1ee4ab69e97ec8c50273e3232dd23fb4c2`.
+The engine checks the required zone references before preparing light or
+geometry. It rechecks them before accepting asynchronous work. An arriving
+zone reconsiders affected side and corner chunks. A dirty chunk keeps its
+published mesh while waiting for a replacement. The contract also describes
+the worker cadence, sorting and vertex allowance. Those require separate
+implementation and verification.
