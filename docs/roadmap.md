@@ -27,7 +27,8 @@ Differences from the Steam engine that shape the plan:
   re-certified and pinned, with a ruling for the creature codec count and the
   dedicated-server join record. Engine changes cover buff timers and events,
   hit-input order, native truncating credit conversion, actor-creation draws
-  and the join record. 38 class B contracts remain.
+  and the join record. A second batch pinned ranged scheduling, maximum
+  health and the client receiver locks. 35 class B contracts remain.
 
 - [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
   first, as held. A private dedicated-server observation of the seed-41 test

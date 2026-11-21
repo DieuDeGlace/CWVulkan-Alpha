@@ -569,7 +569,9 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
     if (!(t < P1 + P2 && crosses(F) && aiming))
         return;
     const float ch = c.charge;
-    const bool bracelet = c.mainHand().type == 3 && c.mainHand().subtype == BRACELET;
+    // Speed 100 when the main-hand weapon ID byte is 12 (the byte alone, as in the
+    // anticipation table), otherwise 50; action 108 replaces it with 100 below.
+    const bool bracelet = c.mainHand().subtype == BRACELET;
     p.velocity = unit(aim) * (bracelet ? 100.f : 50.f);
     p.radius = 4 * ch + 0.5f;
     p.strength = ch;
@@ -606,7 +608,8 @@ void launch(Combatant &c, const Body &body, glm::vec3 aim, float t, float dt, co
     if (p.special)
         spendBuff(c, 9, out);
     shots.push_back(p);
-    if (p.element == 2)
+    // The firing sound makes no draw: 41 for class 3 specialization 1, otherwise 38.
+    if (c.characterClass == 3 && c.specialization == 1)
         out.sounds.push_back({at, 41, action == 41 || action == 42 || action == 44 ? 1.25f : 1.f, 0.9f});
     else
         out.sounds.push_back({at, 38, action == 38 || action == 39 || action == 40 ? 2.f : 1.f, 0.9f});

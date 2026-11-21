@@ -603,7 +603,142 @@ void offlineFlight() {
 }
 }
 
+// Ranged scheduling re-certification (2026-11-21).
+void recertifiedScheduling() {
+    // Magic speed: weapon ID 12 gives 100, otherwise 50; action 108 always 100.
+    for (const auto [action, subtype, speed] : std::array<std::tuple<int, uint8_t, float>, 5>{
+             {{38, uint8_t(BRACELET), 100.f}, {38, uint8_t(WAND), 50.f}, {38, uint8_t(0), 50.f},
+              {108, uint8_t(WAND), 100.f}, {108, uint8_t(BRACELET), 100.f}}}) {
+        Combatant mage;
+        mage.characterClass = 3;
+        mage.action = action;
+        mage.mana = 1;
+        mage.equipment[MAIN_HAND] = {3, subtype};
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        launch(mage, body, {0, 2, 0}, (float)phases(mage, action).windUp, 16, [] { return 0; }, shots, effects);
+        check(shots.size() == 1 && shots[0].velocity == glm::vec3(0, speed, 0),
+              "magic projectile speed follows weapon ID 12 and action 108");
+    }
+    // Powered by action number; firing sound and pitch without a random draw.
+    for (int action = 37; action <= 46; action++)
+        for (const uint8_t specialization : {uint8_t(0), uint8_t(1)}) {
+            Combatant mage;
+            mage.characterClass = 3;
+            mage.specialization = specialization;
+            mage.action = action;
+            mage.mana = 1;
+            mage.charge = 0;
+            mage.buffs.push_back({9, 0, 30000});
+            Body body;
+            std::vector<Projectile> shots;
+            ShotEffects effects;
+            int draws = 0;
+            const Phases timing = phases(mage, action);
+            // Old clock at anticipation: no channel-sound quotient change, so only the damage draw.
+            launch(mage, body, {1, 0, 0}, (float)timing.windUp, 1, [&] { draws++; return 0; }, shots, effects);
+            const bool powered = action == 37 || action == 43 || action == 45 || action == 46;
+            const int expectedSound = specialization == 1 ? 41 : 38;
+            float pitch = 1.f;
+            if (expectedSound == 41 && (action == 41 || action == 42 || action == 44))
+                pitch = 1.25f;
+            if (expectedSound == 38 && (action == 38 || action == 39 || action == 40))
+                pitch = 2.f;
+            check(shots.size() == 1 && (shots[0].special != 0) == powered && (mage.buffs[0].timeMs == 0) == powered,
+                  "magic powered mark and buff-9 removal depend on the action number, not charge");
+            check(draws == 1 && effects.sounds.size() == 1 && effects.sounds[0].sound == expectedSound &&
+                      effects.sounds[0].pitch == pitch,
+                  "magic firing sound 38 or 41 with its fixed pitch and no random draw");
+        }
+    {
+        // Channel sound draw precedes the single damage draw.
+        Combatant mage;
+        mage.characterClass = 3;
+        mage.action = 45;
+        mage.mana = 1;
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        const Phases timing = phases(mage, 45);
+        std::vector<int> calls;
+        const float old = (float)(timing.windUp - 200);
+        launch(mage, body, {1, 0, 0}, old, (float)timing.windUp + 1.f - old,
+               [&] { calls.push_back(int(effects.sounds.size())); return 0; }, shots, effects);
+        check(shots.size() == 1 && calls == std::vector<int>{0, 1} && effects.sounds.size() == 2 &&
+                  effects.sounds[0].sound == 36 && effects.sounds[1].sound == 38,
+              "magic draws: the channel-sound pitch draw, then one damage draw, then none");
+    }
+    {
+        // Combo expiry: strictly above 4,000 ms, rescaled before the clock increment.
+        Combatant actor;
+        actor.characterClass = 1;
+        actor.combo = 10;
+        actor.action = 22;
+        actor.actionMs = 1000;
+        actor.comboElapsedMs = 3990;
+        endActionUpdate(actor, 10);
+        check(actor.combo == 10 && actor.actionMs == 1010 && actor.comboElapsedMs == 4000,
+              "a combo timer equal to 4,000 ms does not expire");
+        const float before = attackSpeed(actor);
+        Combatant cleared = actor;
+        cleared.combo = 0;
+        const int32_t expected = int32_t((before / attackSpeed(cleared)) * 1010.f) + 1;
+        endActionUpdate(actor, 1);
+        check(actor.combo == 0 && actor.actionMs == expected && expected != 1011,
+              "combo expiry zeroes the combo and rescales the clock by the speed ratio before the increment");
+    }
+    {
+        // Buff lifetime reaching exactly zero has expired.
+        Combatant actor;
+        actor.buffs.push_back({2, 0, 10});
+        actor.buffs.push_back({2, 0, 11});
+        advanceActionClock(actor, 10, true);
+        check(actor.buffs.size() == 1 && actor.buffs[0].timeMs == 1, "a buff reduced to exactly zero expires");
+    }
+    {
+        // Mana decay does not exempt action 36; it exempts the held physical forms.
+        for (const auto [action, decays] : std::array<std::pair<int, bool>, 3>{{{36, true}, {24, false}, {8, false}}}) {
+            Combatant actor = ranger(action);
+            actor.characterClass = 2;
+            actor.mana = .5f;
+            updateManaAndBlock(actor, 1000);
+            check((actor.mana < .5f) == decays, "mana decay exempts 8, 24, 25, 27, 59, 63, 64 but not 36");
+        }
+    }
+    {
+        // The mana ceiling on charge reaches every creature in the charging phase.
+        Combatant actor;
+        actor.action = 0;
+        actor.mana = .25f;
+        actor.charge = .75f;
+        advanceCharge(actor, 16);
+        check(actor.charge == .25f, "charge above mana is lowered to mana for a non-charging action");
+        // Action 36: milliseconds x 0.0005 then x speed, no anticipation test or buff-10 fill.
+        actor = ranger(36);
+        actor.mana = 1;
+        actor.charge = 0;
+        actor.actionMs = 0;
+        actor.buffs.push_back({10, 0, 30000});
+        advanceCharge(actor, 16);
+        check(actor.charge == (16.f * .0005f) * attackSpeed(actor), "action 36 charge gain, with no buff-10 fill");
+        // Grouped held forms: x 0.00075, x speed, then the class factor.
+        actor = ranger(25);
+        actor.specialization = 0;
+        actor.combo = 10;
+        actor.mana = 1;
+        actor.charge = 0;
+        actor.actionMs = phases(actor, 25).windUp;
+        float gain = (16.f * .00075f) * attackSpeed(actor);
+        const float ratio = (float)actor.combo / comboMax(actor);
+        gain *= 1.f + (ratio > 4.f ? 4.f : ratio);
+        advanceCharge(actor, 16);
+        check(actor.charge == gain, "held charge gain keeps ms x 0.00075 x speed x class-factor order");
+    }
+}
+
 int main() {
+    recertifiedScheduling();
     rayLaunches();
     launchResidency();
     trajectoryRay();

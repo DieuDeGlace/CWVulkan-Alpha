@@ -112,6 +112,10 @@ class Client {
     bool clock(uint32_t &day, uint32_t &timeOfDayMs) const;
     // New packet publication only, so a frame does not replay a cached clock.
     std::optional<std::pair<uint32_t, uint32_t>> takeClock();
+    // Receiver publication locks, kind 2: the wrapping millisecond difference between the
+    // two latest packet-2 receipts. The first packet 2 after a receiver start publishes
+    // none; a later connection keeps the last value, like the native global word.
+    std::optional<uint32_t> batchInterval() const;
     // AlphaVulkan's own: the server's latest copy of this player's quest book, once per change
     // (only an AlphaVulkan server sends it).
     std::optional<std::vector<uint8_t>> takeQuestBook();
@@ -186,6 +190,7 @@ class Client {
     bool haveClock = false;
     uint32_t clockDay = 0, clockMs = 0;
     std::optional<std::pair<uint32_t, uint32_t>> pendingClock;
+    std::optional<uint32_t> batchIntervalMs;
     std::vector<std::pair<uint64_t, std::string>> chat;
     std::optional<std::vector<uint8_t>> questBook;
     CombatReceipts incomingCombat;

@@ -997,6 +997,143 @@ static void checkCombatTransport() {
     peer.join();
 }
 
+// One loopback connection for the receiver checks: the peer completes the handshake as
+// `local`, runs `script`, then drains the client's output until `observe` has finished.
+static void withReceiverPeer(uint64_t local, const std::function<void(Socket &)> &script,
+                             const std::function<void(Client &)> &observe) {
+    Socket listener;
+    if (!listener.listen(0, nullptr, "127.0.0.1")) {
+        check(false, "receiver fixture listens");
+        return;
+    }
+    std::atomic<bool> finish{false};
+    std::thread peer([&] {
+        Socket socket = listener.accept();
+        if (!socket.valid())
+            return;
+        socket.setReadTimeout(3000);
+        uint32_t packet = 0, version = 0;
+        if (!socket.readU32(packet) || packet != HELLO || !socket.readU32(version))
+            return;
+        const auto initial = CreatureRecord::nativeDefaults();
+        ByteWriter w;
+        w.u32(ACCEPTED), w.u32(CREATURE), w.u64(local);
+        w.write(initial.bytes.data(), initial.bytes.size());
+        w.u32(SEED), w.u32(41);
+        if (!socket.send(w.data()))
+            return;
+        script(socket);
+        uint8_t sink = 0;
+        while (!finish && socket.readUpTo(&sink, 1) == Socket::ReadEnd::complete) {
+        }
+        while (!finish)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    });
+    Client client;
+    if (client.connect("127.0.0.1", listener.boundPort()))
+        observe(client);
+    else
+        check(false, "receiver fixture connects");
+    finish = true;
+    client.disconnect();
+    listener.close();
+    peer.join();
+}
+
+// Receiver publication locks, re-certification 2026-11-21.
+static void checkReceiverPublicationLocks() {
+    constexpr uint64_t local = 5, remoteKey = 21, failedKey = 31;
+    const auto takeClockDay = [](Client &client, uint32_t day) {
+        return waitFor([&] {
+            const auto clock = client.takeClock();
+            return clock && clock->first == day;
+        });
+    };
+    // Unread kinds, nonpositive chat lengths, kind-2 timing and presence.
+    std::atomic<int> stage{0};
+    withReceiverPeer(local, [&](Socket &socket) {
+        ByteWriter w;
+        for (const uint32_t kind : {6u, 7u, 8u, 9u, 11u, 12u, 13u, 14u, 16u, 17u, 18u, 99u, 0xffffffffu})
+            w.u32(kind);
+        w.u32(CHAT), w.u64(19), w.i32(0);
+        w.u32(CHAT), w.u64(19), w.i32(-5);
+        const std::array<uint16_t, 2> text{'h', 'i'};
+        w.u32(CHAT), w.u64(19), w.i32(2), w.write(text.data(), sizeof text);
+        auto remote = CreatureRecord::nativeDefaults();
+        w.u32(CREATURE), w.bytes(compressed(encodeDelta(remoteKey, remote, uint64_t(1) << 27)));
+        w.u32(CREATURE), w.bytes(compressed(encodeDelta(local, remote, uint64_t(1) << 27)));
+        w.u32(END_OF_BATCH);
+        w.u32(CLOCK), w.u32(1), w.u32(100);
+        if (!socket.send(w.data()) || !waitFor([&] { return stage.load() >= 1; }))
+            return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        w.data().clear();
+        w.u32(END_OF_BATCH);
+        w.u32(CLOCK), w.u32(2), w.u32(200);
+        if (socket.send(w.data()))
+            waitFor([&] { return stage.load() >= 2; });
+    }, [&](Client &client) {
+        check(takeClockDay(client, 1), "kinds 6-9, 11-14 and above 15 read no payload and keep the receiver running");
+        const auto chat = client.takeChat();
+        check(client.connected() && chat.size() == 1 && chat[0].first == 19 && chat[0].second == "hi",
+              "zero and negative kind-10 lengths publish nothing and continue without stopping");
+        check(client.others().contains(remoteKey) && !client.others().contains(local),
+              "a kind-0 registration survives the next kind 2; the controlled update is not published as remote");
+        check(!client.batchInterval(), "the first kind 2 after the receiver starts publishes no timing difference");
+        stage = 1;
+        check(takeClockDay(client, 2), "second kind-2 batch arrives");
+        const auto interval = client.batchInterval();
+        check(interval && *interval >= 40 && *interval < 3000,
+              "a later kind 2 publishes the millisecond difference from the previous kind 2");
+        check(client.others().empty(), "kind 2 removes an identifier not registered since the last kind 2");
+        stage = 2;
+    });
+
+    // Kind-0 decoder failure: the inserted creature stays, the receiver stops.
+    withReceiverPeer(local, [&](Socket &socket) {
+        ByteWriter plain, w;
+        plain.u64(failedKey), plain.u64(uint64_t(1) << 63);
+        w.u32(CREATURE), w.bytes(compressed(plain.data()));
+        w.u32(CLOCK), w.u32(3), w.u32(300);
+        socket.send(w.data());
+    }, [&](Client &client) {
+        check(waitFor([&] { return !client.connected(); }), "a kind-0 decoder failure sets the stop flag");
+        const auto others = client.others();
+        check(others.size() == 1 && others.contains(failedKey) &&
+                  others.at(failedKey).bytes == CreatureRecord::nativeDefaults().bytes,
+              "a creature inserted before the failed decode stays with its constructed state");
+        check(client.takeReceipts().empty() && !client.takeClock(),
+              "a failed decode skips the second interval and every later message");
+    });
+
+    // Zero encoded length stops before any lock.
+    withReceiverPeer(local, [&](Socket &socket) {
+        ByteWriter w;
+        w.u32(CREATURE), w.u32(0);
+        w.u32(CLOCK), w.u32(4), w.u32(400);
+        socket.send(w.data());
+    }, [&](Client &client) {
+        check(waitFor([&] { return !client.connected(); }) && client.others().empty() && !client.takeClock(),
+              "a zero kind-0 encoded length sets the stop flag without inserting a creature");
+    });
+
+    // End of stream mid-value: the message completes with the partial value.
+    withReceiverPeer(local, [&](Socket &socket) {
+        ByteWriter w;
+        w.u32(CLOCK), w.u32(7);
+        const std::array<uint8_t, 2> half{0x34, 0x12};
+        w.write(half.data(), half.size());
+        if (socket.send(w.data()))
+            socket.finishSending();
+    }, [&](Client &client) {
+        std::optional<std::pair<uint32_t, uint32_t>> clock;
+        check(waitFor([&] { return (clock = client.takeClock()).has_value(); }) && clock->first == 7 &&
+                  clock->second == 0x1234,
+              "a zero receive result publishes the partly filled kind-5 value without setting the stop flag");
+        check(waitFor([&] { return !client.connected(); }), "engine adapter: a closed stream at the next header ends the receiver");
+    });
+}
+
 // Packet-8 receipt distinguishes end of stream (partial bytes kept) from an error.
 static void checkPartialRead() {
     startNetworking();
@@ -1041,6 +1178,7 @@ int main() {
     checkClientPackets();
     checkCreatureReceiptPoses();
     checkCombatTransport();
+    checkReceiverPublicationLocks();
     // Server buff-update admission: the day clock factor is 10, or 100 when the scan found
     // a living role-zero creature in action 0x54.
     {
@@ -1197,7 +1335,9 @@ int main() {
         const auto queryFighter = queried.fighter();
         check(queryFighter.controller == 3 && queryFighter.characterClass == 0 &&
                   creatures::maxHealth(queryFighter) == join.health(),
-              "the kept join health equals the engine query under the controller-3 state");
+              "the join health is the engine query under the controller-3 state");
+        check(std::bit_cast<uint32_t>(join.health()) == 0x42c80000u,
+              "controller 3, level 1, rank 0, class 0 and multiplier 100 give exactly 100");
     }
     // Creature-state defaults contract: construction defaults and codec groups.
     {

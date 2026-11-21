@@ -2906,3 +2906,20 @@ differing light cells.
 All 60 serial CTests passed in 106.87 seconds. The production
 player/controller diagnostic and five actual client flows passed. Package
 inspection verified 36 hashes in 37 files. Revision 45 parsed all 88 links.
+
+## Class B re-certification, second batch (2026-11-21)
+
+CreatureTests covers the role-zero health replacement, class dispatch for
+classes 0 to 255, equipment query order, the unsigned item helper and three
+level-ups from one experience award. NetTests covers the join health bits
+0x42C80000 and a loopback receiver fixture: skipped kinds, zero and negative
+chat lengths, first and later batch intervals, controlled-creature receipt,
+kind-0 decoder failure and zero length, and a partial kind-5 value at end of
+stream. RangedSchedulingTests covers magic speed, powered actions and buff-9
+removal, firing sounds and draw counts, combo expiry at 4,000 ms, buff
+expiry at exactly zero, mana decay and the charge ceiling.
+
+No world-generation code changed in this batch. All 60 serial CTests passed
+in 91.68 seconds. The production player/controller diagnostic and five
+actual client flows passed. Package inspection verified 36 hashes in 37
+files. Revision 46 parsed all 88 links.

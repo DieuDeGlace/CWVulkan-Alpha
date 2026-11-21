@@ -4390,3 +4390,36 @@ the library cosine), the server spawn position source and join health
 value, and the open points each contract lists. Engine choices: zeroed
 alignment and outer bytes in server packet-8 events and deterministic
 zeroing of unspecified record bytes.
+
+## Class B re-certification, second batch (2026-11-21)
+
+Fresh source-only authors re-certified three more held-but-unpinned
+contracts. Fresh implementers read each whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [ranged action scheduling](specs/alpha-ranged-action-scheduling.md) | 183 | `3dd2add88b5252e0f0c8c7dba847b51b7531284cd22c9264417650a9d4961dce` |
+| [maximum health numeric contract](specs/alpha-maximum-health-numeric-contract-recovered.md) | 183 | `e48545ff24b9ea9fd82d284c4bf167f118da580ccaadd08f42b36da52e3b24fd` |
+| [client receiver publication locks](specs/alpha-client-receiver-publication-locks.md) | 161 | `715648c8a49e71ef71501b67794f6310d03d5e16135f4c08dc9ae2af2e0478a1` |
+
+Engine changes: the dedicated-server join stores health from the real
+maximum-health query (100 for the join state, as before); the item level
+factor follows the held operand order. Magic projectile speed tests the
+main-hand weapon identifier byte alone; the magic firing sound is chosen by
+class and specialization; the AI low-mana test compares in double. The
+client receiver returns to its loop for unhandled kinds without reading a
+payload, treats only a socket error as a stop for in-message reads, keeps a
+partial value at end of stream, publishes no batch interval for the first
+end-of-batch message, and holds 1 ms timer resolution while receiving.
+
+Engine adapters: a closed stream at the next header ends the receiver; a
+failed creature allocation throws instead of dereferencing a null pointer;
+a short decoded kind-0 buffer stops the receiver; unread value bytes are
+zero. Not modelled: the dedicated server's own healing caller, kind-1 and
+kind-3 lock intervals, zero-direction shot normalization and the open
+points each contract lists.
+
+Record correction: in checkpoint c538c4a the batch-73 sentence of
+provenance-audit.md lost its code-span backticks and carried control
+characters in place of the leading letters of the names. This checkpoint
+restores that sentence; the table rows and counts were unaffected.

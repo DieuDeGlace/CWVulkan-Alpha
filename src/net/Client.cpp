@@ -222,6 +222,11 @@ std::optional<std::pair<uint32_t, uint32_t>> Client::takeClock() {
     return std::exchange(pendingClock, std::nullopt);
 }
 
+std::optional<uint32_t> Client::batchInterval() const {
+    std::lock_guard guard(lock);
+    return batchIntervalMs;
+}
+
 std::optional<std::vector<uint8_t>> Client::takeQuestBook() {
     std::lock_guard guard(lock);
     return std::exchange(questBook, std::nullopt);
@@ -428,27 +433,43 @@ void Client::commit(uint64_t id, CreatureRecord &&decoded, bool created) {
 }
 
 void Client::receiveLoop() {
+    // Receiver publication locks: the one-millisecond timer bracket spans the worker.
+    const TimerResolution resolution;
     // Receiver-private presence is consumed after the guarded batch reconciliation.
     std::set<uint64_t> updatedThisBatch;
+    // Kind 2's previous timer sample starts at zero, so the first one publishes nothing.
+    uint32_t previousBatchMs = 0;
+    // Receiver publication locks, reads: in kinds 0, 4, 5, 10 and 15 only a socket error
+    // (-1) sets the stop flag. An end of stream ends that read's accumulation and the
+    // message continues with the bytes that arrived; the rest of the value keeps its
+    // initial contents (engine: zero, where the native leaves unspecified storage).
+    auto receive = [&](void *out, size_t size) { return socket.readUpTo(out, size) != Socket::ReadEnd::failed; };
     // Transport §4, §5.3: a zero length ends the receiver; a failed inflate keeps its partial
     // output. (The 16 MiB length bound is an engine choice.)
     auto readCompressed = [&](std::vector<uint8_t> &plain) {
         uint32_t length = 0;
-        if (!socket.readU32(length) || length == 0 || length > (16u << 20))
+        if (!receive(&length, 4) || length == 0 || length > (16u << 20))
             return false;
         std::vector<uint8_t> packed(length);
-        if (!socket.readExact(packed.data(), length))
+        if (!receive(packed.data(), length))
             return false;
         plain = zlibInflatePartial(packed);
         return true;
     };
     while (online) {
+        // Engine adapter: the native header read also continues after an end of stream,
+        // which would spin on a closed socket; here a header that cannot complete ends
+        // the receiver (transport §5.3). A message already begun still finishes below.
         uint32_t packet;
         if (!socket.readU32(packet))
             break;
         bool ok = true;
         switch (packet) {
         case CREATURE: {
+            // Zero length sets the stop flag before any lock. Engine adapter: a decoded
+            // buffer too short for the identifier and mask stops here too, where the
+            // native would read past it. A failed creature allocation raises
+            // std::bad_alloc instead of inserting and dereferencing a null creature.
             std::vector<uint8_t> plain;
             ok = readCompressed(plain) && plain.size() >= 16;
             if (!ok)
@@ -472,9 +493,14 @@ void Client::receiveLoop() {
             }
             // Native insertion/baseline copy precedes this unlocked decode. It is
             // deliberately a separate publication from the final state assignment.
+            // A decoder failure stops the receiver without presence registration or
+            // the second interval; a creature inserted above stays in the world.
             ok = applyDelta(plain, decoded).has_value();
             if (!ok)
                 break;
+            // Registration follows a successful decode for every identifier, the
+            // controlled one included; only the second interval excludes it. The
+            // first interval's `created` selects that interval's preparation path.
             updatedThisBatch.insert(id);
             {
                 auto frame = lockFrame();
@@ -548,6 +574,16 @@ void Client::receiveLoop() {
             break;
         }
         case END_OF_BATCH: { // packets §2.4: whoever was not listed is gone
+            // Kind 2's special case precedes its handler: sample before the lock,
+            // publish the wrapping difference under it, replace the sample after it.
+            const uint32_t now = networkTimeMs();
+            {
+                auto frame = lockFrame();
+                std::lock_guard guard(lock);
+                if (previousBatchMs != 0)
+                    batchIntervalMs = now - previousBatchMs;
+            }
+            previousBatchMs = now;
             {
                 auto frame = lockFrame();
                 std::lock_guard guard(lock);
@@ -559,7 +595,7 @@ void Client::receiveLoop() {
         }
         case CLOCK: {
             uint32_t day = 0, ms = 0;
-            ok = socket.readU32(day) && socket.readU32(ms);
+            ok = receive(&day, 4) && receive(&ms, 4);
             if (!ok)
                 break;
             auto frame = lockFrame();
@@ -667,12 +703,13 @@ void Client::receiveLoop() {
             break;
         }
         case CHAT: {
-            // Packets §3.10: for n <= 0 nothing more is read. (The 4096-unit bound is an engine choice.)
+            // Packets §3.10: for n <= 0 nothing more is read and the loop continues without
+            // stopping. (The 4096-unit bound is an engine choice.)
             uint64_t from = 0;
             int32_t n = 0;
-            ok = socket.readExact(&from, 8) && socket.readExact(&n, 4) && n <= 4096;
+            ok = receive(&from, 8) && receive(&n, 4) && n <= 4096;
             std::vector<uint16_t> units(ok && n > 0 ? size_t(n) : 0);
-            ok = ok && socket.readExact(units.data(), units.size() * 2);
+            ok = ok && receive(units.data(), units.size() * 2);
             if (ok && n > 0) {
                 auto frame = lockFrame();
                 std::lock_guard guard(lock);
@@ -690,8 +727,10 @@ void Client::receiveLoop() {
             break;
         }
         case SEED: {
-            uint32_t seed;
-            ok = socket.readU32(seed);
+            // The value and its "online_" + signed-decimal string are compared and
+            // replaced as one pair, under the frame gate then the receiver lock.
+            uint32_t seed = 0;
+            ok = receive(&seed, 4);
             if (ok) {
                 auto world = onlineWorld(seed);
                 auto frame = lockFrame();
@@ -705,9 +744,10 @@ void Client::receiveLoop() {
             break;
         }
         default:
-            // Engine choice: Alpha ignores the id and reads on (misreading any payload,
-            // transport §3); here the stream cannot be trusted any longer.
-            ok = false;
+            // Receiver publication locks: kinds 6-9, 11-14 and above 15 return to the
+            // loop without reading a payload or taking a lock (any payload they carry
+            // is then read as later headers, transport §3).
+            break;
         }
         if (!ok)
             break;

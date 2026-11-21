@@ -114,9 +114,14 @@ ItemBonuses &itemBonuses() {
 
 // §10: item stats.
 
+// Maximum-health contract, continuous power: a binary32 level exponent; the signed rank is
+// converted to binary32 and scaled by 0.25f before widening; each binary64 power result is
+// narrowed at once, and the level factor is the first operand of the final product.
 float itemLevelFactor(float v, int rarity) {
     const float g = 3.f * (1.f - 1.f / ((v - 1.f) * 0.05f + 1.f));
-    return (float)std::pow(2.0, (double)g) * (float)std::pow(2.0, 0.25 * rarity);
+    const float levelFactor = (float)std::pow(2.0, (double)g);
+    const float rankFactor = (float)std::pow(2.0, (double)((float)rarity * 0.25f));
+    return levelFactor * rankFactor;
 }
 
 namespace {
@@ -151,6 +156,8 @@ bool heavyWeapon(const Item &item) {
 float itemHealth(const Item &item) {
     if (item.type < 3 || item.type > 7)
         return 0;
+    // Wrapping 32-bit shift, unsigned remainder. The native signed conversion plus
+    // integer-conversion table entry 0 is exact for a remainder of at most 20.
     const uint32_t u1 = (item.seed * 8u) % 21u;
     float m = (1.f - (float)u1 / 20.f) + 1.f;
     if (item.material == 1)
@@ -375,8 +382,11 @@ float maxHealth(const Combatant &c) {
     const float level = levelPower(c.level);
     const float rank = (float)std::pow(2.0, (double)((float)c.powerTier * 0.25f));
     float h = (rank * level) * c.multipliers[0];
+    // Controller/role byte zero replaces the preliminary rank product; any nonzero value keeps it.
     if (c.controller == 0)
         h = ((float)std::pow(2.0, 1.0) * level) * c.multipliers[0];
+    // Unsigned class dispatch: classes 1, 2 and 4 scale; class 3, class 0 and classes above 4
+    // take no class factor. Equipment is added after, behind the per-slot category gates.
     switch (c.characterClass) {
     case 1:
         h *= 1.3f;

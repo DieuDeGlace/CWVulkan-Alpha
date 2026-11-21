@@ -2375,6 +2375,87 @@ int main() {
              "negative credit is not clamped and entry rejection makes no maximum query");
         itemBonuses().health = previousHealth;
     }
+    checkInSeparateFrame([] {
+        // Maximum-health contract (re-certified 2026-11-21): role byte, class dispatch,
+        // category gates and the level-up loop inside one award.
+        const auto bits = [](float v) { return std::bit_cast<uint32_t>(v); };
+        Combatant c; // level 1, multiplier 100, rank 0
+        c.characterClass = 0;
+        c.powerTier = 8;
+        c.controller = 0;
+        same(bits(maxHealth(c)) == bits(200.f), 1, "role zero replaces the rank-8 product with 2 x level x 100");
+        for (const uint8_t role : {uint8_t(1), uint8_t(3), uint8_t(5), uint8_t(255)}) {
+            c.controller = role;
+            same(bits(maxHealth(c)) == bits(400.f), 1, "every nonzero role keeps the rank product 2^(8/4) x 100");
+        }
+        c.controller = 0;
+        for (const uint8_t cls : {uint8_t(0), uint8_t(3), uint8_t(5), uint8_t(200), uint8_t(255)}) {
+            c.characterClass = cls;
+            c.specialization = 1;
+            same(bits(maxHealth(c)) == bits(200.f), 1, "class 0, 3 and classes above 4 take no class factor");
+        }
+        const float base = 200.f;
+        c.characterClass = 2;
+        same(bits(maxHealth(c)) == bits(base * 1.1f), 1, "class 2 x 1.1 without a specialization factor");
+        c.characterClass = 4;
+        same(bits(maxHealth(c)) == bits(base * 1.2f), 1, "class 4 x 1.2 without a specialization factor");
+        c.characterClass = 1;
+        same(bits(maxHealth(c)) == bits((base * 1.3f) * 1.25f), 1, "class 1 specialization 1: x 1.3 then x 1.25");
+        c.specialization = 2;
+        same(bits(maxHealth(c)) == bits(base * 1.3f), 1, "class 1 other specializations: x 1.3 only");
+
+        // Six gated records in native order; a mismatched category never reaches the helper.
+        const auto previousHealth = itemBonuses().health;
+        std::vector<int> order;
+        itemBonuses().health = [&](const Item &item) {
+            order.push_back(item.subtype);
+            return 1.f;
+        };
+        Combatant g;
+        g.equipment[MAIN_HAND] = {3, 2};
+        g.equipment[OFF_HAND] = {3, 1};
+        g.equipment[CHEST_SLOT] = {4, 3};
+        g.equipment[BOOTS_SLOT] = {6, 4};
+        g.equipment[GLOVES_SLOT] = {5, 5};
+        g.equipment[SHOULDERS_SLOT] = {7, 6};
+        g.equipment[AMULET_SLOT] = {8, 7};
+        maxHealth(g);
+        same(order == std::vector<int>{1, 2, 3, 4, 5, 6}, 1,
+             "both hands (off hand first), chest, boots, gloves, shoulders; nothing else");
+        order.clear();
+        g.equipment[BOOTS_SLOT] = {4, 9}; // a helper-accepted category in the wrong gate
+        g.equipment[GLOVES_SLOT] = {6, 9};
+        maxHealth(g);
+        same(order == std::vector<int>{1, 2, 3, 6}, 1, "a record failing its own category gate is not passed to the helper");
+        itemBonuses().health = previousHealth;
+
+        // Item helper: rejected categories return +0; the shifted seed is an unsigned dividend.
+        same(bits(itemHealth({8, 0, 1, 0, 5, 0})) == 0u && bits(itemHealth({2, 0, 1, 0, 5, 0})) == 0u, 1,
+             "categories outside 3..7 return positive zero");
+        Item high{4, 0, 1, 0, 5, 0xf0000000u}, low{4, 0, 1, 0, 5, 16};
+        same(bits(itemHealth(high)) == bits(itemHealth(low)), 1, "seed << 3 wraps and divides unsigned (remainder 2)");
+        Item wrapped{4, 0, 1, 0, 5, 0x20000001u}, one{4, 0, 1, 0, 5, 1};
+        same(bits(itemHealth(wrapped)) == bits(itemHealth(one)), 1, "bits shifted out of the seed are discarded");
+
+        // One award, several levels: the level-up loop is internal and queries once per level,
+        // each with the level then stored.
+        Combatant up;
+        up.controller = 1;
+        up.powerTier = 4;
+        const int32_t award = experienceForLevel(1) + experienceForLevel(2) + experienceForLevel(3) + 5;
+        std::vector<int32_t> levels;
+        itemBonuses().health = [&](const Item &) {
+            levels.push_back(up.level);
+            return 0.f;
+        };
+        up.equipment[CHEST_SLOT] = {4, 0, 1, 0, 1, 0};
+        addExperience(up, award);
+        itemBonuses().health = previousHealth;
+        same(up.level == 4 && up.experience == 5 && levels == std::vector<int32_t>{2, 3, 4}, 1,
+             "one award runs three level-ups and three health queries at levels 2, 3, 4");
+        up.equipment[CHEST_SLOT] = {};
+        same(bits(up.health) == bits(maxHealth(up)), 1, "health holds the last iteration's query (level 4, rank product kept)");
+    });
     {
         Inventory wallet;
         ItemRecord platinum{};

@@ -113,8 +113,10 @@ CreatureRecord newPlayerRecord(const std::function<int()> &draw, int32_t spawnX,
     // each already holds that value.
     // Step 7: the maximum-health query runs while the controller byte still holds its
     // construction 3 (class 0, type 0, zeroed block); only then is the controller cleared. The
-    // query's value is not closed: the engine keeps 100 (multiplier 100 at level 1).
-    const float joinHealth = 100.f;
+    // re-certified maximum-health contract makes the server query identical to the client's,
+    // so the engine runs that query on the record as it stands: the nonzero role keeps the
+    // rank product, class 0 takes no class factor and no zeroed slot passes its gate.
+    const float joinHealth = creatures::maxHealth(r.fighter());
     r.bytes[0x050] = 0;
     put(r, 0x15c, joinHealth);
     put(r, 0x054, (int32_t)44);                         // step 8: creature type

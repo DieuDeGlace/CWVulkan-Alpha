@@ -1649,7 +1649,8 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         // The one-in-ten draw is made only while the dodge lockout is zero.
         if (!held && c.dodgeMs == 0 && (uint32_t)draw() % 10 == 0 && dodge())
             return true;
-        if (c.mana < 0.8f && !held) {
+        // Ranged scheduling contract: mana widened to binary64 is compared with 0.8.
+        if ((double)c.mana < 0.8 && !held) {
             startPrimaryAttack(c);
             return true;
         }

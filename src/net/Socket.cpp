@@ -1,9 +1,19 @@
 #include "net/Socket.h"
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <mmsystem.h>
 #include <mutex>
 
+#pragma comment(lib, "winmm.lib")
+
 namespace net {
+
+TimerResolution::TimerResolution() : raised(timeBeginPeriod(1) == TIMERR_NOERROR) {}
+
+TimerResolution::~TimerResolution() {
+    if (raised)
+        timeEndPeriod(1);
+}
 
 bool startNetworking() {
     static std::once_flag once;
@@ -38,6 +48,11 @@ void Socket::setReadTimeout(uint32_t ms) {
 void Socket::shutdown() {
     if (handle != INVALID)
         ::shutdown((SOCKET)handle, SD_BOTH);
+}
+
+void Socket::finishSending() {
+    if (handle != INVALID)
+        ::shutdown((SOCKET)handle, SD_SEND);
 }
 
 bool Socket::connect(const std::string &host, uint16_t port, std::string *error) {

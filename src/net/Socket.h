@@ -10,6 +10,20 @@ namespace net {
 // Starts Winsock once for the process.
 bool startNetworking();
 
+// Receiver publication locks, reads: the client receive worker requests a one-millisecond
+// multimedia timer resolution for its whole lifetime. The request is process-wide, so it
+// also bounds the sender's pacing sleeps while connected.
+class TimerResolution {
+  public:
+    TimerResolution();
+    ~TimerResolution();
+    TimerResolution(const TimerResolution &) = delete;
+    TimerResolution &operator=(const TimerResolution &) = delete;
+
+  private:
+    bool raised = false;
+};
+
 class Socket {
   public:
     Socket() = default;
@@ -34,6 +48,8 @@ class Socket {
     void close();
     // Stops reads and writes in progress (from another thread) without freeing the handle.
     void shutdown();
+    // Ends this side's stream (the peer reads end of stream) while reads continue.
+    void finishSending();
 
     bool send(const void *data, size_t size);
     bool send(const std::vector<uint8_t> &bytes) { return send(bytes.data(), bytes.size()); }
