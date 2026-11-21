@@ -3454,6 +3454,26 @@ int main() {
             }
             same(shots > 0, 1, "the magic user shoots");
             same(along, shots, "every shot flies along the shooter's aim");
+
+            // Primary-start boundary (0x02DDBE): an unordered mana comparison takes the primary
+            // route without the parity draw, so the secondary helper is never chosen.
+            int primaries = 0, secondaries = 0;
+            for (int i = 0; i < 60; i++) {
+                mage->fighter.mana = std::numeric_limits<float>::quiet_NaN();
+                mage->fighter.action = 0;
+                mage->fighter.actionMs = 100000;
+                mage->fighter.dodgeMs = 0;
+                mage->thinkMs = 32; // decide this update
+                mage->fighter.hitStun = 0;
+                npcs.step(16, map, {{me, body, 90, me.actionMs}}, 43200000, 0, floor);
+                switch (mage->fighter.action) {
+                case 31: case 33: case 37: case 43: case 45: case 46: secondaries++; break;
+                case 0: break;
+                default: primaries++; break;
+                }
+            }
+            same(secondaries, 0, "unordered mana never reaches the secondary start helper");
+            same(primaries > 0, 1, "unordered mana takes the primary start route");
         }
     }
     // Approach-path contract §6, §8 with combat §5.2: once a wall hides the target, the far route

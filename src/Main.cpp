@@ -1792,10 +1792,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 c.deferred.push_back(id);
                             continue;
                         }
+                        // Construction precedes the K8 bookkeeping: first-target flag, the
+                        // target's key and the swing byte, then the call.
+                        const creatures::HitInput in = creatures::strikeInput(c, player->body(), body, rolls);
                         const bool first = c.struck.empty() && c.hitStun <= 0;
                         c.struck.push_back(id);
                         c.hitLanded = true;
-                        const creatures::HitInput in = creatures::strikeInput(c, player->body(), body, rolls);
                         const creatures::HitOutcome out = creatures::resolveHit(target, body.velocity, &c, in, rolls);
                         for (const auto &event : out.buffs) {
                             frame.buffs.push_back(event);

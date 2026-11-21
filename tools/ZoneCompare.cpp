@@ -23,6 +23,7 @@
 #include "worldgen/Terrain.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -149,6 +150,8 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
     long long lit = 0, sameLight = 0; // air and water cells in Alpha's stored range: their light
     std::map<std::pair<int, int>, long long> lights; // (Alpha's light, ours) where they differ
     int cells[256] = {};
+    long long lightCells[256] = {}; // differing light cells per 16 x 16 columns (for --grid)
+    int lightShown = 0;
     std::map<std::pair<int, int>, long long> kinds; // (Alpha type, our type) of differing blocks
     for (int32_t i = 0; i < Zone::SIZE * Zone::SIZE; i++) {
         int32_t bottom = 0;
@@ -179,10 +182,18 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
                     if (floods)
                         ourLight = floods->light(x, y, z, ourLight);
                     lit++;
-                    if (theirLight == ourLight)
+                    if (theirLight == ourLight) {
                         sameLight++;
-                    else
+                    } else {
                         lights[{theirLight, ourLight}]++;
+                        lightCells[(i / Zone::SIZE / 16) * 16 + (i % Zone::SIZE) / 16]++;
+                        if (grid && lightShown < 12) {
+                            lightShown++;
+                            std::printf("  light at column (%d, %d) z %d (column %d..%d): Alpha %d, ours %d\n",
+                                        i % Zone::SIZE, i / Zone::SIZE, z, bottom, bottom + (int32_t)count, theirLight,
+                                        ourLight);
+                        }
+                    }
                 }
                 if (a.type() == AIR)
                     continue;
@@ -226,6 +237,15 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
             for (int cx = 0; cx < 16; cx++) {
                 const int n = cells[cy * 16 + cx];
                 std::printf("%c", n == 0 ? '.' : n == 256 ? '#' : (char)('1' + std::min(n * 9 / 256, 8)));
+            }
+            std::printf("\n");
+        }
+        std::printf("  differing light cells per 16 x 16 columns (. none, 1-9 log scale, # 1000 or more):\n");
+        for (int cy = 15; cy >= 0; cy--) {
+            std::printf("  ");
+            for (int cx = 0; cx < 16; cx++) {
+                const long long n = lightCells[cy * 16 + cx];
+                std::printf("%c", n == 0 ? '.' : n >= 1000 ? '#' : (char)('1' + std::min<int>((int)std::log2((double)n), 8)));
             }
             std::printf("\n");
         }

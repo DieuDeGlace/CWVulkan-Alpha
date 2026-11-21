@@ -53,13 +53,17 @@ constexpr auto PHASES = phases();
 }
 
 double noiseCosine(double angle) {
-    // Positive IEEE encodings are ordered by magnitude, including the tiny
-    // boundary. One classification also sends nonfinite inputs to the library.
+    // The class comes from the upper 16 bits with the sign cleared. Above 0x40F5
+    // (magnitudes from 90112, infinities, NaNs) native takes its x87 fallback, whose
+    // results are unspecified; the platform cosine there is an engine choice.
+    // Magnitudes between the angle constant and 90112 use the regular relations as
+    // native does, although their results lie outside the contract.
     const uint64_t magnitude = std::bit_cast<uint64_t>(angle) & 0x7fffffffffffffff;
-    if (magnitude > 0x400921fb5a7ed197)
+    const uint32_t high = uint32_t(magnitude >> 48);
+    if (high > 0x40f5)
         return std::cos(angle);
-    if (magnitude < 0x3030000000000000)
-        return 1;
+    if (high < 0x3030)
+        return 1.0 - number(magnitude); // exactly one under nearest rounding
 
     // Each operation in this translation unit rounds separately to binary64.
     // Keep the leading displacement: replacing it with the reduced one changes
@@ -68,6 +72,8 @@ double noiseCosine(double angle) {
     constexpr double integralOffset = number(0x4338000000000000);
     const double scaled = angle * scale;
     const double integral = (scaled + integralOffset) - integralOffset;
+    // Native converts `scaled` to int separately under MXCSR (nearest under the
+    // gate) for the phase; that equals this integral throughout the regular class.
     const auto &sample = PHASES[(unsigned)((int)integral + 16) & 63u];
     const double leading = angle - integral * number(0x3fb921fb54400000);
     const double secondary = integral * number(0x3d90b4611a600000);

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <glm/glm.hpp>
+#include <limits>
 #include "creatures/Particles.h"
 #include "creatures/Buffs.h"
 #include "creatures/Hits.h"
@@ -232,6 +233,13 @@ void addExperience(Combatant &c, int32_t amount);
 // Held fatal-effects contract: prepare once before regional work; convert to an
 // integer only when producing each recipient record. The tier input is a byte.
 float fatalCreditAmount(int32_t level, uint8_t tier, int32_t type, uint16_t appearanceFlags);
+// The native truncating binary32-to-signed-32-bit conversion: toward zero, with NaN and
+// out-of-range values yielding the integer indefinite 0x80000000 (defined, unlike a cast).
+inline int32_t truncateToInt32(float value) {
+    if (!(value >= -2147483648.f && value < 2147483648.f))
+        return std::numeric_limits<int32_t>::min();
+    return static_cast<int32_t>(value);
+}
 // Legacy later-corpse adapter. Its separate boss argument supplies flag 0x200.
 int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uint16_t appearanceFlags);
 

@@ -1,8 +1,9 @@
 # Alpha rock/cliff color precision contract
 
-Status: FINAL / STABLE / HELD  
+**FINAL / STABLE / HELD**
+
 Scope: original client routine RVA `0x1F9620`, its direct noise-result boundary, and direct float-to-color-byte callers.  
-Evidence date: 2026-11-07. This document contains original-image findings only.
+Evidence dates: 2026-11-07; re-certified 2026-11-20. This document contains original-image findings only.
 
 ## Supported image and evidence
 
@@ -49,6 +50,20 @@ that helper's x87 return. This contract does not merge those lookups or specify
 their ownership or caching policy.
 [Evidence: `decompiled/client/assembly.txt`, RVAs
 `0x1F96F0–0x1F9738`, `0x1F99CB–0x1F99F4`.]
+
+Three lookup calls occur, in this order: the one supplying \(a\), the
+intervening one, and, after the channel clamp below, the one supplying \(s\).
+Each receives only \(x\), \(y\) and the lookup argument; \(z\) is not passed.
+Each fallback helper (RVAs `0x1C4DD0`, `0x1C4800`, `0x1EF040`) receives
+\(x\) and \(y\) with the object pointer. The two value-producing fallbacks end
+the same way: when their binary32 denominator is strictly greater than
+positive zero (an ordered comparison), they return the binary32 quotient of a
+single `DIVSS`, stored to binary32 memory and loaded for the x87 return;
+otherwise the fallback for \(a\) returns exact binary32 0.5 (data RVA
+`0x345DA0`) and the fallback for \(s\) returns x87 positive zero. A zero or
+unordered denominator therefore yields those constants rather than a quotient.
+[Evidence: `decompiled/client/assembly.txt`, RVAs `0x1C5262–0x1C5289`,
+`0x1EF567–0x1EF58E`.]
 
 Coordinate arithmetic uses SSE scalar binary64 operations. Channel arithmetic,
 environmental normalization, blending and comparisons use SSE scalar binary32
@@ -120,7 +135,13 @@ binary64 arguments. This symbol does not grant a substitute noise function
 equivalence.
 
 That helper prepares its fractions and performs its interpolation with SSE
-binary64 arithmetic, with an intervening imported mathematical operation.
+binary64 arithmetic, with two intervening calls of one imported mathematical
+operation: first for the first argument's fraction (call RVA `0x0C0F80`),
+then for the second argument's fraction (call RVA `0x0C0FBC`). Each fraction is
+the exact binary64 difference between the argument and its truncated signed
+32-bit integer, multiplied once in binary64 by the angle constant described
+below; each returned value \(c\) becomes the binary64 weight
+\(D(D(1-c)\cdot0.5)\).
 After the final binary64 addition, it stores binary64 to memory, loads that
 value into x87, stores it to binary32, and reloads that binary32 value for its
 x87 return. Thus the returned significand is already binary32 before the
@@ -149,10 +170,15 @@ uses MXCSR. The x87 precision-control setting is not an extra significand
 width for the SSE instructions or an instruction to pre-round an x87 load.
 
 The imported operation is reached through original thunk RVA `0x28D7A4`,
-whose IAT slot at RVA `0x2FC444` imports `MSVCR110.dll` ordinal 13514.
-The scoped decompile identifies this operation as the precise SSE2 cosine
-helper. Its installed DLL implementation and any internal fallback path
-were not audited here. The noise helper multiplies its cosine argument by
+whose IAT slot at RVA `0x2FC444` (index 49 of the `MSVCR110.dll` import
+descriptor at RVA `0x360814`) imports by name, not by ordinal: its lookup
+value `0x003634CA` has the ordinal flag clear and points to hint 877 and the
+name `_libm_sse2_cos_precise`. The bundled `game-files/msvcr110.dll` exports
+that name at DLL RVA `0x36F80`. Its numeric behavior, its control-state
+gate and its x87 fallback are specified by the held contracts
+`alpha-noise-cosine-boundary.md` and
+`alpha-noise-cosine-numeric-contract.md`; this document does not restate
+them. The noise helper multiplies its cosine argument by
 the binary64 bit pattern `0x400921FB5A7ED197` at data RVA `0x302B48`,
 approximately 3.1415926999999999047, rather than mathematical pi.
 Its binary64 interpolation constants include exact 1 and 0.5
@@ -193,6 +219,11 @@ Above 0.75, the weight is \(t=F(F(a-0.75)\cdot4)\), and the blue base is
 Each complement is rounded before its multiply; both products are rounded
 before their addition. No clamp of \(a\) or \(t\) occurs here.
 Equality at either boundary retains the middle base.
+The lower branch is taken only when the ordered comparison finds \(a<0.5\);
+the upper branch only when the ordered comparison finds \(a>0.75\). An
+unordered (NaN) \(a\) fails both tests and therefore retains all three middle
+bases. Infinite \(a\) follows the same comparisons and the same unclamped
+arithmetic.
 [Evidence: `decompiled/client/assembly.txt`, RVAs
 `0x1F973A–0x1F97E1`, `0x1F97EA–0x1F97F6`,
 `0x1F9856–0x1F98A4`.]
@@ -201,9 +232,35 @@ The upper branch also samples noise for another component. Its first
 coordinate depends on the normalized binary32 weight \(t\), widened to
 binary64, rather than directly on \(x\). That call occurs before the
 common blue-contribution sample described next. Its result does not enter
-the blue base.
+the blue base. Exactly, with the decimal labels 0.001, 6544 and 123 meaning
+the binary64 table entries, the sample is
+\(n_u=N\bigl(D(D(t'\cdot0.001)+6544),\,D(D(y\cdot0.001)+123)\bigr)\),
+where \(t'\) is the exact binary64 widening of the binary32 upper-branch
+weight \(t\). The second coordinate is computed first in time; this does not
+change either value. \(n_u\) is returned through the binary32 boundary below.
 [Evidence: `decompiled/client/assembly.txt`, RVAs
 `0x1F97E7–0x1F98B3`.]
+
+## Red and green bases
+
+The first and second output components, called red and green here, have
+their own bases \(R_{base}\), \(G_{base}\), selected by the same
+comparisons on \(a\) and using the same binary32 weight \(t\) as blue.
+
+- Middle (including NaN \(a\)): \(R_{base}=120\), \(G_{base}=120\).
+- Lower (\(t=F(a\cdot2)\)):
+  \(R_{base}=F(F(F(1-t)\cdot10)+F(t\cdot160))\) and
+  \(G_{base}=F(F(F(1-t)\cdot20)+F(t\cdot160))\).
+- Upper (\(t=F(F(a-0.75)\cdot4)\)):
+  \(R_{base}=F(F(F(1-t)\cdot120)+F(t\cdot200))\) and
+  \(G_{base}=F\bigl(F(F(1-t)\cdot120)+F(F(F(n_u\cdot20)+130)\cdot t)\bigr)\).
+
+The single binary32 complement \(F(1-t)\) and, in the lower branch, the
+single product \(F(t\cdot160)\) are shared by the channels that use them. In
+the upper green base, \(n_u\) is first multiplied by 20, then 130 is added,
+then that rounded sum is multiplied by \(t\); each step is binary32.
+[Evidence: `decompiled/client/assembly.txt`, RVAs
+`0x1F973A–0x1F97CC`, `0x1F9839–0x1F98AE`.]
 
 ## Blue contribution, addition order and clamp
 
@@ -225,7 +282,12 @@ This is specifically the sum of the rounded shared-tone/base addition and
 the separately rounded blue contribution. It is not a single wider sum,
 and the blue contribution is not added to the base first.
 The other two components also have explicit addition of the result of
-binary32 positive-zero multiplied by binary32 10.
+binary32 positive-zero multiplied by binary32 10:
+\(R_{raw}=F(F(T+R_{base})+F(0\cdot10))\) and
+\(G_{raw}=F(F(T+G_{base})+F(0\cdot10))\), where \(F(0\cdot10)\) is positive
+zero. For ordinary values this second addition leaves the rounded sum
+unchanged; it would turn a negative-zero sum into positive zero and
+propagates NaN.
 [Evidence: `decompiled/client/assembly.txt`, RVAs
 `0x1F991C–0x1F995F`.]
 
@@ -272,6 +334,25 @@ three more times. The third noise uses the previously prepared binary64
 the blue target remains exact binary32 10. Thus changing those calls
 does not remove their native evaluation order, even though their values
 do not enter the final blue blend.
+
+Written out, with \(m_1=N(D(x\cdot0.05),D(y\cdot0.05))\),
+\(m_2=N(D(x\cdot0.02),D(y\cdot0.02))\) and
+\(n_3=N(D(x\cdot0.1),D(y\cdot0.1))\), each already binary32:
+
+- \(m=F(F(m_1\cdot0.1_{f})+m_2)\), where \(0.1_f\) is bits `0x3DCCCCCD`;
+  \(m\) is replaced by exact 1 only when the ordered comparison finds
+  \(m>1\) (NaN is retained); then \(k=|m|\), which is exact.
+- \(c=F(1-k)\) and \(c_5=F(F(F(F(c\cdot c)\cdot c)\cdot c)\cdot c)\).
+- Red target \(\tau_R=F(F(c_5\cdot200)+10)\); green target
+  \(\tau_G=F(F(F(F(n_3+1)\cdot c_5)\cdot50)+10)\); blue target 10.
+- With the single complement \(\bar s=F(1-s)\) and the clamped
+  components \(R_c,G_c\) read back from the output buffer,
+  \(R_{out}=F(F(R_c\cdot\bar s)+F(\tau_R\cdot s))\) and
+  \(G_{out}=F(F(G_c\cdot\bar s)+F(\tau_G\cdot s))\).
+
+All three old-channel products are formed before the third noise call;
+\(\tau_R\) is also formed before it. The output components are written
+in the order red, green, blue.
 [Evidence: `decompiled/client/assembly.txt`, RVAs
 `0x1F9A0B–0x1F9AB9`, `0x1F9AC2–0x1F9AF5`,
 `0x1F9B23–0x1F9B89`;
@@ -300,7 +381,9 @@ need not reach the store.
 
 Direct conversion sites include RVAs `0x04E840`, `0x1CC480`,
 `0x1E6A90`, `0x1E8260`, `0x1E8793`, `0x1E8B30`,
-`0x1E9562` and `0x1E9AD0`. These facts concern the direct byte
+`0x1E9562` and `0x1E9AD0`. Each converts components 0, 1 and 2 in that
+order into three consecutive bytes, component 0 at the lowest address,
+immediately after the call returns. These facts concern the direct byte
 paths. Other callers first combine or normalize the float colors, so
 their eventual byte cannot be inferred by applying this direct
 conversion prematurely.
@@ -322,7 +405,10 @@ Under ordinary finite inputs, the instruction widths, stored constants,
 dependent operation order, explicit binary32 return boundary and truncating
 byte conversion are established. Bit-identical behavior for every input
 also requires the external mathematical helper and the ambient floating-point
-environment to be established independently. NaN payload propagation and
+environment to be established independently. The imported cosine selects its
+SSE2 calculation only under the control-state gate given in the held cosine
+contracts; under other x87 or MXCSR settings it takes an x87 fallback whose
+results are not specified. NaN payload propagation and
 signaling-exception details are not completed acceptance claims here.
 
 Neither a decompiler's extended-float return annotation nor a high-level
@@ -330,3 +416,79 @@ algebraic identity supplies evidence for retaining extended intermediates.
 No original runtime capture, replacement implementation, test, probe output
 or inherited specification was consulted. This document remains held after
 complete readback; further source work requires a separately assigned scope.
+
+## Re-certification (2026-11-20)
+
+Re-certified by a separate source-author context against `binary/Cube.exe`
+(SHA-256 `84A7A132A84D4282338E7EA45A1940D32066D64E39CBAFED8F2418D5A6DC30BF`,
+3,885,568 bytes) and `game-files/msvcr110.dll` (SHA-256
+`B30160E759115E24425B9BCDF606EF6EBCE4657487525EDE7F1AC40B90FF7E49`).
+All 314 instructions of RVA `0x1F9620–0x1F9BB1`, all 136 of the noise helper
+`0x0C0EF0–0x0C10F9` and the listed instructions in the fallback-helper
+return ranges `0x1C5241–0x1C529C` and `0x1EF541–0x1EF59D` were compared
+with the PE section bytes: zero mismatches. All 26 tabulated
+constants were re-read with their stated widths and bit patterns; none
+changed. The only other documents read were the two held cosine contracts
+named in correction 2; no replacement implementation, test, capture, probe
+output or log was consulted.
+
+Corrections:
+
+1. The IAT slot at client RVA `0x2FC444` was described as importing
+   ordinal 13514. It is an import by name: lookup value `0x003634CA`
+   (ordinal flag clear) names hint 877, `_libm_sse2_cos_precise`. The
+   number 13514 is `0x34CA`, the low half of that name-record RVA, not an
+   ordinal. [Evidence: import descriptor at RVA `0x360814`, original thunk
+   array `0x360BF8`, IAT `0x2FC380`, index 49.]
+2. The statement that the installed DLL implementation and fallback were not
+   audited is superseded: the bundled DLL export at DLL RVA `0x36F80` is
+   specified by the held `alpha-noise-cosine-boundary.md` and
+   `alpha-noise-cosine-numeric-contract.md`, now cited rather than restated.
+   [Evidence: `game-files/msvcr110.dll` export table.]
+3. The noise helper performs two cosine calls, at client RVAs `0x0C0F80` and
+   `0x0C0FBC`, not one; the fraction and weight boundaries are now stated.
+   [Evidence: `0x0C0F02–0x0C0FB4`.]
+4. Omission filled: the three lookup calls, their order, their arguments
+   (\(x,y\) and the lookup argument; not \(z\)), and the fallback results
+   (single `DIVSS` quotient when the denominator is ordered and strictly
+   positive, otherwise binary32 0.5 for \(a\) or x87 positive zero for
+   \(s\)). [Evidence: `0x1F96CC–0x1F9738`, `0x1F99CB–0x1F99F4`,
+   `0x1C5262–0x1C5289`, `0x1EF567–0x1EF58E`.]
+5. Omission filled: base selection for NaN \(a\) (both ordered tests fail,
+   so all middle bases are retained) and for infinite \(a\).
+   [Evidence: `0x1F9766–0x1F97E1`.]
+6. Omission filled: exact coordinates of the upper-branch sample
+   \(n_u\), using the widened weight \(t\) with 0.001 and 6544 and the
+   second integer coordinate with 0.001 and 123.
+   [Evidence: `0x1F97E7–0x1F9834`; data RVAs `0x302B40`, `0x31DE68`,
+   `0x31DDC0`.]
+7. Omission filled: complete red and green bases for all three branches,
+   including the upper green base's use of \(n_u\).
+   [Evidence: `0x1F973A–0x1F97CC`, `0x1F9839–0x1F98AE`.]
+8. Omission filled: red and green raw sums, including the positive-zero
+   addition. [Evidence: `0x1F9914–0x1F995F`.]
+9. Omission filled: complete taken-blend arithmetic for red and green,
+   including the targets \(\tau_R,\tau_G\), the shared \(F(1-s)\), and the
+   write order. [Evidence: `0x1F9A0B–0x1F9BA3`.]
+10. Omission filled: component-to-byte order at the direct conversion sites.
+    [Evidence: the eight cited `CVTTSS2SI` sites and their following
+    low-byte stores.]
+11. Limit clarified: under control states that fail the cosine entry gate,
+    the import takes an x87 fallback whose results are not specified.
+    [Evidence: DLL RVAs `0x36F80–0x36FAB`, `0x3711F`.]
+
+No previously stated blue formula, constant, rounding point, clamp rule or
+byte-conversion rule was found to be wrong.
+
+Remaining uncertainties:
+
+- The MXCSR and x87 control state, exception masks and denormal modes on
+  every native terrain-generation thread remain unverified environmental
+  assumptions.
+- The meaning, range and ownership of the cached environmental fields and of
+  object fields `0x80022C`/`0x800230`, and the internal arithmetic of the
+  fallback helpers before their final division, are not specified.
+- The complete noise algorithm (its integer hash and lattice arithmetic) is
+  outside this contract.
+- NaN payloads, signaling-NaN quieting at the absolute-value widening, and
+  exception-status effects are not acceptance claims.

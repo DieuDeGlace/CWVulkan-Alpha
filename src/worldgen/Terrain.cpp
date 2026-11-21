@@ -297,11 +297,17 @@ glm::vec3 Terrain::snow(int32_t x, int32_t y) const {
     return clamp255({190.f * a + 100.f * (1.f - a), 220.f * a + 180.f * (1.f - a), 255.f * a + 255.f * (1.f - a)});
 }
 
-// §6.6
+// §6.6, with the numeric boundaries of alpha-rock-color-precision.md: every float
+// operation rounds to binary32 and the noise samples follow the native call order.
 glm::vec3 Terrain::rock(int32_t x, int32_t y, int32_t z, const Zone *zone) const {
+    // Native looks warmth and fire up separately, with a discarded lookup between
+    // them. The engine lookups are pure and their fallbacks match (0.5 and +0 when
+    // the weight total is not ordered-positive), so one read supplies both.
     const Climate cl = climate(x, y, zone);
-    const float v = unit((noise(0.1 * y + 98984.0, 0.4 * z) + noise(0.1 * x, 0.4 * z)) * 0.5f);
-    glm::vec3 base(120, 120, 130);
+    const float first = noise(0.1 * y + 98984.0, 0.4 * z);
+    const float second = noise(0.1 * x, 0.4 * z);
+    const float tone = 160.f * unit((first + second) * 0.5f);
+    glm::vec3 base(120, 120, 130); // middle band, also kept by a NaN warmth
     const float wm = cl.warmth;
     if (wm < 0.5f) {
         const float t = 2.f * wm;
@@ -312,16 +318,20 @@ glm::vec3 Terrain::rock(int32_t x, int32_t y, int32_t z, const Zone *zone) const
         base = {120.f * (1.f - t) + 200.f * t, 120.f * (1.f - t) + (20.f * n + 130.f) * t,
                 130.f * (1.f - t) + 100.f * t};
     }
-    glm::vec3 C = base + 160.f * v;
-    C.b += 10.f * (noiseAt(0x22c, 0x230, 0.005, x, y) + 1.f);
-    C = clamp255(C);
-    if (const float F = cl.fire; F > 0) {
-        const float s = std::min(0.1f * noise(0.05 * x, 0.05 * y) + noise(0.02 * x, 0.02 * y), 1.f);
+    // Red and green also add 0 x 10 (+0), which turns a -0 sum into +0.
+    glm::vec3 C = base + tone;
+    C += glm::vec3(0.f, 0.f, noiseAt(0x22c, 0x230, 0.005, x, y) + 1.f) * 10.f;
+    C = clamp255(C); // strict comparisons: NaN and -0 are retained
+    if (const float F = cl.fire; F > 0) { // ordered: NaN skips; no upper clamp
+        const float wide = noise(0.05 * x, 0.05 * y);
+        const float fine = noise(0.02 * x, 0.02 * y);
+        const float s = std::min(0.1f * wide + fine, 1.f); // NaN is retained
         const float u = 1.f - std::fabs(s);
         const float u5 = u * u * u * u * u;
-        C.r = C.r * (1.f - F) + (200.f * u5 + 10.f) * F;
-        C.g = C.g * (1.f - F) + ((noise(0.1 * x, 0.1 * y) + 1.f) * u5 * 50.f + 10.f) * F;
-        C.b = C.b * (1.f - F) + 10.f * F;
+        const glm::vec3 kept = C * (1.f - F);
+        const float red = 200.f * u5 + 10.f;
+        const float green = (noise(0.1 * x, 0.1 * y) + 1.f) * u5 * 50.f + 10.f;
+        C = kept + glm::vec3(red, green, 10.f) * F;
     }
     return C;
 }

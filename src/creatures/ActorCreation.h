@@ -42,6 +42,18 @@ struct Created {
     Appearance looks;
     Setup setup;
 };
+// The appearance producer's common prefix with a null descriptor: five draws forming a
+// local descriptor of type zero. Draws 1-3 are reduced by signed remainder 256 and stored
+// reversed (third draw -> byte 0, second -> byte 1, first -> byte 2); draws 4 and 5 are
+// reduced by signed remainder 100 into the two selectors. The closed kinds (0x11, 0x25,
+// 0x60, >0x9b) do not read it; kind routes that consume it read this descriptor.
+struct AppearanceMaterial {
+    uint8_t type = 0;
+    std::array<uint8_t, 3> bytes{};
+    std::array<int32_t, 2> selectors{};
+};
+AppearanceMaterial drawAppearanceMaterial(const std::function<int32_t()> &draw);
+
 enum class Outcome { Rejected, Created, AppearancePending, MissingAppearanceState };
 struct Result {
     Outcome outcome = Outcome::Rejected;
@@ -50,6 +62,9 @@ struct Result {
 
 // Held alpha-world-actor-creation.md. Call at the action-effect phase before
 // clock advancement. The caller publishes the completed actor in its live map.
+// The current actor is read-only here: every exit (admission, either threshold,
+// link count, success) writes no actor field and the caller continues with its
+// common per-actor processing.
 // Stable supplied actor/map pointers and ordinary finite arithmetic are required.
 // Generation outputs are closed for kinds 17, 37, 96 and unsigned kinds >0x9b;
 // other generation kinds report an engine capability boundary, not a native gate.

@@ -8,6 +8,8 @@
 #include "net/RemoteCreatures.h"
 #include "ItemRequest.h"
 #include "net/Server.h"
+#include "worldgen/Random.h"
+#include <bit>
 #include <chrono>
 #include <atomic>
 #include <cstdio>
@@ -995,7 +997,33 @@ static void checkCombatTransport() {
     peer.join();
 }
 
+// Packet-8 receipt distinguishes end of stream (partial bytes kept) from an error.
+static void checkPartialRead() {
+    startNetworking();
+    Socket listener;
+    if (!listener.listen(0, nullptr, "127.0.0.1")) {
+        check(false, "partial-read fixture listens");
+        return;
+    }
+    std::thread peer([&] {
+        Socket socket;
+        if (!socket.connect("127.0.0.1", listener.boundPort()))
+            return;
+        const std::array<uint8_t, 10> partial{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+        socket.send(partial.data(), partial.size());
+        socket.close();
+    });
+    Socket accepted = listener.accept();
+    accepted.setReadTimeout(3000);
+    std::array<uint8_t, 40> event{};
+    const auto end = accepted.readUpTo(event.data(), event.size());
+    peer.join();
+    check(end == Socket::ReadEnd::closed && event[0] == 1 && event[9] == 10 && event[10] == 0 && event[39] == 0,
+          "end of stream mid-payload is distinct from an error and keeps the bytes received");
+}
+
 int main() {
+    checkPartialRead();
     {
         auto record = CreatureRecord::nativeDefaults();
         auto actor = record.fighter();
@@ -1094,7 +1122,12 @@ int main() {
     }
     // Net server §3.1: the joining record.
     {
-        const CreatureRecord join = newPlayerRecord();
+        worldgen::Random joinStream{1}, reference{1};
+        const CreatureRecord join = newPlayerRecord([&] { return joinStream.draw(); });
+        for (int k = 0; k < 5; k++)
+            reference.draw();
+        check(joinStream.count() == 5 && joinStream.draw() == reference.draw(),
+              "the join's appearance generator takes exactly five draws from the given stream");
         check(join.position(0) == 550301073408LL && join.position(1) == 550301073408LL && join.position(2) == 0,
               "join spawn (8,396,928, 8,396,928, 0) blocks");
         int64_t home[3];
@@ -1111,6 +1144,105 @@ int main() {
         for (size_t at = 0x18; at < 0x30; at++)
             zeroed &= join.bytes[at] == 0;
         check(zeroed, "record 0x18..0x2F and 0x4C are zero");
+
+        // Creature-state defaults contract, join overrides over the construction defaults.
+        const auto u32At = [&](size_t at) {
+            uint32_t v;
+            std::memcpy(&v, &join.bytes[at], 4);
+            return v;
+        };
+        // Ruling 2 step 12: the generator replaces the 1.5 products and sets the type-44 models.
+        check(u32At(0x70) == 0x3f75c290 && u32At(0x74) == 0x3f75c290 && u32At(0x78) == 0x400a3d71,
+              "join box is the generator's 0.96, 0.96, 2.16 bits");
+        const auto u16At = [&](size_t at) {
+            uint16_t v;
+            std::memcpy(&v, &join.bytes[0x68 + at], 2);
+            return v;
+        };
+        check(u16At(0x14) == 0x000a && u16At(0x16) == 0xffff && u16At(0x18) == 0x01ae && u16At(0x1a) == 0x01b0 &&
+                  u16At(0x1c) == 0x0000 && u16At(0x1e) == 0xffff && u16At(0x20) == 0xffff && u16At(0x22) == 0xffff,
+              "type-44 appearance models; the later selectors keep their defaults");
+        check(std::bit_cast<uint32_t>(std::bit_cast<float>(0x3fe66666u) * 1.5f) == 0x402ccccc,
+              "the dead 1.5 height product rounds to even");
+        bool blockLevels = true;
+        for (size_t slot = 0; slot < 13; slot++) {
+            uint16_t level;
+            std::memcpy(&level, &join.bytes[0x2f0 + 0x118 * slot + 0x10], 2);
+            blockLevels &= level == 0;
+        }
+        check(blockLevels && join.fighter().held.level == 1,
+              "the join reset zeroes every block item's level; the standalone item keeps level 1");
+        check(join.health() == 100.f && u32At(0x54) == 0x2c, "join health and type 0x2C");
+        // Everything outside the join's assignments keeps the construction defaults.
+        const CreatureRecord base = CreatureRecord::nativeDefaults();
+        const auto joinWritten = [](size_t at) {
+            return at < 0x18 || (at >= 0x50 && at < 0x58) || (at >= 0x70 && at < 0x86) ||
+                   (at >= 0x130 && at < 0x131) || (at >= 0x15c && at < 0x160) || (at >= 0x1b0 && at < 0x1c8) ||
+                   (at >= 0x2f0 && at < 0x1128);
+        };
+        bool kept = true;
+        for (size_t at = 0; at < CreatureRecord::SIZE; at++)
+            kept &= joinWritten(at) || join.bytes[at] == base.bytes[at];
+        check(kept, "join keeps construction defaults (-3000, multipliers, -1 words, appearance) elsewhere");
+        bool block = true;
+        for (size_t at = 0x2f0; at < 0x1128; at++) {
+            const size_t item = (at - 0x2f0) % 0x118, slot = (at - 0x2f0) / 0x118;
+            const bool selected = (slot == 6 || slot == 7) && (item == 0 || item == 1 || item == 0x0d);
+            block &= selected || join.bytes[at] == 0;
+        }
+        check(block, "only the two selected block items carry nonzero bytes");
+        // The health query sees the construction controller 3 and class 0 with a zeroed block.
+        CreatureRecord queried = base;
+        std::memset(&queried.bytes[0x2f0], 0, 0x1128 - 0x2f0);
+        const auto queryFighter = queried.fighter();
+        check(queryFighter.controller == 3 && queryFighter.characterClass == 0 &&
+                  creatures::maxHealth(queryFighter) == join.health(),
+              "the kept join health equals the engine query under the controller-3 state");
+    }
+    // Creature-state defaults contract: construction defaults and codec groups.
+    {
+        const CreatureRecord d = CreatureRecord::nativeDefaults();
+        const auto u32At = [&](size_t at) {
+            uint32_t v;
+            std::memcpy(&v, &d.bytes[at], 4);
+            return v;
+        };
+        check(d.bytes[0x50] == 3 && d.bytes[0x51] == 0 && d.bytes[0x52] == 0 && d.bytes[0x53] == 0,
+              "one-byte controller default 3");
+        check(u32At(0x15c) == 0x43fa0000 && u32At(0x11c) == 0xfffff448 && u32At(0x168) == 0x42c80000 &&
+                  u32At(0x180) == 1 && u32At(0x19c) == 0xffffffff,
+              "health 500, -3000, multiplier 100, level 1, -1");
+        check(u32At(0x1a0) == 0xffffffff && u32At(0x1a4) == 0xffffffff && u32At(0x1a8) == 0 &&
+                  u32At(0x1cc) == 0xffffffff && u32At(0x1d0) == 0xffffffff && u32At(0x1d4) == 0,
+              "two three-word groups -1, -1, 0");
+        check(u32At(0x68) == 0xffff0000 && d.bytes[0x6c] == 0xff && u32At(0x68 + 0x24) == 0x3f8147ae,
+              "appearance leading bytes 00 00 FF FF FF");
+        bool items = true;
+        for (size_t base : {size_t(0x1d8), size_t(0x2f0)})
+            for (size_t slot = 0; slot < (base == 0x1d8 ? 1u : 13u); slot++) {
+                uint16_t level;
+                std::memcpy(&level, &d.bytes[base + 0x118 * slot + 0x10], 2);
+                items &= level == 1;
+            }
+        check(items, "all fourteen constructed items have level 1");
+        // Shared writer/reader order: ascending, but 0x1CC before 0x1C8 and trailing name,
+        // eleven words, 0x1154; the 0x1B0 group is coded like the position.
+        check(CREATURE_FIELDS[0].offset == 0x000 && CREATURE_FIELDS[40].offset == 0x1b0 &&
+                  CREATURE_FIELDS[40].size == CREATURE_FIELDS[0].size &&
+                  CREATURE_FIELDS[40].kind == CREATURE_FIELDS[0].kind && CREATURE_FIELDS[41].offset == 0x1cc &&
+                  CREATURE_FIELDS[42].offset == 0x1c8 && CREATURE_FIELDS[44].size == 0xe38 &&
+                  CREATURE_FIELDS[45].offset == 0x1158 && CREATURE_FIELDS[46].offset == 0x1128 &&
+                  CREATURE_FIELDS[47].offset == 0x1154,
+              "codec group order");
+        // One mask bit per group; an absent group keeps the seeded value.
+        CreatureRecord sent = d;
+        sent.bytes[0x1c8] = 7;
+        const int32_t talkX = 9;
+        std::memcpy(&sent.bytes[0x1cc], &talkX, 4);
+        CreatureRecord seeded = d;
+        const auto id = applyDelta(encodeDelta(5, sent, uint64_t(1) << 42), seeded);
+        check(id && *id == 5 && seeded.bytes[0x1c8] == 7 && std::memcmp(&seeded.bytes[0x1cc], &d.bytes[0x1cc], 12) == 0,
+              "bit 42 carries the 0x1C8 byte only");
     }
     // Transport §4: a failed inflate keeps the output produced before the failure.
     {

@@ -1,6 +1,8 @@
 # Alpha resident buff records and replication — independent recovery
+**FINAL / STABLE / HELD**
 
-Disposition: **FINAL / STABLE / HELD**. Authored 2026-11-08. This is a bounded,
+Disposition: held. Authored 2026-11-08; re-certified against the original
+images on 2026-11-20 (see the final section). This is a bounded,
 code-free behavioral contract recovered independently from original Alpha
 evidence. It is not a claim that all buff-producing abilities or every network
 failure case have been recovered.
@@ -68,6 +70,12 @@ operation. Appending preserves the supplied record bytes and increments the
 resident count. There is no type-range validation or source-based merge in
 this operation. [C2, C4]
 
+The append path checks the resident count against **0x7fffffe** before
+incrementing it; at that count the original raises a non-returning
+"list too long" length failure instead of appending. The 40-byte event lists
+use the corresponding limit **0x5555554**. These are container limits, not
+buff semantics. [C4, C11]
+
 Neither an incoming record with zero or negative remaining time nor a zero
 magnitude is an immediate deletion instruction to this operation. The record
 is first replaced or appended by the rules above. Its later lifetime follows
@@ -94,18 +102,32 @@ A creature reset also clears the entire resident list and sets its count to
 zero. The cited reset operation is broader than buff expiry and is not an
 incoming buff-event operation. [C8]
 
-Two type-specific update facts are established here because they use the
-embedded source and the signed clock:
+The following type-specific update facts are established here because they use
+the embedded source and the signed clock. Type-specific work is performed only
+for entries that are still active after their subtraction; an entry scheduled
+for removal receives no type work in that visit.
 
-- An active type 1 entry clears the creature's positive `+0x12c` timer.
+- An active type 1 entry sets the creature's signed 32-bit `+0x12c` timer to
+  zero when that timer is greater than zero. After the resident traversal and
+  removal pass, the same routine subtracts the same update delta from
+  `+0x12c`; a timer cleared this way therefore ends that update at minus the
+  delta.
 - An active type 4 entry can cause periodic work only when world byte
-  `+0xb4` is zero. The previous and new remaining times are compared after
+  `+0xb4` is zero. The previous remaining time (the new value plus the delta,
+  in 32-bit integer arithmetic) and the new remaining time are compared after
   signed integer division by **400**, truncating toward zero. A changed
   quotient causes one call to the combat-resolution path during that visit,
   even if the delta crosses several such boundaries. That call resolves the
-  source using the record's embedded ID at `+0x10`, and uses the record's
-  binary32 value at `+0x04`. A missing source lookup is passed as an absent
-  source; it does not rewrite the stored ID or itself delete the record.
+  source using the record's embedded ID at `+0x10`, passes the owning creature
+  as the affected creature, and uses the record's binary32 value at `+0x04`.
+  A missing source lookup is passed as an absent source; it does not rewrite
+  the stored ID or itself delete the record.
+- The combat-resolution entry can consume C-runtime random draws. When it
+  passes its entry gates with an absent source, it makes one random draw whose
+  result is not used by that branch and sets the affected creature's binary32
+  field `+0x1184` to `0.5` before continuing. Other branches of that entry make
+  further draws; their complete sequence is not specified here. A type 4
+  periodic call therefore participates in the global random-draw order.
 
 These observations do not assign descriptive names to all type IDs or specify
 the complete combat outcome. They establish clock, identity, and ownership
@@ -137,11 +159,15 @@ creature's ID while the supplied embedded source is copied unchanged. A
 self-applied record can therefore have a nonzero outer source and an embedded
 source of zero. [C12]
 
-The original type 11 self-application example supplies 30000 remaining time
-and a zero embedded source, applies it to the creature, and emits the same
-record with both outer IDs set to that creature. This independently
-demonstrates why substituting the outer source would change resident state.
-[C13]
+The original type 11 self-application example runs only when the creature's
+32-bit field `+0x128` is nonzero, its byte `+0x140` equals 4 and its byte
+`+0x141` equals 1. It supplies a zero binary32 value, 30000 remaining time and
+a zero embedded source, applies it to that creature through the ordinary
+application operation, and appends the same record to the supplied
+aggregate's buff-event list with both outer IDs set to that creature. Only the
+type byte and the semantic fields are written; the record's alignment bytes
+are not initialized by this producer. This independently demonstrates why
+substituting the outer source would change resident state. [C13]
 
 A distinct combat producer appends a type 4 resident record with 3000
 remaining time, a value equal to the resolved magnitude at that point
@@ -152,12 +178,37 @@ This path appends the resident record directly. It does not first make type 4
 unique. This is evidence of one producer, not a complete contract for the
 ability that reaches it. [C14]
 
-The traced type 6 magnitude-depletion paths modify the resident value and set
-its remaining time to zero when depleted, then emit the updated complete
-record. They retain the record's embedded source when wrapping it in a new
-event. The resulting event can replace a resident type 6 record with a
-zero-time record; ordinary expiry removes that entry on a later update.
-[C15]
+Two type 6 magnitude-depletion paths were traced. Both visit **every** type 6
+entry of the affected creature's resident list in forward order (not only the
+first). For each such entry they subtract an incoming hit magnitude (binary32
+at hit `+0x10`) from the record's binary32 value and store the result. If the
+result is zero or less, both the value at `+0x04` and the remaining time at
+`+0x08` are then set to zero; a NaN result is stored unchanged and is not
+treated as depleted. Each visited type 6 entry, depleted or not, is then
+wrapped in a new 40-byte event carrying a copy of the complete updated record,
+including its embedded source and alignment bytes. [C15]
+
+- **Combat path.** Within the damage-application routine, this branch is
+  reached only inside that routine's ownership gate (world byte `+0xb4` zero,
+  or the affected creature is the designated local creature), when the hit's
+  magnitude is greater than zero and the hit's kind byte at `+0x45` equals 5.
+  The event's outer source and outer target are copied from the hit's own
+  source and target IDs (hit `+0x00` and `+0x08`). It is appended to the
+  routine's outgoing aggregate's buff-event list.
+- **Client local-player path.** The client main update walks application list
+  `+0x800630`. For an entry whose target ID (at `+0x08`) resolves to the
+  client player and whose kind byte `+0x45` equals 5, it performs the
+  depletion over the client player's resident list without a
+  positive-magnitude test. Both outer IDs of each event equal the client
+  player's ID. The events are appended to the main update's generated
+  aggregate, whose buff list is the one later filtered for transmission, so
+  they pass the outer-source filter described below.
+
+On a receiver, each such event is applied by the ordinary operation: because
+type 6 is a first-match replacement type, every one of several type 6 wrappers
+for one target overwrites that target's **first** type 6 entry in turn. A
+zero-time record is removed by the next resident traversal that reaches it
+with a non-negative delta. [C4, C15]
 
 ## Applying received events and ownership
 
@@ -181,7 +232,7 @@ The relevant world fields have these established relationships:
 | World state | Established behavior at this boundary |
 | --- | --- |
 | Byte `+0xb4 == 0` | The active type 4 periodic path may run. |
-| Byte `+0xb4 != 0` | That periodic type 4 path is suppressed. The world input path also clears the outgoing buff-event list after applying a nonempty incoming buff list. |
+| Byte `+0xb4 != 0` | That periodic type 4 path is suppressed. When the world update receives an input aggregate, a nonempty incoming hit list first causes the outgoing aggregate's hit list (`+0x00`) to be cleared before the hits are processed, and a nonempty incoming buff list causes the outgoing buff-event list (`+0x58`) to be cleared after all incoming buff events have been applied. That buff clear discards every outgoing buff event present at that moment, including type 6 wrappers emitted by the hit processing earlier in the same update. |
 | Pointer `+0xb8` | The designated local creature; client setup and connection paths assign the client player here. |
 
 The client's world begins at application `+0x2e4`, so world byte `+0xb4`
@@ -241,10 +292,19 @@ The client sender snapshots that queue under the world protection scope and
 clears the original pending queue. For each event in the copied queue, it sends
 a 4-byte little-endian packet identifier **8**, then the raw **40-byte event**.
 This single-event packet has no list-count prefix. Both IDs and the embedded
-record are carried without modification. [N2]
+record are carried without modification. Within one send cycle, the buff
+packets follow every packet-7 (72-byte hit) packet taken from the same snapshot
+and precede the packet-9 (112-byte) packets. A send call returning the socket
+error value skips the remaining event sends of that cycle and transfers to the
+sender's error handling, which is not further specified here. [N2]
 
-The original server's packet-8 receiver reads 40 payload bytes and appends the
-event to the server's incoming buff-event queue under world protection. That
+The original server's packet-8 receiver first zeroes the temporary event's
+embedded type, value, remaining time and source (not its outer IDs or
+alignment bytes), receives up to 40 payload bytes, and appends the event to the
+server's incoming buff-event queue under world protection. A receive error
+ends the connection's receive processing without appending; an end-of-stream
+result before all 40 bytes arrive leaves the receive loop and still appends the
+partially received event. That
 branch does not rewrite the outer source or embedded source from the
 connection's own ID. It does not itself apply the event to a creature. The
 server update drains the incoming queue into an input aggregate and the world
@@ -265,10 +325,13 @@ It copies events already present in the **outgoing** aggregate; this fact alone
 does not establish automatic relay of every client-originated input event.
 [N4]
 
-The per-connection sender snapshots its aggregate, clears the pending lists,
-serializes the aggregate in its fixed channel order, compresses the resulting
-buffer, then sends packet identifier **4**, a 4-byte compressed-byte length,
-and that many compressed bytes. The buff channel is encoded as the count and
+The per-connection sender snapshots its aggregate and clears the pending lists
+while holding the world protection (the snapshot itself also inside the
+connection's own protection). It then sends the 4-byte packet identifier
+**4**, serializes the snapshot in its fixed channel order, compresses the
+resulting buffer, and sends a 4-byte compressed-byte length followed by that
+many compressed bytes. The on-wire order is therefore identifier, length,
+compressed bytes. The buff channel is encoded as the count and
 40-byte event list described above. It follows the two 24-byte channels at
 aggregate `+0x48` and `+0x50` and precedes the `+0x60` channel. [S1, S3, N5]
 
@@ -314,9 +377,16 @@ simulation calls occur before the pending network buff consumer, so records
 newly applied by that consumer are not decremented by those already completed
 simulation calls. These are path-order facts, not a latency guarantee. [T1]
 
-The client main update subdivides a positive frame interval greater than 20
-into 20-millisecond world updates followed by the remainder. The buff timer
-consumes the individual update delta it receives. No claim that all server
+The client main update compares its signed frame interval `n` with 20. If
+`n` is 20 or less (including zero or negative), it makes one world update with
+delta `n`. Otherwise it makes `k = floor((n - 21) / 20) + 1` world updates of
+delta 20 and then one final update of delta `n - 20k`, which always lies in
+1 through 20; for example 40 yields 20 then 20, and 41 yields 20, 20, then 1.
+These client simulation calls pass the main update's generated aggregate as
+the outgoing aggregate and **no input aggregate**, so the world input hit and
+buff loops do not run in them; received network buff events reach client
+creatures only through the pending-network consumer. The buff timer consumes
+the individual update delta it receives. No claim that all server
 steps are fixed at 20 milliseconds follows: the standalone server loop passes
 its measured elapsed interval to its world update. [T1, T2]
 
@@ -338,8 +408,15 @@ paths, not every save or persistence format in Alpha. [C1, P1, P2]
 
 The positive-count, complete-payload codec behavior above is established.
 There is no transactional malformed-input contract in the original list
-readers. If the count field or a declared payload is truncated, the reader can
-advance its cursor to the buffer end and still continue toward insertion. The
+readers. Each reader requires the cursor plus 4 to be no greater than the
+buffer size before reading the count. If that check fails, the cursor is set
+to the buffer end and the loop bound is **not** a decoded count: it is an
+unrelated machine value (the address of the reader's buffer-state object,
+treated as a signed integer). When that value is positive, the reader performs
+that many failed payload reads and appends one entry per iteration until the
+loop ends or the container's length limit raises its non-returning length
+failure; no stable result follows. If a declared payload is truncated, the
+cursor is set to the buffer end and the entry is still appended. The
 24-byte reader's temporary payload is not freshly initialized for each failed
 read. The event reader initializes semantic embedded fields but does not
 initialize both outer IDs or every alignment byte before a failed full copy.
@@ -368,6 +445,12 @@ The following dependencies remain deliberately unclaimed:
 - A canonical semantic interpretation of record alignment bytes, a complete
   thread scheduling order across concurrent producers, or a native guarantee
   for malformed network traffic.
+- Whether the client main update's pending-network buff consumer and its
+  later clear of `+0x800688` run inside the world protection scope. The main
+  update contains world protection entries and exits, but their control-flow
+  pairing around that consumer was not established.
+- The meaning of hit kind byte values 4 and 5 and of application list
+  `+0x800630` beyond the field uses stated above.
 
 ## Original evidence index
 
@@ -383,26 +466,26 @@ inference is incomplete.
 | C3 | `decompiled/client/functions/0042c520.c`, RVA `0x2c520`: record semantic-field initialization. `decompiled/client/functions/0043b660.c`, RVA `0x3b660`: event embedded-field initialization. |
 | C4 | `decompiled/client/functions/00446af0.c`, RVA `0x46af0`; `decompiled/client/assembly.txt`, RVAs `0x46af0`–`0x46ba7`: exact replacement-type comparisons, full overwrite, tail append and count. Companion server `decompiled/server/functions/00411740.c`, RVA `0x11740`. |
 | C5 | `decompiled/client/functions/00443f10.c`, RVA `0x43f10`: first-type lookup. |
-| C6 | `decompiled/client/assembly-functions/0060c510.asm`, routine RVA `0x20c510`, instructions RVAs `0x2120e8`–`0x212163` and `0x218310`–`0x2184c2`: signed countdown, active type work, deferred expiry. Companion server `decompiled/server/assembly-functions/005322d0.asm`, routine RVA `0x1322d0`. |
+| C6 | `decompiled/client/assembly-functions/0060c510.asm`, routine RVA `0x20c510`, instructions RVAs `0x2120e8`–`0x212163` and `0x218310`–`0x2184c2`: signed countdown, active type work, deferred expiry; RVAs `0x2184c2`–`0x2184ce`: post-traversal `+0x12c` decrement. Companion server `decompiled/server/assembly-functions/005322d0.asm`, routine RVA `0x1322d0`. |
 | C7 | `decompiled/client/assembly.txt`, RVA `0x77c60`: resident unlink; RVAs `0x218470`–`0x2184c0`: collected-node removal order. `binary/Cube.exe`, RVA `0x77c90`, file offset `0x77090`: directly checked resident count decrement after deletion. Both the C export and assembly export omit that post-deletion segment. |
 | C8 | `decompiled/client/functions/00446330.c`, RVA `0x46330`; `decompiled/client/assembly.txt`, RVAs `0x4657f`–`0x465b9`: resident reset clear. |
-| C9 | `decompiled/client/functions/00596d30.c`, RVA `0x196d30`: combat entry's target-health/local-mode gates and absent-source branch. `decompiled/client/functions/00595a60.c`, RVA `0x195a60`: separate damage-application ownership gate. |
+| C9 | `decompiled/client/functions/00596d30.c`, RVA `0x196d30`: combat entry's target-health/local-mode gates and absent-source branch (one discarded random draw, `+0x1184` set to `0.5`). `decompiled/client/assembly.txt`, RVAs `0x218362`–`0x2183da`: periodic call arguments. `decompiled/client/functions/00595a60.c`, RVA `0x195a60`: separate damage-application ownership gate. |
 | C10 | `decompiled/client/functions/00466880.c`, RVA `0x66880`: event aggregate slot `+0x58`. `decompiled/client/functions/0046d850.c`, RVA `0x6d850`: 48-byte event node. |
 | C11 | `decompiled/client/functions/00451c70.c`, RVA `0x51c70`: full 40-byte copy. `decompiled/client/functions/004460a0.c`, RVA `0x460a0`: ordered event append. |
 | C12 | `decompiled/client/functions/005957c0.c`, RVA `0x1957c0`: apply supplied record, then self-source/self-target wrapper without embedded-source replacement. |
-| C13 | `decompiled/client/functions/0043cf20.c`, RVA `0x3cf20`: type 11 self example, 30000 time, zero embedded source. |
+| C13 | `decompiled/client/functions/0043cf20.c`, RVA `0x3cf20`: type 11 self example, 30000 time, zero value and embedded source; `decompiled/client/assembly.txt`, RVAs `0x3cf29`–`0x3cfd8`: gating bytes and the application target. |
 | C14 | `decompiled/client/functions/00596d30.c`, RVA `0x196d30`; `decompiled/client/assembly.txt`, RVAs `0x1980c8`–`0x198197`: direct type 4 append and event copy. `binary/Cube.exe`, constant RVA `0x2fcb7c`, file offset `0x2fbb7c`: directly checked binary32 multiplier `0x3dcccccd`. |
-| C15 | `decompiled/client/functions/00595a60.c`, RVA `0x195a60`, type 6 depletion portion; `decompiled/client/assembly.txt`, RVAs `0x195f05`–`0x195fc1` and `0x900d0`–`0x90182`: resident mutation and preserved-record wrapper. |
+| C15 | `decompiled/client/functions/00595a60.c`, RVA `0x195a60`, type 6 depletion portion; `decompiled/client/assembly.txt`, RVAs `0x195eed`–`0x195fc1` and `0x900d0`–`0x90182`: gates, all-type-6 iteration, value and time zeroing, preserved-record wrapper and outer IDs. `decompiled/client/assembly-functions/00488ee0.asm`, RVAs `0x8ff10`–`0x8ff7f` and `0x90081`–`0x90089`: client list `+0x800630`, player-target and kind-5 selection. `decompiled/client/assembly-functions/00488ee0.asm`, RVAs `0x8cf20`–`0x8cf49` and `0x9c0f4`–`0x9c103`: the same generated aggregate is simulated into and filtered. |
 | C16 | `decompiled/client/assembly-functions/0060c510.asm`, RVAs `0x20cdd2`–`0x20ceaa`; `decompiled/client/assembly-functions/00488ee0.asm`, RVAs `0x8fcb8`–`0x8fd6c` and `0x9063b`–`0x90641`. Companion server `decompiled/server/assembly-functions/005322d0.asm`, RVAs `0x132b92`–`0x132c6a`: target lookup and record application. |
-| C17 | `decompiled/client/functions/0046fc50.c`, RVA `0x6fc50`: application connection byte `+0x398`, world at `+0x2e4`, local player assignment `+0x39c`. `decompiled/client/assembly.txt`, RVA `0x87e90`: local-pointer setter. `decompiled/client/assembly.txt`, RVAs `0x20ce93`–`0x20cea5`: world-mode outgoing-list clear. |
+| C17 | `decompiled/client/functions/0046fc50.c`, RVA `0x6fc50`: application connection byte `+0x398`, world at `+0x2e4`, local player assignment `+0x39c`. `decompiled/client/assembly.txt`, RVA `0x87e90`: local-pointer setter. `decompiled/client/assembly.txt`, RVAs `0x20ce93`–`0x20cea5`: world-mode outgoing buff-list clear; RVAs `0x20cd1f`–`0x20cd4b`: absent input aggregate skip and world-mode outgoing hit-list clear. |
 | S1 | `decompiled/server/functions/00421c60.c`, RVA `0x21c60`: count plus ordered 24-byte payloads. `decompiled/server/functions/004219c0.c`, RVA `0x219c0`: count plus ordered 40-byte events. |
-| S2 | `decompiled/client/functions/00457f70.c`, RVA `0x57f70`; `decompiled/client/functions/00458030.c`, RVA `0x58030`; `decompiled/client/assembly.txt` at those RVAs: signed count, append and truncation paths. |
+| S2 | `decompiled/client/functions/00457f70.c`, RVA `0x57f70`; `decompiled/client/functions/00458030.c`, RVA `0x58030`; `decompiled/client/assembly.txt` at those RVAs, in particular `0x57f86`–`0x57fa2` and `0x58046`–`0x58062`: signed count, the non-data loop bound on a truncated count, append and truncation paths. |
 | S3 | `decompiled/server/functions/00423dd0.c`, RVA `0x23dd0`: aggregate writer channel order. `binary/Cube.exe`, RVAs `0x6ce91`–`0x6ced8`: directly decoded matching reader tail. |
 | N1 | `decompiled/client/assembly-functions/00488ee0.asm`, RVAs `0x9c0f4`–`0x9c1a3`: outer-source/player-ID filter and outgoing buff queue append. |
-| N2 | `decompiled/client/functions/00469c10.c`, RVA `0x69c10`; `decompiled/client/assembly.txt`, RVAs `0x6a153`–`0x6a1b1`: queue snapshot/clear and packet 8 sends. |
-| N3 | `decompiled/server/functions/00426020.c`, RVA `0x26020`, packet 8; `decompiled/server/functions/00411040.c`, RVA `0x11040`: complete event queue append. `decompiled/server/functions/00428170.c`, RVA `0x28170`: incoming event drain. |
+| N2 | `decompiled/client/functions/00469c10.c`, RVA `0x69c10`; `decompiled/client/assembly.txt`, RVAs `0x69cdb`–`0x69d14`: world protection and queue snapshot; RVAs `0x6a0ed`–`0x6a1b1`: packet 7 then packet 8 sends and error exits. |
+| N3 | `decompiled/server/functions/00426020.c`, RVA `0x26020`, packet 8 (receive loop, error and end-of-stream exits); `decompiled/server/functions/004063d0.c`, RVA `0x63d0`: temporary event embedded-field initialization; `decompiled/server/functions/00411040.c`, RVA `0x11040`: complete event queue append. `decompiled/server/functions/00428170.c`, RVA `0x28170`: incoming event drain. |
 | N4 | `decompiled/server/functions/004272d0.c`, RVA `0x272d0`, buff-list distribution portion; `decompiled/server/functions/00420bb0.c`, RVA `0x20bb0`: ordered complete event-list copying. |
-| N5 | `decompiled/server/functions/00423dd0.c`, RVA `0x23dd0`; `decompiled/server/functions/00423400.c`, RVA `0x23400`: per-connection aggregate snapshot. `decompiled/server/functions/00412c70.c`, RVA `0x12c70`; `decompiled/server/functions/00412d00.c`, RVA `0x12d00`: compression wrapper and compression call. |
+| N5 | `decompiled/server/functions/00423dd0.c`, RVA `0x23dd0`: world protection around snapshot and clears, packet identifier 4 sent before serialization and compression, then length and bytes; `decompiled/server/functions/00423400.c`, RVA `0x23400`: per-connection aggregate snapshot. `decompiled/server/functions/00412c70.c`, RVA `0x12c70`; `decompiled/server/functions/00412d00.c`, RVA `0x12d00`: compression wrapper and compression call. |
 | N6 | `binary/Cube.exe`, receiver RVA `0x6b740`, dispatch RVAs `0x6b8a7`–`0x6b8b7`, selector/table and packet body detailed above. `decompiled/client/functions/004494b0.c`, RVA `0x494b0`; `decompiled/client/functions/00449540.c`, RVA `0x49540`: expansion wrapper/body. `decompiled/client/functions/00486b60.c`, RVA `0x86b60`: receive helper. |
 | T1 | `decompiled/client/assembly-functions/00488ee0.asm`, RVAs `0x8cef4`–`0x8cf49`, then `0x8fd00`–`0x8fd2f`: client simulation subdivision and later network buff application. `decompiled/client/assembly-functions/0060c510.asm`, RVAs `0x20cd1f`–`0x20ceaa`, then `0x2120e8`: hit input, buff input, later resident traversal. |
 | T2 | `decompiled/server/functions/00549c50.c`, RVA `0x149c50`; `decompiled/server/assembly.txt`, RVAs `0x14a091`–`0x14a0ae`: measured server elapsed delta passed to world update. |
@@ -411,3 +494,89 @@ inference is incomplete.
 
 Author readback is required in full before the held handoff is reported. No
 further edits are authorized by this document's disposition alone.
+
+## Re-certification (2026-11-20)
+
+Every claim above was re-checked against the supported `binary/Cube.exe` and
+`binary/Server.exe` (both SHA-256 values re-verified unchanged) and their
+original decompilation/assembly exports. No reconstruction source, other
+specification, engine material or implementation history was consulted. This
+specification cites no other held specification, so no cross-specification
+comparison was required and no conflict is recorded.
+
+Claims confirmed without change include: resident list offsets and node size,
+the 24-byte record layout and initializer, first-type lookup, the exact
+replacement-type set {1, 2, 3, 6, 7, 9, 10, 11} with full in-place overwrite,
+tail append, signed 32-bit countdown with `> 0` active test, deferred removal
+pass and post-unlink count decrement (image bytes at RVA `0x77c90`), reset
+clear, signed division by 400, the 40-byte event layout, the self-application
+wrapper, the type 4 producer (3000 time, `0x3dcccccd` multiplier, actor
+embedded source), target-only lookup in both application loops, the client
+outer-source filter, packet-8 framing, server distribution without filters,
+the 24/40-byte codecs, the packet-4 dispatch and reader-call bytes, and the
+`0x1168`-byte core snapshot boundary.
+
+Corrections and additions:
+
+1. **Type 6 depletion (reversal of a partial claim).** Depletion sets both
+   the value and the remaining time to zero, not only the time; it iterates
+   every type 6 entry rather than one; it emits a wrapper for every visited
+   type 6 entry whether or not depleted; a NaN result is not treated as
+   depleted. Gates and outer-ID sources for the two paths were added. Evidence:
+   client RVAs `0x195eed`–`0x195fc1`, `0x900d0`–`0x90182`, `0x8ff10`–`0x8ff7f`.
+2. **Receiver effect of multiple type 6 wrappers.** Each overwrites the
+   target's first type 6 entry. Evidence: client RVA `0x46af0`.
+3. **Random-draw order (omission).** The combat entry reached by the type 4
+   periodic path consumes C-runtime random draws; its absent-source branch
+   makes one discarded draw and sets `+0x1184` to 0.5. Evidence: client RVA
+   `0x196d30`.
+4. **Type 1 timer follow-up (omission).** After the traversal the same delta
+   is subtracted from `+0x12c`, so a cleared timer ends at minus the delta.
+   Evidence: client RVAs `0x2183e1`–`0x2183f0`, `0x2184c2`–`0x2184ce`.
+5. **World-mode clears (omission).** With world `+0xb4` nonzero, a nonempty
+   incoming hit list clears the outgoing hit list before hits are processed,
+   and the post-application buff clear discards buff events already emitted in
+   that update, including hit-produced type 6 wrappers. Evidence: client RVAs
+   `0x20cd3d`–`0x20cd4b`, `0x20cdd2`–`0x20cea5`; `0x195a96`–`0x195a9c` for the
+   shared outgoing aggregate.
+6. **Client simulation subdivision (precision).** Exact count formula; the
+   final update is always 1–20; an interval of 20 or less, including
+   non-positive values, makes one update; the client simulation calls pass no
+   input aggregate. Evidence: client RVAs `0x8cef4`–`0x8cf49`, `0x20cd1f`–
+   `0x20cd28`.
+7. **Packet-4 send ordering (correction).** The identifier 4 is sent before
+   serialization and compression, not after compression; wire order is
+   unchanged. Snapshot and clears are under world protection. Evidence: server
+   RVA `0x23dd0` (identifier send preceding the channel writers and the
+   compression call).
+8. **Truncated count in list readers (correction of an understated limit).**
+   The loop bound on a truncated count is a non-data machine value, not a
+   cursor-derived count. Evidence: client RVAs `0x57f89`–`0x57f9d`,
+   `0x58049`–`0x5805d`.
+9. **Server packet-8 partial receive (precision).** Temporary event semantic
+   fields are zeroed first; end-of-stream mid-payload still appends; a receive
+   error does not. Evidence: server RVAs `0x63d0`, `0x26020` (packet-8 case).
+10. **Client send-cycle ordering (omission).** Packet-8 events follow packet-7
+    events and precede packet-9 events in each cycle; a socket-error send
+    leaves the cycle. Evidence: client RVAs `0x6a0ed`–`0x6a1b1`.
+11. **Container length limits (omission).** Resident list limit `0x7fffffe`,
+    event list limit `0x5555554`, each raising a non-returning length failure.
+    Evidence: client RVAs `0x46af0`, `0x460a0`, `0x58030`.
+12. **Type 11 example details (precision).** Zero value, creature-state gates
+    (`+0x128`, `+0x140`, `+0x141`) and uninitialized alignment bytes. Evidence:
+    client RVAs `0x3cf29`–`0x3cfd8`.
+13. **Type-specific work only for active entries; periodic call target
+    (precision).** Evidence: client RVAs `0x212149`–`0x21214b`,
+    `0x2183cc`–`0x2183da`.
+
+Remaining uncertainties:
+
+- Whether the client pending-network buff consumer runs inside world
+  protection (entries/exits exist in the main update; pairing not traced).
+- The identity of application list `+0x800630` and the meaning of hit kind
+  byte values 4 and 5 beyond their stated uses.
+- The full random-draw sequence of the combat-resolution entry and the
+  sender's error-handling continuation after a failed send.
+- Whether server world byte `+0xb4` is ever nonzero, and hence whether the
+  world-mode clears in correction 5 occur on the original server.
+- All previously listed unclaimed dependencies remain unclaimed.

@@ -2878,3 +2878,31 @@ exact whole-zone pass.
 All 60 serial CTests passed in 106.90 seconds. The production
 player/controller diagnostic and five actual client flows passed. Package
 inspection verified 36 hashes in 37 files. Revision 44 parsed all 87 links.
+
+## Class B re-certification, first batch (2026-11-21)
+
+BuffTests covers type-1 timer clears, expiring entries, mid-traversal
+appends, depletion over every type-6 entry with NaN retained, the receiver
+overwrite and signed list counts. NetTests covers partial socket reads, the
+48-group codec order, construction defaults and the join record (five
+discarded draws, height bits 0x400A3D71, type-44 appearance fields, item
+levels). SimulationFrameTests checks the update subdivision for intervals
+-40 through 1000. WorldgenTests compares rock color bit for bit against an
+independent reading of the held formulas across warmth, fire and height
+values including NaN and infinities. NoiseMathTests adds the cosine input
+classes, the default MXCSR on new threads and nearest integer conversion.
+ActionPhaseTests, ActorCreationTests, CreatureTests, FatalRecipientTests and
+RangedSchedulingTests cover the hit-input order, fallback flag terms, cap
+table, appearance descriptor, creation rejections, NaN-mana selection,
+native credit conversion, buff-9 consumption and charged launches.
+
+ZoneCompare of the retained native corpus again reports all 209 zones with
+all columns equal and 87,447,092 of 87,447,092 solid blocks equal. Stored
+air/water light matches in 42,240,313 of 42,336,200 cells, unchanged. The
+held light-propagation contract attributes the remainder to client mesh
+relighting, whose schedule is open. ZoneCompare `--grid` now also maps
+differing light cells.
+
+All 60 serial CTests passed in 106.87 seconds. The production
+player/controller diagnostic and five actual client flows passed. Package
+inspection verified 36 hashes in 37 files. Revision 45 parsed all 88 links.

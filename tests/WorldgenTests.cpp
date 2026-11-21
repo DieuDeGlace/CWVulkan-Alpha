@@ -127,8 +127,98 @@ static void checkOfflineBlueprint() {
           1, "an admitted anchor zone keeps placement records in append order");
 }
 
+// alpha-rock-color-precision.md written out with one binary32 rounding per step,
+// independently of Terrain::rock, for warmth a and fire s.
+static glm::vec3 contractRock(const World &world, int32_t x, int32_t y, int32_t z, float a, float s) {
+    const float n1 = noise((double)y * 0.1 + 98984.0, (double)z * 0.4);
+    const float n2 = noise((double)x * 0.1, (double)z * 0.4);
+    float tone = n1 + n2;
+    tone = tone * 0.5f;
+    tone = tone + 1.f;
+    tone = tone * 0.5f;
+    tone = tone * 160.f;
+    float red = 120.f, green = 120.f, blue = 130.f;
+    if (a < 0.5f) {
+        const float t = a * 2.f, rest = 1.f - t, shared = t * 160.f;
+        red = rest * 10.f + shared;
+        green = rest * 20.f + shared;
+        blue = rest * 50.f + t * 170.f;
+    } else if (a > 0.75f) {
+        const float t = (a - 0.75f) * 4.f, rest = 1.f - t;
+        const double second = (double)y * 0.001 + 123.0, first = (double)t * 0.001 + 6544.0;
+        const float upper = noise(first, second);
+        red = rest * 120.f + t * 200.f;
+        green = rest * 120.f + ((upper * 20.f) + 130.f) * t;
+        blue = rest * 130.f + t * 100.f;
+    }
+    const auto &o = world.offsets();
+    const float nb = noise((double)o[0x22c] + (double)x * 0.005, (double)o[0x230] + (double)y * 0.005);
+    const float zero = 0.f * 10.f;
+    const auto clampChannel = [](float v) { return v < 0.f ? 0.f : (v > 255.f ? 255.f : v); };
+    glm::vec3 out(clampChannel((tone + red) + zero), clampChannel((tone + green) + zero),
+                  clampChannel((tone + blue) + (nb + 1.f) * 10.f));
+    if (s > 0.f) {
+        const float m1 = noise((double)x * 0.05, (double)y * 0.05);
+        const float m2 = noise((double)x * 0.02, (double)y * 0.02);
+        float m = m1 * std::bit_cast<float>(0x3dcccccdu) + m2;
+        if (m > 1.f)
+            m = 1.f;
+        const float c = 1.f - std::fabs(m);
+        const float c5 = (((c * c) * c) * c) * c;
+        const float keep = 1.f - s;
+        const float tauR = c5 * 200.f + 10.f;
+        const float n3 = noise((double)x * 0.1, (double)y * 0.1);
+        const float tauG = ((n3 + 1.f) * c5) * 50.f + 10.f;
+        out = {out.r * keep + tauR * s, out.g * keep + tauG * s, out.b * keep + s * 10.f};
+    }
+    return out;
+}
+
+static void checkRockColourContract() {
+    World world(41);
+    Terrain terrain(world);
+    auto zone = std::make_shared<Zone>(128, 130);
+    const int32_t x = zone->originX() + 37, y = zone->originY() + 201;
+    const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+    const float warmths[] = {0.f, 0.3f, 0.4999999f, 0.5f, 0.6f, 0.75f, 0.7500001f, 0.9f, 1.f, 1.4f, nan, inf, -inf};
+    const float fires[] = {0.f, -0.25f, nan, 0.4f, 1.f, 1.5f};
+    const auto bitsEqual = [](float got, float want) {
+        return std::bit_cast<uint32_t>(got) == std::bit_cast<uint32_t>(want) || (std::isnan(got) && std::isnan(want));
+    };
+    for (int32_t z : {-20, 3, 77})
+        for (float a : warmths)
+            for (float s : fires) {
+                Column &column = zone->column(x, y);
+                column.warmth = a;
+                column.fire = s;
+                const glm::vec3 got = terrain.rock(x, y, z, zone.get());
+                const glm::vec3 want = contractRock(world, x, y, z, a, s);
+                const std::string what = "rock colour a=" + std::to_string(a) + " s=" + std::to_string(s) +
+                                         " z=" + std::to_string(z);
+                for (int i = 0; i < 3; i++)
+                    if (!bitsEqual(got[i], want[i]))
+                        same(got[i], want[i], what + " component " + std::to_string(i));
+                // Direct byte path: truncating CVTTSS2SI per component, low byte, red first.
+                const Block block = terrain.gapBlock(x, y, z, *zone);
+                const auto byteOf = [](float v) { return (uint8_t)scalars::truncate(v); };
+                same(block.r == byteOf(want.r) && block.g == byteOf(want.g) && block.b == byteOf(want.b), 1,
+                     what + " bytes");
+            }
+    // A NaN warmth keeps the middle bases; with no fire the output is finite.
+    zone->column(x, y).warmth = nan;
+    zone->column(x, y).fire = 0.f;
+    const glm::vec3 middle = terrain.rock(x, y, 3, zone.get());
+    same(std::isfinite(middle.r) && std::isfinite(middle.g) && std::isfinite(middle.b), 1, "NaN warmth keeps middle bases");
+    // A fire share above one is not clamped: the blend can leave 0..255 and bytes wrap.
+    zone->column(x, y).warmth = 0.6f;
+    zone->column(x, y).fire = 1.5f;
+    const glm::vec3 over = terrain.rock(x, y, 3, zone.get());
+    same(over.b < 0.f || over.r < 0.f || over.g < 0.f || over.b > 255.f, 1, "an unclamped s > 1 blend leaves the clamp range");
+}
+
 int main() {
     checkOfflineBlueprint();
+    checkRockColourContract();
     // Terrain §3.3 step 3: R adds t² · 0.05 (square first). At this seed-41 column the other
     // order rounds R one unit higher, which moves M, the rock cover and a ravine floor byte.
     {

@@ -134,16 +134,18 @@ bool Socket::send(const void *data, size_t size) {
     return true;
 }
 
-bool Socket::readExact(void *out, size_t size) {
+Socket::ReadEnd Socket::readUpTo(void *out, size_t size) {
     char *p = (char *)out;
     while (size > 0) {
         const int got = ::recv((SOCKET)handle, p, (int)size, 0);
-        if (got <= 0) // 0: the peer closed; treated as a disconnect (§5.3)
-            return false;
+        if (got == 0) // the peer closed (§5.3)
+            return ReadEnd::closed;
+        if (got < 0)
+            return ReadEnd::failed;
         p += got;
         size -= (size_t)got;
     }
-    return true;
+    return ReadEnd::complete;
 }
 
 } // namespace net

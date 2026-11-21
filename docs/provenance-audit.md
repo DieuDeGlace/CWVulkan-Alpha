@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-20 after batch 72 and the rulings. The 296 tracked contracts
-comprise 242 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 73 and the rulings. The 297 tracked contracts
+comprise 254 A, 38 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -143,6 +143,13 @@ Batch 71 covers `alpha-generation-worker-floating-point-controls.md`.
 Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 `alpha-column-initial-color-observation-boundaries.md` and
 `alpha-surface-cover-observation-boundaries.md`.
+Batch 73 re-certifies lpha-buff-record-replication-recovered.md,
+lpha-rock-color-precision.md, lpha-noise-cosine-numeric-contract.md,
+lpha-noise-cosine-boundary.md, lpha-floating-point-environment.md,
+lpha-common-hit-input-construction.md, lpha-client-primary-start-boundary.md,
+lpha-world-actor-creation.md, lpha-fatal-region-credit-order.md,
+lpha-ranged-audio-boundaries.md and lpha-network-creature-state-defaults.md,
+with the ruling lpha-rulings-creature-codec-and-join.md.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -158,7 +165,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-behavior-target-selection.md` | B | 78 | 0 |
 | `alpha-block-edits.md` | A | 688 | 1 |
 | `alpha-blueprint-zone-delivery.md` | A | 245 | 0 |
-| `alpha-buff-record-replication-recovered.md` | B | 414 | 2 |
+| `alpha-buff-record-replication-recovered.md` | A | 583 | 3 |
 | `alpha-camera-follow-collision.md` | A | 119 | 4 |
 | `alpha-camera-initial-state.md` | A | 227 | 1 |
 | `alpha-camera-ray-geometry.md` | A | 196 | 1 |
@@ -179,7 +186,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
 | `alpha-client-incoming-hit-mutations.md` | B | 102 | 2 |
 | `alpha-client-offline-projectile-lifecycle.md` | A | 164 | 0 |
-| `alpha-client-primary-start-boundary.md` | B | 186 | 3 |
+| `alpha-client-primary-start-boundary.md` | A | 221 | 3 |
 | `alpha-client-projectile-hit-call-boundary.md` | B | 117 | 3 |
 | `alpha-client-receiver-publication-locks.md` | B | 131 | 1 |
 | `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
@@ -196,7 +203,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-combat-stat-queries.md` | A | 294 | 0 |
 | `alpha-combat-terrain-lighting.md` | A | 183 | 0 |
 | `alpha-common-action-processing-state.md` | A | 141 | 0 |
-| `alpha-common-hit-input-construction.md` | B | 203 | 1 |
+| `alpha-common-hit-input-construction.md` | A | 226 | 1 |
 | `alpha-companion-direct-route-geometry.md` | A | 109 | 1 |
 | `alpha-connected-action-audio.md` | A | 315 | 0 |
 | `alpha-connected-actor-turn.md` | A | 463 | 0 |
@@ -240,9 +247,9 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-fatal-loot-branches.md` | A | 278 | 1 |
 | `alpha-fatal-object-association-producers.md` | A | 102 | 2 |
 | `alpha-fatal-object-descriptor-association.md` | A | 93 | 1 |
-| `alpha-fatal-region-credit-order.md` | B | 143 | 1 |
+| `alpha-fatal-region-credit-order.md` | A | 202 | 1 |
 | `alpha-fatal-world-drop-production.md` | A | 72 | 1 |
-| `alpha-floating-point-environment.md` | B | 272 | 1 |
+| `alpha-floating-point-environment.md` | A | 499 | 1 |
 | `alpha-forward-link-zero-gates.md` | A | 99 | 1 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
@@ -285,9 +292,9 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-net-packets.md` | A | 642 | 0 |
 | `alpha-net-server.md` | A | 501 | 0 |
 | `alpha-net-transport.md` | A | 450 | 8 |
-| `alpha-network-creature-state-defaults.md` | B | 140 | 1 |
-| `alpha-noise-cosine-boundary.md` | B | 118 | 2 |
-| `alpha-noise-cosine-numeric-contract.md` | B | 217 | 2 |
+| `alpha-network-creature-state-defaults.md` | A | 195 | 1 |
+| `alpha-noise-cosine-boundary.md` | A | 144 | 2 |
+| `alpha-noise-cosine-numeric-contract.md` | A | 240 | 2 |
 | `alpha-opaque-output-transfer-state.md` | A | 105 | 1 |
 | `alpha-objective-receipt-formatting-map-supplement.md` | A | 186 | 0 |
 | `alpha-objective-state-one-late-interaction.md` | A | 103 | 0 |
@@ -333,7 +340,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-projection-input-production.md` | A | 97 | 2 |
 | `alpha-protection-state-producers.md` | B | 107 | 1 |
 | `alpha-ranged-action-scheduling.md` | B | 135 | 2 |
-| `alpha-ranged-audio-boundaries.md` | B | 148 | 1 |
+| `alpha-ranged-audio-boundaries.md` | A | 180 | 1 |
 | `alpha-ray-launch-fields-reconciliation.md` | A | 66 | 0 |
 | `alpha-ray-post-hit-timing-evaluation.md` | A | 86 | 0 |
 | `alpha-recipe-grant-entry-boundary.md` | B | 86 | 1 |
@@ -342,7 +349,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
 | `alpha-rendering.md` | A | 1108 | 3 |
 | `alpha-riding-actor-step.md` | A | 203 | 1 |
-| `alpha-rock-color-precision.md` | B | 333 | 4 |
+| `alpha-rock-color-precision.md` | A | 495 | 5 |
 | `alpha-rulings-action-99-lens.md` | A | 141 | 0 |
 | `alpha-rulings-audio-ui-sounds.md` | A | 131 | 3 |
 | `alpha-rulings-beam-flag-strike-origin.md` | A | 117 | 1 |
@@ -353,6 +360,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-rulings-connected-melee-30-through-33-stats.md` | A | 217 | 0 |
 | `alpha-rulings-connected-melee-scalar-selectors.md` | A | 129 | 0 |
 | `alpha-rulings-corridor-third-line.md` | A | 120 | 0 |
+| `alpha-rulings-creature-codec-and-join.md` | A | 232 | 0 |
 | `alpha-rulings-formation-angle-box.md` | A | 81 | 1 |
 | `alpha-rulings-held-light-factor.md` | A | 88 | 0 |
 | `alpha-rulings-knockback-snap.md` | A | 80 | 0 |
@@ -416,7 +424,7 @@ Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
 | `alpha-water-material-contract.md` | B | 88 | 1 |
 | `alpha-water-projectile-contact-event.md` | B | 113 | 3 |
 | `alpha-weapon-attachment-poses.md` | A | 157 | 0 |
-| `alpha-world-actor-creation.md` | B | 199 | 0 |
+| `alpha-world-actor-creation.md` | A | 232 | 0 |
 | `alpha-world-call-phase-boundary.md` | A | 443 | 0 |
 | `alpha-world-creature-health-admission.md` | A | 84 | 0 |
 | `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |

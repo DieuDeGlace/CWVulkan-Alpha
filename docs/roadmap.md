@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Class B provenance, first batch: eleven held-but-unpinned contracts were
+  re-certified and pinned, with a ruling for the creature codec count and the
+  dedicated-server join record. Engine changes cover buff timers and events,
+  hit-input order, native truncating credit conversion, actor-creation draws
+  and the join record. 38 class B contracts remain.
+
 - [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
   first, as held. A private dedicated-server observation of the seed-41 test
   column traced the old one-byte rock-color discrepancy to that binary32

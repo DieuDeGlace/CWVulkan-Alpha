@@ -430,6 +430,88 @@ int main() {
               "resident haste uses integer level-half fallback and the separately rounded skill-plus-one factor");
     }
     {
+        // Common-hit re-certification: the unarmed flag terms skip the stored damage coefficient.
+        Combatant actor;
+        actor.multipliers[2] = 10;
+        actor.powerTier = 4; // rank power 2 at level 1, whose level power is 1
+        actor.appearanceFlags = 0x18;
+        actor.action = 1;
+        check(magicBase(actor) == 30.f && strikeBase(actor) == 30.f,
+              "bit-8 and bit-16 fallback terms are level x rank power only, accumulated after the coefficient term");
+        actor.appearanceFlags = 0x10;
+        check(magicBase(actor) == 26.f, "bit 16 contributes independently of bit 8");
+    }
+    {
+        // Critical draw, then the strength query's speed dependency, then the variation draw.
+        Combatant actor;
+        actor.action = 1;
+        actor.equipment[OFF_HAND] = actor.equipment[MAIN_HAND] = {3, FIST};
+        const auto saved = itemBonuses().speed;
+        std::vector<int> order;
+        itemBonuses().speed = [&](const Item &) { order.push_back(2); return 0.f; };
+        Body body, target;
+        target.position[0] = 65536;
+        int count = 0;
+        strikeInput(actor, body, target, [&] { order.push_back(++count == 1 ? 1 : 3); return 32767; });
+        itemBonuses().speed = saved;
+        check(order == std::vector<int>({1, 2, 2, 3}),
+              "the vector-strength speed query follows the critical draw and precedes the damage variation draw");
+    }
+    {
+        // Action 21 reads skill index 6 (+0x1150), with the level-half fallback for a zero rank.
+        Combatant actor;
+        actor.controller = 1;
+        actor.level = 4;
+        actor.powerTier = 2;
+        actor.action = 21;
+        actor.skills[5] = actor.skills[7] = 99;
+        Body body, target;
+        body.size = target.size = glm::vec3(2);
+        target.position[0] = 65536;
+        const float fallback = 30.f * (1.f - 1.f / (0.1f * 5.f + 1.f)) + 5.f;
+        const auto zeroRank = strikeInput(actor, body, target, [] { return 32767; });
+        check(zeroRank.knockBack.x == fallback && zeroRank.knockBack.z == .25f * fallback,
+              "action 21 strength uses the zero-rank fallback of skill index 6");
+        actor.skills[6] = 3;
+        const float stored = 30.f * (1.f - 1.f / (0.1f * 3.f + 1.f)) + 5.f;
+        const auto storedRank = strikeInput(actor, body, target, [] { return 32767; });
+        check(storedRank.knockBack.x == stored, "action 21 strength uses the stored skill-6 rank");
+        target.size = glm::vec3(8); // attacker size 2 is the dividend: root(2 / 8) = 0.5
+        const auto smaller = strikeInput(actor, body, target, [] { return 32767; });
+        check(smaller.knockBack.x == stored * .5f, "the size ratio divides the attacker's size by the target's");
+    }
+    {
+        // The combo-cap subtype table at 0x044D2C: 6 -> 60, 8 -> 80, 11/12/15/16/17 -> 20, else 50.
+        Combatant actor;
+        actor.appearanceFlags = 0x10;
+        for (int subtype = 0; subtype <= 20; subtype++) {
+            actor.equipment[MAIN_HAND] = {3, uint8_t(subtype)};
+            float expected = 50;
+            switch (subtype) {
+            case 6: expected = 60; break;
+            case 8: expected = 80; break;
+            case 11: case 12: case 15: case 16: case 17: expected = 20; break;
+            default: break;
+            }
+            check(comboMax(actor) == expected, "combo cap follows the weapon subtype table, flag 16 ignored when armed");
+        }
+        actor.equipment[MAIN_HAND] = {};
+        check(comboMax(actor) == 20, "a non-weapon main hand with flag 16 selects 20");
+        actor.appearanceFlags = 0;
+        check(comboMax(actor) == 50, "a non-weapon main hand without flag 16 selects 50");
+    }
+    {
+        Combatant actor;
+        actor.action = 1;
+        Body body, target;
+        check(!strikeInput(actor, body, target, [] { return 32767; }).area, "no charge and action 1: charge Boolean false");
+        actor.action = 11;
+        check(strikeInput(actor, body, target, [] { return 32767; }).area, "action 11 forwards a true charge Boolean");
+        actor.action = 1;
+        actor.spentPower = .25f;
+        check(strikeInput(actor, body, target, [] { return 32767; }).area, "a positive stored charge forwards true");
+    }
+    {
         Combatant actor;
         actor.action = 1;
         actor.combo = 1;

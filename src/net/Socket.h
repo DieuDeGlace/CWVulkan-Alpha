@@ -38,7 +38,11 @@ class Socket {
     bool send(const void *data, size_t size);
     bool send(const std::vector<uint8_t> &bytes) { return send(bytes.data(), bytes.size()); }
     bool sendU32(uint32_t v) { return send(&v, 4); }
-    bool readExact(void *out, size_t size);
+    // How a bounded read ended: every byte, the peer's end of stream (bytes
+    // already received stay in `out`), or a socket error.
+    enum class ReadEnd { complete, closed, failed };
+    ReadEnd readUpTo(void *out, size_t size);
+    bool readExact(void *out, size_t size) { return readUpTo(out, size) == ReadEnd::complete; }
     bool readU32(uint32_t &v) { return readExact(&v, 4); }
 
   private:

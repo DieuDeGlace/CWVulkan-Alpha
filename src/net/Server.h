@@ -72,8 +72,10 @@ nextZoneToGenerate(const std::vector<std::pair<int32_t, int32_t>> &requests,
 // Net server §4.1: two creature positions' squared distance in blocks, each axis's difference
 // converted to single precision and scaled by 1/65,536. An NPC is skipped above 40,000.
 float creatureDistanceSquared(const std::array<int64_t, 3> &a, const std::array<int64_t, 3> &b);
-// Net server §3.1: the record a joining player is given (`spawnX/Y`: the engine's --spawn).
-CreatureRecord newPlayerRecord(int32_t spawnX = 0, int32_t spawnY = 0);
+// Net server §3.1: the record a joining player is given (`spawnX/Y`: the engine's --spawn):
+// the construction defaults with the held join overrides (creature-state-defaults contract,
+// creature-codec-and-join rulings). The appearance generator takes five draws from `draw`.
+CreatureRecord newPlayerRecord(const std::function<int()> &draw, int32_t spawnX = 0, int32_t spawnY = 0);
 
 struct ServerOptions {
     uint32_t seed = 0;

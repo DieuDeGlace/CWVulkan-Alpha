@@ -52,6 +52,19 @@ int main() {
             });
         check(seen == expected && inputs == 1, "signed durations retain exact piece count/order and final-call boundary");
     }
+    for (int32_t n = -40; n <= 1000; n++) { // k = floor((n - 21) / 20) + 1 updates of 20, then n - 20k
+        std::vector<int32_t> pieces;
+        simulation::clientFrame(n, true, pieces, [](int32_t elapsed, auto &out) { out.push_back(elapsed); },
+                                [](auto &) {});
+        const int32_t k = n <= 20 ? 0 : (n - 21) / 20 + 1;
+        bool exact = pieces.size() == size_t(k) + 1 && pieces.back() == n - 20 * k;
+        for (int32_t i = 0; i < k; i++)
+            exact = exact && pieces[size_t(i)] == 20;
+        if (!exact || (n > 20 && (pieces.back() < 1 || pieces.back() > 20))) {
+            check(false, "client subdivision follows the held closed-form count with a final 1..20 piece");
+            break;
+        }
+    }
     {
         std::vector<int> events{3};
         int calls = 0, inputs = 0;

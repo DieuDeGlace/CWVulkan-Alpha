@@ -1,6 +1,8 @@
 # Alpha bounded cosine numeric contract
 
-Status: **FINAL / STABLE / HELD**. Source-author freeze: 2026-11-08.
+**FINAL / STABLE / HELD**
+
+Source-author freeze: 2026-11-08; re-certified 2026-11-20.
 
 This contract determines the scalar binary64 output of the identified original Alpha cosine import for every finite binary64 input whose magnitude does not exceed the client constant with bits `0x400921FB5A7ED197`, under the floating-point conditions below. It gives complete phase values and rounded mathematical relations. It does not establish correct rounding to ideal mathematical cosine, another library's equivalence, running-native observations, or end-to-end noise parity.
 
@@ -39,6 +41,8 @@ The relations below describe numeric dependencies. They assign no native registe
 
 For \(|x|<2^{-252}\), the result is exactly positive one, bits `0x3FF0000000000000`. This includes either signed zero and all binary64 subnormal inputs. At \(|x|=2^{-252}\), the regular relations below apply. Exception-status flags are outside this numeric-output contract.
 
+After the control-state gate, the class is selected from the upper 16 bits of the input encoding with the sign bit cleared, denoted \(h\). The tiny class is \(h<\) `0x3030`, where the result is the binary64 rounding of one minus the input with its sign bit cleared; nearest rounding makes that exactly one. The regular relations apply for `0x3030` \(\leq h\leq\) `0x40F5`, which contains the whole contracted domain. Encodings with \(h>\) `0x40F5` (magnitudes of at least 90112, infinities and NaNs) take the x87 fallback described under the retained limits even when the control-state gate passes. Magnitudes above \(C\) but below 90112 use the regular calculation but remain outside this contract. [Evidence: DLL RVAs `0x36FB1–0x36FC2`, `0x370FE–0x3711E`.]
+
 ## Reduction and phase
 
 All hexadecimal encodings below denote full binary64 values, not bytes in file order.
@@ -50,7 +54,7 @@ All hexadecimal encodings below denote full binary64 values, not bytes in file o
 | \(L\) | Secondary step | `3D90B4611A600000` | `0x37990` |
 | \(T\) | Further step correction | `3B63198A2E037073` | `0x379A8` |
 
-Let \(n\) be the nearest integer, ties to even, to \(R(Kx)\). This defines the input partitions after the rounded multiplication, rather than by comparison with exact mathematical multiples of π. In the stated domain, \(-32\leq n\leq32\). The native integral-rounding offset has bits `4338000000000000` at DLL RVA `0x37988`, equal to \(3\cdot2^{51}\). Within this bounded range, its rounded addition and subtraction produce exactly the same binary64 integral value \(n\) used in these relations.
+Let \(n\) be the nearest integer, ties to even, to \(R(Kx)\). This defines the input partitions after the rounded multiplication, rather than by comparison with exact mathematical multiples of π. In the stated domain, \(-32\leq n\leq32\). The native integral-rounding offset has bits `4338000000000000` at DLL RVA `0x37988`, equal to \(3\cdot2^{51}\). Within this bounded range, its rounded addition and subtraction produce exactly the same binary64 integral value \(n\) used in these relations. The phase index is obtained separately, by a binary64-to-signed-32-bit conversion of the same \(R(Kx)\) under the MXCSR rounding mode, which the gate fixes at nearest; the two derivations therefore agree. [Evidence: DLL RVAs `0x36FC8–0x36FEC`.]
 
 The reduced quantities satisfy:
 
@@ -64,7 +68,7 @@ u=R\bigl(x-R(nH)\bigr),\qquad v=R(nL),\qquad r=R(u-v),
 
 Thus \(u\) retains the leading-step displacement, \(r\) retains the secondary reduction, and \(\delta\) carries the remaining reduction correction. Both displacements have magnitude below 0.0491 in this domain. The distinction between \(u\) and \(r\) remains relevant in the rounded correction relations.
 
-The phase is the unique integer \(j\) in 0 through 63 congruent to \(n+16\) modulo 64. Its four numeric values are denoted \(a_j,b_j,e_j,d_j\). The main phase value is \(b_j\), with small correction \(e_j\); the corresponding phase slope is divided between coarse value \(d_j\) and residual \(a_j\). The sixteen-position offset expresses the quarter-cycle shift used for cosine.
+The phase is the unique integer \(j\) in 0 through 63 congruent to \(n+16\) modulo 64. Its four numeric values are denoted \(a_j,b_j,e_j,d_j\). In the original image, phase \(j\) occupies 32 bytes at DLL RVA \(\texttt{0x37140}+32j\), holding \(a_j,b_j,e_j,d_j\) as binary64 values at offsets 0, 8, 16 and 24 respectively. [Evidence: DLL RVAs `0x37000–0x3701E`, `0x37034`, `0x37069–0x37071`, `0x3709A`, `0x370AE`, `0x370C3`, `0x370D0`.] The main phase value is \(b_j\), with small correction \(e_j\); the corresponding phase slope is divided between coarse value \(d_j\) and residual \(a_j\). The sixteen-position offset expresses the quarter-cycle shift used for cosine.
 
 ## Complete phase values
 
@@ -211,6 +215,25 @@ The three cancellation results near mathematical π/2 are approximately 2.832769
 
 The accepted calculation is scalar binary64 arithmetic using SSE2, including internal packed operations. It contains no FMA. No x87 extended-precision arithmetic or hardware `FCOS` participates in this contracted path. Reassociation, contraction, a different set of phase constants, or an approximation based solely on real trigonometric identities is not established to preserve these results.
 
-When the native entry's control checks fail, its wrapper reaches the x87 fallback at DLL RVA `0x3711F`, which calls DLL RVA `0x32775`. That path, nondefault denormal modes, exception-status effects, handler behavior, processor-dependent fallback accuracy, infinities, NaNs and magnitudes above \(C\) are outside this contract. The complete control state at each running-game call, the loader's actual selected DLL on another installation, and whole-noise behavior for invalid coordinate conversions were not established here.
+When the native entry's control checks fail, or the input's high bits exceed the regular range given above, its wrapper reaches the x87 fallback at DLL RVA `0x3711F`, which calls DLL RVA `0x32775`. That path, nondefault denormal modes, exception-status effects, handler behavior, processor-dependent fallback accuracy, infinities, NaNs and magnitudes above \(C\) are outside this contract. The complete control state at each running-game call, the loader's actual selected DLL on another installation, and whole-noise behavior for invalid coordinate conversions were not established here.
 
 No uniform maximum ULP error or proof of correct rounding against ideal mathematical cosine has been established. The bounded numeric relation is complete for the identified binary evidence and stated environment; those accuracy and runtime questions remain open. This artifact is held after complete final readback.
+
+## Re-certification (2026-11-20)
+
+Re-certified by a separate source-author context against `binary/Cube.exe` and `game-files/msvcr110.dll` (hashes, lengths, machine, image base, timestamps and file version re-read and unchanged). The DLL entry `0x36F80–0x37137` was re-read instruction by instruction from the original bytes with a scratch decoder; the import descriptor, IAT entry, hint, name and export ordinal were re-parsed from the PE tables. All 16 binary64 constants at `0x37940–0x379B8` and all 256 phase values at `0x37140–0x3793F` were re-read: phases 0–16 match the table bit for bit, every identity for phases 17–31, 33–47 and 49–63 holds, the axis encodings for phases 32 and 48 are as stated, and no identity source value is zero. The secondary step is identical in both lanes (`0x37990`, `0x37998`). Every rounded relation was compared with the instruction order: operand roles, rounding points and the packed-lane pairing (\(S\)/\(Q\) families, \(p\)/\(q\)) agree. The relations reproduce all 20 anchor results exactly; an additional scratch comparison of the relations with a direct instruction-order evaluation on 300,000 pseudo-random domain inputs found no difference. These checks are static; the DLL and game were not executed.
+
+Corrections (all are omissions filled; no stated value, relation or anchor was found to be wrong):
+
+1. Class selection was stated only by magnitude. It is now tied to the masked upper 16 bits of the input: tiny below `0x3030`, regular from `0x3030` through `0x40F5`. [Evidence: DLL RVAs `0x36FB1–0x36FC2`.]
+2. Inputs with masked upper bits above `0x40F5` (at least 90112, infinities, NaNs) take the x87 fallback even when the control-state gate passes; the limits paragraph now says so. [Evidence: DLL RVAs `0x370FE`, `0x3711F`.]
+3. The tiny-class result is now described as one minus the sign-cleared input, rounded. [Evidence: DLL RVAs `0x37100–0x3711E`; constant `0x379B0`.]
+4. The phase index comes from a separate signed-integer conversion of \(R(Kx)\) under MXCSR rounding, which agrees with the offset-derived \(n\) under the gate. [Evidence: DLL RVAs `0x36FDC`, `0x37000–0x3700A`.]
+5. The phase table's original layout (32 bytes per phase; \(a,b,e,d\) at offsets 0, 8, 16, 24) is recorded as provenance for the stated values. [Evidence: DLL RVAs `0x37015–0x3701E` and the table loads cited above.]
+
+Remaining uncertainties:
+
+- The control state at each running-game call, and the DLL that the loader actually selects on another installation, remain unverified.
+- The x87 fallback's results, exception and handler behavior, and processor-dependent `FCOS` accuracy are not specified.
+- Denormals-are-zero or flush-to-zero, which the gate does not inspect, can affect regular-class results with very small intermediates; the contract still excludes them.
+- No uniform error bound against ideal cosine is claimed.

@@ -1552,11 +1552,13 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         return true;
     }
     // Magic users within 60 blocks: the primary attack at low mana or on an even draw, else
-    // the secondary.
+    // the secondary. Primary-start boundary: only an ordered mana above 0.5 draws (an
+    // unordered comparison takes the primary route without a draw); odd parity picks the
+    // secondary helper, and the draw precedes either helper's own admission checks.
     if (isMagicUser(c)) {
         if (!(d2 < 3600.f)) // the class does nothing further; no later class runs
             return true;
-        if (c.mana <= 0.5f || draw() % 2 == 0)
+        if (!(c.mana > 0.5f) || (draw() & 1) == 0)
             startPrimaryAttack(c);
         else
             startSecondaryAttack(c);
@@ -2209,11 +2211,12 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
                 attacker.deferred.push_back(target.id);
             return;
         }
-        // K8: the first-target flag, the struck set and the swing byte, then the call.
+        // K6/K7 construction, then K8: the first-target flag (empty set before insertion and
+        // signed +0x12C not positive), the target's key, the swing byte, then the call.
+        const HitInput in = strikeInput(attacker, attackerBody, body, rolls);
         const bool first = attacker.struck.empty() && attacker.hitStun <= 0;
         attacker.struck.push_back(target.id);
         attacker.hitLanded = true;
-        const HitInput in = strikeInput(attacker, attackerBody, body, rolls);
         if (landBlow(attacker, attackerBody, target, body, frame, in, players)) {
             const StrikeAftermath after = afterStrike(attacker, first, hitAny, rolls);
             if (after.buff)

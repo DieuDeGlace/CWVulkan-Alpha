@@ -242,6 +242,49 @@ void generation() {
               "an unclosed generation output is an explicit engine capability boundary rather than a claimed native rejection");
     }
 }
+void commonMaterialAndRejections() {
+    {
+        const std::array<int32_t, 5> values{0x1a2, 0x2b3, 0x3c4, 250, 199};
+        size_t next = 0;
+        const auto material = creation::drawAppearanceMaterial([&] { return values[next++]; });
+        check(next == 5 && material.type == 0 && material.bytes == std::array<uint8_t, 3>{0xc4, 0xb3, 0xa2} &&
+              material.selectors == std::array<int32_t, 2>{50, 99},
+              "five common draws: first three mod 256 stored reversed as bytes 2,1,0, then two mod-100 selectors");
+        const std::array<int32_t, 5> negative{-1, -257, -2, -150, -1};
+        next = 0;
+        const auto signedMaterial = creation::drawAppearanceMaterial([&] { return negative[next++]; });
+        check(signedMaterial.bytes == std::array<uint8_t, 3>{0xfe, 0xff, 0xff} &&
+              signedMaterial.selectors == std::array<int32_t, 2>{-50, -1},
+              "the common reductions are signed remainders");
+    }
+    // Every rejection leaves the current actor untouched.
+    const auto unchanged = [](const Fixture &f) {
+        const Combatant &c = f.current.fighter;
+        return c.action == 92 && c.ownerId == 0 && c.linkedId == 0 &&
+               c.mode == 0xa644 && c.health == 500 && c.buffs.size() == 1 && f.current.looks.flags == 0x62ff;
+    };
+    {
+        Fixture f;
+        f.current.fighter.actionMs = 401; // first threshold failure
+        check(!f.run().actor && f.current.fighter.actionMs == 401 && unchanged(f),
+              "a first-threshold rejection writes no actor field");
+    }
+    {
+        Fixture f;
+        f.current.fighter.actionMs = 380; // second threshold equality: 380 + 20 == 400
+        check(!f.run().actor && f.current.fighter.actionMs == 380 && unchanged(f),
+              "a second-threshold rejection writes no actor field");
+    }
+    {
+        Fixture f;
+        Entity a, b, c;
+        a.fighter.ownerId = b.fighter.ownerId = c.fighter.ownerId = 9;
+        f.actors[1] = a.actor();
+        f.actors[2] = b.actor();
+        f.actors[3] = c.actor();
+        check(!f.run().actor && f.draws == 0 && unchanged(f), "a link-count rejection writes no actor field");
+    }
+}
 void descriptorConfiguration() {
     check(worldgen::Spawn{}.creationChoice == 0 && worldgen::Spawn{}.creationKinds.empty() &&
           creation::Configuration{}.choice == 1 && creation::Configuration{}.kinds.empty(),
@@ -724,6 +767,7 @@ int main() {
     countAndKeys();
     copiesAndDefaults();
     generation();
+    commonMaterialAndRejections();
     descriptorConfiguration();
     candidateAppearances();
     production();

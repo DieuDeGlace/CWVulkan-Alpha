@@ -28,7 +28,7 @@ void applyFatalRecipients(Combatant &target, uint64_t targetKey, float amount, b
         // Membership is tested now, after this recipient's cleanup and every
         // earlier local consumer. Do not snapshot/filter contribution values.
         if (target.relations.threats.contains(key)) {
-            const KillRecord record{key, targetKey, target.type, (int32_t)amount};
+            const KillRecord record{key, targetKey, target.type, truncateToInt32(amount)};
             world.appendCredit(record);
             const auto result = receiveCredit(record, world.credit);
             if (world.consumed)

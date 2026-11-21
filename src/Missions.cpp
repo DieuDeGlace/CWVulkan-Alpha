@@ -156,7 +156,8 @@ int32_t missionCreature(Random &random) {
 
 int32_t rewardPlatinumAmount(int32_t level, int32_t tier) {
     const int32_t combined = std::bit_cast<int32_t>(uint32_t(level) + uint32_t(tier));
-    return (int32_t)(50.f * curve((float)combined) + 1.f);
+    // Truncating conversion; NaN or out-of-range yields 0x80000000. Callers keep the low 16 bits.
+    return creatures::truncateToInt32(curve((float)combined) * 50.f + 1.f);
 }
 
 ItemRecord missionRewardGear(const MissionArea &m, int32_t characterClass, Random &random) {

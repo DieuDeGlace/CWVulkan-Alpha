@@ -133,12 +133,17 @@ float magicBase(const Combatant &c) {
             base = worth(*second) + base;
         return base;
     }
-    // No weapon for this blow: claws and jaws. These terms take the tier, not the multiplier.
-    const float natural = P * (float)std::pow(2.0, 0.25 * c.powerTier);
+    // No weapon for this blow: claws and jaws. Each flag adds a fresh level x rank power term
+    // with the actual rank byte and without the stored damage coefficient; the term is the
+    // first addition operand, and bit 16 adds onto the total that already holds bit 8's term.
+    const auto natural = [&] {
+        const float rank = (float)std::pow(2.0, (double)((float)c.powerTier * 0.25f));
+        return levelPower(c.level) * rank;
+    };
     if (c.appearanceFlags & 0x08)
-        base += natural * 2.f;
+        base = natural() * 2.f + base;
     if (c.appearanceFlags & 0x10)
-        base += natural * 8.f;
+        base = natural() * 8.f + base;
     return base;
 }
 
@@ -329,14 +334,18 @@ HitInput commonHitInput(const Combatant &a, glm::vec3 displacement, glm::dvec3 p
         displacement *= 1.f / root;
     }
     displacement.z = .25f;
+    // The critical decision follows the vector's normalisation and vertical replacement.
     in.critical = a.criticalLatched;
     if (!in.critical) {
         const float probability = criticalChance(a);
         in.critical = (float)draw() / 32767.f < probability;
     }
+    // The strength query (with its speed, cap and haste dependencies) precedes the
+    // attacker/target size-ratio division; the attacker's size is the dividend.
+    const float strength = pushOf(a);
     const float sizeRatio = box.x / targetBox.x;
     displacement *= (float)std::sqrt((double)sizeRatio);
-    displacement *= pushOf(a);
+    displacement *= strength;
     in.knockBack = displacement;
 
     const float s = a.spentPower;
@@ -353,6 +362,8 @@ HitInput commonHitInput(const Combatant &a, glm::vec3 displacement, glm::dvec3 p
     in.amount = magicStat ? (variation * prepared) * (0.f + 1.f) : (variation + 0.f) * prepared;
     if (in.critical)
         in.amount *= 2;
+    // The charge Boolean is stored once per pass at preparation; spentPower has no writer
+    // inside the candidate loop, so this read equals that single per-pass value.
     in.area = s > 0 || a.action == 11;
     in.selector = a.action;
     in.power = s;

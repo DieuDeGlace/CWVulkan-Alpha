@@ -160,6 +160,28 @@ static void repeatedPointersAndZeroCredit() {
     check(f.credits.size() == 2 && f.grants.empty(), "non-role-one targets still clean relationships but produce no credit or completion grants");
 }
 
+static void nativeCreditConversion() {
+    check(truncateToInt32(-2.9f) == -2 && truncateToInt32(2147483520.f) == 2147483520 &&
+          truncateToInt32(-2147483648.f) == std::numeric_limits<int32_t>::min(),
+          "credit conversion truncates toward zero across the representable range");
+    for (const float invalid : {std::numeric_limits<float>::quiet_NaN(), 2147483648.f, -2147483904.f,
+                                std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()}) {
+        Fixture f;
+        Combatant recipient;
+        recipient.level = 0; // keep the actual consumer away from level-up work
+        f.actors[5] = &recipient;
+        f.target.relations.threats = {{5, 1}};
+        auto world = f.world();
+        world.consumed = {};
+        applyFatalRecipients(f.target, 77, invalid, false, world);
+        check(f.credits.size() == 1 && f.credits[0].experience == std::numeric_limits<int32_t>::min(),
+              "NaN and out-of-range prepared amounts yield the integer indefinite 0x80000000 in the record");
+    }
+    // Completion reward: c(-19 + 0) divides by zero, so the amount is the integer indefinite.
+    check(rewardPlatinumAmount(-19, 0) == std::numeric_limits<int32_t>::min() && rewardPlatinumAmount(5, 0) == 9,
+          "the completion reward amount uses the same truncating conversion");
+}
+
 static void codecAndFrameViews() {
     std::array<uint8_t, 288> bytes;
     for (size_t i = 0; i < bytes.size(); i++) bytes[i] = uint8_t(i * 71 + 3);
@@ -222,6 +244,7 @@ int main() {
     admissionAndCleanup();
     liveAliasesAndMutations();
     repeatedPointersAndZeroCredit();
+    nativeCreditConversion();
     codecAndFrameViews();
     retainedBackingAdmission();
     if (!failures) std::puts("FatalRecipientTests passed");

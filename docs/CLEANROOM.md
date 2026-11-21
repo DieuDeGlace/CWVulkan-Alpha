@@ -4336,3 +4336,57 @@ WorldgenTests pins the roughness, mountain factor and floor bytes. The full
 209-zone native corpus is recorded in verification.md. Stored-light
 differences, native pixel acceptance and the remaining open gates are
 unchanged. Probe files, native copies and logs remain private.
+
+## Class B re-certification, first batch (2026-11-21)
+
+Fresh source-only authors re-certified eleven held-but-unpinned contracts
+against the original images and appended dated re-certification sections.
+A ruling author settled the two conflicts raised by the creature-defaults
+work. Fresh implementers read each document whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [buff record replication](specs/alpha-buff-record-replication-recovered.md) | 582 | `17e8faed6b6ddf2d9fb0cc1a8a4bdac6b13bf5dd4b981b8dd716fffbea021cc8` |
+| [rock-color precision](specs/alpha-rock-color-precision.md) | 494 | `a1d8d87a3c099df4f459bf943f3a3611da310215d402304e07158f7a2ca21495` |
+| [noise cosine numeric contract](specs/alpha-noise-cosine-numeric-contract.md) | 239 | `3e0af7bb3e5a9a23ca31d969bc4da83290c5002ac021c606292cde8b620f1e76` |
+| [noise cosine boundary](specs/alpha-noise-cosine-boundary.md) | 143 | `bd41baeef0f19b19bfcc3150b66a45bde113a74b20184b04e2e5f810adc54df0` |
+| [floating-point environment](specs/alpha-floating-point-environment.md) | 498 | `dfdf97f8eb9c5409a6f314022c46ed1fb5628fbc1472eb4a404c6c2678191b5d` |
+| [common hit input construction](specs/alpha-common-hit-input-construction.md) | 225 | `f884af5129e7aecf69edcf088425e96215e5f953fb0f8aa1e90e856bb17b4712` |
+| [client primary start boundary](specs/alpha-client-primary-start-boundary.md) | 220 | `a8cf02e79299ae3395d6c25081638919799dde71859c94a4d5f64732f1d8def7` |
+| [world actor creation](specs/alpha-world-actor-creation.md) | 231 | `fac528b4a335b5a2b425a44b0a6065fef06119134c2dc6b0491571db9dad8790` |
+| [fatal region credit order](specs/alpha-fatal-region-credit-order.md) | 201 | `bc909ce0511bf627cdec4abaea3b5db3b16a6232c21ac6626d7e298ee698fb19` |
+| [ranged audio boundaries](specs/alpha-ranged-audio-boundaries.md) | 179 | `8da9c3f97895509665430cc48f9501c594ae550a7d2116b4f91eeee44ef24282` |
+| [network creature state defaults](specs/alpha-network-creature-state-defaults.md) | 194 | `c5832ceec180be8bf9e4aceefa8131063a98741d3b9b5406650f40852a9476e6` |
+| [creature codec and join ruling](specs/alpha-rulings-creature-codec-and-join.md) | 231 | `b547516267c7f0bee47ddc4ed03a0dfd8ce5438ad8ed1b143419c2f9855b8bc8` |
+
+The floating-point environment implementer read revision
+`e0cd31f8423fa6ef7f7f137fbef7598f0f57c9b73c62183b5657ca45d849a703`; its author
+then only removed trailing spaces from two header lines, adding a blank line
+after each, which gives the recorded revision.
+
+The ruling keeps 48 creature codec groups, as the packet contract states,
+and confirms the defaults contract's join stores. It supersedes the 1.2,
+1.2, 2.7 join box and the initializer-default claim of `alpha-net-server.md`
+section 3.1: the join runs the appearance generator last, which makes five
+discarded CRT draws for type 44 and leaves height bits 0x400A3D71.
+
+Engine changes: type-1 buff clears end at minus the update interval; server
+packet-8 events start zeroed and keep a partial event at end of stream;
+signed buff-list counts; resident list limit. Roughness, rock-color and
+cosine class routing follow the held order and widths, with a bit-exact
+rock-color reference test; generated terrain is unchanged. Common hit input
+queries strength before the size ratio and follows the held operand order.
+Magic-user secondary selection draws only for ordered mana above 0.5. The
+five common appearance draws build the native temporary descriptor. Fatal
+credit and the completion reward use native truncating conversion. The
+dedicated-server join starts from construction defaults and follows the
+ruling's write order. The floating-point and ranged-audio contracts needed
+no code change; the engine's default MXCSR and nearest integer conversion
+are now tested.
+
+Not modelled: world-mode buff clears (no engine path), the native
+truncated-count loop, the x87 cosine fallback above 90112 (the engine uses
+the library cosine), the server spawn position source and join health
+value, and the open points each contract lists. Engine choices: zeroed
+alignment and outer bytes in server packet-8 events and deterministic
+zeroing of unspecified record bytes.

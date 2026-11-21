@@ -82,38 +82,63 @@ std::filesystem::path savePath(const ServerOptions &o) {
 
 } // namespace
 
-// Net server §3.1. Others see this record for a moment, until the player's own first update
-// replaces it. Fields the contract leaves to the record initialiser (U-4) stay zero.
-CreatureRecord newPlayerRecord(int32_t spawnX, int32_t spawnY) {
-    CreatureRecord r;
-    // The world set-up's spawn point (8,396,928, 8,396,928, 0) blocks, x 65,536 truncated.
-    // `spawnX/Y` (engine --spawn option) move it.
+// Net server §3.1 as corrected by alpha-network-creature-state-defaults.md ("Server
+// player-join overrides") and alpha-rulings-creature-codec-and-join.md Ruling 2, whose steps
+// are cited below in its write order. Others see this record for a moment, until the
+// player's own first update replaces it.
+CreatureRecord newPlayerRecord(const std::function<int()> &draw, int32_t spawnX, int32_t spawnY) {
+    constexpr size_t appearance = 0x068;
+    // Step 1: construction matches the client's store for store and makes no draws.
+    CreatureRecord r = CreatureRecord::nativeDefaults();
+    // Step 2, the join reset. Every other value it stores (a freshly initialized appearance
+    // included) repeats a construction default; it zeroes the whole thirteen-item block, so
+    // each block item's level becomes 0. The standalone item at 0x1D8 keeps its level 1.
+    constexpr size_t itemBlock = 0x2f0, itemBlockEnd = 0x1128;
+    std::memset(&r.bytes[itemBlock], 0, itemBlockEnd - itemBlock);
+    // Step 3: the spawn point, x 65,536 to 64-bit. Its source and the conversion's rounding are
+    // not closed; the engine keeps net server §3.1's (8,396,928, 8,396,928, 0) blocks, which are
+    // exact in binary32. `spawnX/Y` (engine --spawn option) move it.
     const int64_t x = (int64_t)(spawnX ? spawnX : worldgen::HOME) << 16;
     const int64_t y = (int64_t)(spawnY ? spawnY : worldgen::HOME) << 16, z = 0;
     r.setPosition(0, x);
     r.setPosition(1, y);
     r.setPosition(2, z);
-    // Collision box (appearance +0x08): 1.5 x (0.8, 0.8, 1.8). (The operands' precision is not
-    // specified; in pure f32 the height would round to 2.6999998, so the stated 2.7 is kept.)
-    put(r, 0x070, 1.2f);
-    put(r, 0x074, 1.2f);
-    put(r, 0x078, 2.7f);
-    // (Record 0x18..0x2F and the u32 at 0x4C are zeroed natively; already zero here.)
-    put(r, 0x180, (int32_t)1); // level
-    // Health is the maximum computed before type and class are set. The engine's 100 equals
-    // that under the client-side record defaults (multiplier 100, level 1); U-4 leaves the
-    // server's own defaults open.
-    put(r, 0x15c, 100.f);
-    put(r, 0x054, (int32_t)44); // creature type (controller byte 0x50 stays 0: player)
-    put(r, 0x1b0, x);           // home position
-    put(r, 0x1b8, y);
-    put(r, 0x1c0, z);
-    for (const size_t item : {size_t(0x980), size_t(0xa98)}) { // two item records (slots: U-3)
-        r.bytes[item + 0x00] = 3; // type
-        r.bytes[item + 0x01] = 2; // subtype
+    // Step 4: the box = binary32 products with 1.5 (0x3F99999A, 0x3F99999A, 0x402CCCCC). For
+    // type 44 these are dead stores: step 12 replaces them.
+    constexpr float joinScale = 1.5f;
+    put(r, appearance + 0x08, std::bit_cast<float>(0x3f4ccccdu) * joinScale);
+    put(r, appearance + 0x0c, std::bit_cast<float>(0x3f4ccccdu) * joinScale);
+    put(r, appearance + 0x10, std::bit_cast<float>(0x3fe66666u) * joinScale);
+    // Steps 5 and 6 store zero triplets at 0x18 and 0x24, a zero u32 at 0x4C and level 1;
+    // each already holds that value.
+    // Step 7: the maximum-health query runs while the controller byte still holds its
+    // construction 3 (class 0, type 0, zeroed block); only then is the controller cleared. The
+    // query's value is not closed: the engine keeps 100 (multiplier 100 at level 1).
+    const float joinHealth = 100.f;
+    r.bytes[0x050] = 0;
+    put(r, 0x15c, joinHealth);
+    put(r, 0x054, (int32_t)44);                         // step 8: creature type
+    std::memcpy(&r.bytes[0x1b0], &r.bytes[0x000], 24); // step 9: the +0x1B0 group copies the position
+    for (const size_t item : {size_t(0xa98), size_t(0x980)}) { // step 10 (slots: U-3); both keep level 0
         r.bytes[item + 0x0d] = 1;
+        put(r, item, (uint16_t)0x0203); // selectors 3, 2
     }
-    put(r, 0x130, (uint8_t)1); // class
+    put(r, 0x130, (uint8_t)1); // step 11: class
+    // Step 12: the appearance generator with no choice record. Exactly five draws, reduced
+    // mod 256, 256, 256, 100, 100 and discarded; type 44 is unchanged. `draw` is the caller's
+    // C-runtime-style stream (the dedicated server passes its single world stream); the native
+    // thread's rand state is external to the ruling.
+    for (const int modulus : {256, 256, 256, 100, 100}) {
+        [[maybe_unused]] const int discarded = draw() % modulus;
+    }
+    put(r, appearance + 0x08, std::bit_cast<float>(0x3f75c290u));
+    put(r, appearance + 0x0c, std::bit_cast<float>(0x3f75c290u));
+    put(r, appearance + 0x10, std::bit_cast<float>(0x400a3d71u));
+    // The type-44 case, in its store order.
+    put(r, appearance + 0x14, (uint16_t)0x000a);
+    put(r, appearance + 0x16, (uint16_t)0xffff);
+    put(r, appearance + 0x1a, (uint32_t)0x000001b0); // +0x1A = 0x01B0, +0x1C = 0
+    put(r, appearance + 0x18, (uint16_t)0x01ae);
     return r;
 }
 
@@ -423,7 +448,7 @@ void Server::handshake(Socket socket) {
             socket.sendU32(FULL); // what Alpha meant to send (transport §2.3)
             return;
         }
-        c->creature = newPlayerRecord(options.spawnX, options.spawnY);
+        c->creature = newPlayerRecord([this] { return worldRandom.draw(); }, options.spawnX, options.spawnY);
         c->socket = std::move(socket);
         connections[c->id] = c;
     }
@@ -508,10 +533,16 @@ void Server::receiveLoop(Connection &c) {
             break;
         }
         case EVENT40: {
-            std::array<uint8_t, 40> record;
-            ok = readArray(record);
-            std::lock_guard guard(lock);
-            events40.push_back(record);
+            // The embedded semantic fields start zeroed; the engine also zeroes
+            // the natively unspecified outer IDs and alignment bytes. End of
+            // stream mid-payload still queues the partial event; an error does not.
+            std::array<uint8_t, 40> record{};
+            const Socket::ReadEnd end = c.socket.readUpTo(record.data(), record.size());
+            ok = end == Socket::ReadEnd::complete;
+            if (end != Socket::ReadEnd::failed) {
+                std::lock_guard guard(lock);
+                events40.push_back(record);
+            }
             break;
         }
         case SHOOT: {

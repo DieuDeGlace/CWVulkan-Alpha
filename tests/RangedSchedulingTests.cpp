@@ -6,6 +6,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdio>
+#include <tuple>
 
 using namespace creatures;
 namespace {
@@ -1087,6 +1088,40 @@ int main() {
         launch(healer, body, {1, 0, 0}, (float)phases(healer, action).windUp, 16, [] { return 0; }, shots, effects,
                [](int32_t x, int32_t, int32_t) { return uint8_t(x >= 7 ? 1 : 0); });
         check(shots.empty(), "generic projectile launch leaves stationary clouds with the shared ray dispatcher");
+    }
+    // Ranged-audio re-certification: buff-9 removal only for 37/43/45/46, not 108; powered
+    // physical launches (released charge > 0 or action 23) remove buff 10.
+    for (int action : {37, 43, 108, 38}) {
+        Combatant mage;
+        mage.characterClass = 3;
+        mage.action = action;
+        mage.mana = 1;
+        mage.buffs.push_back({9, 0, 30000});
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        const float P1 = (float)phases(mage, action).windUp;
+        launch(mage, body, {1, 0, 0}, P1, 16, [] { return 0; }, shots, effects);
+        const bool removes = action == 37 || action == 43;
+        // Consumption replaces the record with a cleared one (time zero).
+        check(shots.size() == 1 && (mage.buffs[0].timeMs == 0) == removes,
+              "magic firing removes buff 9 only for actions 37, 43, 45 and 46");
+        check(!effects.sounds.empty() && effects.sounds.back().volume == std::bit_cast<float>(0x3f666666u),
+              "the magic firing sound follows the projectile at volume 0x3f666666");
+    }
+    for (const auto [action, charge, powered] : std::array<std::tuple<int, float, bool>, 3>{{{22, 0.f, false}, {22, .5f, true}, {23, 0.f, true}}}) {
+        auto actor = ranger(action);
+        actor.charge = charge;
+        actor.mana = 1;
+        actor.buffs.push_back({10, 0, 30000});
+        Body body;
+        std::vector<Projectile> shots;
+        ShotEffects effects;
+        launch(actor, body, {1, 0, 0}, (float)phases(actor, action).windUp, 16, [] { return 0; }, shots, effects);
+        check(shots.size() == 1 && (actor.buffs[0].timeMs == 0) == powered && actor.charge == 0 && actor.spentCharge == charge,
+              "the charge transfer precedes the launch test and powered launches remove buff 10");
+        check(!effects.sounds.empty() && effects.sounds.back().sound == (powered ? 22 : 15),
+              "unpowered action 22 plays sound 15, powered launches and action 23 play sound 22");
     }
     {
         // §2.5: the element applies to the thrown rock too.

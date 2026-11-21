@@ -5,6 +5,7 @@
 #include "net/Protocol.h"
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -203,6 +204,131 @@ int main() {
         const auto &buffs = npcs.all()[0].fighter.buffs;
         check(buffs.size() == 1 && buffs[0].value == 12 && buffs[0].timeMs == 1 && buffs[0].source == 123,
               "world facade applies input hits before buff records and counts down the new record in the same step");
+    }
+    // Re-certified resident traversal: active-only type work and the stun follow-up.
+    {
+        Combatant actor;
+        actor.hitStun = 50;
+        actor.buffs = {{DAMAGE_TAKEN, 0, 100, 0}};
+        tickBuffs(actor, 16, false);
+        check(actor.hitStun == -16 && actor.buffs[0].timeMs == 84,
+              "an active type 1 clears the stun timer, which then ends the update at minus the delta");
+        actor.hitStun = 50;
+        actor.buffs = {{DAMAGE_TAKEN, 0, 10, 0}};
+        tickBuffs(actor, 16, false);
+        check(actor.hitStun == 34 && actor.buffs.empty(), "an entry expiring in this visit receives no type work");
+        actor.buffs = {{DAMAGE_OVER_TIME, 2, 400, 5}};
+        int calls = 0;
+        tickBuffs(actor, 400, true, [&](const Buff &) { calls++; });
+        check(calls == 0 && actor.buffs.empty(), "an expiring type 4 makes no periodic call despite the changed bucket");
+        actor.buffs = {{DAMAGE_OVER_TIME, 2, 801, 5}, {SURE_CRITICAL, 0, 900, 0}};
+        std::vector<uint8_t> visited;
+        tickBuffs(actor, 2, true, [&](const Buff &record) {
+            visited.push_back(record.kind);
+            applyBuff(actor, {DAMAGE_OVER_TIME, 1, 3000, 7}); // a producer appending mid-traversal
+        });
+        check(visited.size() == 1 && actor.buffs.size() == 3 && actor.buffs[2].timeMs == 2998,
+              "a periodic append lands at the tail and is counted down later in the same traversal");
+        check(RESIDENT_LIST_LIMIT == 0x7fffffe && EVENT_LIST_LIMIT == 0x5555554, "native container length limits");
+    }
+    // Type 6 depletion on the combat path: every entry, value and time zeroed, NaN kept.
+    {
+        const float nan = std::bit_cast<float>(0x7fc00001u);
+        const auto shields = [&] {
+            std::vector<Buff> list = {{ABSORB, 3, 500, 11, {1, 2, 3}, {4, 5, 6, 7}}, {DAMAGE_OVER_TIME, 2, 500, 12},
+                                      {ABSORB, 10, 600, 13}, {ABSORB, nan, 700, 14}};
+            return list;
+        };
+        Combatant target;
+        target.id = 9;
+        target.health = 50;
+        target.buffs = shields();
+        Body body;
+        HitRecord hit;
+        hit.attacker = 21;
+        hit.target = 22; // copied from the hit, not resolved from the target
+        hit.kind = HIT_ABSORBED;
+        hit.amount = 5;
+        std::vector<BuffEvent> events;
+        applyHit(target, body, hit, {}, &events);
+        check(target.buffs[0].value == 0 && target.buffs[0].timeMs == 0 && target.buffs[2].value == 5 &&
+              target.buffs[2].timeMs == 600 && std::isnan(target.buffs[3].value) && target.buffs[3].timeMs == 700 &&
+              target.buffs[1].value == 2, "every type 6 entry is depleted in forward order; NaN is not depleted");
+        check(events.size() == 3 && events[0].source == 21 && events[0].target == 22 && events[2].source == 21 &&
+              events[0].record.serialize() == target.buffs[0].serialize() &&
+              events[1].record.serialize() == target.buffs[2].serialize() &&
+              events[2].record.serialize() == target.buffs[3].serialize(),
+              "one wrapper per visited type 6 entry with the hit's IDs and the complete updated record");
+        target.buffs = shields();
+        events.clear();
+        hit.amount = 0;
+        applyHit(target, body, hit, {}, &events);
+        check(events.empty() && target.buffs[0].value == 3, "the combat path requires a positive magnitude");
+        hit.amount = 5;
+        applyHit(target, body, hit, {nullptr, false, true}, &events);
+        check(events.empty() && target.buffs[0].value == 3, "the ownership gate stops a replica-other target");
+
+        // Receiver: every wrapper overwrites the first type 6 entry in turn.
+        Combatant receiver;
+        receiver.buffs = {{ABSORB, 1, 100, 1}, {ABSORB, 2, 100, 2}};
+        for (const BuffEvent &event : std::vector<BuffEvent>{{21, 9, {ABSORB, 7, 0, 31}}, {21, 9, {ABSORB, 8, 50, 32}}})
+            applyBuff(receiver, event.record);
+        check(receiver.buffs.size() == 2 && receiver.buffs[0].source == 32 && receiver.buffs[0].value == 8 &&
+              receiver.buffs[1].source == 2, "several type 6 wrappers each replace the target's first type 6 entry");
+    }
+    // Type 6 depletion on the local-player path: no magnitude test, both IDs the player's.
+    {
+        Combatant player;
+        player.id = 5;
+        player.health = 50;
+        player.buffs = {{ABSORB, 3, 500, 11}, {ABSORB, -1, 500, 12}};
+        Body body;
+        HitRecord hit;
+        hit.attacker = 77;
+        hit.target = 5;
+        hit.kind = HIT_ABSORBED;
+        hit.amount = 0;
+        std::vector<BuffEvent> events;
+        receiveHit(player, body, hit, &events);
+        check(events.size() == 2 && events[0].source == 5 && events[0].target == 5 && events[1].source == 5 &&
+              player.buffs[0].value == 3 && player.buffs[0].timeMs == 500 && player.buffs[1].value == 0 &&
+              player.buffs[1].timeMs == 0 && events[1].record.serialize() == player.buffs[1].serialize(),
+              "the local path visits every type 6 entry without a positive-magnitude test");
+    }
+    // The combat entry's absent-source branch draws once and sets the flash to 0.5.
+    {
+        Combatant target;
+        target.id = 3;
+        target.health = 100;
+        HitInput input;
+        input.amount = 1;
+        input.blockable = false;
+        input.magic = true;
+        int draws = 0;
+        resolveHit(target, glm::vec3(0), nullptr, input, [&] { draws++; return 0; });
+        check(draws >= 1 && target.hitFlash == .5f, "an absent source consumes a draw and sets +0x1184 to 0.5");
+    }
+    // List readers take signed counts for the 24-byte and buff-event channels.
+    {
+        net::WorldUpdate update;
+        const BuffEvent event{1, 2, {ABSORB, 4, 9, 3}};
+        const auto bytes = event.serialize();
+        update.sections[11].emplace_back(bytes.begin(), bytes.end());
+        auto plain = update.encode();
+        // Sections 0-10 are empty (a count each): patch 9 and 10 to negative counts.
+        const size_t at = 9 * 4;
+        const int32_t negative = -3;
+        std::memcpy(plain.data() + at, &negative, 4);
+        std::memcpy(plain.data() + at + 4, &negative, 4);
+        const auto decoded = net::WorldUpdate::decode(plain);
+        check(decoded && decoded->sections[9].empty() && decoded->sections[10].empty() &&
+              decoded->sections[11].size() == 1 && BuffEvent::parse(decoded->sections[11][0].data()).record.source == 3,
+              "negative 24-byte list counts add nothing and the following buff-event list still decodes");
+        const int32_t negativeBuffs = -1;
+        auto empty = net::WorldUpdate{}.encode();
+        std::memcpy(empty.data() + 11 * 4, &negativeBuffs, 4);
+        const auto none = net::WorldUpdate::decode(empty);
+        check(none && none->sections[11].empty(), "a negative buff-event count adds no entries");
     }
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;

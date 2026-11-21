@@ -1,8 +1,10 @@
 # Alpha noise cosine boundary
 
-Status: **FINAL / STABLE / HELD**. Source-author freeze: 2026-11-07.
+**FINAL / STABLE / HELD**
 
-This contract identifies the mathematical import used by the original Alpha client's two-dimensional noise routine and bounds the inspected numeric behavior to finite binary64 inputs whose magnitude is at most 3.1415927. It distinguishes directly inspected binary facts, source-derived arithmetic examples, and unresolved accuracy or environment questions. It does not certify an interchangeable cosine implementation or native runtime acceptance.
+Source-author freeze: 2026-11-07; re-certified 2026-11-20.
+
+This contract identifies the mathematical import used by the original Alpha client's two-dimensional noise routine and bounds the inspected numeric behavior to finite binary64 inputs whose magnitude is at most 3.1415927, that is, at most the client constant with bits `0x400921FB5A7ED197` (the nearest binary64 value to 3.1415927). It distinguishes directly inspected binary facts, source-derived arithmetic examples, and unresolved accuracy or environment questions. It does not certify an interchangeable cosine implementation or native runtime acceptance.
 
 ## Evidence boundary and image identity
 
@@ -31,7 +33,7 @@ The native noise routine begins at client RVA `0x0C0EF0`. Its calls at client RV
 
 For each valid coordinate-to-signed-integer conversion in the noise routine, the angle is obtained from the signed fractional remainder after truncation toward zero, multiplied in binary64 by the constant at client RVA `0x302B48`. That constant has bits `0x400921FB5A7ED197`, or approximately **3.1415926999999999**. Its bit pattern differs from nearest-binary64 mathematical π, `0x400921FB54442D18`.
 
-The fractional remainder has magnitude less than one when that integer conversion is valid. The closed magnitude bound in this document conservatively contains the resulting cosine inputs. This does not establish valid noise behavior for coordinates whose integer conversion overflows, or for non-finite coordinates. After either import call, the client forms a blending weight using one minus the returned value, followed by multiplication by one half; those are distinct binary64 operations. The entire noise routine's output contract is outside this document.
+The fractional remainder is computed as the binary64 difference between the coordinate and the binary64 value of its truncated integer; that difference is exact. It has magnitude less than one when that integer conversion is valid. The closed magnitude bound in this document conservatively contains the resulting cosine inputs. The first call (client RVA `0x0C0F80`) uses the fraction of the routine's first binary64 argument and the second call (`0x0C0FBC`) that of its second argument. This does not establish valid noise behavior for coordinates whose integer conversion overflows, or for non-finite coordinates. After either import call, the client forms a blending weight using one minus the returned value, followed by multiplication by one half; those are distinct binary64 operations. The entire noise routine's output contract is outside this document.
 
 ## Floating-point environment
 
@@ -51,6 +53,8 @@ No FMA instruction occurs in the inspected entry. Multiplication, addition and s
 Within the requested finite domain, the inspected SSE2 behavior has two magnitude classes.
 
 For magnitudes below **2^-252**, including either signed zero and all binary64 subnormals, the value returned under the stated environment is exactly positive one, bits `0x3FF0000000000000`. The native tiny-input arithmetic subtracts the input magnitude from one; nearest rounding makes its result one throughout this class. This does not specify the resulting exception-status flags.
+
+The class is selected from the upper 16 bits of the input encoding with the sign bit cleared: values below `0x3030` are tiny; values from `0x3030` through `0x40F5` use the table-assisted calculation; larger values (magnitudes of at least 90112, infinities and NaNs) take the x87 fallback described below even when the control-state check passes. The tiny-class result is the rounded value of one minus the sign-cleared input.
 
 At magnitude **2^-252** and above, every input in the requested domain uses the table-assisted calculation. Its partition label is the nearest integer, ties to even, of the separately binary64-rounded product of the input and the stored scale near 32/π. The label ranges from -32 through +32. Thus there are 65 possible reduction labels in the closed domain, rather than one polynomial covering the entire interval.
 
@@ -86,7 +90,7 @@ The small-displacement correction uses the following signed inverse-factorial co
 | Cosine, degree 6: -1/720 | `0x37968` | `0xBF56C16C16C16C17` |
 | Cosine, degree 8: 1/40320 | `0x37978` | `0x3EFA01A01A01A01A` |
 
-These describe degree-nine sine and degree-eight cosine correction families around the selected phase. The native calculation additionally retains reduction and summation corrections. Treating it as an exact real polynomial followed by one final rounding does not capture those intermediate rounding effects. This bounded contract records the constants, partitions, scalar precision and representative results; it does not provide the entire table or a complete bit-exact evaluation contract for every rounded combination.
+These describe degree-nine sine and degree-eight cosine correction families around the selected phase. The native calculation additionally retains reduction and summation corrections. Treating it as an exact real polynomial followed by one final rounding does not capture those intermediate rounding effects. This bounded contract records the constants, partitions, scalar precision and representative results. The entire table and the complete ordered rounding relations are given by the separately held `alpha-noise-cosine-numeric-contract.md`; this document does not restate them.
 
 ## Source-derived numeric anchors
 
@@ -112,6 +116,28 @@ A failed control-state check at DLL RVA `0x36F80` reaches a fallback at DLL RVA 
 
 This establishes that the export is not unconditionally the same SSE2 calculation under every control state. The fallback's complete exception behavior, handler interactions, processor-dependent `FCOS` accuracy and bitwise results are not closed here. The full effect of enabling denormals-are-zero or flush-to-zero, although those bits are ignored by the entry's gate, is also unresolved; the numeric anchors assume they are disabled.
 
-No proof of correctly rounded results, a uniform maximum ULP error, or bitwise equivalence to a platform's standard cosine was established over all finite binary64 inputs in the bounded interval. The complete table and the entire ordered rounding contract remain additional work for a bit-exact replacement. Inputs outside the stated magnitude bound, infinities and NaNs are excluded. Original-game runtime verification and end-to-end noise parity remain separate open gates.
+No proof of correctly rounded results, a uniform maximum ULP error, or bitwise equivalence to a platform's standard cosine was established over all finite binary64 inputs in the bounded interval. The complete table and the entire ordered rounding contract are recorded in `alpha-noise-cosine-numeric-contract.md`. Inputs outside the stated magnitude bound, infinities and NaNs are excluded. Original-game runtime verification and end-to-end noise parity remain separate open gates.
 
 This artifact is held after complete final readback. Earlier held contracts were not edited.
+
+## Re-certification (2026-11-20)
+
+Re-certified by a separate source-author context against the two images in the identity table, whose length, SHA-256, machine, image base, timestamp, image size and DLL version metadata were re-read and are unchanged. The import descriptor (`0x360814`), original thunk array (`0x360BF8`), IAT (`0x2FC380`), entry index 49, lookup value `0x003634CA`, hint 877, imported name, client thunk (`0x28D7A4`, an indirect jump through `0x2FC444`) and DLL export (RVA `0x36F80`, ordinal 878) were re-parsed from the PE tables. The client noise routine's 136 listed instructions matched the image bytes. The DLL entry, fast body, tiny path and fallback wrapper were re-read instruction by instruction from the original bytes, as was the fallback routine at DLL RVA `0x32775` with its restoration helpers at `0x42581` and `0x4258E`; the control word at DLL RVA `0x60344` is `0x027F`. All tabulated constants were re-read, and all nine numeric anchors, including both signs of every nonzero input, were reproduced by static evaluation. Only the held companion `alpha-noise-cosine-numeric-contract.md` was otherwise read.
+
+Corrections:
+
+1. Two statements that the entire table and complete ordered rounding contract were unavailable were stale; they now cite the held numeric contract. [Evidence: that contract's table and relations, re-checked against DLL RVAs `0x36FC8–0x370FD` and `0x37140–0x379B0`.]
+2. Omission filled: class selection uses the sign-cleared upper 16 bits of the input (tiny below `0x3030`; table-assisted through `0x40F5`). [Evidence: DLL RVAs `0x36FB1–0x36FC2`.]
+3. Omission filled: inputs whose sign-cleared upper 16 bits exceed `0x40F5`, including infinities and NaNs, reach the x87 fallback even when the control-state check passes. [Evidence: DLL RVAs `0x370FE`, `0x3711F`.]
+4. Omission filled: the tiny-class result is one minus the sign-cleared input, rounded. [Evidence: DLL RVAs `0x37100–0x3711E`; constant `0x379B0`.]
+5. Omission filled: the fraction is an exact binary64 difference from the truncated integer, and the order of the two cosine calls is stated. [Evidence: client RVAs `0x0C0EFD–0x0C0F5C`, `0x0C0F80`, `0x0C0F91–0x0C0FBC`.]
+6. Clarified: the decimal domain bound 3.1415927 is exactly the binary64 client constant `0x400921FB5A7ED197`. [Evidence: client data RVA `0x302B48`.]
+
+No previously stated constant, anchor, gate condition, partition rule or fallback address was found to be wrong. Under nearest rounding, the largest cosine argument produced from a valid fraction is the encoding one unit below the client constant, so the closed bound is not reached from a valid integer conversion; the bound remains conservative.
+
+Remaining uncertainties:
+
+- The control state at each native call during a running game, and the loader's selected DLL on another installation, remain unverified.
+- The x87 fallback's numeric results, exception and handler behavior, and processor-dependent `FCOS` accuracy remain open.
+- The effect of denormals-are-zero or flush-to-zero, which the gate ignores, is unresolved.
+- No correct-rounding proof or uniform error bound is claimed; end-to-end noise parity and native runtime verification remain separate open gates.

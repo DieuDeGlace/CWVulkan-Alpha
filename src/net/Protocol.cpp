@@ -37,7 +37,10 @@ std::pair<int32_t, int32_t> zoneForRawPosition(int64_t x, int64_t y) {
     return {index(x), index(y)};
 }
 
-// Packets §2.1. Bits 41 and 42 are in the opposite order to their offsets.
+// Packets §2.1. Writer and reader share this order, one mask bit per group from bit 0. It is
+// ascending except that bits 41 and 42 (0x1CC, 0x1C8) are swapped and the trailing groups are
+// the name, the eleven words, then 0x1154; the property copier's order differs. The 0x1B0 group
+// is three 64-bit values coded exactly like the position.
 const std::array<CreatureField, 48> CREATURE_FIELDS = {{
     {0x000, 24, CreatureField::BYTES},  {0x018, 12, CreatureField::FLOATS}, {0x024, 12, CreatureField::FLOATS},
     {0x030, 12, CreatureField::FLOATS}, {0x03c, 12, CreatureField::FLOATS}, {0x048, 4, CreatureField::FLOATS},
@@ -98,11 +101,14 @@ uint32_t CreatureRecord::contactFlags() const { return get<uint32_t>(bytes, 0x04
 void CreatureRecord::setContactFlags(uint32_t flags) { put(bytes, 0x04c, flags); }
 
 CreatureRecord CreatureRecord::nativeDefaults() {
-    // alpha-network-creature-state-defaults.md. No stat queries or random draws.
-    // Zeroing unspecified bytes is an engine choice, not a native byte-parity claim.
+    // alpha-network-creature-state-defaults.md: the codec state a freshly constructed creature
+    // carries, identical in the client and the dedicated server. No stat queries or random
+    // draws. The constructor's type-table pointer and its two ID halves precede this state and
+    // are not codec data (the ID is the caller's key). Zeroing unspecified bytes, the +0x1B0
+    // group included, is an engine choice, not a native byte-parity claim.
     CreatureRecord record;
     auto &b = record.bytes;
-    b[0x50] = 3;
+    b[0x50] = 3; // one-byte controller store; +0x51..+0x53 are not written
     put<int32_t>(b, 0x11c, -3000);
     put<float>(b, 0x15c, 500.f);
     put<float>(b, 0x168, 100.f);
@@ -116,7 +122,8 @@ CreatureRecord CreatureRecord::nativeDefaults() {
     }
 
     constexpr size_t appearance = 0x68;
-    b[appearance + 2] = b[appearance + 3] = b[appearance + 4] = 0xff;
+    put<uint32_t>(b, appearance, 0xffff0000); // bytes 00 00 FF FF, then a separate FF
+    b[appearance + 4] = 0xff;
     for (size_t at = 0x14; at <= 0x22; at += 2)
         put<uint16_t>(b, appearance + at, 0xffff);
     // Preserve fixed binary32 constants directly, including the rounded fractions.
@@ -426,7 +433,11 @@ std::optional<WorldUpdate> WorldUpdate::decode(const std::vector<uint8_t> &plain
     ByteReader r(plain);
     WorldUpdate u;
     for (int s = 0; s < 13; s++) {
-        const uint32_t count = r.u32();
+        uint32_t count = r.u32();
+        // The 24-byte (+0x48, +0x50) and 40-byte buff-event list readers take
+        // a signed count; a zero or negative count adds no entries.
+        if (s >= 9 && s <= 11 && std::bit_cast<int32_t>(count) < 0)
+            count = 0;
         if (s == 6 || s == 7) {
             for (uint32_t i = 0; i < count && r.ok(); i++) {
                 KeyedList list;

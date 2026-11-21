@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstring>
+#include <stdexcept>
 
 namespace creatures {
 std::array<uint8_t, 24> Buff::serialize() const {
@@ -55,6 +56,9 @@ void applyBuff(Combatant &target, const Buff &record) {
         break;
     default: break;
     }
+    // The native append raises its non-returning length failure at the limit.
+    if (target.buffs.size() >= RESIDENT_LIST_LIMIT)
+        throw std::length_error("list<T> too long");
     target.buffs.push_back(record);
 }
 
@@ -80,8 +84,11 @@ void tickBuffs(Combatant &target, int32_t dtMs, bool authoritative,
         }
         if (buff.kind == 1 && target.hitStun > 0)
             target.hitStun = 0;
-        if (buff.kind == 4 && authoritative && prior / 400 != buff.timeMs / 400 && periodic)
-            periodic(buff);
+        if (buff.kind == 4 && authoritative && prior / 400 != buff.timeMs / 400 && periodic) {
+            // Periodic combat work can append to this list; pass a stable copy.
+            const Buff visited = buff;
+            periodic(visited);
+        }
     }
     // Only the nodes collected during their own visit expire now. A previously
     // visited shield depleted by later periodic work stays until the next tick.
@@ -97,5 +104,7 @@ void tickBuffs(Combatant &target, int32_t dtMs, bool authoritative,
         }
         target.buffs.resize(kept);
     }
+    // The same routine then advances +0x12c, so a type-1 clear ends at -dtMs.
+    target.hitStun = std::bit_cast<int32_t>(uint32_t(target.hitStun) - uint32_t(dtMs));
 }
 }

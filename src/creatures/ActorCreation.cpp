@@ -4,10 +4,23 @@
 #include <utility>
 
 namespace creatures::creation {
+
+AppearanceMaterial drawAppearanceMaterial(const std::function<int32_t()> &draw) {
+    AppearanceMaterial material; // local descriptor type zero
+    const int32_t first = draw(), second = draw(), third = draw();
+    material.bytes[2] = uint8_t(first % 256);
+    material.bytes[1] = uint8_t(second % 256);
+    material.bytes[0] = uint8_t(third % 256);
+    material.selectors[0] = draw() % 100;
+    material.selectors[1] = draw() % 100;
+    return material;
+}
+
 namespace {
 void generatedAppearance(uint32_t kind, Appearance &looks, const Services &services) {
-    for (int draw = 0; draw < 5; draw++)
-        services.draw(); // the closed common producer prefix, including discarded material
+    // The five common draws happen for every kind; the closed kinds below leave the
+    // temporary material unread.
+    [[maybe_unused]] const AppearanceMaterial material = drawAppearanceMaterial(services.draw);
     looks.box = {std::bit_cast<float>(uint32_t(0x3f75c290)),
                  std::bit_cast<float>(uint32_t(0x3f75c290)),
                  std::bit_cast<float>(uint32_t(0x400a3d71))};

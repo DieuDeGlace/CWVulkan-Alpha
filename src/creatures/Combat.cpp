@@ -448,18 +448,20 @@ float resistance(const Combatant &c) {
 }
 
 float attackSpeed(const Combatant &c) {
+    // Native operand order: the combo fraction and the haste/item result are the first
+    // addition operands, and the status-12 factor multiplies the accumulated speed.
     float S = c.controller == 0 ? 1.f : (float)c.powerTier * .0625f + .75f;
     if (c.characterClass == 1 && c.specialization == 0)
-        S += 0.5f * queriedComboRatio(c);
+        S = queriedComboRatio(c) * 0.5f + S;
     if (c.characterClass == 3 && c.specialization == 1)
-        S += queriedComboRatio(c);
-    S += equipmentRate(c, itemBonuses().speed);
+        S = queriedComboRatio(c) + S;
+    S = equipmentRate(c, itemBonuses().speed) + S;
     if (c.hasBuff(HASTE)) {
         float n = (float)c.skills[8];
         if (c.controller != 0 && n == 0)
             n = (float)(c.level / 2 + c.powerTier + 1);
-        const float skill = 1.f - 1.f / (0.1f * n + 1.f);
-        S *= skill + 1.f;
+        const float skill = 1.f - 1.f / (n * 0.1f + 1.f);
+        S = (skill + 1.f) * S;
     }
     return S;
 }
@@ -886,8 +888,7 @@ void advanceActionClock(Combatant &c, int32_t milliseconds, bool authoritative,
     // The supported image's cooldown-refresh policy is constant false.
     for (auto &[id, ms] : c.cooldowns)
         ms = std::max(0, std::bit_cast<int32_t>(uint32_t(ms) - uint32_t(milliseconds)));
-    tickBuffs(c, milliseconds, authoritative, periodic);
-    c.hitStun = std::bit_cast<int32_t>(uint32_t(c.hitStun) - uint32_t(milliseconds));
+    tickBuffs(c, milliseconds, authoritative, periodic); // also advances the stun timer
     if (c.hitStun > 0)
         c.action = 0, c.actionMs = 0;
     // The held scheduling contract keeps completed action IDs for chain decisions.

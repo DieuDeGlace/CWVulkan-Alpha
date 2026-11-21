@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -26,6 +27,10 @@ struct BuffEvent {
     static BuffEvent parse(const uint8_t *event); // requires a complete 40-byte event
 };
 
+// Native container limits: appending at these counts raises a length failure.
+inline constexpr size_t RESIDENT_LIST_LIMIT = 0x7fffffe;
+inline constexpr size_t EVENT_LIST_LIMIT = 0x5555554;
+
 struct Combatant;
 // Replace the first selected-type match in place, or append. Nonpositive time
 // remains resident until the subsequent countdown/expiration phase.
@@ -33,7 +38,10 @@ void applyBuff(Combatant &target, const Buff &record);
 // Consume the first matching node through a zero-time replacement, leaving it
 // visible until countdown. Returns the copied self/self event when found.
 std::optional<BuffEvent> consumeBuff(Combatant &target, uint8_t kind);
-// Periodic work may change payloads, but must not mutate the buff collection.
+// The resident traversal: forward countdown, type work for still-active
+// entries only, deferred removal of the entries expired in this visit, then
+// the same delta subtracted from the stun timer (+0x12c). Periodic work gets a
+// copy of the visited record and may append; tail appends are visited later.
 void tickBuffs(Combatant &target, int32_t dtMs, bool authoritative,
                const std::function<void(const Buff &)> &periodic = {});
 }
