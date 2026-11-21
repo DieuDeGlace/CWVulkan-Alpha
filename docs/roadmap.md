@@ -23,6 +23,9 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Emit exposed terrain and liquid faces in the original six-direction
+  order. Preserve each face's corners, shading, winding and vertex charge.
+
 - [x] Charge the signed render-distance allowance against actual published
   terrain and liquid vertex records in the native window. Preserve a chunk
   that first takes the sum over budget, reset later slots and re-evaluate

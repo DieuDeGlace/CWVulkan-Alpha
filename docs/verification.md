@@ -3098,3 +3098,17 @@ The Vulkan streaming run began with nine zones and 484 chunks, moved
 chunks. It captured the expected final camera position. The package
 passed all 36 recorded digests across 37 files. The production controller
 diagnostic and the five standard client flows passed.
+
+## Terrain face order (2026-11-21)
+
+The mesher visits negative X, positive X, negative Y, positive Y, below
+and above. The terrain regression checks cover solid and liquid faces.
+The previous order failed all twelve direction checks. A separate fixture
+compared the complete vertex and index data for 25 faces across solid,
+water, type-3 and foliage blocks. Each face kept its original geometry
+and shading bytes when the direction sequence changed.
+
+The focused terrain test passed in 0.25 seconds and all 60 serial tests
+passed in 131.55 seconds. Package verification matched all 36 digests
+across 37 files. The production controller diagnostic and the five live
+client flows also passed.

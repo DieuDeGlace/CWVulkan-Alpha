@@ -256,6 +256,29 @@ static void meshVertexBudget() {
     check(counts(SOLID, WATER) == 44 && counts(LAKE_BED) == 28 && counts(LAKE_BED, WATER, true) == 44,
           "the ordinary/liquid interface and the additional type-three film have the held record counts");
 
+    const std::array<glm::vec3, 6> normals{{{-1,0,0}, {1,0,0}, {0,-1,0}, {0,1,0}, {0,0,-1}, {0,0,1}}};
+    for (const uint8_t material : {SOLID, WATER}) {
+        zone->column(42, 42).blocks[3].typeByte = material;
+        const auto mesh = meshChunk(map, terrain, 32, 32);
+        const auto &stream = material == WATER ? mesh.water : mesh.solid;
+        size_t direction = 0;
+        for (size_t i = 0; i < stream.vertices.size(); i += 4) {
+            const auto &a = stream.vertices[i];
+            if (a.position.z < 4) // skip the fixture's floor, below the isolated cell
+                continue;
+            const glm::vec3 winding = glm::cross(stream.vertices[i + 1].position - a.position,
+                                                 stream.vertices[i + 2].position - a.position);
+            check(direction < normals.size() && a.normal == normals[direction] && winding == a.normal,
+                  "a cell emits negative then positive faces along X, Y, Z with outward winding");
+            const size_t base = i / 4 * 6;
+            const std::array<uint32_t, 6> quad{0, 1, 2, 0, 2, 3};
+            for (size_t j = 0; j < quad.size(); ++j)
+                check(stream.indices[base + j] == i + quad[j], "direction order preserves the two indexed triangles");
+            ++direction;
+        }
+        check(direction == normals.size(), "both ordinary and liquid isolated cells emit the six directed quads");
+    }
+
     ChunkMeshCache cache;
     check(cache.allowance(100) == 25165824 && cache.allowance(50) == 12582912 &&
               cache.allowance(1) == 251658 && cache.allowance(-1) == -251658,

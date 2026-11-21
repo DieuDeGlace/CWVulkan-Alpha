@@ -4553,3 +4553,11 @@ matching empty rebuild charges zero and can retain its active geometry.
 World reset and budget eviction release that geometry. Extension chunks
 beyond the native window are accounted for separately. Matching renderer
 transfer of pending groups is a separate checkpoint.
+
+## Terrain face direction order (2026-11-21)
+
+The direction sequence follows the held vertex-accounting contract in batch
+80. The clean implementation reorders its existing face descriptions. Their
+corner geometry, winding, liquid indices, shading and sway use the existing
+paths. The directional visit order and the number of charged vertices are
+verified independently.
