@@ -4533,3 +4533,23 @@ transitions invalidate superseded work. A prior drawable mesh remains in use
 while its replacement is being built. Elapsed wall time depends on the work
 and Windows scheduling. Native buffer transfer and budget eviction are
 separate checkpoints.
+
+## Terrain mesh allowance and active groups (2026-11-21)
+
+The source author independently traced the builder's face emission, primary
+record count and the distinction between pending and active mesh groups.
+The clean team read the complete held records before using them.
+
+- `alpha-terrain-mesh-vertex-accounting.md`, 65 lines, SHA-256
+  `eab5747e0c846bfdc572286d9a60c6801bf38de5457b4ac40ea234b29c0b8405`.
+- `alpha-fog-mesh-slot-population.md`, 47 lines, SHA-256
+  `4ddfe050109d198d1aa4732cfc7cb9cc80cc7ebae2b7c4ad35e3ca7f7e0a5558`.
+
+Each successful terrain or liquid quad contributes four primary records.
+The worker scans the complete clipped window, adds the slot's current
+count after any build and evicts subsequent slots once the total exceeds
+the allowance. Reusing a physical slot clears its previous owner. A
+matching empty rebuild charges zero and can retain its active geometry.
+World reset and budget eviction release that geometry. Extension chunks
+beyond the native window are accounted for separately. Matching renderer
+transfer of pending groups is a separate checkpoint.

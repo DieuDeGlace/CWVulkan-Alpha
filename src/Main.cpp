@@ -445,6 +445,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             save.markers.push_back({m.x, m.y, m.z});
         saved->saveTile(zx, zy, save);
     };
+    const fs::path optionsFile = executableFolder() / "options.cfg";
+    GameOptions game;
+    if (const GLFWvidmode *desktop = glfwGetVideoMode(glfwGetPrimaryMonitor()))
+        game[GameOptions::RESOLUTION_X] = desktop->width, game[GameOptions::RESOLUTION_Y] = desktop->height;
+    game.load(optionsFile);
+    worldOptions.renderDistance = game[GameOptions::RENDER_DISTANCE];
     WorldView view(renderer, content, worldOptions, persistMapTile);
     if (remoteMap)
         view.restoreDiscoveryCount(remoteMap->discoveryCount());
@@ -1253,11 +1259,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
 
     // Screens §6: the game settings from options.cfg beside the engine, the display modes'
     // distinct sizes, and what each setting changes here.
-    const fs::path optionsFile = executableFolder() / "options.cfg";
-    GameOptions game;
-    if (const GLFWvidmode *desktop = glfwGetVideoMode(glfwGetPrimaryMonitor()))
-        game[GameOptions::RESOLUTION_X] = desktop->width, game[GameOptions::RESOLUTION_Y] = desktop->height;
-    game.load(optionsFile);
     {
         int count = 0;
         const GLFWvidmode *modes = glfwGetVideoModes(glfwGetPrimaryMonitor(), &count);
@@ -1280,6 +1281,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         // Render distance: a radius of (distance % of 384) blocks, in whole zones (§6.4).
         view.setRadius((int32_t)std::ceil((float)game[GameOptions::RENDER_DISTANCE] * 0.01f * 384.f / 256.f));
+        view.setMeshRenderDistance(game[GameOptions::RENDER_DISTANCE]);
         // Fullscreen at the chosen size, or windowed as the window is (the resolution only
         // counts in fullscreen). Anti-aliasing stays the engine's own (SMAA + TAA).
         GLFWmonitor *monitor = glfwGetWindowMonitor(window);

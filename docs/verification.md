@@ -3077,3 +3077,24 @@ focused terrain test passed, followed by all 60 serial tests in 112.24
 seconds. Package inspection verified 36 digests across 37 files.
 The production controller diagnostic and the five reward, health, network,
 save/reload and town-render flows also passed.
+
+## Terrain mesh vertex allowance (2026-11-21)
+
+TerrainLightTests checks the charged records for seven examples covering
+solid, liquid and type-3 surfaces. The cache tests exercise signed settings,
+equality, overshoot, eviction beginning on the following chunk, same-slot
+reassignment and an unavailable dirty source retaining its old count.
+The focused test passed in 0.29 seconds.
+
+Three separate Vulkan launches read the signed render-distance setting
+before building the starting area. At zone radius zero they reported one
+resident chunk at setting zero, none at minus one and 36 at 100. A live
+WorldView using a CPU renderer switched through the same settings and back
+to zero. Its resident count returned to one, with 38 uploads and 36 mesh
+retirements across the run. All 60 serial tests passed in 141.98 seconds.
+
+The Vulkan streaming run began with nine zones and 484 chunks, moved
+384 blocks across a zone boundary and settled with 12 zones and 660
+chunks. It captured the expected final camera position. The package
+passed all 36 recorded digests across 37 files. The production controller
+diagnostic and the five standard client flows passed.

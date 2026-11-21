@@ -42,6 +42,7 @@ struct WorldViewOptions {
     float z = -1e9f;              // start height; below -1e8: 40 blocks over the ground
     motion::MotionSettings motion;
     bool swimmableWater = true;
+    int32_t renderDistance = 50;  // signed native mesh-cache allowance setting
 };
 
 enum class TerrainEditSource { Live, Saved, Queued, Destruction };
@@ -157,6 +158,7 @@ class WorldView {
     const worldgen::Terrain &terrainGenerator() const { return worldData->terrain; }
     // Zones kept round the camera's in each direction (the options' render distance).
     void setRadius(int32_t zones) { radius = std::max(zones, 1); }
+    void setMeshRenderDistance(int32_t setting);
     // The zones held now (main thread).
     const worldgen::WorldMap &held() const { return map; }
     void acknowledgeZoneContents(worldgen::WorldMap::ZoneKey key) { map.acknowledgeZoneContents(key); }
@@ -209,7 +211,11 @@ class WorldView {
     void requestChunk(int32_t x0, int32_t y0);
     void dispatchChunks();
     struct MeshBatch {
-        std::vector<Key> corners;
+        std::vector<Key> requests, exterior;
+        std::vector<ChunkMeshCache::Candidate> window;
+        ChunkMeshCache cache;
+        ChunkLightUpdates lightRequests;
+        int32_t renderDistance;
         worldgen::WorldMap terrain; // worker-owned copy of the admitted terrain
         std::atomic_bool cancel{false};
         bool discard = false; // main thread: an external terrain write superseded the remaining results
@@ -219,13 +225,16 @@ class WorldView {
     void addZone(std::shared_ptr<worldgen::Zone> zone);
     void dropZone(Key zone);
     struct DoneChunk {
+        enum class Operation { Publish, Exterior, Reset };
         glm::ivec2 corner;
         ChunkMeshes meshes;
         std::vector<terrain_lights::CachedSource> lights;
         uint64_t lightChange;
         std::shared_ptr<const worldgen::BlockLightUpdate> prepared;
+        Operation operation;
     };
     void placeChunk(DoneChunk &chunk);
+    void removeChunk(Key corner);
     std::vector<PlantInstance> plantsOf(const worldgen::Zone &zone);
     std::pair<MeshId, float> plantModel(int32_t kind);
     Key cameraZone() const;
@@ -244,6 +253,7 @@ class WorldView {
     worldgen::WorldMap map; // the zones taken in (main thread)
     std::chrono::steady_clock::time_point lastZoneCleanup{}; // the last zone clean-up pass
     int32_t radius;
+    int32_t meshRenderDistance;
     glm::ivec2 origin; // render origin, blocks
     glm::vec3 eye{0};  // render-origin relative
     float yaw = 0, pitch = 20;
@@ -260,6 +270,7 @@ class WorldView {
     ChunkLightUpdates chunkLightUpdates;
     std::vector<glm::ivec2> changedLightColumns;
     std::set<Key> editedChunks;
+    std::set<Key> requestedEdits; // includes saved edits that request geometry without marking native light dirty
     std::map<int32_t, std::pair<MeshId, float>> plantModels;
     std::map<int32_t, std::pair<MeshId, glm::vec3>> staticModels;
     MeshId airshipModelMesh = 0;
@@ -317,8 +328,9 @@ class WorldView {
     void buildLand(Key cell);
     std::map<Key, TileEntry> tiles;
     std::vector<DoneChunk> doneChunks;
-    std::vector<Key> deniedChunks;
-    std::optional<size_t> firstUnbuilt; // worker finished this batch; queued suffix still needs consideration
+    bool meshBatchFinished = false; // worker publication under doneLock
+    bool rescanMeshWindow = true;
+    ChunkMeshCache meshCache; // results already published on the render thread
     std::shared_ptr<MeshBatch> meshBatch; // main thread
     std::shared_ptr<MeshBatch> scheduledMesh; // handed to the mesh thread under jobsLock
     bool meshBuilding = false; // under jobsLock

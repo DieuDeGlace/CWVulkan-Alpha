@@ -42,9 +42,11 @@ static void packedTerrainLight() {
     const auto topColour = [&](bool lightingRequested = false) {
         const auto mesh = meshChunk(map, terrain, 32, 32, lightingRequested);
         check(mesh.preparedLighting == lightingRequested, "only the dirty interior mesh prepares lighting");
-        for (const auto &vertex : mesh.solid.vertices)
+        for (size_t i = 0; i < mesh.solid.vertices.size(); i += 4) {
+            const auto &vertex = mesh.solid.vertices[i]; // lower X/Y corner of this top quad
             if (vertex.position == glm::vec3(x - 32, y - 32, z) && vertex.normal == glm::vec3(0, 0, 1))
                 return vertex.colour;
+        }
         return glm::vec4(-1);
     };
     const auto uniform = [&](uint8_t intensity) {
@@ -180,19 +182,10 @@ static void meshDistanceOrder() {
         check(actual == glm::ivec2(expected, -19), "adjusted raw eye follows the held origin conversion on each axis");
     }
     check(chunkMeshWindowOrigin({0, 0, 0}, 5) == glm::ivec2(-2), "odd widths use the signed integer half");
-    using Corner = ChunkMeshPriority::Corner;
-    const auto at = [](int32_t x, int32_t y) { return Corner{x * CHUNK, y * CHUNK}; };
-    const auto window = [&](ChunkMeshPriority &priority, glm::ivec2 origin, int32_t width) {
-        std::vector<Corner> queue;
-        for (int32_t x = origin.x + width - 1; x >= origin.x; --x)
-            for (int32_t y = origin.y + width - 1; y >= origin.y; --y)
-                if (uint32_t(x) < 0x80000u && uint32_t(y) < 0x80000u)
-                    queue.push_back(at(x, y));
-        priority.prioritize(origin, queue);
-        const glm::ivec2 centre = origin + glm::ivec2(width / 2);
+    const auto window = [](ChunkMeshPriority &priority, glm::ivec2 origin, int32_t width) {
         std::vector<glm::ivec2> offsets;
-        for (const auto &[x, y] : queue)
-            offsets.emplace_back(x / CHUNK - centre.x, y / CHUNK - centre.y);
+        for (const auto &candidate : priority.window(origin))
+            offsets.push_back(candidate.offset - glm::ivec2(width / 2));
         return offsets;
     };
     const auto hash = [](const auto &offsets) {
@@ -219,12 +212,88 @@ static void meshDistanceOrder() {
     check(small.size() == 25 && std::equal(stable.begin(), stable.end(), small.begin()),
           "the full width-five window keeps enumeration order within the distance-one tie");
 
-    std::vector<Corner> sparse{at(151, 121), at(121, 120), at(120, 119), at(119, 120), at(98, 117),
-                               at(120, 121), at(120, 120)};
-    priority.prioritize({100, 100}, sparse);
-    check(sparse == std::vector<Corner>{at(120, 120), at(120, 121), at(119, 120), at(120, 119), at(121, 120),
-                                        at(151, 121), at(98, 117)},
-          "sparse requests inherit the full-window ranks before wider-radius requests in arrival order");
+    const glm::ivec2 origin(100, 100);
+    const std::array<glm::ivec2, 5> available{{{121,120}, {120,119}, {119,120}, {120,121}, {120,120}}};
+    std::vector<ChunkMeshCache::Candidate> sparse;
+    for (const auto &candidate : priority.window(origin)) {
+        const auto at = origin + candidate.offset;
+        sparse.push_back({at, false, std::find(available.begin(), available.end(), at) != available.end()});
+    }
+    std::vector<glm::ivec2> built;
+    ChunkMeshCache cache;
+    while (cache.pass(sparse, 100, [&](glm::ivec2 at) { built.push_back(at); return std::optional<int32_t>(4); },
+                      [](glm::ivec2) {})) {}
+    check(built == std::vector<glm::ivec2>{{120,120}, {120,121}, {119,120}, {120,119}, {121,120}},
+          "sparse source availability inherits the complete window's tied visit order over successive passes");
+}
+
+static void meshVertexBudget() {
+    using namespace worldgen;
+    auto zone = std::make_shared<Zone>(0, 0);
+    WorldMap map;
+    map.add(zone);
+    const World world(1);
+    const Terrain terrain(world);
+    // A constant floor plus a dry empty store isolates the new elevated cells' contribution.
+    for (int x = 28; x < 69; ++x)
+        for (int y = 28; y < 69; ++y) {
+            auto &column = zone->column(x, y);
+            column.bottom = 1;
+            column.blocks.assign(8, {255, 255, 255, AIR});
+        }
+    const int32_t floor = meshChunk(map, terrain, 32, 32).vertexRecords();
+    check(floor == CHUNK * CHUNK * 4, "the implicit floor emits one exposed top per dry empty column");
+    const auto counts = [&](uint8_t a, uint8_t b = AIR, bool above = false) {
+        zone->column(42, 42).blocks[3].typeByte = a;
+        auto &second = zone->column(above ? 42 : 43, 42).blocks[above ? 4 : 3];
+        second.typeByte = b;
+        const auto mesh = meshChunk(map, terrain, 32, 32);
+        second.typeByte = AIR;
+        return mesh.vertexRecords() - floor;
+    };
+    check(counts(SOLID) == 24 && counts(SOLID, SOLID) == 40 && counts(WATER) == 24 && counts(WATER, WATER) == 40,
+          "adjacent ordinary and liquid faces contribute four new primary records per exposed quad");
+    check(counts(SOLID, WATER) == 44 && counts(LAKE_BED) == 28 && counts(LAKE_BED, WATER, true) == 44,
+          "the ordinary/liquid interface and the additional type-three film have the held record counts");
+
+    ChunkMeshCache cache;
+    check(cache.allowance(100) == 25165824 && cache.allowance(50) == 12582912 &&
+              cache.allowance(1) == 251658 && cache.allowance(-1) == -251658,
+          "the signed percentage widens, scales and truncates to the native vertex-record allowance");
+    using Candidate = ChunkMeshCache::Candidate;
+    std::array<Candidate, 5> order{{{{2, 2}, true, false}, {{3, 2}, false, true}, {{4, 2}, false, true},
+                                    {{5, 2}, false, true}, {{6, 2}, false, true}}};
+    cache.publish({2, 2}, 251658); // A denied dirty slot continues to contribute its published count.
+    cache.publish({44, 2}, 333);  // Alias of (4, 2).
+    cache.publish({5, 2}, 12);
+    std::vector<glm::ivec2> built, reset;
+    const auto build = [&](glm::ivec2 at) -> std::optional<int32_t> { built.push_back(at); return 4; };
+    const auto evict = [&](glm::ivec2 at) { reset.push_back(at); };
+    check(cache.pass(order, 1, build, evict) && built == std::vector<glm::ivec2>{{3, 2}} &&
+              reset == std::vector<glm::ivec2>{{44, 2}, {5, 2}},
+          "equality admits the new four-record mesh; the next two physical slots reset in visit order");
+    built.clear();
+    reset.clear();
+    check(!cache.pass(order, 1, build, evict) && built.empty() && reset.empty(),
+          "the overshooting chunk remains and later empty slots consume no opportunities");
+    order[0].hasSources = true;
+    check(cache.pass(order, 1, build, evict) && built == std::vector<glm::ivec2>{{2, 2}},
+          "the first dirty slot replaces its old count once its source returns");
+    built.clear();
+    check(cache.pass(order, 1, build, evict) && built == std::vector<glm::ivec2>{{4, 2}},
+          "the smaller replacement admits the first previously budget-evicted chunk on the next pass");
+    reset.clear();
+    check(!cache.pass(order, -1, build, evict) && reset == std::vector<glm::ivec2>{{2, 2}, {3, 2}, {4, 2}},
+          "a negative allowance evicts every populated candidate before testing its source");
+    cache.publish({2, 2}, 24);
+    order[0].requested = true;
+    reset.clear();
+    check(cache.pass(order, 0, [](glm::ivec2) { return std::optional<int32_t>(0); }, evict) &&
+              cache.owns({2, 2}) && reset.empty(),
+          "an empty rebuild consumes the pass, keeps its coordinate and replaces its charge with zero");
+    built.clear();
+    check(cache.pass(order, 0, build, evict) && built == std::vector<glm::ivec2>{{3, 2}},
+          "the zero charge of the previous empty rebuild admits the next chunk at equality");
 }
 
 int main() {
@@ -232,6 +301,7 @@ int main() {
     meshLightRequests();
     meshDispatch();
     meshDistanceOrder();
+    meshVertexBudget();
     FadingSources timed;
     const FixedPosition precise{(int64_t(1) << 54) + 1, 17, -33};
     timed.append({precise, {1, .5f, .25f}, 20, 0, 400});

@@ -166,6 +166,10 @@ int32_t lowestOpen(const WorldMap &map, int32_t x, int32_t y) {
 
 } // namespace
 
+int32_t ChunkMeshes::vertexRecords() const {
+    return std::bit_cast<int32_t>(uint32_t(solid.vertices.size()) + uint32_t(water.vertices.size()));
+}
+
 glm::ivec2 chunkMeshWindowOrigin(const std::array<int64_t, 3> &eye, int32_t width) {
     const auto axis = [width](int64_t raw) {
         const int64_t scaledEye = int64_t(double(raw) / double(CHUNK));
@@ -177,9 +181,9 @@ glm::ivec2 chunkMeshWindowOrigin(const std::array<int64_t, 3> &eye, int32_t widt
     return {axis(eye[0]), axis(eye[1])};
 }
 
-void ChunkMeshPriority::prioritize(glm::ivec2 origin, std::vector<Corner> &corners) {
-    if (corners.size() < 2 || width <= 0)
-        return;
+std::span<const ChunkMeshPriority::Candidate> ChunkMeshPriority::window(glm::ivec2 origin) {
+    if (width <= 0)
+        return {};
     const auto clip = [&](int32_t boundary, int32_t start) {
         return int32_t(std::clamp<int64_t>(int64_t(boundary) - start, 0, width));
     };
@@ -190,7 +194,6 @@ void ChunkMeshPriority::prioritize(glm::ivec2 origin, std::vector<Corner> &corne
         lower = first;
         upper = last;
         const size_t count = size_t(upper.x - lower.x) * (upper.y - lower.y);
-        requested.assign(count, 0);
         ordered.clear();
         ordered.reserve(count);
         for (int32_t x = lower.x; x < upper.x; ++x)
@@ -203,33 +206,22 @@ void ChunkMeshPriority::prioritize(glm::ivec2 origin, std::vector<Corner> &corne
             return a.distance < b.distance;
         });
     }
-    const auto index = [&](glm::ivec2 offset) {
-        return size_t(offset.x - lower.x) * (upper.y - lower.y) + (offset.y - lower.y);
-    };
-    const glm::ivec2 begin = origin + lower, end = origin + upper;
-    size_t outside = 0;
-    for (const Corner corner : corners) {
-        const glm::ivec2 chunk(corner.first / CHUNK, corner.second / CHUNK);
-        if (chunk.x >= begin.x && chunk.x < end.x && chunk.y >= begin.y && chunk.y < end.y)
-            requested[index(chunk - origin)] = 1;
-        else
-            corners[outside++] = corner;
-    }
-    if (outside == corners.size())
-        return;
-    result.clear();
-    result.reserve(corners.size());
-    for (const auto &candidate : ordered) {
-        auto &waiting = requested[index(candidate.offset)];
-        if (waiting) {
-            const glm::ivec2 corner = (origin + candidate.offset) * CHUNK;
-            result.emplace_back(corner.x, corner.y);
-            waiting = 0;
-        }
-    }
-    // Retain the engine's wider streaming radii. These requests follow the native window.
-    result.insert(result.end(), corners.begin(), corners.begin() + outside);
-    corners.swap(result);
+    return ordered;
+}
+
+int64_t ChunkMeshCache::allowance(int32_t renderDistance) {
+    const double fraction = double(renderDistance) * 0.01;
+    return int64_t(fraction * 25165824.0);
+}
+
+void ChunkMeshCache::publish(glm::ivec2 chunk, int32_t vertices) {
+    slots[index(chunk)] = {chunk, vertices};
+}
+
+void ChunkMeshCache::invalidate(glm::ivec2 chunk) {
+    auto &slot = slots[index(chunk)];
+    if (slot.coordinate == chunk)
+        slot = {};
 }
 
 bool chunkMeshSourcesResident(const WorldMap &map, glm::ivec2 chunk) {
@@ -252,6 +244,13 @@ bool chunkMeshSourcesResident(const WorldMap &map, glm::ivec2 chunk) {
 
 ChunkLightUpdates::Slot &ChunkLightUpdates::slot(glm::ivec2 chunk) {
     return slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
+}
+
+bool ChunkLightUpdates::dirty(glm::ivec2 chunk) const {
+    if (!validChunk(chunk))
+        return false;
+    const Slot &entry = slots[(chunk.y % SIDE) * SIDE + chunk.x % SIDE];
+    return entry.published == chunk && entry.change != 0;
 }
 
 bool ChunkLightUpdates::markChanged(std::span<const glm::ivec2> columns) {
@@ -332,9 +331,11 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
             if (!zone)
                 continue;
             const Column &column = zone->column(x, y);
-            // The cells to look at: from the lowest a neighbour opens onto, up to the top (and up
-            // to sea level, for the sea's surface).
+            // The native scan includes the implicit floor directly beneath the column's base.
+            // Deeper implicit cells can expose a side only where a horizontal neighbour opens.
             int32_t zmin = column.bottom;
+            if (clear(zone->read(x, y, column.bottom).type()))
+                --zmin;
             for (const auto &n : {glm::ivec2(1, 0), glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(0, -1)})
                 zmin = std::min(zmin, lowestOpen(map, x + n.x, y + n.y));
             const int32_t zmax = std::max(column.top() - 1, 0);

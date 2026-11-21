@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 79 and the rulings. The 301 tracked contracts
-comprise 265 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 80 and the rulings. The 303 tracked contracts
+comprise 267 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -159,6 +159,7 @@ Batch 76 re-certifies `alpha-fatal-credit-level-consumer.md`.
 Batch 77 records `alpha-client-terrain-mesh-dispatch.md`.
 Batch 78 records the terrain mesh distance ties and window origin.
 Batch 79 records the original client's menu startup prerequisites.
+Batch 80 records terrain vertex accounting and fog mesh-slot population.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -261,6 +262,7 @@ Batch 79 records the original client's menu startup prerequisites.
 | `alpha-fatal-region-credit-order.md` | A | 202 | 1 |
 | `alpha-fatal-world-drop-production.md` | A | 72 | 1 |
 | `alpha-floating-point-environment.md` | A | 499 | 1 |
+| `alpha-fog-mesh-slot-population.md` | A | 48 | 0 |
 | `alpha-forward-link-zero-gates.md` | A | 99 | 1 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
@@ -421,6 +423,7 @@ Batch 79 records the original client's menu startup prerequisites.
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
 | `alpha-terrain-mesh-distance-ties.md` | A | 95 | 0 |
+| `alpha-terrain-mesh-vertex-accounting.md` | A | 66 | 0 |
 | `alpha-terrain-mesh-window-origin.md` | A | 58 | 0 |
 | `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |

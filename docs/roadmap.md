@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Charge the signed render-distance allowance against actual published
+  terrain and liquid vertex records in the native window. Preserve a chunk
+  that first takes the sum over budget, reset later slots and re-evaluate
+  when the setting or window changes. Wider engine views retain an exterior
+  streaming path. Original GPU failure behavior remains unverified.
+
 - [x] Prepare terrain lighting and geometry on one below-normal-priority mesh
   worker. Each pass can build one eligible chunk and requests five milliseconds
   of sleep. The renderer can receive several completions after a long frame.

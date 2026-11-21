@@ -16,29 +16,79 @@ struct ChunkMeshes {
     ModelMesh solid; // positions relative to the chunk's corner (x, y) and z = 0
     ModelMesh water;
     bool preparedLighting = false;
+    // Four fresh primary-stream records per terrain quad, independent of their Vulkan stride.
+    int32_t vertexRecords() const;
 };
 
 constexpr int32_t CHUNK = 32;
 
 glm::ivec2 chunkMeshWindowOrigin(const std::array<int64_t, 3> &eye, int32_t width);
 
-// Sort the complete clipped candidate window before selecting from the unique queued requests.
+// Order the complete clipped candidate window before testing source residency and slot state.
 class ChunkMeshPriority {
   public:
     explicit ChunkMeshPriority(int32_t windowWidth) : width(windowWidth) {}
-    using Corner = std::pair<int32_t, int32_t>; // a queued chunk's corner in whole blocks
-    void prioritize(glm::ivec2 origin, std::vector<Corner> &corners);
-
-  private:
     struct Candidate {
         glm::ivec2 offset; // relative to the unclipped origin
         int32_t distance;
     };
+    std::span<const Candidate> window(glm::ivec2 origin);
+
+  private:
     int32_t width;
     glm::ivec2 lower{-1}, upper{-1}; // cached clipping offsets, upper exclusive
     std::vector<Candidate> ordered;
-    std::vector<uint8_t> requested;
-    std::vector<Corner> result;
+};
+
+// The worker counts vertices in native physical slots. Its input is the complete, clipped
+// window in priority order. The renderer owns the Vulkan buffers.
+class ChunkMeshCache {
+  public:
+    static constexpr int32_t SIDE = 40;
+    struct Candidate {
+        glm::ivec2 coordinate;
+        bool requested, hasSources;
+    };
+    void publish(glm::ivec2 chunk, int32_t vertices);
+    void invalidate(glm::ivec2 chunk);
+    bool owns(glm::ivec2 chunk) const { return slots[index(chunk)].coordinate == chunk; }
+    static int64_t allowance(int32_t renderDistance);
+
+    template <class Build, class Reset>
+    bool pass(std::span<Candidate> ordered, int32_t renderDistance, Build build, Reset reset) {
+        const int64_t limit = allowance(renderDistance);
+        int64_t total = 0;
+        bool built = false;
+        for (auto &candidate : ordered) {
+            const glm::ivec2 at = candidate.coordinate;
+            auto &slot = slots[index(at)];
+            if (slot.coordinate.x >= 0 && (total > limit || slot.coordinate != at)) {
+                reset(slot.coordinate);
+                slot = {};
+            }
+            if (total > limit)
+                continue;
+            if (!built && candidate.hasSources && (slot.coordinate != at || candidate.requested)) {
+                if (const auto count = build(at)) {
+                    slot = {at, *count};
+                    candidate.requested = false;
+                    built = true;
+                } else {
+                    candidate.hasSources = false;
+                }
+            }
+            total += slot.vertices;
+        }
+        return built;
+    }
+
+  private:
+    struct Slot {
+        glm::ivec2 coordinate{-1};
+        int32_t vertices = 0;
+    };
+    static size_t index(glm::ivec2 chunk) { return size_t(chunk.y % SIDE) * SIDE + chunk.x % SIDE; }
+    std::array<Slot, SIDE * SIDE> slots;
 };
 
 // Region admission for the mesh builder, in 32-column chunk coordinates.
@@ -69,13 +119,14 @@ class ChunkLightUpdates {
   public:
     // False when a world-edge traversal exits before the frame's window publication.
     bool markChanged(std::span<const glm::ivec2> columns);
+    bool dirty(glm::ivec2 chunk) const;
     // Empty means this candidate must wait. Zero is an admitted, clean build.
     std::optional<uint64_t> beginBuild(const worldgen::WorldMap &map, glm::ivec2 chunk);
     void publish(glm::ivec2 chunk, uint64_t buildChange, bool preparedLighting);
     void invalidate(glm::ivec2 chunk);
 
   private:
-    static constexpr int32_t SIDE = 40;
+    static constexpr int32_t SIDE = ChunkMeshCache::SIDE;
     struct Slot {
         glm::ivec2 published{-1};
         uint64_t change = 0;
