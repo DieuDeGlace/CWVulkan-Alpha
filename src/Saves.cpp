@@ -94,6 +94,30 @@ constexpr uint32_t MAX_ENTRIES = 1u << 16;
 
 SaveDb::~SaveDb() { close(); }
 
+fs::path worldSavePath(const fs::path &folder, const std::string &name, WorldSaveFile kind) {
+    const std::string filename = (kind == WorldSaveFile::State ? "world_" : "map_") + name + ".db";
+    fs::path preferred;
+    try {
+        preferred = folder / pathOfUtf8(filename);
+    } catch (const std::system_error &) {
+        return folder / filename; // older native 8-bit catalog names
+    }
+    if (std::none_of(name.begin(), name.end(), [](unsigned char c) { return c >= 0x80; }))
+        return preferred;
+    std::error_code ec;
+    if (fs::exists(preferred, ec) || ec)
+        return preferred;
+    // Earlier engine versions converted the narrow filename using the system code page.
+    try {
+        const auto legacy = folder / filename;
+        if (legacy != preferred && fs::exists(legacy, ec))
+            return legacy;
+    } catch (const std::system_error &) {
+        // This code page cannot express the legacy filename.
+    }
+    return preferred;
+}
+
 void SaveDb::close() {
     sqlite3_close(db);
     db = nullptr;

@@ -4694,8 +4694,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     // rewrite puts every remaining entry under the selected key. The selection stays.
                     const uint32_t k = (uint32_t)interface.selectedWorld;
                     const std::string name = (*worldMemory)[k].name;
-                    fs::remove(saves / ("world_" + name + ".db"), ec);
-                    fs::remove(saves / ("map_" + name + ".db"), ec);
+                    fs::remove(worldSavePath(saves, name), ec);
+                    fs::remove(worldSavePath(saves, name, WorldSaveFile::Map), ec);
                     SaveDb db;
                     if (db.open(saves / "worlds.db", SaveDb::Mode::ReadWrite))
                         deleteWorldEntry(db, *worldMemory, k);

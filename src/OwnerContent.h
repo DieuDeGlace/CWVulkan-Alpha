@@ -39,5 +39,8 @@ bool hasIdentifyingHeader(const std::string &name, const std::filesystem::path &
 ContentReport inspect(const std::filesystem::path &installation, bool fullCheck);
 // Writes decoded owner assets into a new private directory; never overwrites.
 bool extract(const std::filesystem::path &installation, const std::filesystem::path &destination, std::string &error);
+// Import a closed original single-player Save into a new engine Save directory.
+// The caller validates the owned installation before requesting the copy.
+bool importSaves(const std::filesystem::path &installation, const std::filesystem::path &destination, std::string &error);
 bool remember(const std::filesystem::path &configuration, const std::filesystem::path &installation, std::string &error);
 }

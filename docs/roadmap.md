@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] AlphaSetup imports closed native character and world catalogs into a fresh
+  engine Save folder. Referenced maps and world state retain their original
+  payloads, and the copied worlds use the unmodded swimmable-water profile.
+  Normal startup still checks the saved profile. Returning engine-written
+  character and map records to an original Alpha client remains open.
+
 - [x] Class B provenance, first batch: eleven held-but-unpinned contracts were
   re-certified and pinned, with a ruling for the creature codec count and the
   dedicated-server join record. Engine changes cover buff timers and events,

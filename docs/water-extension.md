@@ -21,8 +21,10 @@ generator. The engine applies saved block edits afterward. New single-player
 and dedicated-server worlds record `av_generation_profile` in their own world
 database. The profile records the water policy and ordered modules and plugins,
 including their declared inputs. The engine checks a conflicting profile
-read-only before opening the world. Unmarked and native-water saves require a
-new swimmable world. The original installation remains read-only.
+read-only before opening the world. To play an original unmarked world, use
+AlphaSetup's save import. It adds the swimmable profile to the new copy.
+Existing engine profiles keep their water and mod requirements.
+[Owner content setup](owner-content.md)
 
 Reeds are placed on dry natural ground directly beside surface water, with clear
 space above. Their deterministic scatter uses world coordinates and the seed,

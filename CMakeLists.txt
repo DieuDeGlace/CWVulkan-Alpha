@@ -105,6 +105,7 @@ add_library(engine STATIC
     src/Install.cpp
     src/FileHash.cpp
     src/OwnerContent.cpp
+    src/OwnerSaveImport.cpp
     src/GenerationProfile.cpp
     src/DataStore.cpp
     src/CubModel.cpp

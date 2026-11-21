@@ -2,8 +2,10 @@
 #include "Config.h"
 #include "DataStore.h"
 #include "FileHash.h"
+#include "GenerationProfile.h"
 #include "Install.h"
 #include "OwnerContent.h"
+#include "WorldSession.h"
 #include <windows.h>
 #include <algorithm>
 #include <chrono>
@@ -38,6 +40,150 @@ class ScratchDirectory {
 
     const fs::path path;
 };
+
+void saveImportChecks(const fs::path &scratch) {
+    const auto original = scratch / L"Original-%41#-\u03b1";
+    const auto source = original / "Save";
+    const auto client = scratch / "Engine";
+    const auto target = client / "Save"; // the production executable opens this sibling
+    fs::create_directories(source);
+    fs::create_directory(client);
+    const std::string name = "online_Trail-\xce\xb1"; // a local world whose name happens to start with online_
+    const auto stateName = pathOfUtf8("world_" + name + ".db");
+    const auto mapName = pathOfUtf8("map_" + name + ".db");
+    CharacterRecord character;
+    character.name = "Traveler";
+    character.level = 12;
+    character.money = 235;
+    character.saveVisit(17, name, {65536, 131072, 196608});
+    WorldEntry first, second, mapOnly;
+    first.name = name;
+    first.seed = 17;
+    first.previewSize[0] = first.previewSize[1] = first.previewSize[2] = 1;
+    first.previewRgb = {11, 22, 33};
+    second.name = "Second world";
+    second.seed = 29;
+    mapOnly.name = "Map only";
+    const auto secondState = fs::path("world_" + second.name + ".db");
+    {
+        SaveDb characters, worlds, state, map, otherState, otherMap;
+        if (!characters.open(source / "characters.db", SaveDb::Mode::ReadWrite) || !addCharacter(characters, character) ||
+            !worlds.open(source / "worlds.db", SaveDb::Mode::ReadWrite) || !worlds.putNumber("num", 3) ||
+            !worlds.put("0", first.serialize()) || !worlds.put("1", second.serialize()) ||
+            !worlds.put("2", mapOnly.serialize()) || !worlds.put("3", {7, 1}) || // inactive deletion row
+            !state.open(source / stateName, SaveDb::Mode::ReadWrite) ||
+            !state.put("time", WorldClock{7, 8150}.serialize()) || !state.put("zone3_4", ZoneSave{}.serialize()) ||
+            !state.put("extra_note", {11, 21}) ||
+            !map.open(source / mapName, SaveDb::Mode::ReadWrite) || !map.putNumber("discovered", 31) ||
+            !map.put("tile3_4", TileSave{}.serialize()) || !map.put("land2_3", LandSave{}.serialize()) ||
+            !map.put("reg2_3", RegionSave{}.serialize()) ||
+            !otherState.open(source / secondState, SaveDb::Mode::ReadWrite) ||
+            !otherMap.open(source / "map_Map only.db", SaveDb::Mode::ReadWrite) || !otherMap.putNumber("discovered", 9))
+            throw std::runtime_error("Cannot create synthetic single-player saves");
+    }
+    std::ofstream(source / "notes.txt") << "private notes";
+    std::ofstream(source / "old-copy.db") << "unrelated file";
+    std::ofstream(source / "world_server_78.db") << "unrelated dedicated world";
+    std::ofstream(source / "world_server_78.db-wal") << "unrelated active journal";
+
+    std::map<fs::path, std::optional<std::string>> hashes;
+    for (const auto &entry : fs::directory_iterator(source)) hashes[entry.path()] = fileSha256(entry.path());
+    const auto assertSource = [&] {
+        for (const auto &[file, before] : hashes)
+            check(before && fileSha256(file) == before, "original save file hash preserved");
+    };
+    std::string error;
+    {
+        SaveDb openWriter;
+        check(openWriter.open(source / stateName, SaveDb::Mode::ReadWrite), "opened synthetic save writer");
+        check(!owner::importSaves(original, target, error) && !fs::exists(target), "open SQLite writer refused");
+    }
+    const auto journal = source / (stateName.native() + L"-journal");
+    std::ofstream(journal) << "unfinished source transaction";
+    check(!owner::importSaves(original, target, error) && fs::exists(journal) && !fs::exists(target),
+          "journal refused without recovery or partial installation");
+    fs::remove(journal);
+    check(!owner::importSaves(original, source / "nested", error) && !fs::exists(source / "nested"),
+          "nested save destination refused");
+    check(!owner::importSaves(original, original / "extra", error) && !fs::exists(original / "extra"),
+          "another location inside the original installation refused");
+    std::error_code linkError;
+    const auto alias = scratch / "linked-game";
+    fs::create_directory_symlink(original, alias, linkError);
+    if (!linkError)
+        check(!owner::importSaves(original, alias / "extra", error) && !fs::exists(original / "extra") &&
+              !owner::importSaves(alias, target, error), "linked source or destination ancestor refused");
+
+    const bool imported = owner::importSaves(original, target, error);
+    if (!imported) throw std::runtime_error("Synthetic save import: " + error);
+    assertSource();
+    check(!fs::exists(target / "notes.txt") && !fs::exists(target / "old-copy.db") &&
+          !fs::exists(target / "world_server_78.db") && !fs::exists(target / "world_server_78.db-wal"),
+          "unrelated files, dedicated worlds and unrelated sidecars excluded");
+    check(!fs::exists(target / "world_Map only.db"), "map-only catalog entry retains its original file set");
+    for (const fs::path &file : {fs::path("characters.db"), fs::path("worlds.db"), mapName, fs::path("map_Map only.db")})
+        check(hashes[source / file] == fileSha256(target / file), "list and map copied byte-for-byte");
+    const auto water = generationProfile(true, {});
+    for (const auto &file : {stateName, secondState}) {
+        SaveDb before, after;
+        check(before.open(source / file, SaveDb::Mode::ReadOnly) && after.open(target / file, SaveDb::Mode::ReadOnly) &&
+              !before.get(GENERATION_PROFILE_KEY) && after.keys().size() == before.keys().size() + 1 &&
+              after.get(GENERATION_PROFILE_KEY) == std::vector<uint8_t>(water.begin(), water.end()),
+              "each world gains only the required unmodded generation profile");
+        for (const auto &key : before.keys())
+            check(before.get(key) == after.get(key), "native world blob preserved byte-for-byte");
+    }
+    {
+        WorldSession session;
+        check(session.open(client, name, 999, 0, &error, water) && session.seed() == first.seed &&
+              session.clock.day == 7 && session.clock.timeOfDayMs == 8150 && session.discoveryCount() == 31 &&
+              session.playing() && session.playing()->level == 12 && session.playing()->name == character.name &&
+              session.playing()->money == 235 && session.startPosition() == glm::dvec3(1, 2, 3),
+              "production Save location loads the imported seed, clock, discovery and selected character");
+    }
+    ModInfo mod;
+    mod.folderName = "SyntheticMod";
+    WorldSession mismatch;
+    check(!mismatch.open(client, name, 17, 0, &error, generationProfile(true, {mod})),
+          "imported world rejects terrain mods on normal open");
+    check(!mismatch.open(original, name, 17, 0, &error, water), "unmarked original still rejects required water");
+    check(!owner::importSaves(original, target, error) && error.find("already exists") != error.npos &&
+          fs::is_regular_file(target / stateName), "existing destination preserved with actionable diagnostic");
+    assertSource();
+
+    const auto retry = client / "Retry";
+    const auto rejected = [&](const char *label) {
+        check(!owner::importSaves(original, retry, error) && !fs::exists(retry), label);
+        for (const auto &entry : fs::directory_iterator(client))
+            check(!entry.path().filename().native().starts_with(L".AlphaSetup-save-"), "temporary staging cleaned after failure");
+    };
+    const auto put = [&](const fs::path &file, const std::string &key, const std::vector<uint8_t> &value) {
+        SaveDb db;
+        if (!db.open(source / file, SaveDb::Mode::ReadWrite) || !db.put(key, value))
+            throw std::runtime_error("Cannot update synthetic failure fixture");
+    };
+    WorldEntry unsafe = second;
+    unsafe.name = "../outside";
+    put("worlds.db", "1", unsafe.serialize());
+    rejected("unsafe file names reject entire import");
+    put("worlds.db", "1", second.serialize());
+    put(secondState, GENERATION_PROFILE_KEY, {1, 2, 3});
+    rejected("already marked world in multi-world folder rejects entire import");
+    {
+        SaveDb db;
+        db.open(source / secondState, SaveDb::Mode::ReadWrite);
+        db.remove(GENERATION_PROFILE_KEY);
+    }
+    put(secondState, "av_quests", {1});
+    rejected("other engine extension records refuse adoption");
+    {
+        SaveDb db;
+        db.open(source / secondState, SaveDb::Mode::ReadWrite);
+        db.remove("av_quests");
+    }
+    put("characters.db", "0", {1, 2, 3});
+    rejected("damaged compressed character refuses installation");
+}
 }
 
 int wmain(int argc, wchar_t **argv) {
@@ -45,6 +191,7 @@ int wmain(int argc, wchar_t **argv) {
     try {
     const ScratchDirectory directory;
     const auto &scratch = directory.path;
+    saveImportChecks(scratch);
     const auto known = scratch / "abc.txt";
     std::ofstream(known, std::ios::binary) << "abc";
     check(fileSha256(known) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",

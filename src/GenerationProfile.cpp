@@ -16,11 +16,10 @@ std::string generationProfile(bool swimmableWater, const std::vector<ModInfo> &m
 bool ensureGenerationProfile(const std::filesystem::path &worldFile, const std::string &profile, std::string *error) {
     if (profile.empty())
         return true; // legacy library callers; production entry points supply a profile
-    constexpr const char *KEY = "av_generation_profile";
     {
         SaveDb existing;
         if (existing.open(worldFile, SaveDb::Mode::ReadOnly)) {
-            const auto bytes = existing.get(KEY);
+            const auto bytes = existing.get(GENERATION_PROFILE_KEY);
             const std::string stored = bytes ? std::string(bytes->begin(), bytes->end()) : NATIVE_GENERATION_PROFILE;
             if (stored == profile)
                 return true;
@@ -39,12 +38,12 @@ bool ensureGenerationProfile(const std::filesystem::path &worldFile, const std::
     SaveDb created;
     if (!created.open(worldFile, SaveDb::Mode::ReadWrite, error))
         return false;
-    if (!created.putIfAbsent(KEY, std::vector<uint8_t>(profile.begin(), profile.end()))) {
+    if (!created.putIfAbsent(GENERATION_PROFILE_KEY, std::vector<uint8_t>(profile.begin(), profile.end()))) {
         if (error)
             *error = "Cannot record the world generation profile.";
         return false;
     }
-    const auto stored = created.get(KEY);
+    const auto stored = created.get(GENERATION_PROFILE_KEY);
     if (!stored || std::string(stored->begin(), stored->end()) != profile) {
         if (error)
             *error = "Another game session created this world with different water or mod settings.";

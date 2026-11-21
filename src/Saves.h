@@ -16,6 +16,11 @@ struct Region;
 
 struct sqlite3;
 
+enum class WorldSaveFile { State, Map };
+// UTF-8 catalog names, including existing files created with the Windows code page.
+std::filesystem::path worldSavePath(const std::filesystem::path &folder, const std::string &name,
+                                    WorldSaveFile kind = WorldSaveFile::State);
+
 // §2: one save database.
 class SaveDb {
   public:

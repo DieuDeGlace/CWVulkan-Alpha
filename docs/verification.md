@@ -2955,3 +2955,27 @@ inspection verified 36 SHA-256 digests across 37 files.
 The production player/controller diagnostic and the reward, health, network,
 save/reload and town-render client runs passed. These checks used the engine
 client and server. An original-client NPC wire comparison remains open.
+
+## Installed single-player save import (2026-11-21)
+
+AlphaSetup imported four closed databases from an owned Alpha installation
+into a fresh engine Save folder. A private read-only comparison checked all
+322 original key/value pairs across both catalogs, world state and map. The
+copied world received one additional record for the required water profile.
+The installation's four database hashes remained identical.
+
+The Vulkan client opened the imported world using its saved seed and visit,
+exited through the normal save path and reopened it in a second process.
+Both runs advanced the world clock. Character records retained their
+inventory, equipment, progression and other bytes after accounting for
+updated health and position. The reload rendered the player, terrain, HUD
+and minimap. The recorded fixture covers one character, one world, nine
+stored zones and 105 map tiles. Loading engine-written saves into the
+original client remains a separate acceptance check.
+
+The final importer passed SaveTests, OwnerContentTests and GenerationProfileTests
+in 37.31 seconds, followed by all 60 serial tests in 200.27 seconds. A repeat
+import from the same installation passed the record comparison, both Vulkan
+sessions and the source hash check. The production controller diagnostic and
+the reward, health, network, save/reload and town-render client runs passed.
+The package passed all 36 recorded digests across 37 files.

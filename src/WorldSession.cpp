@@ -8,13 +8,11 @@ namespace {
 
 constexpr double FIXED = 65536.0; // positions are kept in 1/65536 blocks
 
-fs::path worldFile(const fs::path &folder, const std::string &name) { return folder / ("world_" + name + ".db"); }
-
 } // namespace
 
 bool WorldSession::openMap() {
     if (!mapOpen)
-        mapOpen = mapDb.open(saveFolder / ("map_" + entry.name + ".db"), SaveDb::Mode::ReadWrite);
+        mapOpen = mapDb.open(worldSavePath(saveFolder, entry.name, WorldSaveFile::Map), SaveDb::Mode::ReadWrite);
     return mapOpen;
 }
 
@@ -90,7 +88,7 @@ bool WorldSession::openRemoteMap(const fs::path &folder, const std::string &name
     fs::create_directories(saveFolder, ec);
     if (!selectEntry(name, seed, true, error))
         return false;
-    mapOpen = mapDb.open(saveFolder / ("map_" + entry.name + ".db"), SaveDb::Mode::ReadWrite, error);
+    mapOpen = mapDb.open(worldSavePath(saveFolder, entry.name, WorldSaveFile::Map), SaveDb::Mode::ReadWrite, error);
     return mapOpen;
 }
 
@@ -101,7 +99,7 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
     saveFolder = folder / "Save";
     std::error_code ec;
     fs::create_directories(saveFolder, ec);
-    if (!ensureGenerationProfile(worldFile(saveFolder, name), generationProfile, error))
+    if (!ensureGenerationProfile(worldSavePath(saveFolder, name), generationProfile, error))
         return false;
     // Menus pass the selected entry's seed. Keep the existing name lookup for
     // the offline command-line path as well.
@@ -112,7 +110,7 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
     // its one world object holds when `time` is absent; each session here is a fresh world.)
     clock = WorldClock{};
     SaveDb world;
-    if (world.open(worldFile(saveFolder, name), SaveDb::Mode::ReadWrite, error))
+    if (world.open(worldSavePath(saveFolder, name), SaveDb::Mode::ReadWrite, error))
         if (const auto value = world.get("time"))
             if (const auto stored = WorldClock::parse(*value))
                 clock = *stored;
@@ -160,7 +158,7 @@ void WorldSession::advance(double seconds) {
 
 std::optional<ZoneSave> WorldSession::loadZone(int32_t zx, int32_t zy) {
     SaveDb world;
-    if (!world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         return std::nullopt;
     const auto bytes = world.get(zoneKey(zx, zy));
     return bytes ? ZoneSave::parse(*bytes) : std::nullopt;
@@ -168,7 +166,7 @@ std::optional<ZoneSave> WorldSession::loadZone(int32_t zx, int32_t zy) {
 
 void WorldSession::saveZoneItems(int32_t zx, int32_t zy, std::vector<std::array<uint8_t, 325>> items) {
     SaveDb world;
-    if (!world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         return;
     ZoneSave zone;
     if (const auto bytes = world.get(zoneKey(zx, zy)))
@@ -180,7 +178,7 @@ void WorldSession::saveZoneItems(int32_t zx, int32_t zy, std::vector<std::array<
 
 void WorldSession::saveZoneStates(int32_t zx, int32_t zy, std::vector<uint8_t> states) {
     SaveDb world;
-    if (!world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         return;
     ZoneSave zone;
     if (const auto bytes = world.get(zoneKey(zx, zy)))
@@ -192,7 +190,7 @@ void WorldSession::saveZoneStates(int32_t zx, int32_t zy, std::vector<uint8_t> s
 
 void WorldSession::saveZoneEdits(int32_t zx, int32_t zy, std::vector<std::array<uint8_t, 20>> edits) {
     SaveDb world;
-    if (!world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         return;
     ZoneSave zone;
     if (const auto bytes = world.get(zoneKey(zx, zy)))
@@ -205,7 +203,7 @@ void WorldSession::saveZoneEdits(int32_t zx, int32_t zy, std::vector<std::array<
 std::map<std::string, std::vector<uint8_t>> WorldSession::values(const std::vector<std::string> &keys) {
     std::map<std::string, std::vector<uint8_t>> out;
     SaveDb world;
-    if (!world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         return out;
     for (const std::string &key : keys)
         if (auto bytes = world.get(key))
@@ -215,7 +213,7 @@ std::map<std::string, std::vector<uint8_t>> WorldSession::values(const std::vect
 
 void WorldSession::setValues(const std::map<std::string, std::vector<uint8_t>> &values) {
     SaveDb world;
-    if (!world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         return;
     for (const auto &[key, bytes] : values)
         world.put(key, bytes);
@@ -223,7 +221,7 @@ void WorldSession::setValues(const std::map<std::string, std::vector<uint8_t>> &
 
 void WorldSession::saveClock() {
     SaveDb world;
-    if (world.open(worldFile(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
+    if (world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
         world.put("time", clock.serialize());
 }
 

@@ -4468,3 +4468,16 @@ home position, pitch, bank, head pitch and contact. Reset pets carry the
 unassigned dialogue coordinates until a producer supplies a destination.
 NPC names and the third dialogue word for all possible descriptors remain
 open. Native packet capture is a separate acceptance step.
+
+## Owned save import (2026-11-21)
+
+This AlphaSetup feature uses the project's existing save codecs and SQLite.
+It stages the original list databases, per-world state and maps in a fresh
+directory. Once validation succeeds, each staged world receives the unmodded
+swimmable-water profile and the directory is published. The ordinary profile
+check continues to protect established engine worlds. Catalog rows and
+unrecognized blob metadata travel with their databases.
+
+The clean team designed the import and its filesystem handling independently.
+Original saves are read-only inputs to verification. Runtime interchange in
+the reverse direction requires separate original-client evidence.

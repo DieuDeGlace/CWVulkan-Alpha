@@ -9,23 +9,29 @@
 int wmain(int argc, wchar_t **argv) {
     try {
         fs::path game;
-        fs::path destination, configuration;
+        fs::path destination, configuration, saveDestination;
         for (int index = 1; index < argc; index++) {
             const std::wstring option = argv[index];
             if (option == L"--check")
                 continue;
             if (option == L"--help") {
-                std::printf("AlphaSetup --game DIR [--check] [--register INI] [--extract-to NEW-DIR]\n");
+                std::printf("AlphaSetup --game DIR [--check] [--register INI] [--extract-to NEW-DIR] [--import-saves-to NEW-SAVE-DIR]\n");
                 return 0;
             }
-            if (index + 1 >= argc || (option != L"--game" && option != L"--register" && option != L"--extract-to")) {
+            if (index + 1 >= argc || (option != L"--game" && option != L"--register" && option != L"--extract-to" &&
+                                      option != L"--import-saves-to")) {
                 std::fprintf(stderr, "Unknown or incomplete option: %ls\n", argv[index]);
                 return 1;
             }
             const fs::path value = argv[++index];
+            if (value.empty()) {
+                std::fprintf(stderr, "Option requires a path: %ls\n", option.c_str());
+                return 1;
+            }
             if (option == L"--game") game = value;
             else if (option == L"--register") configuration = value;
-            else destination = value;
+            else if (option == L"--extract-to") destination = value;
+            else saveDestination = value;
         }
         Config config;
         config.load("AlphaVulkan.ini");
@@ -45,6 +51,13 @@ int wmain(int argc, wchar_t **argv) {
         for (size_t index = 0; index < report.storeEntries.size(); index++)
             std::printf("data%zu.db: %zu verified assets\n", index + 1, report.storeEntries[index]);
         std::string error;
+        if (!saveDestination.empty()) {
+            if (!owner::importSaves(installation, saveDestination, error)) {
+                std::fprintf(stderr, "%s\n", error.c_str());
+                return 1;
+            }
+            std::printf("Imported single-player saves for the unmodded client into %s.\n", utf8(saveDestination).c_str());
+        }
         if (!destination.empty() && !owner::extract(installation, destination, error)) {
             std::fprintf(stderr, "%s\n", error.c_str());
             return 1;

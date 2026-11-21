@@ -54,3 +54,36 @@ Unicode and semicolons survive configuration reloads.
 
 This end-user tool is separate from `tools/alpha-extractor`, the developer-only
 32-bit recorder used in an isolated native-game copy for behavioral comparisons.
+
+## Play an original single-player save
+
+Close Cube World Alpha, AlphaVulkan and any save editors. In a fresh engine
+installation, import the original installation's `Save` folder before launching
+the client. Supply the full path to the new `Save` directory **beside the
+AlphaVulkan.exe you will run**. For a client in `build`:
+
+```bat
+build\AlphaSetup.exe --game "path to Cube World Alpha" --import-saves-to "build\Save"
+build\AlphaVulkan.exe --start
+```
+
+Choose the imported character and world from the menus. Each copied world uses
+the engine's required swimmable water and bank reeds. The importer pins the
+unmodded generation profile. Leave `[Mods] Load` empty when opening the copy.
+Characters, inventories, stored world changes and discovery maps come from the
+copy. The original installation stays available to the original game.
+
+The destination's parent must already exist on a local drive. If the client
+already has a `Save` directory, keep it and import beside a separate fresh copy
+of the engine. Setup checks both list databases and each active world's existing
+state and map files. A map-only entry retains its map. An entry for a world
+with no saved state keeps its place in the list. Setup copies the native
+records and adds the engine profile to each staged world. It publishes the
+directory only after every database passes. Other files in the folder are
+skipped, including unrelated dedicated-server worlds and orphan databases.
+
+This import supports closed, rollback-mode Alpha databases. Setup rejects
+open writers or SQLite journal files for the selected databases, links or
+junctions on the selected paths, damaged native records, unsafe world names
+and saves containing engine extension records. Registration and asset
+extraction retain their usual options. Keep imported saves private and outside distributions.

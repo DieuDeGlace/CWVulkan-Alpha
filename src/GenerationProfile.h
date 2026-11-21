@@ -5,6 +5,7 @@
 #include <vector>
 
 // Engine extension metadata, independent of the native save record formats.
+inline constexpr const char *GENERATION_PROFILE_KEY = "av_generation_profile";
 inline constexpr const char *NATIVE_GENERATION_PROFILE = "AlphaVulkan terrain 1\nWater=native\n";
 std::string generationProfile(bool swimmableWater, const std::vector<ModInfo> &mods);
 // Pins new world files; existing unmarked files are treated as native. A rejected
