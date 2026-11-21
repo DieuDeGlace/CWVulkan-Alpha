@@ -2854,3 +2854,27 @@ All 60 serial CTests passed in 92.03 seconds. The production
 player/controller diagnostic and five actual client flows passed. Package
 inspection verified 36 hashes in 37 files. Revision 43 parsed all 86 links
 and the 132-line held worker contract matched its exact SHA-256 and final LF.
+
+## Rock cover roughness order (2026-11-20)
+
+A private observer ran a fresh, hash-verified original dedicated server with
+a project-owned loopback peer presenting a player record. It read the
+seed-41 test column (8398044, 8397004) in zone (32804, 32800) at the held
+surface-cover and initial column-color boundaries. The original's ridge
+noises, v1, v2 and T matched the engine. Its mountain factor was 0x3ed956c4
+against the engine's 0x3ed956c9. Inside the mountain factor all stages before
+the shaping-field products matched. Evaluating the held roughness term with
+the square first reproduced the original's factor entering the location step
+(0x3ee62353), the cover 0x3f0c21e0 and floor blue 178.999969. The engine now
+uses that order.
+
+WorldgenTests pins the roughness bits, the mountain factor and the floor bytes
+(189, 179, 178) at the test column. ZoneCompare of the full retained native
+corpus now reports all 209 zones with all columns equal and 87,447,092 of
+87,447,092 solid blocks equal; the previous run had one blue-byte difference.
+Stored air/water light still differs in 122 zones, so the corpus is not an
+exact whole-zone pass.
+
+All 60 serial CTests passed in 106.90 seconds. The production
+player/controller diagnostic and five actual client flows passed. Package
+inspection verified 36 hashes in 37 files. Revision 44 parsed all 87 links.

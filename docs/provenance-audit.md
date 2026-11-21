@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-18 after batch 71 and the rulings. The 293 tracked contracts
-comprise 239 A, 49 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-20 after batch 72 and the rulings. The 296 tracked contracts
+comprise 242 A, 49 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -140,6 +140,9 @@ Batch 70 covers `alpha-dedicated-action-projectile-launch.md`,
 `alpha-ray-launch-fields-reconciliation.md` and
 `alpha-ray-post-hit-timing-evaluation.md`.
 Batch 71 covers `alpha-generation-worker-floating-point-controls.md`.
+Batch 72 covers `alpha-zone-generator-observation-boundaries.md`,
+`alpha-column-initial-color-observation-boundaries.md` and
+`alpha-surface-cover-observation-boundaries.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -182,6 +185,7 @@ Batch 71 covers `alpha-generation-worker-floating-point-controls.md`.
 | `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
 | `alpha-client-world-change-lifecycle.md` | A | 173 | 0 |
 | `alpha-client-world-clock-input.md` | B | 52 | 2 |
+| `alpha-column-initial-color-observation-boundaries.md` | A | 58 | 0 |
 | `alpha-column-scalar-cache-publication.md` | B | 105 | 0 |
 | `alpha-column-value-production.md` | A | 413 | 0 |
 | `alpha-combat-aim-triplet.md` | A | 266 | 0 |
@@ -387,6 +391,7 @@ Batch 71 covers `alpha-generation-worker-floating-point-controls.md`.
 | `alpha-specialized-vendor-stock.md` | A | 106 | 0 |
 | `alpha-strike-call-sites.md` | A | 277 | 0 |
 | `alpha-strike-cell-helpers.md` | A | 280 | 0 |
+| `alpha-surface-cover-observation-boundaries.md` | A | 117 | 0 |
 | `alpha-talk-vendors.md` | A | 698 | 1 |
 | `alpha-taming-progress-and-capture.md` | A | 262 | 0 |
 | `alpha-target-relation.md` | A | 178 | 0 |
@@ -432,6 +437,7 @@ Batch 71 covers `alpha-generation-worker-floating-point-controls.md`.
 | `alpha-worldgen-trees.md` | A | 617 | 1 |
 | `alpha-worldgen-vegetation.md` | A | 357 | 0 |
 | `alpha-yaw-trig-scalar-abi.md` | A | 77 | 1 |
+| `alpha-zone-generator-observation-boundaries.md` | A | 39 | 0 |
 | `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
 | `shadows.md` | E | 194 | 3 |
 | `sky-and-clouds.md` | E | 481 | 6 |

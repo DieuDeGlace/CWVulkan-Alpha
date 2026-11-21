@@ -78,7 +78,7 @@ float Terrain::roughness(int32_t x, int32_t y) const {
     v *= (noise(0.001 * x, 0.001 * y) + 1.f) * 0.1f + 0.8f;
     const float t = 1.f - 0.75f * w.channel(x, y);
     if (t > 0)
-        v += 0.05f * t * t;
+        v += t * t * 0.05f; // §3.3 step 3: t² first, then × 0.05 (binary32 rounding order)
     if (const Location *L = w.location(x, y)) {
         const int32_t type = L->type;
         if (type == 1 || type == 2 || type == 4 || type == 13)

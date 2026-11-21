@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
+  first, as held. A private dedicated-server observation of the seed-41 test
+  column traced the old one-byte rock-color discrepancy to that binary32
+  rounding order. Mountain factor, cover and the ravine floor now match.
+
 - [x] Native client generation-worker FP boundaries observed in two fresh owned
   copies. The same worker retained x87 control 0x027f and SSE control fields
   0x1f80 at callback, worker entry and three consecutive generator-call pairs.

@@ -1,6 +1,7 @@
 // Checks the world generator against the test values written in the world-generation specs
 // (docs/specs/alpha-worldgen-*.md). They were computed from the specs' formulas, so a pass means
 // the implementation follows the spec; matching the running game is checked separately.
+#include <bit>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -128,6 +129,19 @@ static void checkOfflineBlueprint() {
 
 int main() {
     checkOfflineBlueprint();
+    // Terrain §3.3 step 3: R adds t² · 0.05 (square first). At this seed-41 column the other
+    // order rounds R one unit higher, which moves M, the rock cover and a ravine floor byte.
+    {
+        World world(41);
+        Terrain terrain(world);
+        const auto zone = terrain.generate(32804, 32800); // prepares the surrounding regions
+        const int32_t x = 32804 * 256 + 220, y = 32800 * 256 + 204;
+        const Block floor = zone->read(x, y, 145);
+        same((double)((uint32_t)floor.r << 16 | (uint32_t)floor.g << 8 | floor.b), 0xbdb3b2u,
+             "ravine floor colour (189, 179, 178) at the seed-41 test column");
+        same((double)std::bit_cast<uint32_t>(terrain.roughness(x, y)), 0x3effb460u, "roughness rounds t^2 before x0.05");
+        same((double)std::bit_cast<uint32_t>(terrain.mountains(x, y)), 0x3ed956c4u, "mountain factor after the roughness term");
+    }
     // Extractor §B5.2: the clean-up keeps a disc of squared zone distance < 16 and runs only
     // when more than 1000 ms have passed.
     {

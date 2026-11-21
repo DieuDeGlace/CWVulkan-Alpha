@@ -4300,3 +4300,39 @@ retained one-byte rock-color discrepancy remain open. The observation
 perturbs scheduling through debugger stops and supplies no frame-timing
 or original-menu acceptance claim. Probe files, native copies and logs
 remain private and excluded from source and packages.
+
+## Rock cover roughness order (2026-11-20)
+
+Isolated source-only authors finalized three observation contracts. The
+implementer read every physical line of each and verified its SHA-256:
+[zone-generator boundaries](specs/alpha-zone-generator-observation-boundaries.md),
+38 lines, `c75e45d276db79e7ede3d9a92edf6193c6a261f4458a05e0babc61eac6e783ce`;
+[initial column-color boundaries](specs/alpha-column-initial-color-observation-boundaries.md),
+57 lines, `0dbb426212d44712627d4832f5b49da1c566fa9173e6faf0b9fa911ed312b88a`;
+[surface-cover boundaries](specs/alpha-surface-cover-observation-boundaries.md),
+116 lines, `599c909fffe6bc683f94670a5d9b886604b82e0083011ab79574e7c0fccdbc7c`.
+They name observation points only. No runtime value or implementation detail
+was sent to any source context.
+
+A private black-box observer ran a fresh, hash-verified original dedicated
+server and a project-owned loopback peer. The peer now presents a player
+record (controller byte 0), because the held server-simulation contract
+generates zones only around player creatures. Earlier runs left the default
+controller byte and generated only the home zone. Hardware execution
+breakpoints at held addresses read the target column of seed 41, zone
+(32804, 32800), column (8398044, 8397004).
+
+The stored initial pair matched the engine. Every rock, extra and lower-mix
+vector matched bit for bit. The first mix weight, which is the rock cover,
+was 0x3f0c21e0 in the original and 0x3f0c21e4 in the engine. The surface-cover
+points then showed v1, v2 and T equal and the mountain factor P different
+(0x3ed956c4 against 0x3ed956c9). Inside the mountain factor, every stage up to
+the shaping-field products matched. The difference came from the roughness
+term of `alpha-worldgen-terrain.md` section 3.3 step 3, held as t²·0.05. The
+engine evaluated 0.05·t·t, which rounds one binary32 unit higher at this
+column. The engine now squares first. P, cover and the ravine floor then match,
+and the retained floor cell is (189, 179, 178, type 6) as in the original.
+WorldgenTests pins the roughness, mountain factor and floor bytes. The full
+209-zone native corpus is recorded in verification.md. Stored-light
+differences, native pixel acceptance and the remaining open gates are
+unchanged. Probe files, native copies and logs remain private.
