@@ -383,13 +383,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 onlineCharacter = all[options.character];
         }
     }
-    const auto onlineStart = onlineCharacter && worldOptions.x == worldgen::HOME && worldOptions.y == worldgen::HOME
+    constexpr int64_t homeFixed = int64_t(worldgen::HOME) * 65536;
+    constexpr std::array<int64_t, 3> homeAnchor{homeFixed, homeFixed, 0};
+    const bool atHome = worldOptions.x == worldgen::HOME && worldOptions.y == worldgen::HOME;
+    auto savedVisit = onlineCharacter && atHome
         ? onlineCharacter->visitPosition(activeWorld.seed, activeWorld.name) : std::nullopt;
-    if (onlineStart) {
-        worldOptions.x = int32_t(std::floor((*onlineStart)[0] / 65536.0));
-        worldOptions.y = int32_t(std::floor((*onlineStart)[1] / 65536.0));
-        worldOptions.z = float((*onlineStart)[2] / 65536.0);
-    }
     // A single-player world from the saves: its seed, its clock, where the character stood.
     std::optional<WorldSession> session;
     if (options.connect.empty() && !options.saveWorld.empty()) {
@@ -401,11 +399,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             return 1;
         }
         worldOptions.seed = session->seed();
-        if (const auto at = session->startPosition()) {
-            worldOptions.x = (int32_t)std::floor(at->x);
-            worldOptions.y = (int32_t)std::floor(at->y);
-            worldOptions.z = (float)at->z;
-        }
+        savedVisit = session->startFixedPosition();
+    }
+    if (savedVisit) {
+        // The view starts in a terrain column. The actor keeps the original fixed coordinates.
+        worldOptions.x = int32_t((*savedVisit)[0] >> 16);
+        worldOptions.y = int32_t((*savedVisit)[1] >> 16);
+        worldOptions.z = float((*savedVisit)[2] / 65536.0);
     }
     if (session)
         activeWorld = {session->seed(), session->name()};
@@ -867,11 +867,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         creatures::generate(type, looks, &choice, [] { return 0; });
         player.emplace(view, looks, worldRandom);
         if (options.start) {
-            player->changeWorldPosition({int64_t(worldgen::HOME) * 65536, int64_t(worldgen::HOME) * 65536, 0});
+            player->changeWorldPosition(homeAnchor);
             player->resetCreationPose();
+        } else if (savedVisit) {
+            player->changeWorldPosition(*savedVisit);
+        } else if (session && session->playing() && atHome) {
+            player->changeWorldPosition(homeAnchor);
         }
-        if (onlineStart)
-            player->changeWorldPosition(*onlineStart);
         player->objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *) {
             return statics.blocks(view.held(), lo, hi, axis, move);
         };
@@ -2041,8 +2043,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 worldChange.reset();
             }
             const auto visit = onlineCharacter ? onlineCharacter->visitPosition(activeWorld.seed, activeWorld.name) : std::nullopt;
-            constexpr int64_t home = int64_t(worldgen::HOME) * 65536;
-            const auto destination = visit.value_or(std::array<int64_t, 3>{home, home, 0});
+            const auto destination = visit.value_or(homeAnchor);
             const glm::dvec3 focus = glm::dvec3(destination[0], destination[1], destination[2]) / 65536.0;
             view.activateWorld(activeWorld.seed, focus);
             worldItems = {};
@@ -4972,7 +4973,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     session->setPreview(tile.sx, tile.sy, tile.sz, tile.rgb);
             }
         }
-        session->leave(player ? player->body().blocks() : view.worldPosition());
+        if (player)
+            session->leaveAtFixedPosition(std::to_array(player->body().position));
+        else
+            session->leave(view.worldPosition());
     }
     if (options.travel > 0)
         std::fprintf(stderr, "after travelling %.0f blocks: %s\n", travelled, view.status().c_str());

@@ -134,12 +134,13 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
     return true;
 }
 
+std::optional<std::array<int64_t, 3>> WorldSession::startFixedPosition() const {
+    // Saves §3.1: the per-world table (field 19) determines where to enter this world.
+    return character ? character->visitPosition(entry.seed, entry.name) : std::nullopt;
+}
+
 std::optional<glm::dvec3> WorldSession::startPosition() const {
-    if (!character)
-        return std::nullopt;
-    // Saves §3.1: the list load does not apply the stored field-2 position; the place in a
-    // world comes from the per-world table (field 19), which every save updates.
-    if (const auto pos = character->visitPosition(entry.seed, entry.name))
+    if (const auto pos = startFixedPosition())
         return glm::dvec3((*pos)[0] / FIXED, (*pos)[1] / FIXED, (*pos)[2] / FIXED);
     return std::nullopt;
 }
@@ -231,16 +232,22 @@ void WorldSession::setPreview(int32_t sx, int32_t sy, int32_t sz, std::vector<ui
 }
 
 void WorldSession::leave(const glm::dvec3 &position) {
+    std::array<int64_t, 3> fixed{};
+    if (character) {
+        for (int axis = 0; axis < 3; ++axis)
+            fixed[axis] = int64_t(position[axis] * FIXED);
+    }
+    leaveAtFixedPosition(fixed);
+}
+
+void WorldSession::leaveAtFixedPosition(const std::array<int64_t, 3> &position) {
     saveClock();
     SaveDb worlds;
     if (worlds.open(saveFolder / "worlds.db", SaveDb::Mode::ReadWrite))
         worlds.put(std::to_string(entryIndex), entry.serialize());
     if (!character)
         return;
-    std::array<int64_t, 3> fixed;
-    for (int axis = 0; axis < 3; axis++)
-        fixed[axis] = (int64_t)(position[axis] * FIXED);
-    character->saveVisit(entry.seed, entry.name, fixed);
+    character->saveVisit(entry.seed, entry.name, position);
     // Saves §3.1: the character is saved under its own key only.
     SaveDb characters;
     if (characterIndex >= 0 && characters.open(saveFolder / "characters.db", SaveDb::Mode::ReadWrite) &&

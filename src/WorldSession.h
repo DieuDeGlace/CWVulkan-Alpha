@@ -23,7 +23,9 @@ class WorldSession {
     const std::optional<CharacterRecord> &playing() const { return character; }
     std::optional<CharacterRecord> &playing() { return character; } // written back on leaving
     const std::string &name() const { return entry.name; }
-    // Where the character last stood in this world, in blocks (none for a new character).
+    // The character's visit for this seed and name, in signed 1/65536-block units.
+    std::optional<std::array<int64_t, 3>> startFixedPosition() const;
+    // The same position in blocks, for callers that only need a view coordinate.
     std::optional<glm::dvec3> startPosition() const;
 
     // §5.1: the world clock, run as the server runs it (ten game milliseconds per real one).
@@ -56,6 +58,7 @@ class WorldSession {
     void saveClock();
     // On leaving the world (§3.1, §4.1): the clock, the character where it stands, and the
     // world entry.
+    void leaveAtFixedPosition(const std::array<int64_t, 3> &position);
     void leave(const glm::dvec3 &position);
     // Saves §4.1: the world list's preview, the map-tile model of the zone the player is in
     // (written with the entry on leaving).

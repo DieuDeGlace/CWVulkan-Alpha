@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
         WorldSession first;
         check(first.open(folder, "scratch", 123, 0, &error), "session open: " + error);
         check(first.clock.day == 0 && first.clock.timeOfDayMs == 43200000, "a new world starts at noon");
-        check(!first.startPosition(), "a new character has no position here");
+        check(!first.startFixedPosition() && !first.startPosition(), "a new character has no position here");
         first.advance(86400.5); // ten game days and five game seconds
         first.leave({8396928.5, 8396930.25, 120});
         WorldSession again;
@@ -177,6 +177,12 @@ int main(int argc, char **argv) {
         check(again.clock.day == 10 && again.clock.timeOfDayMs == 86400000u, "saves §5.1: 86,400,000 is held");
         const auto at = again.startPosition();
         check(at && at->x == 8396928.5 && at->y == 8396930.25 && at->z == 120, "the character comes back where it left");
+        // Exercise the full field width, including low bits a block-space double cannot retain.
+        const std::array<int64_t, 3> precise{550301085753, 550301127729, -(int64_t{1} << 53) - 1};
+        again.leaveAtFixedPosition(precise);
+        WorldSession restored;
+        check(restored.open(folder, "scratch", 0, 0, &error) && restored.startFixedPosition() == precise,
+              "offline save and selection retain every signed fixed-point coordinate bit");
         SaveDb worlds;
         check(worlds.open(folder / "Save" / "worlds.db", SaveDb::Mode::ReadOnly) && readWorlds(worlds).size() == 1,
               "one world entry");

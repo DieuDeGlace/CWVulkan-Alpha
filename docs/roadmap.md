@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Restore the selected offline character's full per-world position before
+  motion and write the live actor's fixed coordinates directly on exit.
+  Start a first visit at the world's home anchor.
+
 - [x] Emit exposed terrain and liquid faces in the original six-direction
   order. Preserve each face's corners, shading, winding and vertex charge.
 

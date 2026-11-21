@@ -3112,3 +3112,39 @@ The focused terrain test passed in 0.25 seconds and all 60 serial tests
 passed in 131.55 seconds. Package verification matched all 36 digests
 across 37 files. The production controller diagnostic and the five live
 client flows also passed.
+
+## Exact offline character placement (2026-11-21)
+
+Earlier import checks compared 322 source records and exercised two
+play/save/reload sessions. Their position tolerance allowed a nearby spawn.
+A separate fixture imports a character with fractional X and Y, an
+elevated Z and a different position in the character's general position
+field. The fixture also contains a second world with no saved visit.
+
+Before the fix, the selected actor started at the center of its terrain
+column at ground height. Its drawable position also differed from the
+actor position. Reload repeated the displacement. On first entry to the
+second world it started above ground at the center of the home column.
+The three runs left the source databases byte-identical.
+
+With the fix, three instrumented Vulkan launches measured the live actor
+before its first movement update. All three axes matched the stored visit
+on entry and reload. The missing visit started at exactly 8,396,928 blocks
+on both horizontal axes and zero on the vertical axis. The drawable position
+matched the body and all three velocity components were zero each time.
+Gravity and spawn recovery subsequently changed height. Both saved position
+fields matched the exact live body on exit, including its new height.
+The source database hashes remained identical. These runs entered through
+the client's world and character arguments.
+
+The focused save, camera and owner-content tests passed in 24.62 seconds.
+All 60 serial tests passed in 131.57 seconds. Package inspection matched
+36 digests across 37 files.
+
+The separate terrain-edit smoke test originally detonated its crater
+before the newly entered character could reach the surface. It removed
+zero blocks. Moving that fixture's starting column one block east gave it
+a diagnostic surface spawn. The same blast then removed 172 blocks.
+All 172 edits survived reload. The inspected captures showed the player,
+health and quick-item bars, terrain and minimap on both runs. The production
+controller, reward, health, network and town-render checks also passed.

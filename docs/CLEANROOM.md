@@ -4561,3 +4561,13 @@ The direction sequence follows the held vertex-accounting contract in batch
 corner geometry, winding, liquid indices, shading and sway use the existing
 paths. The directional visit order and the number of charged vertices are
 verified independently.
+
+## Offline character placement on world entry (2026-11-21)
+
+The clean team used the held menu camera and controlled actor contract
+from batch 69. A selected character enters at its saved position for the
+world's seed and name. When that entry is absent, ordinary local selection
+uses the reset home anchor. The actor copies all three signed coordinates
+to its drawable position and clears velocity before motion. Terrain and
+camera setup use a separate view of the coordinates. Offline character
+saving records the body's fixed position directly.
