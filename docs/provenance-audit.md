@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 75 and the rulings. The 297 tracked contracts
-comprise 260 A, 32 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 76 and the rulings. The 297 tracked contracts
+comprise 261 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -155,6 +155,7 @@ Batch 74 re-certifies `alpha-ranged-action-scheduling.md`,
 `alpha-client-receiver-publication-locks.md`.
 Batch 75 re-certifies `alpha-spatial-scalars-1ef040-1f0720.md`,
 `alpha-created-actor-behavior.md` and `alpha-created-companion-navigation.md`.
+Batch 76 re-certifies `alpha-fatal-credit-level-consumer.md`.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -245,7 +246,7 @@ Batch 75 re-certifies `alpha-spatial-scalars-1ef040-1f0720.md`,
 | `alpha-extractor.md` | A | 683 | 0 |
 | `alpha-fatal-branch-order.md` | A | 202 | 0 |
 | `alpha-fatal-context-field-producers.md` | A | 84 | 0 |
-| `alpha-fatal-credit-level-consumer.md` | B | 108 | 2 |
+| `alpha-fatal-credit-level-consumer.md` | A | 103 | 0 |
 | `alpha-fatal-descriptor-tail-lifecycle.md` | B | 103 | 1 |
 | `alpha-fatal-disposal-callers.md` | A | 301 | 0 |
 | `alpha-fatal-loot-branches-generator-recount.md` | A | 79 | 0 |

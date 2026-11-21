@@ -169,6 +169,39 @@ static void independentLinkedAward() {
     }
 }
 
+static void designatedReadsBetweenWrites() {
+    Fixture f;
+    Combatant credited, victim, linked, replacement;
+    f.actors[1] = &credited;
+    f.actors[2] = &victim;
+    f.actors[3] = &linked;
+    victim.linkedId = 3;
+    victim.relations.contact = replacement.relations.contact = 9;
+    linked.relations.threats[2] = 1;
+    auto world = f.world(1);
+    world.controlled = [&] { return linked.relations.threats.empty() ? &replacement : &victim; };
+    receiveCredit({1, 2, 0, 0}, world);
+    check(linked.health == 0 && linked.relations.threats.empty() &&
+          replacement.relations.contact == 0 && victim.relations.contact == 9,
+          "contact cleanup reloads the designated creature after the linked map is cleared");
+
+    victim.controller = 1;
+    for (const int32_t experience : {146, 147}) {
+        credited.experience = 0;
+        replacement.level = 1;
+        replacement.experience = experience;
+        replacement.health = 1;
+        world.controlled = [&] { return credited.experience ? &replacement : &credited; };
+        const auto result = receiveCredit({1, 2, 0, 50}, world);
+        check(result.directAward == &credited && credited.experience == 50 && credited.level == 1,
+              "the designated experience write precedes the level helper receiver lookup");
+        check(replacement.level == (experience == 146 ? 2 : 3) &&
+              replacement.experience == (experience == 146 ? 96 : 0) &&
+              replacement.health == maxHealth(replacement),
+              "the reloaded creature consumes its own successive level thresholds");
+    }
+}
+
 static void aliasesAndRecordOrder() {
     Fixture f;
     Combatant actor, victim;
@@ -250,6 +283,7 @@ int main() {
     codecAndAdmission();
     designatedCleanup();
     independentLinkedAward();
+    designatedReadsBetweenWrites();
     aliasesAndRecordOrder();
     preparedFatalAmount();
     std::puts(failures ? "FAILED" : "Credit checks passed");

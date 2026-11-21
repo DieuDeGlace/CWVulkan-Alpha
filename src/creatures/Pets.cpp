@@ -105,6 +105,8 @@ void Npcs::resetCreature(Npc &n) {
     n.path.state.radius = 0;
     n.path.state.reference = {-1, -1, 0};
     n.spawn = Npc::NO_SPAWN;
+    n.talkKind = 0;
+    n.talkTarget = {-1, -1};
     n.target = 0; // legacy continuation cache of the cleared target
     n.threat = 0;
     n.deathPassStarted = false;

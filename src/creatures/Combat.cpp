@@ -503,7 +503,7 @@ int32_t experienceForLevel(int32_t level) {
     const float reciprocal = 1.f / denominator;
     const float growth = 1.f - reciprocal;
     const float base = growth * 1000.f;
-    return (int32_t)(base + 50.f);
+    return truncateToInt32(base + 50.f);
 }
 
 float fatalCreditAmount(int32_t level, uint8_t tier, int32_t type, uint16_t appearanceFlags) {
@@ -530,11 +530,14 @@ float fatalCreditAmount(int32_t level, uint8_t tier, int32_t type, uint16_t appe
 
 int32_t killExperience(int32_t level, int32_t tier, int32_t type, bool boss, uint16_t appearanceFlags) {
     const uint16_t flags = uint16_t((appearanceFlags & ~0x200u) | (boss ? 0x200u : 0));
-    return (int32_t)fatalCreditAmount(level, uint8_t(tier), type, flags);
+    return truncateToInt32(fatalCreditAmount(level, uint8_t(tier), type, flags));
 }
 
-void addExperience(Combatant &c, int32_t amount) {
-    c.experience = std::bit_cast<int32_t>(uint32_t(c.experience) + uint32_t(amount));
+void Combatant::accumulateExperience(int32_t amount) {
+    experience = std::bit_cast<int32_t>(uint32_t(experience) + uint32_t(amount));
+}
+
+void applyEarnedLevels(Combatant &c) {
     if (c.level <= 0)
         return;
     while (c.experience >= experienceForLevel(c.level)) {
@@ -542,6 +545,11 @@ void addExperience(Combatant &c, int32_t amount) {
         c.level = std::bit_cast<int32_t>(uint32_t(c.level) + 1u);
         c.health = maxHealth(c);
     }
+}
+
+void addExperience(Combatant &c, int32_t amount) {
+    c.accumulateExperience(amount);
+    applyEarnedLevels(c);
 }
 
 // §3.3: each phase is c / (S·a) unless fixed.

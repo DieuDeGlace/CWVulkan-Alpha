@@ -4448,3 +4448,23 @@ Not modelled: actor +0x13E0 (no engine field, reader untraced), the
 constructor discriminator default, world byte +0xB4 (no replica NPC world),
 record eviction, and the helper internals and later first-child dispatch
 each contract leaves open.
+
+## Dedicated NPC publication and fatal-credit consumption (2026-11-21)
+
+A separate source-only author rechecked the original client and froze the
+fatal-credit consumer contract. The implementer read all 102 lines and verified
+SHA-256 `9733222497603ae99210d070e9aeba5f1640a31d8a86c6ad6b64b26a28d6bcac`.
+Cleanup reloads the designated creature before clearing its contact. A direct
+award writes experience to the admitted creature, then reloads the designated
+creature for level processing. The corpse reward adapter and the level
+threshold use the existing signed truncation helper. The two credit callers
+retain their existing record and random-draw order.
+
+The clean-team publisher read the held creature-state defaults, codec/join
+ruling, server simulation, motion and fatal-context contracts. Each NPC
+snapshot starts from a shared native constructor template and overlays the
+live actor fields. The network copy preserves the backing descriptor, raw
+home position, pitch, bank, head pitch and contact. Reset pets carry the
+unassigned dialogue coordinates until a producer supplies a destination.
+NPC names and the third dialogue word for all possible descriptors remain
+open. Native packet capture is a separate acceptance step.

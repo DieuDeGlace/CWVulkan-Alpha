@@ -29,7 +29,8 @@ Differences from the Steam engine that shape the plan:
   hit-input order, native truncating credit conversion, actor-creation draws
   and the join record. A second batch pinned ranged scheduling, maximum
   health and the client receiver locks; a third pinned the spatial scalars,
-  created actor behavior and companion navigation. 32 class B contracts remain.
+  created actor behavior and companion navigation. The fourth batch verified
+  the order of fatal-credit writes and level checks. 31 class B contracts remain.
 
 - [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
   first, as held. A private dedicated-server observation of the seed-41 test
@@ -40,7 +41,7 @@ Differences from the Steam engine that shape the plan:
   copies. The same worker retained x87 control 0x027f and SSE control fields
   0x1f80 at callback, worker entry and three consecutive generator-call pairs.
   Loaded bundled-runtime identity was verified. Nested persistence, dedicated
-  controls and the one-byte rock-color discrepancy remain open.
+  controls remain open. The later roughness correction closed the rock-color discrepancy.
 
 - [x] Shared ray actions 28, 94 and 95 use source-role and controlled-pointer
   admission, signed clocks, resource work, ordered actor sampling and independent

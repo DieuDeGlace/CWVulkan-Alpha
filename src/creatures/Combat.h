@@ -182,6 +182,7 @@ struct Combatant {
 
     const Item &mainHand() const { return equipment[MAIN_HAND]; }
     const Item &offHand() const { return equipment[OFF_HAND]; }
+    void accumulateExperience(int32_t amount);
     float buffSum(uint8_t kind) const;
     bool hasBuff(uint8_t kind) const;
 };
@@ -229,6 +230,7 @@ float regeneration(const Combatant &c);
 float weaponRating(const Combatant &c);
 float armorRating(const Combatant &c);
 int32_t experienceForLevel(int32_t level); // §4.6
+void applyEarnedLevels(Combatant &c);
 void addExperience(Combatant &c, int32_t amount);
 // Held fatal-effects contract: prepare once before regional work; convert to an
 // integer only when producing each recipient record. The tier input is a byte.

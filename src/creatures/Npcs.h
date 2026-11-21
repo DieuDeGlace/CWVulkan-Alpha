@@ -66,7 +66,7 @@ struct Npc {
     // each step; such a corpse never runs the death routine (no sound, loot or credit).
     bool silentDeath = false;
     int32_t talkKind = 0; // record field 42 (talk §2.4: 3 pet food, 4 a place to have explored)
-    glm::ivec2 talkTarget{0}; // record field 41: the place talk kind 4 speaks of (read as a zone)
+    glm::ivec2 talkTarget{-1, -1}; // field 41: no place until a descriptor supplies its zone
     InventoryValue inventory;
     uint8_t boss = 0; // raw descriptor +0x10e8 byte; the regional gate tests nonzero
     // RandomInteraction §4.2: its timer and the seat it is bound for (index -1: none).

@@ -60,20 +60,17 @@ std::array<int64_t, 3> npcPosition(const creatures::Npc &n) {
 
 std::array<int64_t, 3> recordPosition(const CreatureRecord &r) { return {r.position(0), r.position(1), r.position(2)}; }
 
-// Simulation §5.5: the record clients are sent for an NPC.
-CreatureRecord npcRecord(const creatures::Npc &n) {
-    CreatureRecord r;
+// Simulation §5.5: overlay the admitted actor's live state on its construction defaults.
+void writeNpcRecord(CreatureRecord &r, const creatures::Npc &n) {
     const auto at = npcPosition(n);
     for (int axis = 0; axis < 3; axis++)
         r.setPosition(axis, at[axis]);
-    r.setMotion(n.body.velocity, n.yaw, n.body.push, n.body.intent);
+    r.setMotion(n.body.velocity, {n.body.swimPitch, n.body.bank, n.yaw}, n.body.push, n.body.intent);
+    r.setHeadPitch(n.headPitch);
+    r.setContactFlags(n.body.contact);
     r.setAppearance(n.looks);
-    r.setFighter(n.fighter);
-    r.setHomeSpawn(n.spawn == creatures::Npc::NO_SPAWN ? std::array<int32_t, 3>{-1, -1, 0}
-                                                        : std::array<int32_t, 3>{n.zone.first, n.zone.second, (int32_t)n.spawn});
+    r.setFighter(n.fighter); // includes the backing descriptor and its separate raw home position
     r.setTalk(uint8_t(n.talkKind), n.talkTarget);
-    r.bytes[0x50] = n.fighter.controller;
-    return r;
 }
 
 std::filesystem::path savePath(const ServerOptions &o) {
@@ -614,6 +611,7 @@ SenderPacing serverPacing; // transport §3.3: one stamp shared by every server 
 } // namespace
 
 void Server::sendLoop(Connection &c) {
+    static const CreatureRecord npcDefaults = CreatureRecord::nativeDefaults();
     c.joined = Clock::now(); // §4.1: the 500 ms are measured from the sender thread's start
     while (c.alive && running) {
         ByteWriter w;
@@ -647,7 +645,7 @@ void Server::sendLoop(Connection &c) {
                 } else {
                     const auto &[id, n] = *npc++;
                     if (admitted(id))
-                        toSend.emplace(id, npcRecord(*n));
+                        writeNpcRecord(toSend.try_emplace(id, npcDefaults).first->second, *n);
                 }
             }
             for (auto &[id, record] : toSend) {

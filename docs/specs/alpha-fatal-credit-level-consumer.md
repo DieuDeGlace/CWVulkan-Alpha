@@ -1,107 +1,102 @@
 # Alpha fatal-credit and level consumer
 
-Status: FINAL / STABLE / HELD. This contract covers original client fatal-credit consumer RVA 0x1A0BF0 and level helper RVA 0x047B00. It establishes their lookup admission, ordered mutations, experience and level arithmetic, health-query boundaries and linked-actor item copies. It does not specify the complete upstream fatal resolver or a replacement implementation.
+**FINAL / STABLE / HELD** — Source-author recertification, 2026-11-21.
 
-## Image and evidence
+This contract follows one fatal-credit record from lookup to its last item write in the original Alpha client. It also covers each level increase made while consuming that record.
 
-The evidence root is identified relatively as `disassembled alpha cube world`; every evidence path below is relative to that root. The supported image is `binary/Cube.exe`, 3,885,568 bytes, SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, preferred image base 0x00400000. All addresses in this document are RVAs within that image.
+## Supported image and evidence
 
-The complete native bodies at 0x1A0BF0–0x1A0D78 and 0x047B00–0x047C1F were inspected alongside `decompiled/client/functions/005a0bf0.c` and `00447b00.c`. Native operand widths and receiver arguments take precedence over incomplete high-level argument recovery. Additional individually identified original helpers are cited below. No reconstruction, earlier project contract, runtime capture or implementation material was used.
+The reference is `binary/Cube.exe` under `disassembled alpha cube world`. The x86 image has preferred base 0x00400000, length 3,885,568 bytes and SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`. All routine and instruction addresses below are RVAs in that image. Member offsets are byte offsets from the object named.
 
-## Input identity and unconditional lookup order
+On 2026-11-21 the source author verified the image identity and inspected the consumer at 0x1A0BF0–0x1A0D7A and level helper at 0x047B00–0x047C1F through their returns. Native operands establish receiver identity, field widths, comparisons, revised lookup results and floating-point precision. The original decompilations used for comparison are in `decompiled/client/functions/`. Source filenames and further native evidence appear with the relevant observations.
 
-The consumer receives a world and a pointer to a credit record. Within this document, A means the creature selected by the first record identifier, B means the creature selected by its second identifier, and C means the current designated creature pointer at world+0xB8. These labels distinguish the actual lookup and pointer tests; they do not impose an owner, party or pet interpretation on the linked fields.
+## Resolving the two creatures
 
-| Record offset | Width read | Consumer meaning |
+The consumer receives the world and a pointer to a credit record. Call the first resolved creature A, the second B and the creature currently designated by the pointer at world+0xB8 C. The linked identifier described below is at creature+0x11C8. Its presence establishes a lookup relationship only. Ownership and party membership require further evidence.
+
+| Credit record offset | Width | Use |
 | --- | --- | --- |
-| +0x00 | 8-byte complete identifier | Selects A, the credited creature |
-| +0x08 | 8-byte complete identifier | Selects B, the creature described by the fatal credit |
-| +0x10 | No read by this consumer | No consumer admission rule is derived from this member |
-| +0x14 | 4-byte raw integer amount | Added to admitted experience accumulators |
+| +0x00 | 8 bytes | World-map identifier for A, the credited creature |
+| +0x08 | 8 bytes | World-map identifier for B, the subject of the fatal credit |
+| +0x10 | Unread | No admission or award decision uses this member |
+| +0x14 | 4 bytes | Raw amount to add to each admitted recipient |
 
-The first lookup uses the world creature map at +4 with the key at record+0. The second uses that same map with the key at record+8. Both lookups are performed before the consumer tests whether either returned creature pointer is null. An absent key and a present key storing a null creature pointer each prevent all of this consumer's later mutations. The second lookup is not skipped merely because the first key was absent.
+The world map at +0x04 is searched first for A and then for B. Both searches happen even when the first misses. A missing key or a found node with a null creature pointer ends processing once the two results are available. No later writes take place. The search creates no creature. Identifiers with value zero take the ordinary search path. Equal identifiers and distinct identifiers resolving to the same creature are both admitted when the resulting pointers are nonnull.
 
-The keys are complete eight-byte identifiers. There is no preliminary zero-ID test, sign test, equality rejection or source/target pointer-distinctness test. Identifier zero is an ordinary lookup key here. Equal record IDs can therefore resolve successfully and proceed, and distinct IDs storing the same nonnull pointer are not rejected as aliases. No creature is created to satisfy a missing key.
+Lookup orders the upper 32 bits as signed, breaking ties with the lower 32 bits as unsigned. A match identifies the complete eight-byte key. For a found node the creature pointer is four bytes at node+0x18. The world lookup wrapper at 0x02F000 returns zero both on a miss and on a found null pointer. Invalid record pointers, truncated storage and stale creature pointers are outside the evidence for ordinary operation.
 
-The original map lookup helper at 0x077D90 compares the upper 32-bit part as signed and the lower 32-bit part as unsigned when upper parts tie. A successful key comparison still requires the whole identifier to match. All pointer tests in this consumer are four-byte tests appropriate to the supported original image. Invalid record pointers, undersized records, corrupt map storage and stale creature pointers have no established safe result.
+Evidence includes consumer 0x1A0BF9–0x1A0C48, map search 0x077D90 and world lookup 0x02F000. The corresponding original files are `005a0bf0.c`, `00477d90.c` and `0042f000.c`.
 
-Evidence: native 0x1A0BF9–0x1A0C48; `decompiled/client/functions/00477d90.c`. The world lookup wrapper at 0x02F000 has the same absent-or-stored-null result convention, confirmed in `decompiled/client/functions/0042f000.c` and its native body.
+## Cleanup when B is the designated creature
 
-## Designated fatal-creature cleanup precedes experience
+After A and B resolve, the consumer compares B's pointer with C. A match admits cleanup regardless of the mode byte at world+0xB4. The comparison uses pointer identity. The consumer does not need a separate identifier for C.
 
-After both A and B have resolved, the first effect depends on pointer equality between B and C. It does not compare B's record identifier with a separate designated identifier, and it has no world+0xB4 mode gate.
+1. Search for C's full linked identifier, including zero. If that entry is missing or stores a null pointer, continue directly to step 4.
+2. Resolve the linked identifier again through 0x02F000. Write the four-byte zero bit pattern to health at +0x16C of the creature returned by this second search. Its previous health is unrestricted.
+3. Read the designated pointer from the world again and resolve its linked identifier through 0x02F000 a third time. Clear the map at +0x13A4 of this result. In a valid tree the clear releases the nodes, restores the three sentinel links to the sentinel itself and sets the four-byte size to zero.
+4. Read the designated pointer again. Clear four bytes at its +0x11D0, then four at +0x11D4. The linked identifier at +0x11C8 is preserved.
 
-When B is C, the consumer looks up the complete eight-byte key stored at C+0x11C8 in the world creature map. There is no explicit all-zero-key exclusion. If the key resolves to a nonnull creature L, it looks that key up again through 0x02F000 and writes four zero bytes to L+0x16C, the binary32 health field. It then obtains the key from the current designated pointer again, performs another 0x02F000 lookup and clears that resolved creature's relationship map at +0x13A4 through helper 0x27E480. Thus the successful path makes one initial map search and two additional world lookups, with the health-zero write between the latter two. It does not retain just one resolved pointer for both operations.
+The two repeated world lookups do not recheck the returned pointers for null. This sequence describes stable world and creature storage. It supplies no guarantee if a linked actor is removed between searches. The cleared map is on the creature returned by the third search. Its clear has no hit application or fatal notification. Aliases of A, B or C take these same steps. Both experience decisions follow the cleanup, so the health write can affect later admission.
 
-The relationship-map clear releases the old nodes, resets its sentinel links and sets its four-byte size to zero. It clears this one map; it is not a general fatal callback or an invocation of hit application. Its native node-release traversal and deallocation calls were inspected. The surrounding creature lifetime and allocator-failure behavior are not a safe-reentry guarantee.
+Evidence includes 0x1A0C4E–0x1A0CC8, tree clear 0x27E480, recursive node release 0x02CA80 and the deallocation import thunk at 0x28D66E. Native traversal continues after individual deallocations. The related original decompilations are `0067e480.c` and `0042ca80.c`.
 
-Whether that linked key is absent, stores null or resolves successfully, B-equals-C cleanup next writes zero separately to the four-byte fields C+0x11D0 and C+0x11D4. The eight-byte key at C+0x11C8 is not cleared by these writes. If the linked lookup fails, the health/map operations are skipped but these two designated-creature writes still occur.
+## Experience awards in execution order
 
-All of this precedes either experience-award branch. There is no positive-health admission for L before the zero write, and no distinctness test excluding L equal to A, B or C. Alias effects follow this order. This contract does not infer the broader meaning of +0x11C8, +0x11D0 or +0x11D4 from their proximity.
+**Designated award.** Read C from the world. When C is nonnull, A equals C and the byte at B+0x60 equals 1, add record+0x14 to C's four-byte experience at +0x194. Read the designated pointer again and call the level helper on it. This award has no health test or world-mode requirement. It admits amounts of zero and amounts with the sign bit set.
 
-Evidence: native 0x1A0C4E–0x1A0CC8; `decompiled/client/functions/0067e480.c` and `0042ca80.c`, confirmed by native map-clear and node-release bodies at 0x27E480 and 0x02CA80.
+**Linked award.** After that decision and any level processing, read the byte at world+0xB4. Only zero admits a search for A's full linked identifier at +0x11C8. The resulting creature P must exist, have a nonnull pointer and compare strictly above zero on its binary32 health at +0x16C. Both signs of zero and negative health fail. When the floating-point comparison completes with an unordered result, it also fails. An unmasked floating-point exception may interrupt the comparison. This branch can run with A distinct from C or B+0x60 different from 1.
 
-## Direct and linked experience admission
+For an admitted P, reread the record amount, add it to P+0x194, then call the level helper with P as receiver. Each award uses the whole amount. Each addition retains the low 32 bits, including wrap. No division between recipients, saturation or sign check occurs. The branches are independent. If P is also C, the linked health check sees the effects of cleanup and C's first level-helper call. When both decisions admit, that creature receives both additions. At both calls the world is also passed as a four-byte argument, unused by the inspected level helper and removed on return.
 
-The designated-creature award is considered after cleanup. It requires a nonnull current C, pointer equality A equals C, and B's one-byte member +0x60 equal to 1. It does not require world byte +0xB4 to be zero. It does not test A's or B's health, check whether the record amount is positive, or compare record IDs for inequality.
+After the linked helper returns, copy P's final four bytes of experience to A+0x1024, then copy the low two bytes of P's level at +0x190 to A+0x1030. The low word is copied even when the full level is outside a 16-bit range. Finally, copy the selected item fields from A+0x1020 to A+0x1D48 as specified below. These three writes and copies follow every admitted linked award, including one with no level increase. A missing P or a failed health comparison skips the linked addition, level helper and item updates.
 
-When admitted, four bytes from record+0x14 are added to the four-byte accumulator C+0x194. The native addition is a 32-bit operation: it retains the low 32 bits, including wrap, with no saturation, wider carry accumulation or overflow rejection. Negative bit patterns are not rejected before addition. The level helper is called immediately afterward with that designated creature as its receiver. A world pointer is also passed as a four-byte stack argument at these call sites; the inspected level-helper body does not read it and removes those argument bytes on return.
+Evidence includes designated addition and call at 0x1A0CE6 and 0x1A0CF2, linked health comparison at 0x1A0D2D, linked addition and call at 0x1A0D39 and 0x1A0D41, and final field and item transfers at 0x1A0D46–0x1A0D6D.
 
-The linked award is a later, independent branch. It requires world byte +0xB4 exactly zero. It searches the world creature map with the complete identifier at A+0x11C8, including a possible zero identifier. The key must resolve to a nonnull creature P whose binary32 health at +0x16C compares strictly greater than zero. Zero, negative ordinary values and an unordered comparison do not pass this native test. There is no B+0x60-equals-1 requirement in this linked branch and no A-equals-C requirement.
+## Level threshold and repeated health updates
 
-For an admitted P, the same four-byte record amount is added to P+0x194 with the same 32-bit wrap behavior, then the level helper runs on P. The amount is read again for this later addition; the consumer does not use a single precomputed split or divide it between recipients. There is no exclusion for P equal to A or C. Consequently the two awards are not mutually exclusive and admitted aliases can receive two additions in this ordered consumer execution. The positive-health gate for the linked branch observes state after any earlier cleanup and designated award/level processing.
+Read the entry level at creature+0x190 as signed 32-bit. A level of zero or below returns immediately. For a positive level, the helper calculates the threshold in the following order. Each conversion to binary32 and each scalar arithmetic step produces a binary32 result under the active SSE floating-point controls.
 
-After P's level helper returns, the consumer copies P's final four-byte experience accumulator to A+0x1024, copies the low two bytes of P's four-byte level at +0x190 to A+0x1030, and then copies the source item beginning at A+0x1020 to the destination item beginning at A+0x1D48. The level copy is a raw low-word copy, not a saturating level conversion. The experience copy reflects any threshold debits already performed by the level helper.
+1. Convert the signed level to binary32 and subtract 1.
+2. Multiply by the binary32 number with bits 0x3D4CCCCD, then add 1. That multiplier is the binary32 approximation to 0.05.
+3. Divide 1 by the preceding result. Subtract the quotient from 1.
+4. Multiply by 1000, then add 50. Convert the result to signed 32-bit by truncating toward zero.
 
-The linked branch performs these item copies even if the added amount did not cause a level increment. A failure of linked lookup or its health test skips its addition, helper call and all these item-copy effects. Missing linked actors are not substituted with the designated creature.
-
-Evidence: native 0x1A0CCB–0x1A0D6D. The designated award's addition/helper sites are 0x1A0CE6/0x1A0CF2; the linked award's sites are 0x1A0D39/0x1A0D41; final experience, level-word and item-copy sites are 0x1A0D46–0x1A0D6D.
-
-## Threshold calculation and exact admission boundary
-
-The level helper reads the four-byte level at creature+0x190 as signed 32-bit. Its entry condition requires that level to be strictly positive. A zero or negative entry level returns without threshold arithmetic, experience debit, level change or maximum-health query, regardless of experience.
-
-For a positive entry level, the threshold calculation first converts that signed level to binary32. It subtracts binary32 1, multiplies by the binary32 constant with bits 0x3D4CCCCD, then adds binary32 1. The reciprocal step divides binary32 1 by that result. The helper subtracts this reciprocal from binary32 1, multiplies by binary32 1000, and finally adds binary32 50. Each of those scalar operations has a binary32 result before the next operation. The 0x3D4CCCCD constant is the stored approximation to decimal 0.05, not an exact decimal rational.
-
-The final binary32 quantity is converted to signed 32-bit with truncation toward zero. The experience accumulator is compared as signed 32-bit against that integer threshold. Equality is sufficient to enter a level increment. Level 1, for example, produces an exact threshold of 50 under ordinary finite arithmetic. Replacing this calculation with an algebraically simplified expression, wider intermediates, rounding to nearest integer, or a different constant representation is not established by this evidence.
-
-| Original constant RVA | Stored bits | Numeric value or role |
+| Binary32 operand | Original constant RVA | Stored bits |
 | --- | --- | --- |
-| 0x345DC0 | 0x3F800000 | Binary32 1 |
-| 0x2FCDB4 | 0x3D4CCCCD | Binary32 approximation to 0.05 |
-| 0x2FD8F4 | 0x447A0000 | Binary32 1000 |
-| 0x2FCD7C | 0x42480000 | Binary32 50 |
+| 1 | 0x345DC0 | 0x3F800000 |
+| Approximation to 0.05 | 0x2FCDB4 | 0x3D4CCCCD |
+| 1000 | 0x2FD8F4 | 0x447A0000 |
+| 50 | 0x2FCD7C | 0x42480000 |
 
-The ordinary numeric contract assumes finite representable conversions and the applicable native floating-point controls. Integer-to-binary32 conversion and scalar arithmetic use the ambient SSE controls; the final truncating conversion is not changed into a rounding-mode-dependent nearest-integer conversion. This helper does not save, establish or restore a special floating-point control mode. Invalid floating-to-integer conversion, unmasked exceptions, corrupted numeric state and overflow-driven later levels need separate treatment; no safe termination result is assigned to them here.
+Compare the four-byte experience as signed with that integer threshold. Equality admits an increment. For each admitted increment, recalculate the threshold from the current level, subtract it from experience and store the level plus one. Both integer operations retain the low 32 bits. Query maximum health through 0x044DB0 on this same creature, then store its return value to the binary32 health field at +0x16C. The query sees the debited experience and the increased level. The assignment replaces the old health with the queried value, with no additive adjustment or clamp. The native caller stores the scalar from the x87 return register.
 
-Evidence: native 0x047B03–0x047B64 and original constant bytes in `binary/Cube.exe`; `decompiled/client/functions/00447b00.c`. The native instructions confirm signed integer comparisons, separate scalar operations and the truncating conversion.
+Next compute a threshold from the creature's current level and repeat while signed experience reaches or exceeds it. Only entry has the positive-level gate. For N increments that finish normally, the helper calculates one entry threshold plus two thresholds per increment. It makes N maximum-health queries and N health assignments, all in this call. An experience total below the first threshold causes neither a query nor a write to health. The helper imposes no fixed increment count.
 
-## Repeated increments and maximum-health query order
+For example, under round-to-nearest binary32 arithmetic, level 1 requires 50 and level 2 requires 97. A creature entering at level 1 with 146 experience reaches level 2 with 96 left and gets one health assignment. Entering with 147 reaches level 3 with zero left and gets two. These are calculated examples from the original operations. The helper establishes no special floating-point control mode. Exceptional arithmetic, an unmasked exception or level wrap on a later iteration has no assigned termination or recovery guarantee here.
 
-An admitted increment recomputes the threshold from the current level before deducting it. The debit is a four-byte subtraction from experience. The helper then increments the four-byte level by 1 and stores it before querying maximum health through 0x044DB0. The returned scalar is stored directly to the creature's binary32 health at +0x16C. There is no read of the old health for an additive heal, no lower/upper clamp around this assignment, and no extra maximum-health query at this level-helper boundary.
+Evidence includes the original `00447b00.c`, native threshold admission at 0x047B03–0x047B64, the four original constant words, the debit at 0x047BA3, level write at 0x047BAE, health query and assignment at 0x047BB4 and 0x047BB9, and continuation through 0x047C1F.
 
-After that health assignment, the helper recomputes the threshold using the now-current level and tests experience with the same signed greater-than-or-equal admission. Another admitted increment repeats the debit, increment, maximum-health query and health assignment. There is no one-level-per-record limit, fixed loop cap or wait for a later frame. The strictly-positive-level entry check is not repeated between increments.
+## Item transfer and nested calls
 
-For an ordinary completion with N increments, the helper makes exactly N direct calls to maximum-health routine 0x044DB0 and performs N health assignments. Its threshold arithmetic is evaluated once for entry admission and twice per increment: once for that increment's debit and once for the subsequent continuation test. With no admitted increment, no maximum-health query or health write occurs. Each maximum-health query observes the level already incremented for that iteration and experience already debited for it.
+The item helper at 0x02C5E0 transfers these fields in order. Offsets in this table are relative to each item's beginning.
 
-Experience subtraction and level increment remain native 32-bit operations, retaining their low 32 bits. Entry-level positivity does not prove positivity after a level wrap, and the continuation test does not reintroduce that protection. No total behavior or termination guarantee is stated for a record/actor state that drives the loop through integer wrap or exceptional threshold arithmetic. Ordinary repeated levels consume the thresholds for successive levels; the routine does not compare experience against one cumulative threshold computed only at entry.
+| Offsets | Transfer |
+| --- | --- |
+| +0x00, +0x01 | One byte each |
+| +0x04, +0x08 | Four bytes each |
+| +0x0C through +0x0E | One byte each |
+| +0x10 | Two bytes |
+| +0x14 through +0x113 | 32 successive eight-byte portions, each transferred as four single bytes followed by one four-byte field |
+| +0x114 through +0x117 | One four-byte field |
 
-Evidence: native 0x047B70–0x047C1F. The maximum-health call is 0x047BB4; the health store follows at 0x047BB9 before the continuation calculation. The complete maximum-health value formula is outside this bounded level-consumer contract.
+The destination's previous bytes at +0x02, +0x03, +0x0F, +0x12 and +0x13 survive the copy. Both the newly written experience at item+0x04 and the level word at item+0x10 reach the destination. The helper makes no nested call or allocation. It returns the destination pointer, which the consumer discards. Evidence is the native body at 0x02C5E0–0x02C674 and `0042c5e0.c`.
 
-## Item-copy extent and nested-effect boundaries
+The consumer's direct calls cover lookup, map clearing, level processing and item transfer. The level helper calls only maximum health. Neither body directly draws randomness, seeds a generator, calls through a virtual method, emits a presentation event or dispatches a game callback. Maximum health calls the power-math import via 0x28D8D4 and conditionally asks 0x0C70B0 for equipped-item health contributions. That item helper calls numeric helper 0x045F60, which reaches the same power import. No game-random or seed call appears in those bodies. Import internals, allocator exceptions and the complete maximum-health and item-stat formulas lie outside this contract. Evidence includes the native call sites and `00444db0.c`, `004c70b0.c` and `00445f60.c`.
 
-The final item-copy helper 0x02C5E0 is a direct field copy. It copies the two leading bytes separately, the four-byte fields at source-relative +4 and +8, bytes +0x0C through +0x0E, and the two-byte field at +0x10. It then copies the 0x100-byte span +0x14 through +0x113 as thirty-two eight-byte portions, each using four byte copies followed by one four-byte copy, and copies the final four-byte member at +0x114. The addressed extent ends at +0x117. Bytes +2, +3, +0x0F, +0x12 and +0x13 are not assigned by this helper; it is not an unconditional raw copy of every byte in the extent.
+## Callers and evidence limits
 
-In this consumer its source is A+0x1020 and destination A+0x1D48. Therefore the newly stamped experience and level-word members are propagated along with the other selected source fields. The copy helper has no nested call, allocation, random draw, event append or callback. Its return pointer is unused at this site.
+The original hit applier at 0x195A60 appends a record on its admitted path, then passes the local credit record to the consumer at 0x1968E8. A second call site at 0x08FB25 in the client frame routine at 0x088EE0 processes the current record in a collection traversal before advancing to the next. Both call the same consumer. The hit site is visible in `00595a60.c` and in the binary at 0x19689C–0x1968E8. Frame traversal is visible at 0x08FB03–0x08FB5E. The original `decompiled/client/calls.csv` also identifies both callers.
 
-The two scoped consumer/helper bodies contain no direct random or seed call, presentation emission, virtual call or game callback. Their complete direct-call inventory comprises world/map lookups, map clearing, level processing, maximum-health querying and the stated item copy. The map-clear dependency uses node traversal and native deallocation. The inspected maximum-health body at 0x044DB0 calls the original power-math import through thunk 0x28D8D4 and conditionally queries equipped-item health contributions through 0x0C70B0. That item helper calls numeric helper 0x045F60, which also reaches the same power thunk. No game random or seed call is present in these inspected native helper bodies. This does not specify imported math/deallocation internals or certify behavior under malformed containers or replacement import bindings.
+The consumer itself neither deduplicates records, verifies B's fatal health nor retries a missing key. Repeated calls with eligible state can award again. The evidence here does not establish whether normal callers deliver duplicates, how a credit amount is chosen, which records arrive over the network, or how actor lifetime is protected against concurrent changes. Meanings for the unused +0x10 record member, world mode byte, designated pointer and linked actor fields beyond their observed use also remain open.
 
-Evidence: `decompiled/client/functions/0042c5e0.c`, confirmed by native 0x02C5E0–0x02C674; `00444db0.c`, `004c70b0.c`, `00445f60.c`, `0067e480.c`, `0042ca80.c`; corresponding original native call sites. Complete maximum-health and item-stat arithmetic, imported-runtime internals and allocator exceptional paths remain outside this contract.
-
-## Caller and lifetime limits
-
-Original hit applier 0x195A60 appends a fatal-credit record and invokes this consumer at 0x1968E8 on its admitted route. The client frame also invokes this same consumer while traversing its incoming credit records at 0x08FB25. These are distinct callers; the consumer's internal rules above do not depend on which of those two call sites supplied the record. The complete upstream credit eligibility, amount calculation, queue transmission, frame admission and duplicate-delivery prevention are not reconstructed here.
-
-Within the consumer there is no record identifier used for deduplication, no fatal-health recheck on B and no automatic retry for absent creature IDs. Repeated admitted calls can award repeatedly. This contract does not infer that duplicate records ordinarily occur, that either caller permits arbitrary records, or that creature lookup results remain safe under external mutation outside the original ownership/locking conditions. Those caller and lifetime conditions are unresolved dependencies.
-
-The record's unused +0x10 member, opaque storage beyond the read fields, linked-actor lifecycle, semantic names for mode byte +0xB4 and designated pointer +0xB8, exceptional integer/floating states, partial records and concurrency/reentrancy require independent evidence before broader claims. All earlier held artifacts remain outside this audit.
+**Source-author readback, 2026-11-21.** The complete contract was checked against the identified original image, including both lookups, the separate cleanup lookups, both awards, signed threshold decisions, each health query, the item field mask and both caller sites. The numeric examples are derived from the checked constant words. This is static evidence for the named image. Runtime observations and behavior outside these routines remain separate.

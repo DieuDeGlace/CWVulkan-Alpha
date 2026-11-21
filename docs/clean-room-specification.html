@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 47 · 2026-11-21</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 48 · 2026-11-21</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -234,6 +234,8 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
     <section id="protocol">
       <h3><span class="num">A3</span>Network protocol</h3>
+      <p>The dedicated server builds each outgoing NPC snapshot from creature construction defaults. It sends the current terrain contact, body rotation and head pitch. The descriptor identifying the spawn and its raw home position travel in separate fields. A fresh pet has no assigned dialogue destination.</p>
+      <p>On receipt of fatal credit, the client resolves both creatures before making any writes. When the designated creature receives experience, it adds the record amount, then looks up the designated creature again for level processing. At level 1, 146 experience reaches level 2 with 96 left. A total of 147 reaches level 3 with none left. Each level increase replaces health after the experience debit. <a href="specs/alpha-fatal-credit-level-consumer.md">Fatal-credit and level contract</a>.</p>
       <p>TCP over IPv4 on the fixed port <span class="mono">12345</span>; neither image has a datagram path or a port setting. Every message starts with a <span class="mono">u32</span> id, values little-endian. Handshake: the server sends <span class="mono">17</span>, the client answers with protocol version <span class="mono">3</span>, the server replies <span class="mono">16</span> (accepted, then the player id, a creature record and packet 15 with the seed) or <span class="mono">3</span> (wrong version). The "server full" reply <span class="mono">18</span> exists but can never be sent by the original server.</p>
       <div class="table-wrap">
         <table>

@@ -2939,3 +2939,19 @@ solid blocks equal and 42,240,313 of 42,336,200 light cells equal.
 All 60 serial CTests passed in 86.31 seconds. The production
 player/controller diagnostic and five actual client flows passed. Package
 inspection verified 36 hashes in 37 files. Revision 47 parsed all 88 links.
+
+## Dedicated NPC state and fatal credit (2026-11-21)
+
+NetTests observed a dedicated server publishing NPC contact, constructor
+field 38, the regional descriptor index, the fixed-point home position and
+the reset pet's dialogue coordinates to a loopback peer. CreditTests
+changed the designated lookup result between writes and checked each
+recipient's experience and health. The 146 and 147 experience cases
+exercised one and two level increases respectively.
+
+All three focused tests passed, followed by all 60 serial tests in 113.17
+seconds. The revision 48 specification check resolved all 89 links. Package
+inspection verified 36 SHA-256 digests across 37 files.
+The production player/controller diagnostic and the reward, health, network,
+save/reload and town-render client runs passed. These checks used the engine
+client and server. An original-client NPC wire comparison remains open.

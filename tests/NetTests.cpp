@@ -1704,6 +1704,12 @@ int main() {
         }
         return false;
     }, 120000), "a living zone spawn reaches Alice with its spawn id");
+    check(waitFor([&] {
+        for (const auto &[id, record] : a.others())
+            if (record.controller() != 0 && record.contactFlags() != 0)
+                return true;
+        return false;
+    }), "an NPC's simulated terrain contact reaches the peer");
     {
         if (target) {
             a.takeRelationships();
@@ -1916,6 +1922,13 @@ int main() {
                 if (actor.controller == 1 && actor.health > 0 && (actor.appearanceFlags & 0x2000) &&
                     actor.backing.x == 32800 && actor.backing.y == 32800) {
                     target = id;
+                    int32_t field38 = 0;
+                    std::memcpy(&field38, record.bytes.data() + 0x19c, sizeof field38);
+                    check(field38 == -1, "the server-sent NPC keeps the signed construction default in field 38");
+                    constexpr int64_t centre = int64_t(32800 * 256 + 128) * 65536;
+                    check(actor.behaviorReference[0] == centre && actor.behaviorReference[1] == centre &&
+                          id == creatures::Npcs::spawnId(32800, 32800, actor.backing.index),
+                          "the NPC publishes the regional descriptor ordinal and the separate fixed-point spawn centre");
                     expectedType = actor.type;
                     expectedCredit = (int32_t)creatures::fatalCreditAmount(actor.level, actor.powerTier, actor.type, actor.appearanceFlags);
                 }
@@ -1985,19 +1998,18 @@ int main() {
             const auto peers = b.others();
             return peers.contains(a.id()) && peers.at(a.id()).fighter().mode == 0xa610;
         }), "the second peer receives the owner's full gliding mode word");
-        const auto petKey = [&]() -> uint64_t {
+        const auto receivedPet = [&]() -> std::optional<CreatureRecord> {
             for (const auto &[key, record] : a.others()) {
-                const auto actor = record.fighter();
-                if (actor.controller == 5 && actor.ownerId == a.id())
-                    return key;
+                if (record.controller() == 5 && record.fighter().ownerId == a.id())
+                    return record;
             }
-            return 0;
+            return std::nullopt;
         };
-        bool glidingPet = petKey() != 0;
+        bool glidingPet = receivedPet().has_value();
         uint32_t initialDay = 0, initialMs = 0;
         check(a.clock(initialDay, initialMs), "the glider fixture has a server clock baseline");
         check(waitFor([&] {
-            glidingPet |= petKey() != 0;
+            glidingPet |= receivedPet().has_value();
             uint32_t currentDay = 0, currentMs = 0;
             return a.clock(currentDay, currentMs) &&
                 (currentDay != initialDay || uint32_t(currentMs - initialMs) >= 5000);
@@ -2006,8 +2018,15 @@ int main() {
         state.mode &= ~0x10u;
         ra.setFighter(state);
         a.setOwn(ra);
-        check(waitFor([&] { return petKey() != 0; }),
+        std::optional<CreatureRecord> pet;
+        check(waitFor([&] { pet = receivedPet(); return pet.has_value(); }),
               "clearing only glider admits the same equipped pet on the actual server");
+        if (pet) {
+            check(pet->homeSpawn() == std::array<int32_t, 3>{-1, -1, 0} &&
+                  pet->fighter().behaviorReference == std::array<int64_t, 3>{} && pet->talkKind() == 0 &&
+                  pet->talkTarget() == glm::ivec2(-1, -1),
+                  "the new pet keeps the engine's zero field 40 and the reset backing and dialogue coordinates");
+        }
         check(waitFor([&] {
             const auto peers = b.others();
             return peers.contains(a.id()) && peers.at(a.id()).fighter().mode == 0xa600;

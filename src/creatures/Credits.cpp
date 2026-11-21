@@ -71,10 +71,14 @@ CreditResult receiveCredit(const KillRecord &record, const CreditWorld &world) {
                 if (Combatant *linked = world.lookup(current->linkedId))
                     linked->relations.threats.clear();
         }
-        controlled->relations.contact = 0;
+        if (Combatant *current = world.controlled())
+            current->relations.contact = 0;
     }
     if (Combatant *controlled = world.controlled(); controlled && credited == controlled && victim->controller == 1) {
-        addExperience(*controlled, record.experience);
+        controlled->accumulateExperience(record.experience);
+        // The level helper takes the designated creature as it stands after the write.
+        if (Combatant *current = world.controlled())
+            applyEarnedLevels(*current);
         result.directAward = controlled;
     }
     if (world.mode == 0)
