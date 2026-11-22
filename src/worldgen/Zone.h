@@ -158,11 +158,12 @@ struct ItemDrop {
     }
 };
 
-// Resident zone markers: dungeon exits (5), bosses (6), and generated item groups (9).
+// Resident zone markers: dungeon exits (5), bosses (6), generated item groups (9) and
+// generated spawn groups (10).
 struct ZoneMarker {
     int32_t type = 0;
     int64_t x = 0, y = 0, z = 0;
-    int32_t kind = 0;      // the boss's creature type
+    int32_t kind = 0;      // the boss's creature type; type 10: the group's spawn type
     int32_t creature = -1; // index into Zone::spawns
     std::array<uint8_t, 3> itemKey{}; // type 9: category, subtype, material
 };
@@ -301,7 +302,9 @@ struct Zone {
         drops.push_back(drop);
     }
     std::vector<ZoneMarker> markers;
-    void finishGeneratedItems(); // once during construction, before module passes and saved-item overlays
+    // Once during construction, before module passes and saved-item overlays: settles generated
+    // items and appends the type-9 item-group and type-10 spawn-group markers.
+    void finishGeneratedItems();
     std::vector<LeafSource> leafSources;
     std::vector<std::array<int64_t, 3>> songPosts; // trees §4.9: kind-61 records (1/65536 blocks)
     std::vector<House> houses;

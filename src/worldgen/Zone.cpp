@@ -33,6 +33,22 @@ void Zone::finishGeneratedItems() {
             markers.push_back(marker);
         }
     }
+    // Type 10 (generated type-10 zone records): spawns whose window ends at the day's end,
+    // grouped by the signed (controller, type) pair. The whole list is counted first; groups of
+    // five or more with controller 1, 5 or 6 each append one record carrying only the type.
+    constexpr int32_t DAY_END_MS = 86400000;
+    std::map<std::pair<int32_t, int32_t>, int32_t> spawnGroups;
+    for (const Spawn &spawn : spawns)
+        if (spawn.windowEnd == DAY_END_MS)
+            ++spawnGroups[{spawn.controller, spawn.type}];
+    for (const auto &[key, count] : spawnGroups) {
+        const int32_t controller = key.first;
+        if ((controller == 1 || controller == 5 || controller == 6) && count >= 5) {
+            ZoneMarker marker{10, centreX, centreY, 0};
+            marker.kind = key.second;
+            markers.push_back(marker);
+        }
+    }
 }
 
 AirshipTemplate airshipTemplate(int32_t zx, int32_t zy, int32_t index, int32_t rotation, int32_t top, int32_t centreX,

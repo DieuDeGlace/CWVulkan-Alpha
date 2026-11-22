@@ -301,8 +301,53 @@ static void checkGeneratedItemMarkers() {
     }
 }
 
+static void checkGeneratedSpawnMarkers() {
+    Zone zone;
+    zone.zx = -2;
+    zone.zy = 3;
+    zone.markers.push_back({6, 44, 55, 66, 73, 2});
+    const auto add = [&](int32_t controller, int32_t type, int count, int32_t start = 0, int32_t end = 86400000) {
+        for (int i = 0; i < count; ++i) {
+            Spawn s;
+            s.controller = controller;
+            s.type = type;
+            s.windowStart = start;
+            s.windowEnd = end;
+            s.x = s.y = 7; // shared positions still count once per entry
+            zone.spawns.push_back(s);
+        }
+    };
+    add(6, 17, 10);                 // ten still emit one record
+    add(1, 17, 5, 21600000);        // the lower endpoint is not tested
+    add(1, -8, 5);                  // signed type order: -8 before 17
+    add(5, -3, 3);                  // split across the list, counted before testing
+    add(1, 9, 4);                   // four: none
+    add(257, 9, 5);                 // all 32 bits of the controller: 257 is not 1
+    add(2, 9, 5);                   // controller 2 never qualifies
+    add(5, 40, 5, 0, 86399999);     // window ends before the day's end: skipped
+    add(5, 40, 4);
+    add(5, -3, 2);
+    // Eight matching drops also produce a type-9 record, which precedes every type-10 record.
+    ItemDrop drop;
+    drop.item.type = 11;
+    for (int i = 0; i < 8; ++i)
+        zone.addItemDrop(drop);
+    zone.finishGeneratedItems();
+    const std::array<int32_t, 4> expected{-8, 17, -3, 17}; // keys (1,-8), (1,17), (5,-3), (6,17)
+    same(zone.markers.size(), expected.size() + 2, "one marker per qualifying spawn group of five or more");
+    same(zone.markers[0].type == 6 && zone.markers[1].type == 9, 1, "spawn groups follow earlier and item-group markers");
+    for (size_t i = 0; i < expected.size() && i + 2 < zone.markers.size(); ++i) {
+        const ZoneMarker &marker = zone.markers[i + 2];
+        same(marker.type == 10 && marker.kind == expected[i] && marker.creature == -1, 1,
+             "spawn group markers follow signed (controller, type) order and keep only the type");
+        same(marker.x == -384ll * 65536 && marker.y == 896ll * 65536 && marker.z == 0, 1,
+             "spawn group marker uses the zone centre in fixed-point units");
+    }
+}
+
 int main() {
     checkGeneratedItemMarkers();
+    checkGeneratedSpawnMarkers();
     checkOfflineBlueprint();
     checkRockColourContract();
     // Terrain §3.3 step 3: R adds t² · 0.05 (square first). At this seed-41 column the other

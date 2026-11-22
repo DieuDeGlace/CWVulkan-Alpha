@@ -3862,3 +3862,22 @@ solid probe matched and seven unstored probes were absent. After replacing
 the probe list mid-run, six stored air cells near zone edges matched the
 second dump exactly. The title world's seed changes each launch, so the
 seed-123 seam trace needs the owner's world and remains open.
+
+## Generated type-10 zone records (2026-11-22)
+
+The normal CPU generator replayed the 68 zones of the type-9 check from
+seeds 41 and 123 and a further 144 seed-123 zones. Only 395 of 4,866
+spawn entries ended their window at the day's end. No eligible group
+reached five entries in any zone (the largest in the sweep held two),
+so no zone gained a type-10 record. Counting the dumped spawn fields
+independently predicted exactly that. In the 68 zones every item byte
+and all 74 earlier records matched the type-9 replay. A positive case
+from natural terrain therefore remains unobserved.
+
+Boundary tests cover four, five and ten entries, a split group, a
+nonzero window start, a window ending one millisecond early, controller
+257 against 1, an ineligible controller, signed type order and the
+earlier boss and item-group records. Five mutants each failed the new
+checks: a strict threshold, a low-byte controller, a required zero
+window start, any controller and unsigned type order. A live observation
+of the original resident records remains open.

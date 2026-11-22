@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 99 and the rulings. The 332 tracked contracts
-comprise 299 A, 28 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 100 and the rulings. The 333 tracked contracts
+comprise 300 A, 28 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -190,6 +190,7 @@ their origin and scale, and their order before the saved-zone overlay.
 
 Batch 98 establishes the generated item count and the lifetime of its type-9 zone records.
 Batch 99 records every native light-byte writer and its passive observation points.
+Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -301,6 +302,7 @@ Batch 99 records every native light-byte writer and its passive observation poin
 | `alpha-front-end-wait-cursor.md` | A | 24 | 0 |
 | `alpha-front-end-wait-presentation.md` | A | 35 | 0 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
+| `alpha-generated-type10-zone-record.md` | A | 34 | 0 |
 | `alpha-generated-item-count-lifetime.md` | A | 32 | 0 |
 | `alpha-generated-item-origin-sites.md` | A | 33 | 0 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |

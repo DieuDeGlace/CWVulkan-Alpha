@@ -4922,3 +4922,15 @@ byte layout of air and water light that the extractor record left open.
 The developer recorder's trace uses only its points, frame offsets and
 instruction lengths. How often the world-step relights run, and how the
 writers actually interleave, remain open.
+
+## Generated spawn groups and type-10 zone records (2026-11-22)
+
+The separate source author traced the original generator and delivered
+the 33-line held record `alpha-generated-type10-zone-record.md`.
+The clean team read it in full and verified SHA-256
+`d1bc9cc499e78f514e297a089b1d528de2e4a47e10cef0914c23965368535961`.
+After the type-9 pass a temporary tally counts every spawn entry whose
+window ends at 86,400,000 ms, keyed by the signed controller and type.
+Each group with controller 1, 5 or 6 and at least five entries appends
+one record carrying only the type, at the zone center. The overlay does
+not restore or recount them. A downstream reader remains unverified.
