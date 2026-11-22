@@ -4708,3 +4708,17 @@ The clean team also read the complete Steam project records for the later
 appearance (SHA-256 `3d5e81ca56d5767a019b0ed068a4afc580ce68c0e799dfda5e06ce32df0bc5c5`)
 and wave offsets (`c1ac07764a504ba3675c37c0434314f45f83efdf90aa6e99d4f02c99a7d59271`).
 The visual treatment, swimmable shallows and bank reeds are owner extensions.
+
+## Temporal anti-aliasing stability (2026-11-21)
+
+At the owner's request, the Alpha renderer uses the owner's original
+Infinite Cubes Vulkan tests temporal resolve and camera-history calculations.
+The source revision is `71611c67acc7e82862b150d1142fe2d9aeda4b37`. The
+shader's Git blob is `c8ec11f66ff7bf98484d4e9d0bf58baf987ed77e`, also
+present on the verified main commit `1b001b697c50466589a53c3cc85189ad5d6d46d8`.
+The GLSL adapter uses Alpha's positive-height Vulkan viewport and local
+terrain coordinates. It keeps resolved color on the output grid, tests
+previous jittered depth separately, and translates the previous view
+when the terrain origin moves. Eight centered Halton samples have an
+overall scale of 0.60 pixels by default. This filter is an engine extension.
+[Owner's temporal resolve](https://github.com/DieuDeGlace/infinite-steam-vulkan-tests/blob/71611c67acc7e82862b150d1142fe2d9aeda4b37/release/src/gfx/shaders/TemporalResolveShader.hlsl)

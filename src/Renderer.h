@@ -28,7 +28,7 @@ class Config;
 // Alpha itself only has multisampling (alpha-rendering.md §13).
 struct AntiAliasing {
     bool taa = true, smaa = true;
-    float historyWeight = .65f, edgeHistoryWeight = .80f, resolveBlur = .12f, jitterScale = .75f;
+    float historyWeight = .72f, edgeHistoryWeight = .86f, resolveBlur = .08f, jitterScale = .60f;
     void load(const Config &config);
 };
 
@@ -91,7 +91,7 @@ class Renderer {
     // Draws one frame: `items` outside the view (or, for the shadow, outside the shadow map)
     // are skipped. With `capture` set, the finished image is also written there as a PNG.
     bool draw(const FrameConstants &frame, bool stars, const std::vector<DrawItem> &items,
-              const std::filesystem::path &capture = {}, bool interfaceOnly = false);
+              const std::filesystem::path &capture = {}, bool interfaceOnly = false, glm::ivec2 renderOrigin = {0, 0});
     // How many items the last frame drew in the scene and in the shadow map.
     uint32_t drawnItems() const { return lastDrawn; }
     uint32_t shadowItems() const { return lastShadowDrawn; }
@@ -109,7 +109,7 @@ class Renderer {
     void setMinimap(std::vector<DrawItem> items) { minimapItems = std::move(items); }
     void setInterfaceAtlas(uint32_t width, uint32_t height, std::vector<uint8_t> rgba);
     // Forget the TAA history (after a camera cut or a new model).
-    void dropHistory() { historyValid = false; }
+    void dropHistory() { previousViewValid = historyValid = false; }
 
   private:
     struct Buffer {
@@ -264,10 +264,12 @@ class Renderer {
     Image smaaEdges, smaaWeights;
     int parity = 0;
     bool postFresh = true;    // the targets were just made: last frame's images hold nothing
-    bool historyValid = false;
+    bool previousViewValid = false, historyValid = false;
     uint32_t aaFrame = 0;
     glm::vec2 previousJitter{0};
-    glm::mat4 previousViewProjection{1};
+    glm::dmat4 previousViewProjection{1};
+    glm::dvec3 previousEye{0};
+    glm::ivec2 previousRenderOrigin{0};
 
     // Post pass.
     VkSampler linearSampler = VK_NULL_HANDLE, pointSampler = VK_NULL_HANDLE;

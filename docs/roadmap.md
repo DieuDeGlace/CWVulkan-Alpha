@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Use the owner's Infinite Cubes temporal resolve with stable output
+  coordinates, separate depth validation and render-origin compensation.
+  Restart accumulation after camera cuts and changes of scene.
+
 - [x] Bring the owner's revised Steam water appearance to Alpha, including
   origin-stable wave phases, refraction and sunlight on the water surface.
 

@@ -247,7 +247,7 @@ bool Renderer::createPostTargets() {
     }
     write(weightSet, {{smaaEdges.view, linearSampler}, {areaTex.view, linearSampler}, {searchTex.view, pointSampler}});
     postFresh = true;
-    historyValid = false;
+    dropHistory();
     return true;
 }
 
@@ -318,8 +318,6 @@ void Renderer::recordPost(VkCommandBuffer cmd, uint32_t imageIndex, glm::vec2 ji
     c.a[3] = jitter.y;
     c.b[0] = aa.taa ? aa.resolveBlur : 0;
     c.b[1] = aa.edgeHistoryWeight;
-    c.b[2] = 1; // reproject with the camera
-    c.b[3] = .0005f; // depth tolerance
     std::memcpy(c.clip, &clipToPrevious[0][0], sizeof c.clip);
     c.previousJitter[0] = previousJitter.x;
     c.previousJitter[1] = previousJitter.y;

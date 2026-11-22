@@ -3499,3 +3499,32 @@ in 186.09 seconds. The production controller check, reward, health, network,
 save/reload and town flows passed. The dedicated server wrote the swimmable
 world profile even with the old native-water switch and settings present.
 The package verifier checked 36 hashes across 37 files.
+
+## Temporal anti-aliasing across consecutive frames (2026-11-21)
+
+Two x64 renderer builds drew the same stationary high-contrast wall with
+their shipped temporal and spatial AA settings. Across 47,590 edge pixels,
+frame-to-frame luminance variation (temporal RMS on a 0–255 scale) fell
+from 5.856 to 2.748 over the first eight-sample cycle and from 5.834 to
+2.382 over the second. The cycle-average luminance contrast between the
+5th and 95th percentiles stayed at 211 in both builds.
+
+When the render origin moved 256 blocks beneath a stationary camera and
+wall, 43,503 of 58,368 scene pixels changed on the first frame in the old
+build. All matched the stationary reference in the updated build. The
+next four frames also matched. In the final three, up to 136 pixels
+differed, with a maximum mean absolute RGB difference of 0.0143/255
+over the scene region. A 512-block cut from a bright wall to a dim one
+matched the explicit history-discard control on its first frame. An
+explicit discard during a stationary view changed 30,233 pixels.
+
+The two runs presented 278 frames and saved 76 readbacks. All 968 pixels
+in an opaque UI marker matched across the captures. These measurements
+cover the configured Vulkan renderer with fixed geometry. They leave
+animated foliage, translucent objects and broader camera motion open.
+
+Five focused tests passed in 3.74 seconds and all 60 passed in 111.67
+seconds. The controller diagnostic, reward, health, network, save/reload
+and town flows passed. The final town capture shows the player, HUD and
+crafting district. Both saved-character captures show the same name, health
+and quickbar. Packaging verified 36 hashes across 37 files.

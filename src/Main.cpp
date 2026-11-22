@@ -3579,7 +3579,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             lightController = terrain_lights::FixedPosition{position[0], position[1], position[2]};
         }
         view.finishLighting(scene, worldItems, std::bit_cast<int32_t>(lightClockMs), lightController);
-        FrameConstants frame = makeFrame(view.camera(renderer.size()), scene, shadowSettings, moonSettings);
+        const Camera frameCamera = view.camera(renderer.size());
+        FrameConstants frame = makeFrame(frameCamera, scene, shadowSettings, moonSettings);
         // Screens §5.1: the corner map while playing, 3 x 3 zones round the player's at the
         // starting map zoom (s 0.8).
         if (player && interface.inGameVisible()) {
@@ -4925,7 +4926,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         renderer.setEffects(effects);
         const bool drawn = renderer.draw(frame, drawStars(scene), items,
-                                         capturing ? pathOfUtf8(options.capture) : fs::path(), terrainWait);
+                                         capturing ? pathOfUtf8(options.capture) : fs::path(), terrainWait, frameCamera.renderOrigin);
         // Old source jobs may still hold the old world's generator. Keep polling input and drawing
         // the wait frame until they finish, then run the chosen session with its own persistent state.
         if (requestedLocalWorld && view.prepareWorldChange())

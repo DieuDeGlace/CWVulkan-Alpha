@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <array>
+#include <glm/gtc/matrix_transform.hpp>
 #include <cstring>
 #include <iterator>
 #include <stb_image_write.h>
@@ -1194,7 +1195,7 @@ bool Renderer::prepareTerrainLights() {
 }
 
 bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector<DrawItem> &items,
-                    const std::filesystem::path &capture, bool interfaceOnly) {
+                    const std::filesystem::path &capture, bool interfaceOnly, glm::ivec2 renderOrigin) {
     if (!swapchain && (!createSwapchain() || !swapchain))
         return false; // still minimised
     vkWaitForFences(device, 1, &frameDone, VK_TRUE, UINT64_MAX);
@@ -1210,20 +1211,24 @@ bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector
     freeRetired(); // the last frame is done with them
     prepareInterface();
 
-    // TAA: an eight-frame Halton sub-pixel jitter; the scene moves by `jitter` pixels and the
-    // resolve samples back at the same offset.
+    // Reproject between unjittered views. The eye is local to the terrain render origin.
+    const glm::dvec3 absoluteEye = glm::dvec3(frameIn.camera) + glm::dvec3(renderOrigin, 0);
+    const glm::dvec3 eyeStep = absoluteEye - previousEye;
+    const bool temporal = aa.taa && !interfaceOnly;
+    const bool stable = temporal && previousViewValid && glm::dot(eyeStep, eyeStep) < 64.;
+    const glm::dmat4 currentClip(frameIn.viewProjection);
+    glm::mat4 clipToPrevious(1);
     glm::vec2 jitter(0);
-    if (aa.taa && !interfaceOnly) {
-        auto halton = [](uint32_t i, uint32_t base) {
-            float f = 1, r = 0;
-            for (; i; i /= base) {
-                f /= base;
-                r += f * (i % base);
-            }
-            return r;
-        };
-        aaFrame++;
-        jitter = glm::vec2(halton(aaFrame % 8 + 1, 2) - .5f, halton(aaFrame % 8 + 1, 3) - .5f) * aa.jitterScale;
+    if (stable) {
+        static constexpr glm::vec2 samples[] = {
+            {.5f, 1.f/3}, {.25f, 2.f/3}, {.75f, 1.f/9}, {.125f, 4.f/9},
+            {.625f, 7.f/9}, {.375f, 2.f/9}, {.875f, 5.f/9}, {.0625f, 8.f/9}};
+        jitter = (samples[aaFrame++ % std::size(samples)] - .5f) * aa.jitterScale;
+        const glm::dvec2 delta = glm::dvec2(renderOrigin) - glm::dvec2(previousRenderOrigin);
+        clipToPrevious = glm::mat4(previousViewProjection * glm::translate(glm::dmat4(1), glm::dvec3(delta, 0)) *
+                                   glm::inverse(currentClip));
+    } else {
+        historyValid = false;
     }
     glm::mat4 jitterClip(1); // shifts clip x and y by `jitter` pixels (times w)
     jitterClip[3][0] = 2 * jitter.x / extent.width;
@@ -1231,7 +1236,6 @@ bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector
     FrameConstants frame = frameIn;
     frame.viewProjection = jitterClip * frame.viewProjection;
     frame.skyViewProjection = jitterClip * frame.skyViewProjection;
-    const glm::mat4 clipToPrevious = previousViewProjection * glm::inverse(frame.viewProjection);
 
     // One frame is in flight, so its constants and image bindings can now change.
     std::memcpy(frameBuffer.mapped, &frame, sizeof frame);
@@ -1271,10 +1275,13 @@ bool Renderer::draw(const FrameConstants &frameIn, bool stars, const std::vector
     submit.pSignalSemaphores = &renderDone;
     vkQueueSubmit(queue, 1, &submit, frameDone);
 
-    historyValid = !interfaceOnly;
+    previousViewValid = temporal;
+    historyValid = stable;
     if (!interfaceOnly) {
         previousJitter = jitter;
-        previousViewProjection = frame.viewProjection;
+        previousViewProjection = currentClip;
+        previousRenderOrigin = renderOrigin;
+        previousEye = absoluteEye;
         parity = 1 - parity;
     }
 
