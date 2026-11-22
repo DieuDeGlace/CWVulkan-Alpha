@@ -225,6 +225,20 @@ int main() {
         World world(41);
         Terrain terrain(world);
         const auto zone = terrain.generate(32804, 32800); // prepares the surrounding regions
+        size_t initialized = 0, shaded = 0, mismatches = 0;
+        for (const auto &plant : zone->plants) {
+            // Derive the expected serialized byte from the generated column, before WorldMap or meshing.
+            const int z = int((int64_t(plant.z) * 65536 - (plant.sink ? 6553 : 0)) / 65536);
+            const Block block = zone->read(plant.x, plant.y, z);
+            const float expected = block.type() == GLOWING ? 255.f :
+                clear(block.type()) ? float(std::max<uint8_t>(5, block.r)) : 0.f;
+            ++initialized;
+            shaded += expected > 0 && expected < 255;
+            mismatches += plant.generationLight != expected;
+        }
+        std::printf("initial decoration lighting: %zu plants, %zu partial, %zu mismatches\n", initialized, shaded, mismatches);
+        same(initialized > 0 && shaded > 0 && mismatches == 0, 1,
+             "normal seed-41 generation writes the committed sample to each plant before publication");
         const int32_t x = 32804 * 256 + 220, y = 32800 * 256 + 204;
         const Block floor = zone->read(x, y, 145);
         same((double)((uint32_t)floor.r << 16 | (uint32_t)floor.g << 8 | floor.b), 0xbdb3b2u,

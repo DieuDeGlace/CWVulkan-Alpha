@@ -26,7 +26,7 @@ inline bool zoneKeptNear(int32_t zx, int32_t zy, int32_t px, int32_t py) {
 // A record owned by a resident area. Its chunk snapshots retain native encounter order.
 struct PositionedDecoration {
     Sprite sprite;
-    float light = 0; // defined by the first matched mesh build
+    float light = 0; // retained generation or most recent mesh sample
     int32_t plantIndex = -1; // wind phase for the engine's cell-centred plant adapter
 };
 using DecorationList = std::vector<PositionedDecoration>;
@@ -46,7 +46,7 @@ class WorldMap {
     // Publish changed terrain or decorations while retaining the resident descriptor and object identities.
     void replaceTerrain(std::shared_ptr<const Zone> zone);
     // Build fixed-position records for the client on admission or after a change in its source list.
-    void refreshDecorations(ZoneKey zone);
+    void refreshDecorations(ZoneKey zone, bool retainSamples = true);
     DecorationSnapshot decorations(int32_t cx, int32_t cy) const;
     DecorationUpdate sampleDecorations(int32_t cx, int32_t cy) const;
     bool publishDecorations(int32_t cx, int32_t cy, const DecorationUpdate &update);

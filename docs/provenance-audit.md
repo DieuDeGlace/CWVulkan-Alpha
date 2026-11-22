@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 86 and the rulings. The 312 tracked contracts
-comprise 276 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 87 and the rulings. The 313 tracked contracts
+comprise 277 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -166,6 +166,7 @@ Batch 83 records resident spawn and indexed object lifetimes across terrain upda
 Batch 84 records live terrain observation scopes and the meaning of the three stored light bytes.
 Batch 85 records section 9's dedicated audience, two client lookups and item presentation.
 Batch 86 records the active decoration lighting path, model keys and the native distance passes.
+Batch 87 corrects the final static-index pass and locates the preceding decoration-light initialization.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -476,6 +477,7 @@ Batch 86 records the active decoration lighting path, model keys and the native 
 | `alpha-worldgen-trees.md` | A | 617 | 1 |
 | `alpha-worldgen-vegetation.md` | A | 357 | 0 |
 | `alpha-yaw-trig-scalar-abi.md` | A | 77 | 1 |
+| `alpha-zone-final-static-bucket-index.md` | A | 39 | 0 |
 | `alpha-zone-generator-observation-boundaries.md` | A | 39 | 0 |
 | `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
 | `shadows.md` | E | 194 | 3 |

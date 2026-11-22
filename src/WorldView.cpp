@@ -477,7 +477,7 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSourc
         dropFloating(*zone);
         replacements.emplace(key, std::move(zone));
     }
-    publishEditedZones(std::move(replacements), saved || source == TerrainEditSource::Live);
+    publishEditedZones(std::move(replacements), saved || source == TerrainEditSource::Live, saved);
 }
 
 void WorldView::relightAfterDestruction(const std::array<int64_t, 3> &centre, float radius) {
@@ -485,15 +485,17 @@ void WorldView::relightAfterDestruction(const std::array<int64_t, 3> &centre, fl
     worldgen::relightAfterDestruction(map, centre, radius);
 }
 
-void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, bool relightAreas) {
+void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, bool relightAreas, bool fromSave) {
     if (!edits.empty())
         cancelMeshBatch(true);
     for (auto &[key, zone] : edits) {
         if (relightAreas)
             terrainGenerator().relight(*zone);
+        if (fromSave)
+            zone->initializeDecorationLight();
         sectorSources.update(*zone);
         map.replaceTerrain(std::move(zone));
-        map.refreshDecorations(key);
+        map.refreshDecorations(key, !fromSave);
     }
     for (const auto &[key, zone] : edits)
         refreshPlantsNear(key);

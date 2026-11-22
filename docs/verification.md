@@ -3414,3 +3414,33 @@ All five focused checks passed in 22.16 seconds. All 60 tests passed in
 143.48 seconds. The production controller diagnostic and the reward,
 health, network, save and town flows passed. The release package verified
 all 36 digests across 37 files.
+
+## Generation-time decoration light (2026-11-21)
+
+A generated seed-41 zone contained 1,120 plants. An independent read
+of each plant's effective column value matched all 1,120 generated
+samples before the zone reached a mesh worker. Of these, 256 fell
+between zero and full light. Omitting the initialization caused all
+1,120 comparisons to fail.
+
+Fixtures also checked all four decoration collections, invalid
+cross-zone samples and an immutable snapshot held across a restore.
+A source-module case removed and reordered two posts with distinct
+illumination and inserted duplicates through the original position
+vector. Matching a saved sample by its vector index failed that case.
+Matching positions and limiting each to its number of sampled
+occurrences kept the surviving values and left new occurrences
+unsampled until the next refresh.
+
+The preceding renderer build also completed two round trips between the
+same two points, 1,536 blocks apart at a fixed camera height. All nine
+requested zones were present for 90 consecutive presentations at each of
+five stops. The client presented 5,429 frames over 6,144 blocks. The two
+returns both settled at 15 resident zones, 836 chunks and 15,664 plants.
+The home zone acquired a fresh resident identity on each return. Movement
+frame times on the final leg had a median of 26.03 ms, a 95th percentile
+of 113.79 ms and a worst frame of 333.68 ms. Peak working set reached
+591.9 MiB. This short diagnostic leaves sustained play and hitch reduction
+open. The final Vulkan frame showed the returned forest and town.
+
+The integrated x64 build reproduced all 1,120 plant samples. Four focused tests passed in 15.75 seconds and all 60 tests passed in 175.90 seconds. The production controller check and five client flows passed, including connected play and save/reload. The package check verified 36 hashes across 37 files.

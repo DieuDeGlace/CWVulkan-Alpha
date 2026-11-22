@@ -485,6 +485,7 @@ std::unique_ptr<Zone> Terrain::generate(int32_t zx, int32_t zy) const {
     if (swimmableWater)
         makeWaterSwimmable(*zone, [&](int32_t x, int32_t y, int32_t z) { return gapBlock(x, y, z, *zone); });
     relight(*zone);
+    zone->initializeDecorationLight();
     return zone;
 }
 

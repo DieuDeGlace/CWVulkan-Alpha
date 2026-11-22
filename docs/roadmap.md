@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Sample decoration lighting before publishing each newly generated
+  zone. Keep generated samples associated with the correct source-module
+  song positions across reordering, removal and duplicate insertion.
+
 - [x] Carry ordered terrain decoration records and their sampled illumination
   from the resident world through mesh acceptance into the actual model draw.
   Preserve the active set during blocked transfers and empty rebuilds.

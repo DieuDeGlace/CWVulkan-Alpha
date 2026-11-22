@@ -36,6 +36,35 @@ AirshipTemplate airshipTemplate(int32_t zx, int32_t zy, int32_t index, int32_t r
     return t;
 }
 
+float Zone::decorationLight(int64_t fixedX, int64_t fixedY, int64_t fixedZ) const {
+    const int64_t x = fixedX / 65536, y = fixedY / 65536, z = fixedZ / 65536;
+    if (uint64_t(x) >= 0x1000000 || uint64_t(y) >= 0x1000000 || !contains(int32_t(x), int32_t(y)))
+        return 0;
+    const auto &col = column(int32_t(x), int32_t(y));
+    if (z < col.bottom)
+        return 0;
+    if (z - col.bottom >= int64_t(col.blocks.size()))
+        return 255;
+    const auto &block = col.blocks[size_t(z - col.bottom)];
+    if (block.type() == GLOWING || (block.type() == AIR && z <= 0 && !(block.typeByte & DRY_AIR)))
+        return 255;
+    return clear(block.type()) ? float(std::max<uint8_t>(5, block.r)) : 0.f;
+}
+
+void Zone::initializeDecorationLight() {
+    for (auto &p : plants)
+        p.generationLight = decorationLight(int64_t(p.x) * 65536 + 32768, int64_t(p.y) * 65536 + 32768,
+                                           int64_t(p.z) * 65536 - (p.sink ? 6553 : 0));
+    for (auto &s : sprites)
+        s.generationLight = decorationLight(s.x, s.y, s.z);
+    for (auto &leaf : leafSources)
+        leaf.generationLight = decorationLight(leaf.x, leaf.y, leaf.z);
+    songGenerationLight.clear();
+    songGenerationLight.reserve(songPosts.size());
+    for (const auto &pos : songPosts)
+        songGenerationLight.push_back({pos, decorationLight(pos[0], pos[1], pos[2])});
+}
+
 Block Zone::read(int32_t x, int32_t y, int32_t z) const {
     const Column &c = column(x, y);
     if (z < c.bottom)

@@ -129,6 +129,61 @@ static void positionedDecorationLights() {
           "unflagged illumination uses sample then daytime; a source stays full at midnight under its camera tint");
 }
 
+static void initialDecorationLight() {
+    using namespace worldgen;
+    auto zone = std::make_shared<Zone>();
+    auto &col = zone->column(1, 1);
+    col.bottom = 2;
+    col.blocks = {{102, 99, 72, AIR}, {3, 3, 3, ROCK}};
+    constexpr int64_t u = 65536;
+    zone->addPlant({1, 1, 2});
+    zone->addLeafSource({u, u, 3 * u});
+    zone->addSongPost({u, u, 4 * u});
+    zone->addSprite({14, 256 * u, u, 100 * u});
+    zone->initializeDecorationLight();
+    check(zone->plants[0].generationLight == 102 && zone->leafSources[0].generationLight == 0 &&
+              zone->songGenerationLight[0].light == 255 && zone->sprites[0].generationLight == 0,
+          "fresh generation initializes all original source rows, including an invalid explicit-area sample");
+    WorldMap map;
+    map.add(zone);
+    map.refreshDecorations({0, 0});
+    const auto original = map.decorations(0, 0);
+    check(original && original->size() == 3 && (*original)[0].light == 102 && (*original)[2].light == 255,
+          "resident records already carry generation lighting before any mesh or renderer pass");
+    auto restored = std::make_shared<Zone>(*zone);
+    restored->column(1, 1).blocks[0].r = 43;
+    restored->initializeDecorationLight();
+    map.replaceTerrain(restored);
+    map.refreshDecorations({0, 0}, false);
+    check(map.decorations(0, 0)->front().light == 43 && original->front().light == 102,
+          "saved formation lights populate the new resident list independently of retained earlier bytes");
+}
+
+static void editedSongPositions() {
+    using namespace worldgen;
+    constexpr int64_t u = 65536;
+    auto zone = std::make_shared<Zone>();
+    const std::array<int64_t, 3> a{u, u, 2*u}, b{2*u, u, 2*u}, c{3*u, u, 2*u}, d{4*u, u, 2*u};
+    for (uint8_t x = 1; x <= 4; ++x) {
+        auto &column = zone->column(x, 1);
+        column.bottom = 2;
+        column.blocks.push_back({uint8_t(31*x), 0, 0, AIR});
+    }
+    zone->addSongPost(a);
+    zone->addSongPost(b);
+    zone->songPosts.push_back(b); // source module appends a duplicate before formation
+    zone->addSongPost(c);
+    zone->initializeDecorationLight();
+    zone->songPosts = {c, b, b, b, d}; // remove, reorder, duplicate and insert after the generation pass
+    WorldMap map;
+    map.add(zone);
+    map.refreshDecorations({0,0});
+    const auto list = map.decorations(0,0);
+    check(list && list->size() == 5 && (*list)[0].light == 93 && (*list)[1].light == 62 &&
+              (*list)[2].light == 62 && (*list)[3].light == 0 && (*list)[4].light == 0,
+          "legacy song vector edits preserve distinct formation samples and leave new occurrences unsampled");
+}
+
 static void packedTerrainLight() {
     auto zone = std::make_shared<worldgen::Zone>(0, 0);
     worldgen::WorldMap map;
@@ -513,6 +568,8 @@ static void fogMeshElevations() {
 int main() {
     fogMeshTransfers();
     fogMeshElevations();
+    editedSongPositions();
+    initialDecorationLight();
     positionedDecorationLights();
     packedTerrainLight();
     meshLightRequests();

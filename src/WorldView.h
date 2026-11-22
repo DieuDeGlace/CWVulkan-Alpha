@@ -192,7 +192,7 @@ class WorldView {
   private:
     using Key = std::pair<int32_t, int32_t>;
     void refreshPlantsNear(Key zone);
-    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits, bool relightAreas = true);
+    void publishEditedZones(std::map<Key, std::shared_ptr<worldgen::Zone>> edits, bool relightAreas = true, bool fromSave = false);
     std::map<int8_t, CubModel> blueprintModels;
     // A placed plant model: placed = translate x scale, the yaw after the sway.
     struct PlantInstance {

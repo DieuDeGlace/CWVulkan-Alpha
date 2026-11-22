@@ -41,17 +41,17 @@ using Position = std::array<int64_t, 3>;
 
 // SDK modules can still write the separate typed collections directly. Their unranked
 // entries retain collection order after all ranked generation records.
-void WorldMap::refreshDecorations(ZoneKey key) {
+void WorldMap::refreshDecorations(ZoneKey key, bool retainSamples) {
     const auto &source = *held.at(key);
     auto &resident = residents.at(key);
-    const auto old = resident.decorations;
+    const auto old = retainSamples ? resident.decorations : nullptr;
     std::array<DecorationList, 4> authored;
     size_t group = 0;
     const auto append = [&](const Sprite &sprite, int32_t plant = -1) {
         const int64_t cx = decorationChunkOf(sprite.x), cy = decorationChunkOf(sprite.y);
         if (cx < 0 || cy < 0 || cx >= 0x80000 || cy >= 0x80000 || cx / 8 != key.first || cy / 8 != key.second)
             return;
-        authored[group].push_back({sprite, 0.f, plant});
+        authored[group].push_back({sprite, sprite.generationLight, plant});
     };
     for (const Sprite &sprite : source.sprites)
         append(sprite);
@@ -61,25 +61,44 @@ void WorldMap::refreshDecorations(ZoneKey key) {
         Sprite sprite{p.kind, int64_t(p.x) * 65536 + 32768, int64_t(p.y) * 65536 + 32768,
                       int64_t(p.z) * 65536 - (p.sink ? 6553 : 0), p.scale, p.rotation, int32_t(p.flags), {1, 1, 1}};
         sprite.encounter = p.encounter;
+        sprite.generationLight = p.generationLight;
         append(sprite, int32_t(i));
     }
     ++group;
     for (const auto &leaf : source.leafSources) {
         Sprite sprite{60, leaf.x, leaf.y, leaf.z, 0, 0, 2, {leaf.r, leaf.g, leaf.b}};
         sprite.encounter = leaf.encounter;
+        sprite.generationLight = leaf.generationLight;
         append(sprite);
     }
     // The original std::array position type remains available to existing source modules.
     // Match by position even when a module removed or moved an earlier song post.
-    std::map<Position, std::vector<uint32_t>> songOrder;
+    struct SongHistory {
+        std::vector<uint32_t> encounters;
+        size_t formed = 0;
+        float initialLight = 0;
+    };
+    std::map<Position, SongHistory> songOrder;
     for (auto i = source.songEncounters.rbegin(); i != source.songEncounters.rend(); ++i)
-        songOrder[i->first].push_back(i->second);
+        songOrder[i->first].encounters.push_back(i->second);
+    for (const auto &sample : source.songGenerationLight) {
+        auto &history = songOrder[sample.position];
+        ++history.formed;
+        history.initialLight = sample.light; // equal positions read the same voxel during formation
+    }
     ++group;
     for (const auto &p : source.songPosts) {
         Sprite sprite{61, p[0], p[1], p[2], 0, 0, 2, {1, 1, 1}};
-        if (auto it = songOrder.find(p); it != songOrder.end() && !it->second.empty()) {
-            sprite.encounter = it->second.back();
-            it->second.pop_back();
+        if (auto it = songOrder.find(p); it != songOrder.end()) {
+            auto &history = it->second;
+            if (history.formed) {
+                sprite.generationLight = history.initialLight;
+                --history.formed;
+            }
+            if (!history.encounters.empty()) {
+                sprite.encounter = history.encounters.back();
+                history.encounters.pop_back();
+            }
         }
         append(sprite);
     }
@@ -140,29 +159,10 @@ DecorationUpdate WorldMap::sampleDecorations(int32_t cx, int32_t cy) const {
     const auto source = decorations(cx, cy);
     if (!source)
         return {};
+    const Zone *area = zone(cx / 8, cy / 8);
     auto sampled = std::make_shared<DecorationList>(*source);
-    for (auto &record : *sampled) {
-        const auto &s = record.sprite;
-        const int64_t x = s.x / 65536, y = s.y / 65536, z = s.z / 65536;
-        record.light = 0;
-        if (uint64_t(x) >= 0x1000000 || uint64_t(y) >= 0x1000000)
-            continue;
-        const Zone *area = zoneAt(int32_t(x), int32_t(y));
-        if (!area)
-            continue;
-        const auto &column = area->column(int32_t(x), int32_t(y));
-        if (z < column.bottom)
-            continue;
-        if (z >= int64_t(column.bottom) + int64_t(column.blocks.size())) {
-            record.light = 255;
-            continue;
-        }
-        const auto cell = area->read(int32_t(x), int32_t(y), int32_t(z));
-        if (cell.type() == GLOWING)
-            record.light = 255;
-        else if (clear(cell.type()))
-            record.light = float(std::max<uint8_t>(5, cell.r));
-    }
+    for (auto &record : *sampled)
+        record.light = area ? area->decorationLight(record.sprite.x, record.sprite.y, record.sprite.z) : 0.f;
     return {source, std::move(sampled)};
 }
 

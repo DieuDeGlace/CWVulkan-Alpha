@@ -4673,3 +4673,15 @@ and verification scope. The clean implementation retains immutable
 records for each resident chunk and updates the Vulkan draw material
 when the active mesh changes. The engine keeps bank reeds on their
 owner-requested placement path.
+
+## Initial decoration lighting and the final static index (2026-11-21)
+
+The clean team read the complete 38-line original-only correction.
+SHA-256 `36141cd0bd622d9ac28f1bd3e1c45b28eef6f165f54e150df98abe1cf2834f0e`.
+Generation refreshes the existing decoration records after column lighting.
+The following pass appends references to original static ordinals in their
+eight-block buckets. This corrects the earlier interpretation that the pass
+generated more decorations. The engine now samples ordinary plants, sprites,
+leaf sources and song positions before it publishes a fresh zone. It also
+resamples the engine's restored terrain after applying saved block changes.
+The original's live restore timing remains open.
