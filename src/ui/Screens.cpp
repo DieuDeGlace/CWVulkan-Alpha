@@ -482,7 +482,7 @@ std::optional<FloatingText> hitText(const creatures::HitRecord &hit, bool toPlay
         const float offset = (1.f - 0.5f * recipientHeight) * 65536.f;
         const int64_t heightOffset = offset >= -0x1p63f && offset < 0x1p63f ? int64_t(offset) : 0;
         const uint64_t anchorZ = uint64_t(hit.position[2]) + uint64_t(heightOffset) + (toPlayer ? 65536u : 131072u);
-        text->anchor.z = double(std::bit_cast<int64_t>(anchorZ)) / 65536.0;
+        text->anchor = std::array<int64_t, 3>{hit.position[0], hit.position[1], std::bit_cast<int64_t>(anchorZ)};
     }
     return text;
 }
@@ -493,9 +493,9 @@ std::optional<FloatingText> timedHealText(const creatures::HitRecord &hit, float
     return hitText(record, true, recipientHeight);
 }
 
-FloatingText levelUpText(glm::dvec3 player) {
+FloatingText levelUpText(const std::array<int64_t, 3> &position) {
     FloatingText t;
-    t.anchor = player;
+    t.anchor = position;
     t.text = u"LEVEL UP!";
     t.colour = {0.8f, 0.6f, 1, 1};
     t.size = 50;
@@ -505,9 +505,9 @@ FloatingText levelUpText(glm::dvec3 player) {
     return t;
 }
 
-FloatingText experienceText(int32_t gain, glm::dvec3 player) {
+FloatingText experienceText(int32_t gain, const std::array<int64_t, 3> &position) {
     FloatingText t;
-    t.anchor = player;
+    t.anchor = position;
     t.text = utf16("XP +" + std::to_string(gain));
     t.colour = {0.8f, 0.6f, 1, 1};
     t.size = 30;
@@ -517,11 +517,17 @@ FloatingText experienceText(int32_t gain, glm::dvec3 player) {
     return t;
 }
 
+glm::dvec3 FloatingText::worldPosition() const {
+    if (const auto *fixed = std::get_if<std::array<int64_t, 3>>(&anchor))
+        return glm::dvec3((*fixed)[0], (*fixed)[1], (*fixed)[2]) / 65536.0;
+    return std::get<glm::dvec3>(anchor);
+}
+
 // §5.6: each text drawn outlined at its age, then aged; old ones go.
 void Interface::drawFloating(Painter &painter, float dtMs) {
     for (FloatingText &t : floating) {
         const float age = std::min(t.ageMs / t.lifeMs, 1.f);
-        if (const auto p = project ? project(t.anchor) : std::nullopt) {
+        if (const auto p = project ? project(t.worldPosition()) : std::nullopt) {
             TextStyle style;
             style.pixelSize = t.size;
             style.flags = t.flags;

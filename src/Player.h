@@ -61,6 +61,8 @@ class Player {
     float &facing() { return yaw; }
     const creatures::Appearance &appearance() const { return looks; }
     void resetCreationPose();
+    // Selected-character notification state, rebuilt on load and never serialized.
+    int32_t observedLevel = 1, observedExperience = 0;
     void setCreationLook(int32_t type, const creatures::Appearance &appearance);
     // Stats, action and health (alpha-creatures-behaviour.md).
     creatures::Combatant &combat() { return fighter; }

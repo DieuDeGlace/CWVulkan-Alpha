@@ -15,6 +15,6 @@ int32_t haircutCount(int32_t type);
 // §3.10: the record Create Character writes. `characterClass` is 1 warrior … 4 rogue; `draw`
 // is rand() (the level-1 recipe grants spend draws).
 CharacterRecord newCharacter(const std::string &name, const creatures::CharacterChoice &choice, int32_t characterClass,
-                             const std::function<int()> &draw);
+                             const std::function<int()> &draw, std::vector<ItemBytes> *selectedRecipes = nullptr);
 // The choice record as the save keeps it (field 13, 20 bytes).
 std::array<uint8_t, 20> choiceBytes(const creatures::CharacterChoice &choice);

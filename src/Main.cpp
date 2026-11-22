@@ -79,6 +79,14 @@
 
 namespace {
 
+// A local world change retains the selected creature's recipe state. Network acceptance
+// keeps the same list and current fields, then synchronizes its observation trackers.
+struct SelectedProgress {
+    int32_t level, experience, observedLevel, observedExperience;
+    uint8_t characterClass;
+    std::vector<ItemBytes> recipes;
+};
+
 struct Options {
     std::string game, model, capture, list, play;
     bool listing = false, noTaa = false, noSmaa = false, noShadows = false, noGround = false, sway = false;
@@ -357,7 +365,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
              const Options &options,
              const ShadowSettings &shadowSettings, const MoonSettings &moonSettings, ModLoader &mods,
              Scene *&activeScene, WorldView *&activeView, Player *&activePlayer, ui::Interface *&activeInterface,
-             Audio &audio, std::optional<Options> &restart) {
+             Audio &audio, std::optional<Options> &restart, std::optional<SelectedProgress> &entryProgress) {
     // One engine gameplay stream. Native startup/thread state is still unclosed;
     // seed one is an explicit engine admission policy, independent of terrain.
     worldgen::Random worldRandom{1};
@@ -380,11 +388,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     std::optional<CharacterRecord> onlineCharacter;
     if (!options.connect.empty() && options.character >= 0) {
         SaveDb db;
-        if (db.open(executableFolder() / "Save" / "characters.db", SaveDb::Mode::ReadWrite)) {
-            std::vector<CharacterRecord> all = readCharacters(db);
-            if (options.character < (int)all.size())
-                onlineCharacter = all[options.character];
-        }
+        if (db.open(executableFolder() / "Save" / "characters.db", SaveDb::Mode::ReadWrite))
+            onlineCharacter = loadCharacter(db, uint32_t(options.character));
     }
     constexpr int64_t homeFixed = int64_t(worldgen::HOME) * 65536;
     constexpr std::array<int64_t, 3> homeAnchor{homeFixed, homeFixed, 0};
@@ -827,9 +832,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     std::optional<CharacterRecord> creationRecord;
     glm::dvec2 benchMouse{0};
     int chosenCharacter = options.character;
-    // Last observed recipe level. Saved characters synchronize this after load;
-    // only the engine's unsaved diagnostic character needs a first-frame grant.
-    int32_t grantedLevel = 0;
+    int liveCharacter = playing() ? options.character : -1;
+    // The engine's unsaved --walk character gets its starter recipes at its usual input pass.
+    bool diagnosticStarterRecipes = !options.start && options.character < 0 && !playing();
     std::vector<ItemRequest> offlineItemRequests;
     const auto queueItemRequest = [&](ItemRequest request) {
         if (client.connected())
@@ -869,6 +874,40 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     bool eWasDown = false;
     bool tWasDown = false; // pets §13: T calls the pet back
     bool qWasDown = false;
+    const auto restoreCharacter = [&](const CharacterRecord &saved, SelectedProgress *carried = nullptr) {
+        creatures::Combatant &c = player->combat();
+        c.level = carried ? carried->level : std::max(saved.level, 1);
+        c.experience = carried ? carried->experience : saved.experience;
+        c.characterClass = carried ? carried->characterClass : saved.characterClass;
+        c.specialization = saved.specialization;
+        c.skills.fill(0);
+        for (size_t i = 0; i < saved.skills.size() && i < c.skills.size(); i++)
+            c.skills[i] = saved.skills[i];
+        inventory.equipment = saved.equipment;
+        if (saved.tabs.empty())
+            inventory.bags = creatures::Inventory::fresh().bags;
+        else
+            inventory.bags.clear();
+        for (const auto &tab : saved.tabs) {
+            auto &bag = inventory.bags.emplace_back();
+            for (const CharacterRecord::Slot &slot : tab)
+                bag.push_back({(int32_t)slot.count, slot.item});
+        }
+        inventory.money = saved.money;
+        inventory.platinum = saved.platinum;
+        if (carried) {
+            inventory.recipes = std::move(carried->recipes);
+            player->observedExperience = carried->observedExperience;
+            player->observedLevel = carried->observedLevel;
+        } else {
+            inventory.recipes = saved.recipes;
+            player->observedExperience = c.experience;
+            player->observedLevel = c.level;
+        }
+        manaCubes = (int32_t)saved.manaCubes;
+        wearInventory();
+        c.health = saved.health > 0 ? std::min(saved.health, creatures::maxHealth(c)) : creatures::maxHealth(c);
+    };
     if (options.walk) {
         creatures::Appearance looks;
         int32_t type = 2;
@@ -888,7 +927,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         player->objects = [&](glm::dvec3 lo, glm::dvec3 hi, int axis, double move, const creatures::IgnoredStatics *) {
             return statics.blocks(view.held(), lo, hi, axis, move);
         };
-        activePlayer = &*player;
         player->combat().id = client.connected() ? client.id() : 1; // native initial ID; a received zero remains valid
         // Without a saved character the engine hands out a level 1 iron sword, so that there is
         // something to fight with (not Alpha's; a new Alpha character's kit is unspecified).
@@ -897,32 +935,14 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         creatures::setItemLevel(inventory.equipment[creatures::MAIN_HAND], 1);
         wearInventory();
         own.setAppearance(looks);
-        if (playing()) {
-            // The saved character's stats (saves §3).
-            const CharacterRecord &saved = *playing();
-            creatures::Combatant &c = player->combat();
-            c.level = std::max(saved.level, 1);
-            c.experience = saved.experience;
-            c.characterClass = saved.characterClass;
-            c.specialization = saved.specialization;
-            for (size_t i = 0; i < saved.skills.size() && i < c.skills.size(); i++)
-                c.skills[i] = saved.skills[i];
-            inventory.equipment = saved.equipment;
-            if (!saved.tabs.empty())
-                inventory.bags.clear();
-            for (const auto &tab : saved.tabs) {
-                auto &bag = inventory.bags.emplace_back();
-                for (const CharacterRecord::Slot &slot : tab)
-                    bag.push_back({(int32_t)slot.count, slot.item});
-            }
-            inventory.money = saved.money;
-            inventory.platinum = saved.platinum;
-            inventory.recipes = saved.recipes;
-            grantedLevel = c.level;
-            manaCubes = (int32_t)saved.manaCubes;
-            wearInventory();
-            c.health = saved.health > 0 ? std::min(saved.health, creatures::maxHealth(c)) : creatures::maxHealth(c);
+        if (playing())
+            restoreCharacter(*playing(), entryProgress ? &*entryProgress : nullptr);
+        entryProgress.reset();
+        if (client.connected()) {
+            player->observedLevel = player->combat().level;
+            player->observedExperience = player->combat().experience;
         }
+        activePlayer = &*player;
         // --loot: items from the dungeon-loot generator (items spec §1) at the player's level,
         // with a few potions and coins, to try the inventory with.
         if (options.loot > 0) {
@@ -2018,6 +2038,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 actor.characterClass = 1;
                 actor.level = 1;
                 actor.experience = 0;
+                liveCharacter = -1;
+                player->observedExperience = 0;
+                player->observedLevel = 1;
+                inventory.recipes.clear();
                 actor.health = creatures::maxHealth(actor);
                 own.setName("");
             }
@@ -2250,15 +2274,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // craft timer and what a finished craft makes.
                 {
                     creatures::Combatant &c = player->combat();
-                    // On any level change (not only a rise): the level-up notice, sound 0x1d at the
-                    // player, then the grant of the new level only. (A character without a save
-                    // starts at 0 here: that first grant stands in for creation's, without notice.)
-                    if (c.level != grantedLevel) {
-                        if (grantedLevel != 0) {
-                            interface.floating.push_back(ui::levelUpText(player->body().blocks()));
-                            playAt(0x1d, player->body().blocks(), 1, 1);
-                        }
-                        grantedLevel = c.level;
+                    if (std::exchange(diagnosticStarterRecipes, false)) {
+                        player->observedLevel = c.level;
                         creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [&] { return worldRandom.draw(); });
                     }
                     interface.stationNear = [&](int32_t station) {
@@ -2785,16 +2802,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 creatures::setItemLevel(inventory.equipment[12], (int16_t)p.level);
                                 wearInventory();
                             }
-                        for (const auto &credit : happened.appliedCredits)
-                            if (credit.direct && credit.record.experience != 0) {
-                                interface.floating.push_back(ui::experienceText(credit.record.experience, player->body().blocks()));
-                                interface.chatAdd("You gain " + std::to_string(credit.record.experience) + " XP.\n", {150, 128, 255});
-                            }
-                        if (happened.experience > 0) { // separate retained non-hit corpse adapter
+                        if (happened.experience > 0) // separate retained non-hit corpse adapter
                             creatures::addExperience(c, happened.experience);
-                            interface.floating.push_back(ui::experienceText(happened.experience, player->body().blocks()));
-                            interface.chatAdd("You gain " + std::to_string(happened.experience) + " XP.\n", {150, 128, 255});
-                        }
                         for (int32_t l = (int32_t)before + 1; l <= c.level; l++)
                             mods.levelUp(l); // (the notice and sound follow in the level-change step)
                     }
@@ -3506,10 +3515,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (!player)
                     continue;
                 const auto &c = player->combat();
-                if (result.directAward == &c && credit.experience != 0) {
-                    interface.floating.push_back(ui::experienceText(credit.experience, player->body().blocks()));
-                    interface.chatAdd("You gain " + std::to_string(credit.experience) + " XP.\n", {150, 128, 255});
-                }
                 for (int64_t level = int64_t(previousLevel) + 1; level <= c.level; level++)
                     mods.levelUp(int32_t(level)); // (the notice and sound follow in the level-change step)
             }
@@ -3533,6 +3538,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 interface.chatAdd((sender != senders.end() ? sender->second.name() : own.name()) + ": ", {0, 255, 255});
                 interface.chatAdd(text + "\n", {255, 255, 255});
                 mods.chat(from, text);
+            }
+        }
+        // Compare once after addressed items and pending fatal credits. The selected actor
+        // is read again after notification and before the grant. A jump grants its destination.
+        if (player) {
+            if (player->combat().level != player->observedLevel) {
+                interface.floating.push_back(ui::levelUpText(std::to_array(player->body().position)));
+                playFixed(0x1d, std::to_array(player->body().position), 1, 1);
+                player->observedLevel = player->combat().level;
+                player->observedExperience = 0;
+                const int32_t level = player->combat().level;
+                creatures::grantLevel(inventory.recipes, level, player->combat().characterClass, [&] { return worldRandom.draw(); });
+            } else if (player->combat().experience > player->observedExperience) {
+                const auto gain = [&] {
+                    return std::bit_cast<int32_t>(uint32_t(player->combat().experience) - uint32_t(player->observedExperience));
+                };
+                const auto position = std::to_array(player->body().position);
+                interface.floating.push_back(ui::experienceText(gain(), position));
+                interface.chatAdd("You gain " + std::to_string(gain()) + " XP.\n", {150, 128, 255});
+                player->observedExperience = player->combat().experience;
             }
         }
         // Screens §9: what was typed. /name renames the player; /namepet checks its length;
@@ -4631,7 +4656,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 // player wears the choices (the hover colour), then the starting kit is made again
                 // with its level-1 grants, spending their draws each time; Create Character saves
                 // the last run's record.
-                if (std::exchange(interface.creationChanged, false)) {
+                const auto applyCreation = [&] {
                     creatures::CharacterChoice choice;
                     choice.race = interface.creation.race;
                     choice.female = interface.creation.gender == 1;
@@ -4644,7 +4669,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         creatures::generate(type, looks, &choice, [] { return 0; });
                         player->setCreationLook(type, looks);
                     }
-                    creationRecord = newCharacter("", choice, interface.creation.characterClass + 1, [&] { return worldRandom.draw(); });
+                    auto *selectedRecipes = player && !playing() ? &inventory.recipes : nullptr;
+                    creationRecord = newCharacter("", choice, interface.creation.characterClass + 1,
+                                                  [&] { return worldRandom.draw(); }, selectedRecipes);
                     if (player && !playing()) {
                         auto &actor = player->combat();
                         actor.characterClass = creationRecord->characterClass;
@@ -4652,7 +4679,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         inventory.equipment = creationRecord->equipment;
                         wearInventory();
                     }
-                }
+                };
+                if (std::exchange(interface.creationChanged, false))
+                    applyCreation();
                 const auto request = std::exchange(interface.frontRequest, ui::Interface::FrontRequest::None);
                 using R = ui::Interface::FrontRequest;
                 const auto startWorld = [&](const std::string &name, uint32_t seed) {
@@ -4680,19 +4709,20 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     restart = next;
                 }
                 if (request == R::SelectCharacter) {
-                    chosenCharacter = interface.selectedCharacter;
-                    interface.front = ui::Interface::Front::Worlds;
+                    SaveDb db;
+                    if (db.open(saves / "characters.db", SaveDb::Mode::ReadOnly))
+                        if (auto chosen = loadCharacter(db, uint32_t(interface.selectedCharacter))) {
+                            chosenCharacter = interface.selectedCharacter;
+                            if (player && !playing()) {
+                                restoreCharacter(*chosen);
+                                liveCharacter = chosenCharacter;
+                            }
+                            interface.front = ui::Interface::Front::Worlds;
+                        }
                 } else if (request == R::CreateCharacter) {
                     // §3.8: the record of the last Apply, with the typed name and level 1.
-                    if (!creationRecord) { // (no Apply ran: the engine makes one now)
-                        creatures::CharacterChoice choice;
-                        choice.race = interface.creation.race;
-                        choice.female = interface.creation.gender == 1;
-                        choice.head = interface.creation.face;
-                        choice.hair = interface.creation.haircut;
-                        std::copy(interface.creation.hover.begin(), interface.creation.hover.end(), choice.hairColour);
-                        creationRecord = newCharacter("", choice, interface.creation.characterClass + 1, [&] { return worldRandom.draw(); });
-                    }
+                    if (!creationRecord)
+                        applyCreation();
                     CharacterRecord created = *creationRecord;
                     created.name.clear();
                     for (char16_t ch : interface.nameText)
@@ -4702,7 +4732,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     SaveDb db;
                     if (db.open(saves / "characters.db", SaveDb::Mode::ReadWrite)) {
                         chosenCharacter = (int)db.number("num").value_or(0);
-                        addCharacter(db, created);
+                        if (addCharacter(db, created) && player && !playing())
+                            liveCharacter = chosenCharacter;
                     }
                     frontListsStale = true;
                     interface.front = ui::Interface::Front::Worlds;
@@ -5027,6 +5058,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         std::fprintf(stderr, "after travelling %.0f blocks: %s\n", travelled, view.status().c_str());
     activeScene = nullptr;
     activeView = nullptr;
+    if (restart && player && liveCharacter >= 0 && restart->character == liveCharacter) {
+        const auto &actor = player->combat();
+        entryProgress = SelectedProgress{actor.level, actor.experience, player->observedLevel,
+                                         player->observedExperience, actor.characterClass, std::move(inventory.recipes)};
+    }
     activePlayer = nullptr;
     activeInterface = nullptr;
     return status;
@@ -5147,7 +5183,7 @@ int main(int argc, char **argv) {
         if (!activeInterface)
             return false;
         ui::FloatingText t;
-        t.anchor = {x, y, z};
+        t.anchor = glm::dvec3(x, y, z);
         t.text = ui::utf16(text);
         t.colour = {r, g, b, 1};
         t.size = size;
@@ -5225,10 +5261,11 @@ int main(int argc, char **argv) {
             worldRun.worldOptions.motion.load(config);
             worldRun.extendedQuests = true; // core feature; no opt-in setting
             // Character screens §1.2: a world chosen on the front screens starts in this window.
+            std::optional<SelectedProgress> entryProgress;
             for (;;) {
                 std::optional<Options> restart;
                 status = runWorld(window, renderer, content, game, worldRun, shadowSettings, moonSettings, mods,
-                                  activeScene, activeView, activePlayer, activeInterface, audio, restart);
+                                  activeScene, activeView, activePlayer, activeInterface, audio, restart, entryProgress);
                 renderer.releaseWorld();
                 if (!restart || glfwWindowShouldClose(window))
                     break;

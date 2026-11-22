@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 87 and the rulings. The 313 tracked contracts
-comprise 277 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 88 and the rulings. The 314 tracked contracts
+comprise 279 A, 30 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -167,6 +167,7 @@ Batch 84 records live terrain observation scopes and the meaning of the three st
 Batch 85 records section 9's dedicated audience, two client lookups and item presentation.
 Batch 86 records the active decoration lighting path, model keys and the native distance passes.
 Batch 87 corrects the final static-index pass and locates the preceding decoration-light initialization.
+Batch 88 records the independently reviewed recipe grant and the separate level and progress presentation contract.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -296,6 +297,7 @@ Batch 87 corrects the final static-index pass and locates the preceding decorati
 | `alpha-item-names.md` | A | 666 | 0 |
 | `alpha-item-services.md` | A | 668 | 2 |
 | `alpha-items-generator.md` | A | 426 | 0 |
+| `alpha-level-progress-presentation.md` | A | 101 | 0 |
 | `alpha-light-admission-plane-production.md` | A | 104 | 1 |
 | `alpha-light-propagation-lifecycle.md` | A | 229 | 0 |
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
@@ -369,7 +371,7 @@ Batch 87 corrects the final static-index pass and locates the preceding decorati
 | `alpha-ranged-audio-boundaries.md` | A | 180 | 1 |
 | `alpha-ray-launch-fields-reconciliation.md` | A | 66 | 0 |
 | `alpha-ray-post-hit-timing-evaluation.md` | A | 86 | 0 |
-| `alpha-recipe-grant-entry-boundary.md` | B | 86 | 1 |
+| `alpha-recipe-grant-entry-boundary.md` | A | 224 | 0 |
 | `alpha-relationship-kind-89-admission.md` | A | 55 | 0 |
 | `alpha-remote-creature-interpolation.md` | A | 223 | 0 |
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |

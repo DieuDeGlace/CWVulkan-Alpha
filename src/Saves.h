@@ -91,6 +91,8 @@ struct CharacterRecord {
 
 // §3: the character list. Reading keeps one record per key 0..num-1 (indices are the keys).
 std::vector<CharacterRecord> readCharacters(const SaveDb &db);
+// A selected record is read individually. A missing listed key does not load a character.
+std::optional<CharacterRecord> loadCharacter(const SaveDb &db, uint32_t index);
 // The whole list rewritten (fixtures and tools; the game itself uses the three below).
 bool writeCharacters(SaveDb &db, const std::vector<CharacterRecord> &characters);
 // §3.1: one character saved under its own key, as Alpha's save routine does.

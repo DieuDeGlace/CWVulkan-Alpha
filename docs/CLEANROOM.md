@@ -4722,3 +4722,15 @@ previous jittered depth separately, and translates the previous view
 when the terrain origin moves. Eight centered Halton samples have an
 overall scale of 0.60 pixels by default. This filter is an engine extension.
 [Owner's temporal resolve](https://github.com/DieuDeGlace/infinite-steam-vulkan-tests/blob/71611c67acc7e82862b150d1142fe2d9aeda4b37/release/src/gfx/shaders/TemporalResolveShader.hlsl)
+
+## Character entry, recipe grants and progress presentation (2026-11-21)
+
+The clean team read both finalized original-only records. The reviewed
+223-line recipe contract replaces the earlier 85-line version under the
+same name. SHA-256 `3eb14ec476affc27ded0b4c31b1fd52e9ffee03807333ed927acc574d3c2325d`.
+The separate 100-line progress-presentation contract has SHA-256
+`53d040c77da41242c34e719b96bd437a4b833a075783871d4366d8b497bc2b20`. Creation, selected-character loading, local and
+accepted network entry, and the observation after credit processing were
+implemented from those records. The engine's explicit unsaved diagnostic
+character has its own starter grant. Original update cadence, visible
+text and device playback remain open.

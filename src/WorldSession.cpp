@@ -122,14 +122,13 @@ bool WorldSession::open(const fs::path &folder, const std::string &name, uint32_
         SaveDb characters;
         if (!characters.open(saveFolder / "characters.db", SaveDb::Mode::ReadWrite, error))
             return false;
-        std::vector<CharacterRecord> all = readCharacters(characters);
-        if (characterNumber >= (int)all.size()) {
+        character = loadCharacter(characters, uint32_t(characterNumber));
+        if (!character) {
             if (error)
                 *error = "there is no character " + std::to_string(characterNumber) + " in characters.db";
             return false;
         }
         characterIndex = characterNumber;
-        character = std::move(all[characterNumber]);
     }
     return true;
 }

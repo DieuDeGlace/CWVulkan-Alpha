@@ -3528,3 +3528,24 @@ seconds. The controller diagnostic, reward, health, network, save/reload
 and town flows passed. The final town capture shows the player, HUD and
 crafting district. Both saved-character captures show the same name, health
 and quickbar. Packaging verified 36 hashes across 37 files.
+
+## Character recipes across local and connected entry (2026-11-21)
+
+An isolated x64 production-handler replay passed 145 checks, including
+104 full recipe-list comparisons, a SQLite reload and an accepted local
+network connection. It observed two level sound dispatches and eleven
+shared-stream draws across the transition case. The previous version
+failed three controls. A grant fixture checked all four ordinary classes
+at thirteen levels, including duplicate grants and conditional material
+draws. Creation and Apply share the same live handler. A missing selected
+save does not spend the diagnostic character's starter draws.
+
+Positive declared recipe counts inside the parser's existing safety
+limit preserve complete opaque entries and supply an initialized
+descriptor for each incomplete entry. An incomplete count restores
+zero recipes. The menu retains catalog indices when a key is missing,
+and selection loads the requested key individually. General malformed
+saves and concurrent catalog changes remain open.
+
+Integrated on a2d3ac4 with line offsets only, the full x64 build succeeded
+and all 60 serial CTests passed in 110.69 seconds.

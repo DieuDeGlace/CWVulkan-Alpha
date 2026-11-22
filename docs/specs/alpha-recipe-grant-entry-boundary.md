@@ -1,85 +1,223 @@
 # Alpha recipe grants at character and world entry boundaries
 
-Status: FINAL / STABLE / HELD after complete author readback. This contract covers the identified original client construction, character-load, world-selection, network-entry and later level-observation boundaries. Full recipe contents, ingredient tables and the complete client update scheduler are outside scope.
+Source-side re-certification, 2026-11-21. **FINAL / STABLE / HELD** after full author readback.
 
-## Original evidence and field identity
+The supported original is the 32-bit client `binary/Cube.exe`, SHA-256
+`84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, preferred base
+`0x00400000`. Addresses below are RVAs. Evidence comes from that image, its client instruction
+listing `decompiled/client/assembly.txt` and individually identified original function exports
+under `decompiled/client/functions/`. The earlier entry-boundary record supplied the claims to check.
 
-Supported image: `binary/Cube.exe`, SHA-256 `84a7a132a84d4282338e7ea45a1940d32066d64e39cbafed8f2418d5a6dc30bf`, preferred image base `0x00400000`. All citations are relative to the original evidence root and refer to that image, `decompiled/client/assembly.txt`, or the individually named original client function exports. No reconstruction, implementation, runtime result or other contract supplies facts here.
+## Grant callers and creature fields
 
-The supplied creation lead RVA `0x0772B0` is confirmed to clear known recipes and invoke a level grant. The actual grant routine reached there is RVA `0x07FAE0`. Its two direct callers in the original assembly are creation at RVA `0x0777B6` and a later client-update call at RVA `0x093EC4` inside routine `0x088EE0`. The supplied admission lead RVA `0x044A90` searches the creature's existing recipe list. The supplied builder lead RVA `0x19CFF0` instead constructs recipe requirements from an item descriptor and destination collection at the traced call sites; it is not the level-grant dispatcher. Its larger content table is not needed to establish these boundaries. [Source: `decompiled/client/functions/004772b0.c`, `0047fae0.c`, `00444a90.c` and `0059cff0.c`; original assembly calls at RVAs `0x0777B6`, `0x093EC4`, `0x07BBA7` and `0x0A1604`.]
+The original image contains two direct calls to the level-grant routine at `0x07FAE0`. Character
+creation calls it at `0x0777B6`. Client update calls it at `0x093EC4`. The recipe membership query
+is `0x044A90`. The two traced calls at `0x07BBA7` and `0x0A1604` reach a separate routine at
+`0x19CFF0` that constructs recipe requirements from an item descriptor and a destination. The
+requirement contents are outside this contract. Original exports `004772b0.c`, `0047fae0.c`,
+`00444a90.c` and `0059cff0.c` identify these roles.
 
-The relevant controller pointer is `+0x8006D0`, which selects the creature used by both grant callers and by the grant routine. Creature `+0x190` is the 32-bit current level. Creature `+0x194` is the accompanying 32-bit progress value. Creature `+0x1D3C` is the last-observed-level tracker used by the grant admission branch; `+0x1D40` is the adjacent progress tracker. The known-recipe owner is the pointer at creature `+0x1D28`. Within that owner, `+0x14` holds the recipe-list sentinel pointer and `+0x18` is the 32-bit count. A list node has two 32-bit links followed by its `0x118`-byte item descriptor. These are distinct from the current level and its tracker. [Source: `decompiled/client/assembly.txt`, RVAs `0x093D64–0x093EE7` and `0x07FB64–0x07FBDF`; `decompiled/client/functions/0044b770.c` and `00449b70.c`.]
+Both grant callers and the grant routine select the creature through controller `+0x8006D0`.
+Offsets in the following table are relative to the creature or its recipe owner as indicated.
 
-## Construction and explicit level-one grant
-
-Creature construction at RVA `0x03B690` calls the base-data constructor at RVA `0x03C100` with the creature address plus `0x10`. That subobject base is essential: its relative `+0x180` level field is creature `+0x190`, and relative `+0x184` progress is creature `+0x194`. The base constructor initializes current level to 1 and progress to zero. Later the creature constructor writes last-observed level 1 at creature `+0x1D3C`, followed by progress tracker zero at `+0x1D40`. The recipe-owner pointer itself is initially null and is supplied separately by the relevant player setup paths. Construction alone does not call the grant routine. [Source: `decompiled/client/functions/0043b690.c` and `0043c100.c`; `decompiled/client/assembly.txt`, subobject call at RVAs `0x03B6CB–0x03B6D6`, level initialization at `0x03C2A1`, tracker writes at `0x03BB6D` and `0x03BB77`.]
-
-The reset routine at RVA `0x046330` likewise calls its base-data reset at `0x0465C0` with creature plus `0x10`. That restores current level 1 and progress zero before extension tracker initialization. The extension writes occur in the other order from construction: progress tracker zero at RVA `0x04635F`, then level tracker 1 at `0x046369`. This reset routine does not itself call the level-grant routine. Its original-image continuation after an optional free is required to see that the tracker writes are still reached. [Source: `decompiled/client/functions/00446330.c` and `004465c0.c`; `binary/Cube.exe`, RVAs `0x046330–0x046373`, especially omitted text-export continuation `0x046352–0x04635F`; original base reset writes at `0x0465DB` and `0x0465E5`.]
-
-The identified new-character setup branch in RVA `0x083E70` resets the selected creature, explicitly supplies level 1, constructs a recipe-owner object and proceeds through appearance/setup routine `0x02C080`. That setup calls creation routine `0x0772B0`. Within creation, equipment and inventory work precedes recipe processing. The recipe step takes the old first node, resets both sentinel links to the sentinel and the recipe count to zero, frees all old nodes, then calls RVA `0x07FAE0` with the literal 32-bit level argument 1. This is an explicit creation grant; it does not depend on observing a level mismatch and it does not iterate up to the creature's current level. [Source: `decompiled/client/functions/00483e70.c`, `0042c080.c` and `004772b0.c`; `decompiled/client/assembly.txt`, setup-to-creation call at `0x02C3D0`; `binary/Cube.exe`, recipe clearing/free traversal and grant call at RVAs `0x077778–0x0777BB`.]
-
-The original bytes resolve a gap in the exported clearing loop: after each free, execution restores the saved next node and continues until the sentinel before making the grant call. Thus the creation routine replaces the prior recipe list with fresh level-one grant results. Merely rerunning that routine on a creature with existing recipes is not protected by retaining its old list. This describes the routine's actual effect, not an assertion that every native entry path invokes it.
-
-Neither this final creation step nor the grant routine writes `+0x1D3C`. In the identified new-character path, reset/construction has already made both current level and tracker equal to 1. Therefore the later mismatch branch is not needed to supply level-one recipes, and a later observation of that unchanged pair does not supply a second level-one grant.
-
-## Saved-character loading and persistence boundary
-
-The saved-character wrapper at RVA `0x0806C0` receives a numeric character key and destination creature. It preserves the destination's position words, obtains the saved buffer under controller critical section `+0x8005B8`, and only on the successful buffer-read branch invokes the character parser at RVA `0x04BE40`. After that parser returns it restores the position and related position-copy fields. It then publishes the loaded progress to creature `+0x1D40` first, followed by the loaded current level to creature `+0x1D3C`. These are explicit synchronizations to the values present after parsing, not the constructor defaults and not a saved completion bitmap. [Source: `decompiled/client/functions/004806c0.c`; `decompiled/client/assembly.txt`, successful-branch processing at RVAs `0x080844–0x0808DA`, progress/tracker stores at `0x0808C2–0x0808DA`.]
-
-The wrapper's buffer-read failure branch skips parsing and both tracker publications. The original image confirms that a long temporary key string's free is followed by restoration of the saved read-result byte before testing it; the assembly text omits that continuation. The admitted branch therefore depends on the read result, not the free routine's return register. This read-success condition is not a proof that every byte in the saved buffer is valid or complete. [Source: `binary/Cube.exe`, RVAs `0x080824–0x08084C`, including omitted `0x08083E–0x080844`.]
-
-The parser resets the destination creature, replaces its recipe-owner object and reads the saved progress and level as separate 32-bit fields. Later it reads a 32-bit recipe count and, for each positive-count iteration, a `0x118`-byte descriptor that is appended to the newly owned list in input order. This loading loop does not call known-recipe admission or the level-grant routine. It restores the saved list; it does not regenerate all levels' grants or deduplicate saved descriptors. The outer wrapper's tracker synchronization occurs after this restoration. [Source: `decompiled/client/functions/0044be40.c`, reset, progress/level reads and final recipe-count loop; `decompiled/client/assembly.txt`, parser entry RVA `0x04BE40` and wrapper return boundary above.]
-
-The corresponding saved-character writer at RVA `0x04D790`, reached through the save wrapper `0x087520`, records progress, current level, the recipe count and all recipe descriptors in list order. Its inspected format does not serialize the two observation trackers at `+0x1D3C/+0x1D40`. Those trackers are re-established by the successful load wrapper. Saving makes no level-grant call. This closes the relevant persistence distinction: recipe records are persisted, while this load boundary derives its observation trackers from loaded current values. Other storage/transport formats and the rest of character persistence remain outside scope. [Source: `decompiled/client/functions/0044d790.c` and `00487520.c`, especially the former's recipe-count/descriptor writes and the latter's serializer call.]
-
-A successful saved-character load into the controller's selected creature consequently leaves current level equal to last-observed level before subsequent update admission. It neither backfills missing recipe grants for earlier levels nor deliberately rerolls a grant for the loaded level. The same wrapper is also used to construct saved-character list entries; its caller may supply a destination other than the selected creature. The selected-character setup path at RVA `0x083E70` invokes this wrapper directly for a valid selected saved-character index instead of taking its new-character construction branch. [Source: `decompiled/client/functions/00483e70.c`; original saved-entry list load call at RVA `0x064FFC` inside `0x059C40`; repeated list reload in `decompiled/client/functions/0047ddd0.c`.]
-
-## Entering or reentering a world
-
-The traced local world-selection routine is RVA `0x06F620`. The existing-world selection action at `0x084170` and new-world action at `0x082530` both call it. It updates the selected creature's recipe-owner metadata at `+0x24` and `+0x28` with the chosen world identity and updates the controller's requested world selection. It removes other creature-map members while explicitly retaining the creature selected by controller `+0x8006D0`. It does not invoke the grant routine, clear/rebuild the retained creature's recipe list or write either observation tracker. Entering a world through this identified selection boundary therefore does not itself mean “grant the current level again.” A subsequent grant still depends on the later level observation described below. [Source: `decompiled/client/functions/0046f620.c`, `00484170.c` and `00482530.c`; original selection calls at RVAs `0x084209` and `0x082939`.]
-
-The disconnect/return path at RVA `0x0719F0`, when its controller activity byte is set, first saves the selected character, tears down the socket/thread state as applicable and calls the same world-selection routine. Its inspected body adds no recipe grant or tracker reset. This is one established reentry path that retains the selected creature's observation state. World-generation worker scheduling, all surrounding menu modes and every possible indirect entry callback are not closed by this contract. [Source: `decompiled/client/functions/004719f0.c`, save call at RVA `0x071A35` and world-selection call at `0x071B35`.]
-
-The successful network-entry branch of RVA `0x06FC50` has a different ownership transition. After its accepted reply/identifier path, it preserves the selected character's base data, inventory and recipe-owner data, removes the old creature-map objects, obtains or constructs the selected creature for the received identifier, and restores those preserved character data. The recipe-owner copy helper `0x0686E0` copies its list through list-assignment helper `0x0571D0`; it does not generate new level grants. After restoring the character fields, the connect path writes current level to `+0x1D3C`, then current progress to `+0x1D40`, then publishes the selected creature in controller `+0x39C` (embedded world base `+0x2E4`, pointer field `+0xB8`). This publication branch does not call `0x07FAE0`. [Source: `decompiled/client/functions/0046fc50.c`, accepted-entry branch and preserved-data restoration; `004686e0.c` and `004571d0.c`; `decompiled/client/assembly.txt`, tracker stores and secondary pointer publication at RVAs `0x0703DE–0x07040E`.]
-
-These identified load/local-selection/network-publication paths preserve or synchronize the level tracker, rather than intentionally making it unequal to force a new grant. This is not a claim that an independently changed current level can never be observed during entry, or that every earlier/later callback is free of other effects. Failure, short receive, malformed save and unclosed callback paths have no general recovered recovery guarantee here.
-
-## Later level observation and tracker publication order
-
-In routine RVA `0x088EE0`, the block at RVA `0x093D64` loads the creature selected by controller `+0x8006D0`, then compares its 32-bit current level `+0x190` with `+0x1D3C`. Equality branches to the progress-observation path and skips the recipe grant. Inequality enters a presentation/notification sequence and then the grant sequence. This is equality admission, not a strict increase test; the old level is not used as the start of a catch-up loop. [Source: `decompiled/client/assembly.txt`, RVAs `0x093D64–0x093D84`, especially comparison at `0x093D78` and equal branch at `0x093D7E`.]
-
-After notification work, including a call to RVA `0x084350`, the update reloads current level and writes it to `+0x1D3C`. It next writes zero to progress tracker `+0x1D40`, reloads current level again, and calls grant routine `0x07FAE0` once with that current 32-bit level. The tracker publication is before the grant call. There is no intervening loop over old or skipped levels, and the grant routine itself does not publish the tracker. [Source: `decompiled/client/assembly.txt`, RVAs `0x093E8B–0x093ED5`, with writes at `0x093EA0` and `0x093EAE`, argument read at `0x093EBE` and call at `0x093EC4`.]
-
-Consequently, an observed level jump from one value to a distant value invokes one grant for the final observed value, not one grant per intervening level. A decrease also satisfies this local inequality branch. Reaching the block again with the same current level and already published tracker skips the grant. Returning to a previously observed level after another value was published can invoke its grant again, with duplicate admission controlling individual insertions. A temporary level change that is reversed before observation need not invoke it at all. These are consequences of the single-value comparison, not claims about which level transitions normal gameplay produces.
-
-When levels compare equal, the adjacent progress branch compares `+0x1D40` with current progress `+0x194` and uses a signed greater-than-or-equal skip. Its notification path eventually copies current progress to `+0x1D40`; it does not call the recipe-grant routine. Progress changes alone therefore do not constitute this recipe admission. [Source: `decompiled/client/assembly.txt`, RVAs `0x093ED5–0x094147`, including the progress-tracker write at `0x094121`.]
-
-This contract establishes admission once this update block executes on a live selected creature. It does not establish the complete scheduling or all mode gates that lead into the approximately 77-kilobyte parent routine, whose original decompile times out. The nearby preceding branch on creature `+0x70` can skip unrelated notification work directly to `0x093D64`; that field is not an extra gate in the level comparison itself. No rate, exact first frame, cross-thread exclusion or exception-retry guarantee is inferred. [Source: `decompiled/client/functions/00488ee0.c`, timeout status; `decompiled/client/assembly.txt`, RVAs `0x093B0F–0x093B2F`.]
-
-## Relevant grant and random-draw order
-
-For the valid player-class bytes 1 through 4 and a positive signed 32-bit level argument, one invocation of RVA `0x07FAE0` processes these phases in order. Each candidate's duplicate query and any insertion finish before the following candidate or phase. Complete item/content tables are outside this entry contract.
-
-| Phase | Relevant branch/order | Random calls in this phase |
+| Owner | Offset | Native meaning |
 | --- | --- | --- |
-| Modulo-four deterministic candidates | Tests the signed level remainder modulo four; applicable fixed candidate is queried and conditionally appended | none |
-| Modulo-five deterministic candidates | Tests the signed remainder modulo five; its applicable fixed candidate or candidates are processed in native order | none |
-| Exact-level-one extras | Executes only when the whole 32-bit level equals 1, with class-specific tests between the fixed candidates | none |
-| First randomized candidate | Sets the low-16-bit level field, draws a value, stores its signed remainder modulo 11 in descriptor `+0x04`, selects the candidate according to level modulo four and class, then queries and conditionally appends it | one `rand` call |
-| Second randomized candidate | Changes the candidate category, draws another value and stores its remainder modulo 11 in `+0x04`, then applies class/level-modulo-three branches before admission | one unconditional `rand` call, plus the conditional call below |
+| Creature | `+0x140` | Player class byte read during grant generation |
+| Creature | `+0x190`, `+0x194` | Current level and current progress, each 32 bits |
+| Creature | `+0x1D28` | 32-bit pointer to the object that owns the known-recipe list |
+| Creature | `+0x1D3C`, `+0x1D40` | Last-observed level and progress, each 32 bits |
+| Recipe owner | `+0x14`, `+0x18` | List sentinel pointer and 32-bit recipe count |
 
-For the second randomized candidate, class byte 1 takes one further `rand` call when the signed level remainder modulo three is zero or one; its remainder modulo three selects the subtype. Class byte 3 takes one further `rand` call when the level remainder modulo three is two; its remainder modulo two selects between two numeric material values. Class bytes 2 and 4 add no further draw, and the other admitted remainder branches of classes 1 and 3 add none. The conditional draw follows the second modulo-11 draw and precedes that candidate's known-recipe query. Thus an ordinary grant invocation consumes two imported random results, or three in those specified branches, regardless of whether its generated candidates later prove duplicates. [Source: `decompiled/client/functions/0047fae0.c`; `decompiled/client/assembly.txt`, first draw at RVA `0x080397`, second at `0x08049B`, subsequent class branches at `0x0804C9–0x08060E`.]
+Each allocated recipe node occupies `0x120` bytes. Its forward and backward 32-bit links precede
+the `0x118`-byte descriptor at node `+0x08`. Original exports `0044b770.c` and `00449b70.c`, the
+grant block at `0x07FB64–0x07FBDF` and the level/progress checks at `0x093D64–0x093EE7` agree.
 
-The imported function is `MSVCR110.dll`'s `rand`, identified in the original PE imports at IAT RVA `0x2FC468`. The grant routine contains no reseed. Its modulo divisions and branch decisions use native signed 32-bit integer arithmetic; the descriptor level is the low 16 bits of the level argument. Exact-level-one extras do not recur merely because a larger level has the same low 16 bits. The initial runtime random state and random calls in preceding creation, notification, networking, world generation or other helpers are not closed here. The stated two-or-three count is for this grant routine on its ordinary valid-input path, not the complete frame or entry operation.
+## Construction, reset and new-character setup
 
-Known-recipe admission at RVA `0x044A90` returns false immediately for a null recipe owner. Otherwise it visits the owner's list from first node to sentinel, applies equality helper `0x02F4A0` to each descriptor and stops at the first match. A match suppresses insertion of that candidate; it does not overwrite, remove, refresh or reroll the existing record. A miss results in a tail append by the grant routine. The grant path assumes a valid nonnull owner for that append; the admission helper's null-owner return is not an allocation/recovery branch. [Source: `decompiled/client/functions/00444a90.c`, `0042f4a0.c`, `00449b70.c` and `0044d460.c`; repeated grant admission/insertion branches in `0047fae0.c`.]
+The creature constructor `0x03B690` calls the base-data constructor `0x03C100` on creature `+0x10`.
+Base-relative `+0x180` and `+0x184` therefore refer to creature level and progress. Construction
+sets progress to zero at `0x03C27D` and level to one at `0x03C2A1`. The creature constructor sets
+the recipe-owner pointer to null at `0x03BB52`, the level tracker to one at `0x03BB6D` and the
+progress tracker to zero at `0x03BB77`. Creating the creature alone supplies no recipes. Original
+exports `0043b690.c` and `0043c100.c`, with the subobject call at `0x03B6CB–0x03B6D6`.
 
-Equality includes the descriptor's category/subtype bytes, 32-bit words `+0x04/+0x08`, bytes `+0x0C/+0x0D/+0x0E`, 16-bit level `+0x10` and 32-bit extension count `+0x114`. Positive extension counts add per-entry comparisons through helper `0x028940`. The grant routine's template gives its extensions count zero. In particular, the randomized word at `+0x04` and the low-16-bit level participate in duplicate admission. Reinvoking a level grant can therefore suppress an identical randomized candidate or append a different one at the same level. There is no duplicate-driven retry draw. Full malformed-extension handling is not specified. [Source: `decompiled/client/functions/0042f4a0.c` and `00428940.c`; grant template initialization at RVA `0x07FAF6–0x07FB4C`.]
+Reset at `0x046330` calls `0x0465C0` on the same subobject. It restores level one at `0x0465DB`
+and progress zero at `0x0465E5`. The outer reset then sets the progress tracker to zero at
+`0x04635F` and the level tracker to one at `0x046369`. Both the optional free path and the path
+that skips it reach these stores. Reset makes no grant call. Original exports `00446330.c` and
+`004465c0.c`, with the post-free continuation in the image at `0x046352–0x04635F`.
 
-The level-one class-byte-3 extra is tested twice with the same candidate fields in succession. A successful first insertion is visible to the second query, so the second attempt does not create another identical record on the ordinary path. This duplicate test adds no random call. The duplicate checks do not replace tracker admission: a level grant may still consume its random results even if all resulting descriptors are already known. [Source: `decompiled/client/assembly.txt`, repeated class-3 tests and queries at RVAs `0x0800C6–0x080168`.]
+With a negative or out-of-range saved-character index, setup `0x083E70` resets the selected
+creature, explicitly sets its level to one and constructs a recipe owner. Appearance/setup
+`0x02C080` calls creation `0x0772B0` at `0x02C3D0`. Creation processes equipment and inventory
+before it takes the first old recipe node, sets both sentinel links to the sentinel and sets the
+recipe count to zero. It follows the saved forward links and frees every old node up to the
+sentinel. It then supplies the literal 32-bit argument one and calls `0x07FAE0`. The image at
+`0x077778–0x0777BB` recovers the traversal after each free. Original exports `00483e70.c`,
+`0042c080.c` and `004772b0.c`.
 
-## Bounded result and image confirmation
+Calling creation again replaces any prior list with the results of a fresh level-one grant.
+Creation requires no level comparison or catch-up loop. Neither its final recipe step nor the
+grant routine writes the level tracker. On this new-character path the current level and its
+tracker already equal one, so observing the same pair later skips the update grant.
 
-The established boundaries are: explicit level-one grant after creation-list clearing; no grant or backfill in the successful saved-character load loop; tracker synchronization after load; tracker/list preservation in the identified local world-selection path; tracker synchronization before the identified network pointer publication; and one grant for any later observed current-level mismatch, after publishing the new tracker. None is an all-level grant-completion ledger. Recipe-content enumeration, ingredient construction, unrelated item-learning paths, reward systems, full entry/update scheduling and runtime RNG internals remain outside scope.
+## Saved-character load and save
 
-Original-image byte comparison confirms the exported instructions throughout grant routine `0x07FAE0–0x080680`, the selected creation/load/publication ranges, constructor/reset tracker writes and update mismatch block `0x093D64–0x093ED5`. The computed tables at RVAs `0x080684`, `0x080694` and `0x0806A4` were read from original image bytes to confirm their branch targets. Original-image disassembly independently closes the creation free-loop continuation, reset's optional-free continuation and load's saved-result restoration where the exports omit them. Allocation exceptions, malformed/truncated saves, incomplete network receives and arbitrary invalid class/level/owner state have no general safe-recovery or atomicity guarantee established here. All findings are static original-source evidence; prior held artifacts remain outside this document's source set.
+The wrapper `0x0806C0` takes a numeric character key and a destination creature. It saves the six
+32-bit position words, acquires controller critical section `+0x8005B8` and reads the saved
+buffer. When a long temporary key requires a free, the image at `0x08083E–0x080844` restores the
+saved read-result byte before testing it. A zero result skips the parser and both tracker stores.
+A nonzero result admits parsing. The wrapper does not require an independent whole-buffer validity
+result before publishing the trackers. Original export `004806c0.c` and image `0x080824–0x0808DA`.
+
+The parser `0x04BE40` resets the creature and installs a fresh recipe owner at `0x04BECA`. It
+reads the four-byte progress field and then the four-byte level field, storing them at `0x04C076`
+and `0x04C09E` when enough input remains. It replaces the owner again at `0x04C4F4`. This second
+owner receives the saved recipe list. The original image confirms that both owner replacements
+continue after freeing a previous nonnull owner. Original export `0044be40.c` and image ranges
+`0x04BE7F–0x04BED0` and `0x04C4B2–0x04C4FA`.
+
+A complete recipe section supplies a 32-bit count followed by one `0x118`-byte descriptor per
+positive-count iteration. The parser appends the rows in input order, including duplicates. It
+calls neither recipe admission nor the grant routine. The count defaults to zero if the four
+bytes are unavailable. If a positive count was read but a whole row is unavailable, the parser
+skips the row copy, advances the cursor to the buffer end and still reaches the append using the
+descriptor initialized for that iteration. Its category and subtype are zero, its level is one
+and its extension count is zero. This is a local short-read path, with no general guarantee for a
+malformed save or a failing allocation. Original image `0x04C693–0x04C7D9`.
+
+After the parser returns, the wrapper restores the position and mirrors it to creature
+`+0x1350–+0x1367`. It copies current progress to the progress tracker at `0x0808C8`, then copies
+current level to the level tracker at `0x0808D4`, before leaving the critical section. The source
+of both stores is the creature as it stands after parsing. An ordinary complete load restores
+saved recipes without rerolling the loaded level or backfilling earlier levels. The wrapper is
+also called for saved-character list entries, including `0x064FFC` in `0x059C40` and the loop in
+`0047ddd0.c`. A valid selected saved-character index in `00483e70.c` calls it directly with the
+selected creature as destination.
+
+Save wrapper `0x087520` uses a temporary character and calls serializer `0x04D790` at `0x0876FA`.
+The serializer records current progress, current level, the recipe count and the `0x118`-byte
+descriptors in forward list order. This format has no fields for the level and progress observation
+trackers. Save performs no level grant. The format and call ordering do not establish durability
+after a storage error. Original exports `00487520.c` and `0044d790.c`, especially the field reads
+at `0x04D882` and `0x04D8A5` and the count/list traversal at `0x04DDBE–0x04DE41`.
+
+## Local and network world entry
+
+Existing-world action `0x084170` and new-world action `0x082530` call local world selection
+`0x06F620` at `0x084209` and `0x082939`. Selection updates the numeric and string parts of world
+identity at recipe-owner `+0x24` and `+0x28`, and updates the controller's requested world. It
+collects and removes other creature-map members, excluding the selected creature by pointer. The
+selected creature retains its recipe list and observation trackers across this selection step.
+There is no grant in the step. Original exports `0046f620.c`, `00484170.c` and `00482530.c`.
+
+When the controller activity byte is set, disconnect/return `0x0719F0` first calls the selected
+character's save wrapper at `0x071A35`, then closes the socket and waits for the thread handles
+as applicable, and calls the same world selection at `0x071B35`. The traced return path adds no
+tracker reset or grant. Original export `004719f0.c`.
+
+The accepted network-entry path in `0x06FC50` preserves the selected character's base data,
+inventory and recipe-owner data, disposes of the old creature-map objects, looks up the received
+identifier and constructs a creature when needed. It restores the preserved base and inventory
+data, supplies a recipe owner if needed and restores its contents. Owner assignment `0x0686E0`
+uses list assignment `0x0571D0` to transfer recipe descriptors in order. This operation generates
+no recipe grants. After restoration, the connect path copies current level to the level tracker
+at `0x0703EA`, then current progress to the progress tracker at `0x0703FC`. At `0x070408` it copies
+the selected pointer to controller `+0x39C`, which is `+0xB8` within the embedded world at
+`+0x2E4`. This secondary publication follows the earlier selection through `+0x8006D0`. Original
+exports `0046fc50.c`, `004686e0.c` and `004571d0.c`, especially `0x070221–0x07040E`.
+
+These boundaries explain how an already synchronized selected character can enter or reenter
+without receiving another grant. The surrounding callbacks, all menu modes, world-generation
+worker scheduling and incomplete network receives are outside the established entry behavior.
+
+## Observing a later level change
+
+In the client update routine `0x088EE0`, branches on creature `+0x70` can skip earlier notification
+work and still reach the comparison at `0x093D64–0x093D84`. The update compares current level with
+the level tracker. Equality goes to the progress check. Any inequality, including a decrease,
+enters a notification path. After the call at `0x093E8F` to `0x084350`, the update reloads the
+selected creature and its current level and publishes that level to the tracker at `0x093EA0`.
+It reloads the selected creature to zero its progress tracker at `0x093EAE`, then reloads the
+selection and reads the current 32-bit level again at `0x093EBE`. It passes this last read to the
+single grant call at `0x093EC4`. The old tracker never serves as the start of an iteration.
+Original image `0x093B0F–0x093B2F` and `0x093D64–0x093ED5`.
+
+With a stable selected creature and level through this sequence, a jump across several levels
+grants only the observed destination level. Repeating that observation skips the grant. Returning
+to a level after another level was published can grant it again, subject to duplicate admission
+for each candidate. A change that reverses before observation can leave both compared values
+equal and cause no grant. These consequences of the comparison establish neither which changes
+normal gameplay produces nor atomicity across the separate reads. Tracker publication precedes
+the grant, including any failure inside the grant.
+
+On the equal-level path, a signed comparison skips progress notification when tracked progress is
+greater than or equal to current progress. Otherwise the progress notification eventually copies
+current progress into the tracker at `0x094121`. Progress alone supplies no recipe grant. The
+level-mismatch path jumps past this progress check after its grant. Original image
+`0x093EC9–0x094147`. The parent routine's original function export `00488ee0.c` reports a timeout
+and a discovered body of 77,332 bytes. The admission rule applies when this block runs. Its full
+scheduler, first eligible frame, cadence, cross-thread exclusion and retry behavior remain open.
+
+## Candidate order, randomness and duplicates
+
+For a positive signed 32-bit level and ordinary player class bytes one through four, `0x07FAE0`
+finishes each candidate's membership query and any insertion before advancing. The phases below
+specify the draw order without enumerating the complete item or ingredient tables.
+
+| Order | Grant phase | Draws |
+| --- | --- | --- |
+| 1 | Fixed candidates selected by signed level remainder modulo four | None |
+| 2 | Applicable fixed candidate or candidates selected by signed level remainder modulo five | None |
+| 3 | Fixed extras with intervening class tests, only when the whole 32-bit level equals one | None |
+| 4 | Set the descriptor's low-16-bit level, draw the value for `+0x04`, then select the first randomized candidate by level modulo four and class | One |
+| 5 | Change category, draw the new `+0x04` value, then select the second candidate by class and level modulo three | One, with a further draw on the branches below |
+
+Both unconditional draws store the signed remainder modulo eleven in the descriptor's 32-bit
+word `+0x04`. Class one draws again for level remainder zero or one modulo three, using the draw's
+remainder modulo three to select the subtype. Class three draws again only for level remainder
+two modulo three, using the draw's parity to select one of two material values. Classes two and
+four have no further draw. The conditional draw occurs after the second unconditional draw and
+before the second candidate's membership query. Thus a completed ordinary grant consumes two
+or three draws even if every candidate is already present. There is no retry on a duplicate.
+
+The imported function is `rand` from `MSVCR110.dll` at IAT RVA `0x2FC468`. The two unconditional
+calls occur at `0x080397` and `0x08049B`. Conditional call sites are `0x0804FE`, `0x080513` and
+`0x0805DD`. The grant contains no reseed. Remainder calculations preserve signed 32-bit semantics.
+The descriptor's level field contains the low 16 bits of the argument. A larger level whose low
+bits equal one does not satisfy the exact-level-one test. Original export `0047fae0.c` and the
+three native branch tables at `0x080684`, `0x080694` and `0x0806A4`. The original runtime's random
+state, its internal generator and draws in other creation, presentation, networking or world
+operations are outside these counts.
+
+Membership query `0x044A90` returns false for a null recipe owner. Otherwise it walks from the
+first node to the sentinel and stops at the first equal descriptor. A match leaves the existing
+record in place. On a miss the grant appends a new node at the tail, assuming a valid nonnull
+owner. The query's null result supplies no owner allocation or recovery for the grant. Original
+exports `00444a90.c`, `00449b70.c`, `0044d460.c` and `0047fae0.c`.
+
+Equality `0x02F4A0` compares category, subtype, 32-bit word `+0x04`, byte `+0x0E`, 32-bit word
+`+0x08`, byte `+0x0C`, 16-bit level `+0x10`, byte `+0x0D` and 32-bit extension count `+0x114` in
+that order. For equal positive counts it visits eight-byte entries starting at `+0x14`. It checks
+each entry's fourth byte and then its first three bytes using `0x028940`. The grant template
+sets the count to zero. A new randomized value at the same level can distinguish a new candidate
+from a known one. The level-one class-three extra receives two consecutive tests with identical
+fields. An ordinary first insertion is visible to the second test, which consumes no random
+draw and creates no second identical entry. Original exports `0042f4a0.c`, `00428940.c`, grant
+template `0x07FAF6–0x07FB4C` and repeated class-three tests `0x0800C6–0x080168`.
+
+## Re-certification and limits
+
+The 2026-11-21 review checked the earlier record against the original image. The exported
+instruction bytes matched the image across the grant routine and the cited construction, reset,
+load, world-entry and observation blocks. The image also confirmed the branch tables, imported
+random function, direct grant calls and continuations after frees in reset, creation and load.
+The load description now distinguishes the two owner replacements, complete rows and short-row
+appends. The observation description distinguishes the level comparison, publication read and
+grant-argument read. The save and disconnect descriptions establish call order and serialization.
+
+This is static evidence for the identified client paths. It establishes no persistent ledger of
+completed grant levels. Complete recipe contents, ingredient construction, unrelated learning and
+reward paths, the full client update scheduler and general recovery from allocation failures,
+malformed extensions, truncated saves, short network receives or invalid creature state remain
+outside the contract. Runtime acceptance remains open.

@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Preserve selected recipes through world entry, initialize progress
+  observations on load, and apply destination-level grants after pending credits.
+  Keep duplicate checks and the shared random draws in their original order.
+
 - [x] Use the owner's Infinite Cubes temporal resolve with stable output
   coordinates, separate depth validation and render-origin compensation.
   Restart accumulation after camera cuts and changes of scene.
@@ -117,7 +121,8 @@ Differences from the Steam engine that shape the plan:
   and the join record. A second batch pinned ranged scheduling, maximum
   health and the client receiver locks; a third pinned the spatial scalars,
   created actor behavior and companion navigation. The fourth batch verified
-  the order of fatal-credit writes and level checks. 31 class B contracts remain.
+  the order of fatal-credit writes and level checks. The recipe grant record
+  was then re-certified and pinned. 30 class B contracts remain.
 
 - [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
   first, as held. A private dedicated-server observation of the seed-41 test

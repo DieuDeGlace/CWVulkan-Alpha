@@ -244,13 +244,22 @@ std::optional<CharacterRecord> CharacterRecord::parse(const std::vector<uint8_t>
     }
     r.field(c.money);
     r.field(c.platinum);
-    if (uint32_t known = 0; r.field(known))
-        for (uint32_t i = 0; i < known && i < MAX_ENTRIES; i++) {
+    if (int32_t known = 0; r.field(known) && known > 0) {
+        const uint32_t count = uint32_t(known);
+        for (uint32_t i = 0; i < std::min(count, MAX_ENTRIES); ++i) {
             ItemBytes item{};
-            if (!r.field(item))
+            if (!r.field(item)) {
+                // A short row appends the initialized descriptor for every remaining
+                // entry. Keep the parser's bound on unsupported oversized declarations.
+                if (count <= MAX_ENTRIES) {
+                    item[0x10] = 1;
+                    c.recipes.resize(count, item);
+                }
                 break;
+            }
             c.recipes.push_back(item);
         }
+    }
     if (uint32_t visits = 0; r.field(visits))
         for (uint32_t i = 0; i < visits && i < MAX_ENTRIES; i++) {
             WorldVisit v;
@@ -340,16 +349,28 @@ void CharacterRecord::saveVisit(uint32_t seed, const std::string &world, const s
         visits.push_back({seed, world, {fixed[0], fixed[1], fixed[2]}});
 }
 
+namespace {
+std::optional<CharacterRecord> characterAtKey(const SaveDb &db, uint32_t index) {
+    const auto value = db.get(std::to_string(index));
+    if (!value)
+        return std::nullopt;
+    return CharacterRecord::parse(zlibInflatePartial(*value));
+}
+} // namespace
+
+std::optional<CharacterRecord> loadCharacter(const SaveDb &db, uint32_t index) {
+    if (index >= std::min(MAX_ENTRIES, db.number("num").value_or(0)))
+        return std::nullopt;
+    return characterAtKey(db, index);
+}
+
 std::vector<CharacterRecord> readCharacters(const SaveDb &db) {
     // §3.1: keys 0..N-1, one record per key, so list indices stay the keys. A missing or damaged
     // value gives what the tolerant reader makes of the bytes that inflate (§0).
     std::vector<CharacterRecord> out;
     const uint32_t n = db.number("num").value_or(0);
-    for (uint32_t i = 0; i < n && i < MAX_ENTRIES; i++) {
-        const auto value = db.get(std::to_string(i));
-        const std::vector<uint8_t> inflated = value ? zlibInflatePartial(*value) : std::vector<uint8_t>{};
-        out.push_back(*CharacterRecord::parse(inflated));
-    }
+    for (uint32_t i = 0; i < n && i < MAX_ENTRIES; i++)
+        out.push_back(characterAtKey(db, i).value_or(CharacterRecord{}));
     return out;
 }
 

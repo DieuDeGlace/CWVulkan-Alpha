@@ -80,6 +80,36 @@ int main(int argc, char **argv) {
         check(truncated && truncated->level == 1 && truncated->name.empty() && truncated->experience == c.experience,
               "a truncated field keeps its prior value, and so do all later ones");
 
+        // A positive recipe count appends initialized descriptors for every short row.
+        // Complete rows are opaque and may repeat. A short count itself defaults to zero.
+        CharacterRecord recipeSave;
+        ItemBytes opaque{}, initialized{};
+        opaque.fill(0x5b);
+        initialized[0x10] = 1;
+        recipeSave.recipes = {opaque, opaque, opaque, opaque};
+        const auto complete = recipeSave.serialize();
+        const auto firstRecipe = std::search(complete.begin(), complete.end(), opaque.begin(), opaque.end());
+        check(firstRecipe != complete.end(), "fixture recipe offset");
+        if (firstRecipe != complete.end()) {
+            const size_t offset = size_t(firstRecipe - complete.begin());
+            const std::vector<ItemBytes> expected{opaque, opaque, initialized, initialized};
+            for (size_t partial : {size_t(0), size_t(17), opaque.size() - 1}) {
+                std::vector<uint8_t> shortRow(complete.begin(), firstRecipe + 2 * opaque.size() + partial);
+                check(CharacterRecord::parse(shortRow)->recipes == expected, "short rows append initialized descriptors");
+            }
+            std::vector<uint8_t> shortCount(complete.begin(), firstRecipe - 2);
+            check(CharacterRecord::parse(shortCount)->recipes.empty(), "short count defaults to zero");
+            std::vector<uint8_t> oversized(complete.begin(), firstRecipe + opaque.size());
+            const int32_t overLimit = 65537;
+            std::memcpy(oversized.data() + offset - 4, &overLimit, 4);
+            check(CharacterRecord::parse(oversized)->recipes == std::vector<ItemBytes>{opaque}, "oversized count is bounded");
+            auto negative = complete;
+            negative.erase(negative.begin() + offset, negative.begin() + offset + 4 * opaque.size());
+            std::fill_n(negative.begin() + offset - 4, 4, uint8_t(0xff));
+            const auto parsed = CharacterRecord::parse(negative);
+            check(parsed && parsed->recipes.empty() && parsed->skills.size() == 11, "negative count skips rows only");
+        }
+
         // Saves §3.1: creation and deletion of one key.
         const fs::path listFile = scratch.parent_path() / "SaveTests-list.db";
         const fs::path worldFile = scratch.parent_path() / "SaveTests-worlds.db";
@@ -93,6 +123,9 @@ int main(int argc, char **argv) {
             check(addCharacter(list, named[i]), "add character");
         }
         check(list.number("num") == 3u, "three characters");
+        check(loadCharacter(list, 2)->name == "C2" && !loadCharacter(list, 3), "load only the selected key");
+        list.remove("1");
+        check(!loadCharacter(list, 1) && readCharacters(list).size() == 3, "missing key leaves the selection unloaded");
         list.put("1", {1, 2, 3}); // damaged: still listed in place
         check(readCharacters(list).size() == 3 && readCharacters(list)[2].name == "C2", "list indices stay the keys");
         check(deleteCharacter(list, 0) && list.number("num") == 2u && !list.get("2"), "delete renames down");

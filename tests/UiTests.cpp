@@ -786,7 +786,7 @@ int main(int argc, char **argv) {
         timed.position = {65537, -65537, 32769};
         const auto heal = timedHealText(timed, 2.25f);
         check(heal && heal->text == u"0.4" && heal->colour == glm::vec4(0.4f, 1, 0.5f, 1) &&
-                  heal->anchor == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
+                  heal->worldPosition() == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
                   heal->size == 20 && heal->lifeMs == 1000 && heal->rise == 100 && heal->flags == 1,
               "timed heal uses the fixed recipient-size offset and local display fields");
         auto connected = timed;
@@ -797,12 +797,19 @@ int main(int argc, char **argv) {
         check(local && other && local->text == u"12" && local->rise == 100 && local->size == 60 &&
                   local->colour == glm::vec4(1, .3f, .3f, 1) &&
                   other->rise == -200 && other->colour == glm::vec4(1, 1, .25f, 1) &&
-                  local->anchor == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
-                  other->anchor == glm::dvec3(65537, -65537, 32769 + 131072 - 8192) / 65536.0,
+                  local->worldPosition() == glm::dvec3(65537, -65537, 32769 + 65536 - 8192) / 65536.0 &&
+                  other->worldPosition() == glm::dvec3(65537, -65537, 32769 + 131072 - 8192) / 65536.0,
               "connected hit labels retain fixed position bits, live size, and the local-target anchor step");
         timed.amount = -0.09f;
         check(!timedHealText(timed, 2.25f), "timed heal display respects the magnitude threshold");
-        check(levelUpText(glm::dvec3(0)).lifeMs == 3000 && experienceText(12, glm::dvec3(0)).text == u"XP +12", "level and XP");
+        const std::array<int64_t, 3> position{(int64_t(1) << 55) + 1, -23, 17};
+        const FloatingText level = levelUpText(position), xp = experienceText(-12, position);
+        for (const auto &record : {level, xp})
+            check(std::get<std::array<int64_t, 3>>(record.anchor) == position && record.ageMs == 0 &&
+                      record.rise == -100 && record.lifeMs == 3000 && record.flags == 2 &&
+                      record.colour == glm::vec4(0.8f, 0.6f, 1, 1), "progress text retains fixed position, age and style");
+        check(level.text == u"LEVEL UP!" && level.size == 50 && level.offset == glm::vec2(0, -250), "level notice");
+        check(xp.text == u"XP +-12" && xp.size == 30 && xp.offset == glm::vec2(0, -200), "signed XP notice");
     }
     {
         QuickItemWheel wheel;

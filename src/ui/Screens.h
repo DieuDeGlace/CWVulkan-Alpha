@@ -13,9 +13,11 @@
 #include "ui/Painter.h"
 #include "ui/ControllerKeyboard.h"
 #include "ui/Vendor.h"
+#include <array>
 #include <functional>
 #include <map>
 #include <optional>
+#include <variant>
 
 struct CubModel;
 namespace creatures {
@@ -98,7 +100,9 @@ struct HudState {
 
 // §5.6: a text that rises (or sinks) and fades over a point in the world.
 struct FloatingText {
-    glm::dvec3 anchor{0}; // world blocks
+    // Native records retain their fixed coordinates until the draw projects them.
+    std::variant<glm::dvec3, std::array<int64_t, 3>> anchor{glm::dvec3(0)};
+    glm::dvec3 worldPosition() const;
     glm::vec2 offset{0};  // pixels
     glm::vec4 colour{1};
     std::u16string text;
@@ -112,8 +116,8 @@ struct FloatingText {
 std::optional<FloatingText> hitText(float damage, uint8_t kind, bool critical, bool area, bool toPlayer, glm::dvec3 at);
 std::optional<FloatingText> hitText(const creatures::HitRecord &hit, bool toPlayer, float recipientHeight);
 std::optional<FloatingText> timedHealText(const creatures::HitRecord &hit, float recipientHeight);
-FloatingText levelUpText(glm::dvec3 player);
-FloatingText experienceText(int32_t gain, glm::dvec3 player);
+FloatingText levelUpText(const std::array<int64_t, 3> &position);
+FloatingText experienceText(int32_t gain, const std::array<int64_t, 3> &position);
 
 // Rulings manacubebar §3 on a `manacubebar` document (its node 0): the bar is shown and its
 // children, in file order, are shown while k > 0, k falling by one per child, where

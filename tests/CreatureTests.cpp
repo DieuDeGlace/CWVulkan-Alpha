@@ -4634,6 +4634,44 @@ int main() {
         }
     }
 
+    // For each ordinary class and remainder, two seeds are always drawn. Check the
+    // intervening admissions and each optional subtype/material draw, including repeats.
+    checkInSeparateFrame([] {
+        const uint8_t armour[] = {7, 4, 6, 5}, armourMaterial[] = {1, 26, 25, 27};
+        const uint8_t weapon[][3] = {{17, 2, 13}, {6, 7, 8}, {10, 11, 12}, {3, 5, 4}};
+        for (const int32_t level : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 65537}) {
+            for (int cls = 1; cls <= 4; ++cls) {
+                std::vector<ItemRecord> known;
+                std::vector<size_t> drawSizes;
+                const int draws[] = {12, 24, 5};
+                const auto draw = [&] {
+                    drawSizes.push_back(known.size());
+                    return draws[(drawSizes.size() - 1) % 3];
+                };
+                grantLevel(known, level, cls, draw);
+                const bool third = (cls == 1 && level % 3 != 2) || (cls == 3 && level % 3 == 2);
+                const size_t fixed = size_t(level % 2) + (level % 5 == 1 ? 2 : level % 5 != 0 ? 1 : 0) +
+                                     (level == 1 ? (cls == 1 ? 6 : 7) : 0);
+                const std::vector<size_t> expected = third ? std::vector<size_t>{fixed, fixed + 1, fixed + 1}
+                                                            : std::vector<size_t>{fixed, fixed + 1};
+                same(drawSizes == expected && known.size() == fixed + 2, 1, "recipe admissions precede the next draw");
+                if (known.size() != fixed + 2)
+                    continue;
+                const auto &a = known[fixed], &w = known.back();
+                same(itemType(a) == armour[level % 4] && itemMaterial(a) == armourMaterial[cls - 1] &&
+                         a[4] == 1 && itemLevel(a) == int16_t(level), 1, "armor seed, class and low-16-bit level");
+                const int material = cls == 2 || cls == 3 ? (cls == 3 && level % 3 == 2 ? 12 : 2) : 1;
+                same(itemType(w) == 3 && itemSubtype(w) == weapon[cls - 1][level % 3] && itemMaterial(w) == material &&
+                         w[4] == 2 && itemLevel(w) == int16_t(level), 1, "weapon seed and conditional draw");
+                const auto before = known;
+                drawSizes.clear();
+                grantLevel(known, level, cls, draw);
+                same(known == before && drawSizes == std::vector<size_t>(expected.size(), before.size()), 1,
+                     "duplicates spend every draw without a retry");
+            }
+        }
+    });
+
     // Crafting §7: a new mage's grants, a muffin at a campfire, and a sword from a formula.
     {
         std::vector<ItemRecord> known;

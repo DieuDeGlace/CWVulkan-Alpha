@@ -54,7 +54,7 @@ std::array<uint8_t, 20> choiceBytes(const creatures::CharacterChoice &c) {
 }
 
 CharacterRecord newCharacter(const std::string &name, const creatures::CharacterChoice &choice, int32_t cls,
-                             const std::function<int()> &draw) {
+                             const std::function<int()> &draw, std::vector<ItemBytes> *selectedRecipes) {
     CharacterRecord r;
     r.name = name;
     r.level = 1;
@@ -87,9 +87,11 @@ CharacterRecord newCharacter(const std::string &name, const creatures::Character
             tab.push_back({(uint32_t)s.count, s.item});
     }
     // The level-1 recipes, and full health.
-    std::vector<creatures::ItemRecord> recipes;
+    auto &recipes = selectedRecipes ? *selectedRecipes : r.recipes;
+    recipes.clear();
     creatures::grantLevel(recipes, 1, cls, draw);
-    r.recipes.assign(recipes.begin(), recipes.end());
+    if (selectedRecipes)
+        r.recipes = recipes;
     creatures::Combatant c;
     c.characterClass = (uint8_t)cls;
     c.level = 1;

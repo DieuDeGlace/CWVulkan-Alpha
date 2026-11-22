@@ -158,6 +158,8 @@ int32_t timesCraftable(const Inventory &inventory, const Recipe &recipe) {
 }
 
 void grantLevel(std::vector<ItemRecord> &known, int32_t L, int32_t cls, const std::function<int()> &draw) {
+    if (L <= 0) // unsupported levels must not index the armour table
+        return;
     const auto grant = [&](const ItemRecord &k) {
         if (std::none_of(known.begin(), known.end(), [&](const ItemRecord &o) { return sameItem(o, k); }))
             known.push_back(k);
@@ -181,8 +183,11 @@ void grantLevel(std::vector<ItemRecord> &known, int32_t L, int32_t cls, const st
             grant(key(11, 9, 27, 1));
         else if (cls == 2)
             grant(key(11, 9, 26, 1));
-        else if (cls == 3)
-            grant(key(11, 9, 25, 1));
+        else if (cls == 3) {
+            const auto silk = key(11, 9, 25, 1);
+            grant(silk);
+            grant(silk); // the second membership check sees the first insertion
+        }
         for (uint8_t m : {1, 2, 11, 12})
             grant(key(11, 10, m, 1));
     }
