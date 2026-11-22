@@ -92,7 +92,6 @@ void WorldItems::generated(const worldgen::Zone &zone) {
         return;
     std::vector<WorldItem> &list = lists[key];
     list.reserve(zone.drops.size() + zone.items.size());
-    auto nextGround = zone.items.begin();
     const auto appendGround = [&](const worldgen::GroundItem &g) {
         WorldItem w;
         w.item[0] = g.category;
@@ -105,18 +104,11 @@ void WorldItems::generated(const worldgen::Zone &zone) {
         w.position[2] = (int64_t)g.z * 65536;
         w.angle = g.rotation;
         w.scale = g.scale == 1 ? 1.f / 14 : g.scale; // (the generator keeps 1 for "the default")
-        const bool mushroom = g.category == 11 && g.subtype == 19; // (a ravine item, open points 12 §7.2)
-        if (mushroom)
-            w.item[0x0d] = 9;
+        w.item[0x0d] = g.material();
         w.origin = g.originTag();
         list.push_back(w);
     };
-    // Each structure placement remembers the ground records already emitted by
-    // terrain or earlier features. Later surface vegetation follows both.
-    for (const worldgen::ItemDrop &d : zone.drops) {
-        const auto before = zone.items.begin() + std::min(d.groundItemsBefore, zone.items.size());
-        while (nextGround < before)
-            appendGround(*nextGround++);
+    worldgen::visitGeneratedItems(zone, appendGround, [&](const worldgen::ItemDrop &d) {
         WorldItem w;
         w.item = creatures::toRecord(d.item);
         w.position[0] = d.x, w.position[1] = d.y, w.position[2] = d.z;
@@ -124,9 +116,7 @@ void WorldItems::generated(const worldgen::Zone &zone) {
         w.scale = d.scale;
         w.origin = d.originTag();
         list.push_back(w);
-    }
-    while (nextGround != zone.items.end())
-        appendGround(*nextGround++);
+    });
     // §4.3 settling pass (open points 5 §4.1 pass A): a record whose tag has bit 0 clear is
     // lowered by whole blocks while the block holding (x, y, z - 0.5 blocks) is not solid; tag-1
     // loot stays put. Cells use the game's fixed-to-block rule (an exact negative multiple of

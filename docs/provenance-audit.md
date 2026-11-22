@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 97 and the rulings. The 330 tracked contracts
-comprise 297 A, 28 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 98 and the rulings. The 331 tracked contracts
+comprise 298 A, 28 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -188,6 +188,8 @@ Batch 96 records single-player zone item admission and the changes that cause
 an item list to be written. Batch 97 records seven generated item placements,
 their origin and scale, and their order before the saved-zone overlay.
 
+Batch 98 establishes the generated item count and the lifetime of its type-9 zone records.
+
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
 | `alpha-active-decoration-distance-models.md` | A | 71 | 0 |
@@ -298,6 +300,7 @@ their origin and scale, and their order before the saved-zone overlay.
 | `alpha-front-end-wait-cursor.md` | A | 24 | 0 |
 | `alpha-front-end-wait-presentation.md` | A | 35 | 0 |
 | `alpha-front-end-widget-states.md` | A | 102 | 1 |
+| `alpha-generated-item-count-lifetime.md` | A | 32 | 0 |
 | `alpha-generated-item-origin-sites.md` | A | 33 | 0 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
 | `alpha-generic-hit-presentation-draws.md` | B | 65 | 1 |

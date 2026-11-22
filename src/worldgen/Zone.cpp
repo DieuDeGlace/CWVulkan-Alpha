@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <map>
 
 namespace worldgen {
 
@@ -9,6 +10,30 @@ namespace {
 constexpr Block WATER_BLOCK{255, 255, 255, 0x82};
 constexpr Block AIR_BLOCK{255, 255, 255, AIR};
 } // namespace
+
+void Zone::finishGeneratedItems() {
+    using ItemKey = std::array<uint8_t, 3>;
+    std::map<ItemKey, uint32_t> counts;
+    const auto ground = [&](GroundItem &item) {
+        ++counts[{item.category, item.subtype, item.material()}];
+        if (item.originTag() & 1)
+            return;
+        while (clear(read(item.x, item.y, item.z - 1).type()))
+            --item.z;
+    };
+    visitGeneratedItems(*this, ground, [&](const ItemDrop &drop) {
+        ++counts[{drop.item.type, drop.item.subtype, drop.item.material}];
+    });
+    const int64_t centreX = (int64_t(zx) * SIZE + SIZE / 2) * 65536;
+    const int64_t centreY = (int64_t(zy) * SIZE + SIZE / 2) * 65536;
+    for (const auto &[key, count] : counts) {
+        if ((key[0] == 1 || key[0] == 11) && std::bit_cast<int32_t>(count) >= 8) {
+            ZoneMarker marker{9, centreX, centreY, 0};
+            marker.itemKey = key;
+            markers.push_back(marker);
+        }
+    }
+}
 
 AirshipTemplate airshipTemplate(int32_t zx, int32_t zy, int32_t index, int32_t rotation, int32_t top, int32_t centreX,
                                 int32_t centreY) {

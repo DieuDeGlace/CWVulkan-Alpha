@@ -255,7 +255,54 @@ static void checkRockColourContract() {
     same(over.b < 0.f || over.r < 0.f || over.g < 0.f || over.b > 255.f, 1, "an unclamped s > 1 blend leaves the clamp range");
 }
 
+static void checkGeneratedItemMarkers() {
+    Zone zone;
+    zone.zx = -2;
+    zone.zy = 3;
+    zone.markers.push_back({5, 11, 22, 33});
+    zone.markers.push_back({6, 44, 55, 66, 73, 2});
+    const auto add = [&](uint8_t category, uint8_t subtype, uint8_t material, int count) {
+        ItemDrop drop;
+        drop.item.type = category;
+        drop.item.subtype = subtype;
+        drop.item.material = material;
+        for (int i = 0; i < count; ++i) {
+            drop.item.seed = uint32_t(i);
+            drop.origin = uint8_t(i & 1);
+            zone.addItemDrop(drop);
+        }
+    };
+    add(11, 19, 255, 16);
+    add(1, 255, 128, 8);
+    add(25, 0, 0, 8);
+    add(11, 129, 127, 7);
+    add(11, 129, 128, 1);
+    add(1, 254, 255, 8);
+    add(1, 255, 127, 8);
+    add(11, 19, 9, 4);
+    for (int i = 0; i < 4; ++i) {
+        GroundItem mushroom{zone.originX() + 4, zone.originY() + 5, 6, 11, 19};
+        mushroom.origin = uint8_t(i & 1);
+        zone.items.push_back(mushroom);
+    }
+    zone.finishGeneratedItems();
+    const std::array<std::array<uint8_t, 3>, 5> expected{{
+        {1, 254, 255}, {1, 255, 127}, {1, 255, 128}, {11, 19, 9}, {11, 19, 255}
+    }};
+    same(zone.markers.size(), expected.size() + 2, "one marker per eligible generated item group of eight or more");
+    same(zone.markers[0].type == 5 && zone.markers[0].z == 33 &&
+         zone.markers[1].type == 6 && zone.markers[1].kind == 73 && zone.markers[1].creature == 2, 1,
+         "item grouping retains earlier exit and boss markers");
+    for (size_t i = 0; i < expected.size() && i + 2 < zone.markers.size(); ++i) {
+        const ZoneMarker &marker = zone.markers[i + 2];
+        same(marker.type == 9 && marker.itemKey == expected[i], 1, "item group markers follow unsigned key order");
+        same(marker.x == -384ll * 65536 && marker.y == 896ll * 65536 && marker.z == 0, 1,
+             "item group marker uses the zone centre in fixed-point units");
+    }
+}
+
 int main() {
+    checkGeneratedItemMarkers();
     checkOfflineBlueprint();
     checkRockColourContract();
     // Terrain §3.3 step 3: R adds t² · 0.05 (square first). At this seed-41 column the other

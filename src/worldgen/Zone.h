@@ -92,6 +92,7 @@ struct GroundItem {
     float rotation = 0, scale = 1;
     uint32_t seed = 0; // +0x04 (a mana cube's number)
     std::optional<uint8_t> origin; // world-item +0x138; all built-in sites supply it
+    uint8_t material() const { return category == 11 && subtype == 19 ? 9 : 0; } // ravine mushroom
     uint8_t originTag() const {
         if (origin)
             return *origin;
@@ -157,12 +158,13 @@ struct ItemDrop {
     }
 };
 
-// Structures spec §1.10.6: a marker the zone keeps (type 5 a dungeon exit, type 6 a boss).
+// Resident zone markers: dungeon exits (5), bosses (6), and generated item groups (9).
 struct ZoneMarker {
     int32_t type = 0;
     int64_t x = 0, y = 0, z = 0;
     int32_t kind = 0;      // the boss's creature type
     int32_t creature = -1; // index into Zone::spawns
+    std::array<uint8_t, 3> itemKey{}; // type 9: category, subtype, material
 };
 
 // Structures spec §5.5.9: one stop of a townsperson's day, in 1/65536 blocks and ms of the day.
@@ -299,6 +301,7 @@ struct Zone {
         drops.push_back(drop);
     }
     std::vector<ZoneMarker> markers;
+    void finishGeneratedItems(); // once during construction, before module passes and saved-item overlays
     std::vector<LeafSource> leafSources;
     std::vector<std::array<int64_t, 3>> songPosts; // trees §4.9: kind-61 records (1/65536 blocks)
     std::vector<House> houses;
@@ -354,5 +357,20 @@ struct Zone {
 // The block of an implicit cell: under a column (z < bottom) and outside the world.
 constexpr Block IMPLICIT_SOLID{200, 200, 200, SOLID};
 constexpr Block UNHELD_CELL{200, 200, 200, UNHELD};
+
+// Fixed-coordinate drops record the number of ground records preceding their placement.
+// Read-only conversion and the mutable generation pass both visit this same insertion order.
+template<class ZoneType, class GroundVisitor, class DropVisitor>
+void visitGeneratedItems(ZoneType &zone, GroundVisitor ground, DropVisitor drop) {
+    auto next = zone.items.begin();
+    for (auto &d : zone.drops) {
+        const auto before = zone.items.begin() + std::min(d.groundItemsBefore, zone.items.size());
+        while (next < before)
+            ground(*next++);
+        drop(d);
+    }
+    while (next != zone.items.end())
+        ground(*next++);
+}
 
 } // namespace worldgen

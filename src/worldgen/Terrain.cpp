@@ -477,13 +477,7 @@ std::unique_ptr<Zone> Terrain::generate(int32_t zx, int32_t zy) const {
             spirit.level = (int16_t)s.level;
             s.inventory.push_back(spirit);
         }
-    // Open points 5 §4.1: generated items sink to what is under them, through water too.
-    for (GroundItem &item : zone->items) {
-        if (item.originTag() & 1)
-            continue;
-        while (clear(zone->read(item.x, item.y, item.z - 1).type()))
-            item.z--;
-    }
+    zone->finishGeneratedItems();
     av::modules::applyTerrainPasses(*zone, *this);
     if (swimmableWater)
         makeWaterSwimmable(*zone, [&](int32_t x, int32_t y, int32_t z) { return gapBlock(x, y, z, *zone); });

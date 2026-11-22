@@ -4898,3 +4898,14 @@ share a single ordered traversal. The producer supplies an origin byte
 and a scale independently. Odd origins retain their placement height.
 Even origins settle before the game reads the saved zone. The source
 record leaves indirect producers and some feature identities open.
+
+## Generated item counts and type-9 zone records (2026-11-22)
+
+The separate source author traced the original generator and delivered
+the 31-line held record `alpha-generated-item-count-lifetime.md`.
+The clean team read it in full and verified SHA-256
+`21fc39cdbbafe0aff0368c6014e368b256ba6fc6ddab790feb22461d8ff92012`. A temporary tally groups items by three unsigned bytes.
+Each group in category 1 or 11 with at least eight members contributes
+one resident record. Its center and item key survive a saved-item overlay.
+The original ordinary zone writer omits this collection. A downstream
+gameplay, map or UI reader remains unverified.

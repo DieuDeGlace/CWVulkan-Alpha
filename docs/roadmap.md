@@ -1153,6 +1153,8 @@ Differences from the Steam engine that shape the plan:
   coins in chat; ContentTests check every worked example). The compare panel
   (`alpha-open-points-2.md` §3): "Currently equipped" and the
   equipped items of the same type (weapons and rings as pairs), left of the tooltip.
+- [x] Retain one type-9 zone record for each qualifying generated item group,
+  in key order and independent of subsequent saved-item replacement.
 - [x] Preserve the placement order of generated world items across terrain,
   furniture, feature and surface passes. Carry each producer's origin into
   ground settling and the resident list used by pickups and zone saves.

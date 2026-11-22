@@ -3822,3 +3822,25 @@ the previous world-item conversion failed nine checks. Source-module
 tests cover direct insertion and callers that omit the new origin field.
 The integrated 64-bit build passed six focused suites and all 60 serial
 CTest suites.
+
+## Generated type-9 zone records (2026-11-22)
+
+The normal CPU generator produced ten item-group records across nine of
+68 zones from seeds 41 and 123. Counting the three key bytes independently
+from the 1,260 serialized items predicted every record, its order and its
+fixed-point coordinates. The 64 existing records remained ahead of the new
+entries. The item bytes and all 2,802 sampled random-stream checkpoints
+matched the preceding build. These runs used the owner's local models.
+
+At seed 41, zone (32804, 32802) produced separate records for 61 pumpkins
+and 58 pineapples. A source module saw both records before adding eight
+items. Loading a saved nine-item list of a different type retained both
+records. Looking up the resident zone returned the same records. After
+unloading, fresh generation recreated both before applying the saved list.
+The neighboring zone retained its own empty collection.
+
+Boundary tests cover seven, eight and sixteen copies, three unsigned key
+bytes, mixed origins and negative zone coordinates. Changing the threshold
+to strictly greater than eight failed two checks. Excluding odd-origin
+ground records failed two checks. Omitting material failed five. A live
+observation of the original resident records remains open.
