@@ -3612,3 +3612,22 @@ and kept an earlier key. Bird 1 and 2, both crickets and both owls decode
 from the owned store and start a voice; zero-gain requests start none. The
 owned store has no bird3.wav, so its requests resolve nothing. Original
 client audio has not been compared.
+
+## Point lights on immediate scenery (2026-11-22)
+
+Four Vulkan frames exercised the production world view and renderer with
+shared scenery geometry. Three immediate instances used the light rows
+of their own slots, including a water-only slot. The prior renderer sent
+row zero to all three draws, failing nine checks. The corrected renderer
+passed all 421 checks. A populated slot with no sources cleared all ten
+positions and colors while the frame still had lights. Across the later
+passes the indexed static used the frame row, and a deferred decoration
+used the last water row when water was submitted. An empty slot contributed
+no decoration draw.
+
+The repository's terrain light render probe also sampled two visible
+instances of one model. Their center pixels were (168, 0, 0) and
+(0, 0, 168), matching the corresponding terrain samples. Both went black
+when their slots had no sources. Both became (0, 213, 0) in the deferred
+pass with a green frame light and no water draw. These are engine captures
+with synthetic geometry. An original-client pixel comparison remains open.

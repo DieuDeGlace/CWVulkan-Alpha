@@ -981,7 +981,8 @@ uint32_t Renderer::drawObjects(VkCommandBuffer cmd, const std::vector<DrawItem> 
         const VkPipeline wanted = item.layer == DrawLayer::Ghost ? ghostPipeline : modelPipeline;
         if (wanted != bound)
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound = wanted);
-        if (drawItem(cmd, item, planes, lightRowOf(item.mesh)))
+        const MeshId lightMesh = item.terrainLightMesh ? item.terrainLightMesh : item.mesh;
+        if (drawItem(cmd, item, planes, lightRowOf(lightMesh)))
             drawn++;
     }
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, particlePipeline);

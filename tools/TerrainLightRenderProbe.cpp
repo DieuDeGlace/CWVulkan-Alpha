@@ -127,6 +127,26 @@ void run(GLFWwindow *window, const std::filesystem::path &output) {
     const std::vector colours{light({8, 8, 4}, 16, {1, 0, 0}), light({40, 8, 4}, 16, {0, 0, 1})};
     const auto reference = capture("chunk-colours", selector.rebuild(colours, chunks, {}));
     requireColours(reference);
+    // The same decoration model is instanced in both slots. Its own mesh has no light row.
+    const auto terrain = draws;
+    const MeshId plant = renderer.addMesh(quad());
+    for (auto &draw : draws) {
+        draw.terrainLightMesh = draw.mesh;
+        draw.mesh = plant;
+        draw.decorationMaterial = true;
+        draw.material = frame.material;
+    }
+    requireColours(capture("shared-decoration", selector.rebuild(colours, chunks, {})));
+    if (!black(capture("unlit-decoration", selector.rebuild({}, chunks, {}))))
+        throw std::runtime_error("An empty slot light row inherited the green frame light");
+    for (auto &draw : draws)
+        draw.layer = DrawLayer::Deferred;
+    const auto deferred = capture("deferred-decoration", selector.rebuild(colours, chunks, {}));
+    for (const auto &p : deferred)
+        if (p[1] < 40 || p[0] > 4 || p[2] > 4)
+            throw std::runtime_error("A deferred model retained the immediate slot light row");
+    draws = terrain;
+    renderer.removeMesh(plant);
     for (int wave = 0; wave < 3; ++wave) {
         std::vector<MeshId> temporary;
         for (int i = 0; i < 384; ++i) {

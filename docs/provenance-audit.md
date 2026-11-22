@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 91 and the rulings. The 320 tracked contracts
-comprise 285 A, 30 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 92 and the rulings. The 321 tracked contracts
+comprise 286 A, 30 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -171,6 +171,7 @@ Batch 88 records the independently reviewed recipe grant and the separate level 
 Batch 89 records the shared item-list layout, pointer movement and refresh order for bag and crafting controls.
 Batch 90 records terrain-slot bounds, box range and fade, slot visit order and the chest base and lid placement.
 Batch 91 records ambient bird, owl and cricket decisions during the pre-sort terrain-slot walk.
+Batch 92 records which point lights reach immediate terrain decorations.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -451,6 +452,7 @@ Batch 91 records ambient bird, owl and cricket decisions during the pre-sort ter
 | `alpha-terrain-mesh-window-origin.md` | A | 58 | 0 |
 | `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
 | `alpha-terrain-slot-bounds-and-static-model-admission.md` | A | 178 | 0 |
+| `alpha-terrain-slot-decoration-point-lights.md` | A | 117 | 0 |
 | `alpha-terrain-slot-presort-ambient-audio.md` | A | 139 | 0 |
 | `alpha-terrain-slot-sort-key-and-pass-order.md` | A | 144 | 0 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |

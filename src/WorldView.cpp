@@ -1174,6 +1174,8 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const
             DrawItem draw{p.mesh, p.placed * sway * p.yaw, true};
             draw.material = terrain_lights::decorationMaterial(decorationTint, p.light, p.emits);
             draw.decorationMaterial = true;
+            if (!distance->deferred)
+                draw.terrainLightMesh = entry->active.solid ? entry->active.solid : entry->active.water;
             appendModel(out, *distance, std::span(&draw, 1));
         }
     }

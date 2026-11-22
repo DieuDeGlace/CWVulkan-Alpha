@@ -64,6 +64,7 @@ struct DrawItem {
     uint32_t group = 0;
     bool decorationMaterial = false; // the frame tint and sun strength are already included
     bool viewAdmitted = false; // the main scene already applied the terrain box or model sphere
+    MeshId terrainLightMesh = 0; // immediate decoration uses its slot's terrain mesh to find the light row
 };
 
 // One corner of a blended effect triangle (weapon trails): world blocks and an RGBA colour

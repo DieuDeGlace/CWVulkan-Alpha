@@ -4771,3 +4771,16 @@ It replaces the earlier engine adapter built on `alpha-rulings-zone-fields.md`
 ruling 1, which remains a held record for the facts it states. The clock
 producers, the frame increment's source and the native random stream's
 history outside this branch remain open.
+
+## Terrain slot and immediate decoration point lights (2026-11-22)
+
+The clean team read the 116-line held source-author record in full.
+`alpha-terrain-slot-decoration-point-lights.md` has SHA-256
+`46d5551413059876fe941480cb6ae2c053be6a8e98007f9efd3def412bb2ea93`.
+The terrain pass supplies ten position/radius and ten color vectors. The
+same vectors apply to each immediate decoration in that slot. A populated
+slot with no assigned lights supplies zero vectors. The engine identifies the
+slot's existing light row through either of its terrain mesh handles. This
+also covers a populated slot whose only drawable terrain resource is water.
+The held record locates a frame-level upload before the subsequent zone
+pass. The later water and translucent passes have their own state rules.

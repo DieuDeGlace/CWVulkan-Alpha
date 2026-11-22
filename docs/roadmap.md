@@ -23,6 +23,9 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Light immediate scenery with the same ten point-light entries as its
+  terrain slot, including when neighboring slots share a model mesh.
+
 - [x] Decide bird, owl and cricket calls inside the terrain-slot walk,
   after each decoration's light check, using the slot's retained key,
   the spatial clock phase and the ordered chance, pitch and owl draws.
