@@ -4606,3 +4606,20 @@ The renderer can accept terrain on either path. A creation wait retains
 its independently visible controls. The renderer's window and GPU
 lifetime management are engine implementation choices. The original
 records establish no fixed elapsed time for the first visible scene.
+
+## Resident terrain publication and object lifetimes (2026-11-21)
+
+The independent source contract establishes that lighting and mesh
+publication preserve the resident zone's spawn descriptors and indexed
+objects. The clean team read the complete 31-line held lifetime record,
+SHA-256 `b6b0d66524c0d4bec6fd831e34f5c3051c0476639e3b98a384e222074f98a720`.
+The contract also describes one decoration light value written before
+meshing copies the decoration. Matching that value remains open.
+
+The engine gives a zone's resident records an identity independent of
+its immutable terrain snapshots. Snapshot publication during relighting
+or a terrain edit preserves record ownership. Full zone replacement or
+departure ends it. The renderer can reuse a writable area across
+publications in the same batch and takes a new copy when another reader
+holds the current version. These ownership and allocation choices are
+specific to the replacement engine.

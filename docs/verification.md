@@ -3218,3 +3218,52 @@ starting at (353, 260). All 60 serial tests passed in 107.17
 seconds and the final package passed all 36 digests across 37 files.
 The ordinary client passed its controller diagnostic and all five reward,
 health, network, save/reload and town-render checks.
+
+## Resident records across lighting updates (2026-11-21)
+
+A nine-zone replay fed the production WorldView the same ordered terrain
+inputs before and after the change. All final column coordinates,
+extents and voxel bytes matched. All terrain and water vertices and
+indices matched by chunk coordinate. The replay built 484 chunks,
+published 160 lighting updates and recorded 493 uploads.
+
+Descriptor and routing tests exercised terrain-only publication while
+an immutable snapshot was still held. Previously refreshed creature
+descriptors survived relighting. Indexed statics retained their exclusions
+and activation handles through an ordinary edit and light publication.
+Handles retained across full replacement, departure or an independent
+world were rejected by the static activation path. The previous
+implementation failed five descriptor assertions and four routing
+assertions in these fixtures.
+
+A second fixture exercised the fatal-outcome write before a zone's first
+simulation turn. That write survived the first turn in the same world.
+Replacing the zone cleared both the previous scheduled position and the
+previous death countdown, including when a second world used the same
+coordinates. Three assertions failed before all writers used resident
+identity. The five focused suites passed in 1.42 seconds.
+
+A production WorldView probe with a headless renderer applied one
+queued terrain edit. Nine lighting publications preserved the original
+indexed object handle and the refreshed creature descriptor. Moving
+five zones away unloaded the area. Returning regenerated it, and the
+old handle could no longer activate the object. The refreshed descriptor
+and its countdown also expired with the zone. All twelve checks passed.
+A control that changed resident identity on every light publication
+failed the four assertions for preserving the loaded zone's records.
+
+Two runs of the corrected nine-zone replay each required nine full-zone
+copies on the render thread and nine on the worker. Both produced the
+same terrain and mesh digests as before. The previous implementation
+made 342 copies on the render thread and spent 3,578 ms of render-thread
+CPU time storing lighting. Both corrected runs spent 109 ms there.
+Worker store CPU time was 78 and 109 ms. Total process CPU time was 17.4
+and 17.1 seconds. Elapsed times varied from 24 to 255 seconds under
+concurrent work. Frame-rate impact remains unmeasured.
+
+The Vulkan client travelled 384 blocks in seed 123. At departure it had
+nine zones and 484 chunks. At the destination it had twelve zones and
+660 chunks. The saved frame showed trees, shaded ground and flowers.
+All 60 serial tests passed in 118.64 seconds. The release archive passed
+all 36 file digests across 37 files.
+The production controller diagnostic and all five client checks passed.

@@ -32,8 +32,8 @@ class BlockLightUpdate {
     std::optional<uint8_t> committed(int32_t x, int32_t y, int32_t z) const;
     // Store into the area used for preparation or its unmodified terrain copy.
     void store(Zone &area) const;
-    // Reuse copies while publishing an ordered set of updates. Take worker
-    // snapshots after the set has been published.
+    // Reuse each writable area across ordered publications until it is replaced
+    // or shared with an immutable snapshot.
     void store(WorldMap &map, AreaCopies &copies) const;
 
   private:

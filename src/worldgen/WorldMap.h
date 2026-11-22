@@ -7,6 +7,7 @@
 #include "worldgen/Zone.h"
 #include <map>
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace worldgen {
@@ -27,6 +28,10 @@ class WorldMap {
     using ZoneKey = std::pair<int32_t, int32_t>;
     using PlacedObjects = std::vector<std::array<int32_t, 4>>;
     void add(std::shared_ptr<const Zone> zone);
+    // Publish changed terrain or decorations while retaining the resident descriptor and object identities.
+    void replaceTerrain(std::shared_ptr<const Zone> zone);
+    // Nonzero for a held zone. Its indexed static objects have IDs base + ordinal.
+    uintptr_t recordBase(ZoneKey key) const;
     void remove(int32_t zx, int32_t zy);
     const Zone *zone(int32_t zx, int32_t zy) const;
     const Zone *zoneAt(int32_t x, int32_t y) const;
@@ -46,7 +51,11 @@ class WorldMap {
 
   private:
     std::map<std::pair<int32_t, int32_t>, std::shared_ptr<const Zone>> held;
-    std::map<ZoneKey, PlacedObjects> zoneContents;
+    struct ResidentState {
+        uintptr_t recordBase = 0;
+        std::optional<PlacedObjects> placed;
+    };
+    std::map<ZoneKey, ResidentState> residents;
 };
 
 } // namespace worldgen

@@ -1537,7 +1537,7 @@ void Server::writeBlocks(const std::vector<BlockEdit> &list, BlockLighting light
         dropFloating(*zone);
         if (lighting == BlockLighting::Area)
             terrain->relight(*zone);
-        zones.add(std::move(zone));
+        zones.replaceTerrain(std::move(zone));
     }
     for (const BlockEdit &e : list) {
         if (!recordProtectedAir && e.typeByte == worldgen::DRY_AIR)

@@ -1,6 +1,8 @@
 #include "creatures/RouteGeometry.h"
 #include "creatures/SpatialBuckets.h"
 #include "StaticStates.h"
+#include "BlockEdits.h"
+#include "worldgen/BlockLight.h"
 #include <cmath>
 #include <cstdio>
 #include <set>
@@ -252,9 +254,25 @@ void actualBuckets() {
     states.generated(*zone);
     std::vector<Record> received;
     states.routeRecords(map, 32, 64, [&](const Record &record) { received.push_back(record); return true; });
-    check(received.size() == 2 && received[0].identity == reinterpret_cast<uintptr_t>(&zone->statics[0]) &&
+    check(received.size() == 2 && received[0].identity != 0 && received[0].identity != received[1].identity &&
           received[0].reference == std::array<int32_t, 3>{1, 2, 0} && received[1].reference[2] == 1 &&
           received[1].state == 0, "production lookup retains actual record identity and bucket payload independently of state admission");
+    const auto original = received.at(0);
+    const auto second = received.at(1).identity;
+    const auto before = map.neighbourhood(1, 2);
+    auto edited = std::make_shared<worldgen::Zone>(*zone);
+    applyLive(*edited, {256, 512, 4, 40, 50, 60, worldgen::GLOWING, 0}, {});
+    map.replaceTerrain(edited);
+    worldgen::BlockLightUpdate::AreaCopies copies;
+    worldgen::BlockLightUpdate(map, {{256, 512}, {257, 513}}).store(map, copies);
+    received.clear();
+    states.routeRecords(map, 32, 64, [&](const Record &record) { received.push_back(record); return true; });
+    check(received.size() == 2 && received[0].identity == original.identity && received[1].identity == second &&
+              map.zone(1, 2) != before.zone(1, 2) && before.read(256, 512, 4).type() != worldgen::GLOWING &&
+              map.read(256, 512, 4).type() == worldgen::GLOWING,
+          "a terrain edit followed by real light publication preserves ordered route identities and the old snapshot");
+    states.activateRouteRecord(map, original);
+    check(states.stateBytes(1, 2)[0] == 0, "a route reference captured before the edit still activates the same indexed object");
     received.clear();
     auto state = states.record(*zone, 0);
     state[0x40] = 0;
@@ -274,6 +292,18 @@ void actualBuckets() {
     states.routeRecords(map, 32, 64, [&](const Record &record) { received.push_back(record); return true; });
     check(received.empty(), "an unloaded chunk has no ghost bucket references");
     states.forget(1, 2);
+    const auto staleCheck = [&](worldgen::WorldMap &newWorld) {
+        newWorld.add(zone);
+        states.generated(*zone);
+        states.activateRouteRecord(newWorld, original);
+        received.clear();
+        states.routeRecords(newWorld, 32, 64, [&](const Record &record) { received.push_back(record); return true; });
+        check(received.size() == 2 && received[0].identity != original.identity && received[0].state == 1,
+              "a stale handle cannot activate a reloaded or independently admitted object at the same ordinal");
+    };
+    staleCheck(map);
+    worldgen::WorldMap independent;
+    staleCheck(independent);
 }
 
 void engineCompanion() {

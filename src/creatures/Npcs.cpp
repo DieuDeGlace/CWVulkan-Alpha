@@ -315,22 +315,23 @@ void Npcs::spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> k
     appendNpc(std::move(npc));
 }
 
-Npcs::SpawnState &Npcs::spawnState(const std::shared_ptr<const worldgen::Zone> &zone, size_t index) {
-    SpawnState &state = spawns[{zone->zx, zone->zy, index}];
-    if (state.sourceZone.lock() != zone) {
-        state.refreshed.reset();
-        state.sourceZone = zone;
+Npcs::SpawnState &Npcs::spawnState(worldgen::WorldMap::ZoneKey key, size_t index, uintptr_t recordBase) {
+    SpawnState &state = spawns[{key.first, key.second, index}];
+    if (state.recordBase != recordBase) {
+        state = {};
+        state.recordBase = recordBase;
     }
     return state;
 }
 
 void Npcs::advanceSpawnTimers(const ActiveZones &active, double timeOfDayMs, float dtMs) {
-    for (const auto &[key, zone] : active) {
+    for (const auto &[key, resident] : active) {
+        const auto &zone = resident.terrain;
         const auto extra = extras.find(key);
         const size_t base = zone->spawns.size();
         const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
         for (size_t i = 0; i < total; i++) {
-            SpawnState &state = spawnState(zone, i);
+            SpawnState &state = spawnState(key, i, resident.recordBase);
             const worldgen::Spawn &s = state.refreshed ? *state.refreshed :
                 i < base ? zone->spawns[i] : extra->second.second[i - base];
             // Server simulation §3 step 7: schedule entries whose threshold has come overwrite the
@@ -345,14 +346,15 @@ void Npcs::advanceSpawnTimers(const ActiveZones &active, double timeOfDayMs, flo
 
 void Npcs::activate(const ActiveZones &active, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day) {
     const std::function<int32_t()> readClock = [&] { return int32_t(timeOfDayMs); };
-    for (const auto &[key, zone] : active) {
+    for (const auto &[key, resident] : active) {
+        const auto &zone = resident.terrain;
         const auto extra = extras.find(key);
         const size_t base = zone->spawns.size();
         const size_t total = base + (extra == extras.end() || extra->second.first != base ? 0 : extra->second.second.size());
         const auto context = descriptorContext ? descriptorContext(key.first, key.second) :
                                                 std::optional<activation::Context>{};
         for (size_t i = 0; i < total; i++) {
-            SpawnState &state = spawnState(zone, i);
+            SpawnState &state = spawnState(key, i, resident.recordBase);
             const worldgen::Spawn &s = state.refreshed ? *state.refreshed :
                 i < base ? zone->spawns[i] : extra->second.second[i - base];
             if (!activation::inWindow(s.windowStart, s.windowEnd, readClock))
@@ -474,7 +476,8 @@ bool Npcs::markFatalBacking(const Combatant &target, const worldgen::WorldMap &m
     if (backing.x < 0 || backing.y < 0 || backing.x >= 65536 || backing.y >= 65536 || backing.index < 0 ||
         !spawnPresent(map, backing.x, backing.y, size_t(backing.index)))
         return false;
-    auto &state = spawns[{backing.x, backing.y, size_t(backing.index)}];
+    const worldgen::WorldMap::ZoneKey key{backing.x, backing.y};
+    auto &state = spawnState(key, size_t(backing.index), map.recordBase(key));
     state.countdownMs = 1200000;
     state.deathDay = day;
     return true;
@@ -536,7 +539,7 @@ void Npcs::restAll(const worldgen::WorldMap &map) {
         if (n.fighter.controller == 0 || n.fighter.controller == 5 || n.spawn == Npc::NO_SPAWN ||
             !spawnPresent(map, n.zone.first, n.zone.second, n.spawn))
             return false;
-        spawns[{n.zone.first, n.zone.second, n.spawn}].countdownMs = 0;
+        spawnState(n.zone, n.spawn, map.recordBase(n.zone)).countdownMs = 0;
         return true;
     });
     if (removed)
@@ -2316,7 +2319,8 @@ NpcFrame Npcs::step(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     return frame;
 }
 
-void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame) {
+void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame,
+                                const worldgen::WorldMap &map) {
     // Stage 10 precedes activation and living actors. Read health at each key
     // so a blast can admit a bomb later in this walk. Erase only after the walk.
     std::set<uint64_t> removed;
@@ -2357,7 +2361,7 @@ void Npcs::processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<P
         if (firstPass && !n.silentDeath) {
             n.fighter.health = 0;
             if (!n.fatalBackingApplied && n.spawn != Npc::NO_SPAWN) {
-                SpawnState &state = spawns[{n.zone.first, n.zone.second, n.spawn}];
+                SpawnState &state = spawnState(n.zone, n.spawn, map.recordBase(n.zone));
                 state.countdownMs = 1200000;
                 state.deathDay = day;
             }
@@ -2489,7 +2493,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
             for (int32_t dy = -1; dy <= 1; ++dy) {
                 const auto key = std::pair(zx + dx, zy + dy);
                 if (const auto zone = map.zones().find(key); zone != map.zones().end())
-                    active.try_emplace(key, zone->second);
+                    active.try_emplace(key, zone->second, map.recordBase(key));
             }
     }
     // Server §3 step 3: hits sent by players' clients land on the NPCs they name.
@@ -2557,7 +2561,7 @@ void Npcs::stepInto(float dtMs, const worldgen::WorldMap &map, std::vector<Playe
     if (list.size() != beforeRemovals)
         refreshActors(players);
     petPass(players, frame); // stage 9 links and stage 10's pet-item/stale-pet prefix
-    processDeadCreatures(milliseconds, day, players, frame);
+    processDeadCreatures(milliseconds, day, players, frame, map);
     activate(active, players, timeOfDayMs, day); // stage 11
 
     struct ActorPassScope {

@@ -1,7 +1,6 @@
 #include "WorldView.h"
 #include "creatures/Npcs.h"
 #include "DataStore.h"
-#include "worldgen/BlockLight.h"
 #include "worldgen/MapTile.h"
 #include "worldgen/SpatialScalars.h"
 #include "worldgen/WaterFeatures.h"
@@ -507,7 +506,7 @@ void WorldView::publishEditedZones(std::map<Key, std::shared_ptr<Zone>> edits, b
         if (relightAreas)
             terrainGenerator().relight(*zone);
         sectorSources.update(*zone);
-        map.add(std::move(zone));
+        map.replaceTerrain(std::move(zone));
     }
     for (const auto &[key, zone] : edits)
         refreshPlantsNear(key);
@@ -685,7 +684,6 @@ void WorldView::update(std::optional<terrain_lights::FixedPosition> adjustedEye)
         chunksPending.erase(key);
         return chunksStale.erase(key) != 0;
     };
-    BlockLightUpdate::AreaCopies frameLightAreas;
     for (auto &chunk : meshed) {
         const auto corner = chunk.corner;
         const Key key{corner.x, corner.y};
@@ -710,7 +708,7 @@ void WorldView::update(std::optional<terrain_lights::FixedPosition> adjustedEye)
             continue;
         }
         if (chunk.prepared)
-            chunk.prepared->store(map, frameLightAreas);
+            chunk.prepared->store(map, meshBatch->publishedLightAreas);
         placeChunk(chunk);
     }
     if (finished) {

@@ -132,8 +132,7 @@ class StaticStates {
     // §3.1: the world clock (+0x8000BC), zero at start and advanced by each frame's time.
     int32_t hazardClockMs = 0;
     struct IndexedSpatial {
-        std::weak_ptr<const worldgen::Zone> source;
-        const worldgen::Zone *address = nullptr;
+        uintptr_t recordBase = 0;
         creatures::SpatialBuckets buckets;
     };
     mutable std::map<Key, IndexedSpatial> spatial;

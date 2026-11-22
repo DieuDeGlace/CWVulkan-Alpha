@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Preserve resident spawn descriptors and indexed object identities
+  across lighting and terrain-only changes. Discard the offline world's
+  spawn state on departure. Reuse writable lighting areas during a batch
+  while preserving snapshots already held by other readers.
+
 - [x] Run the local title and pickers during terrain streaming. Present
   the wait frame for world changes and low-fog creation or gameplay.
   Continue the input and presentation loop as old world work drains.

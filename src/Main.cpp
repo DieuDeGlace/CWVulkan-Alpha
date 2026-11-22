@@ -2404,6 +2404,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             worldItems.forget(zx, zy);
                             statics.forget(zx, zy);
                             blockEdits.forget(zx, zy);
+                            npcs.forgetZone(zx, zy);
                         }
                     }
                     creatures::SneakLight sneakLight;

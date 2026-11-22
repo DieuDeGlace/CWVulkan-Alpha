@@ -176,9 +176,11 @@ void BlockLightUpdate::store(WorldMap &map, AreaCopies &copies) const {
         for (int32_t ay = first.y; ay <= last.y; ++ay)
             if (const auto *area = map.zone(ax, ay)) {
                 auto &copy = copies[{ax, ay}];
-                if (copy.get() != area) {
+                // The destination map and this cache own a writable copy together.
+                // A map snapshot or independently held area must retain its original bytes.
+                if (copy.get() != area || copy.use_count() != 2) {
                     copy = std::make_shared<Zone>(*area);
-                    map.add(copy);
+                    map.replaceTerrain(copy);
                 }
                 store(*copy);
             }

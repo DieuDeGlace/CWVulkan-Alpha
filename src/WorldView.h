@@ -10,6 +10,7 @@
 #include "CachedLights.h"
 #include "ChunkMesher.h"
 #include "CubModel.h"
+#include "worldgen/BlockLight.h"
 #include "worldgen/MapTile.h"
 #include "Frame.h"
 #include "Motion.h"
@@ -215,6 +216,7 @@ class WorldView {
         ChunkLightUpdates lightRequests;
         int32_t renderDistance;
         worldgen::WorldMap terrain; // worker-owned copy of the admitted terrain
+        worldgen::BlockLightUpdate::AreaCopies publishedLightAreas; // render thread, for this batch only
         std::atomic_bool cancel{false};
         bool discard = false; // main thread: an external terrain write superseded the remaining results
     };

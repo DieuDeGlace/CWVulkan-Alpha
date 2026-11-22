@@ -381,7 +381,7 @@ class Npcs {
         int32_t deathDay = -1;
         // Mutable activation state belongs to this world. Generated Zone
         // snapshots remain shared and immutable; replacement drops this overlay.
-        std::weak_ptr<const worldgen::Zone> sourceZone;
+        uintptr_t recordBase = 0;
         std::unique_ptr<worldgen::Spawn> refreshed;
         // Server simulation §3 step 7: the spawn's active block (position), overwritten by each
         // schedule entry whose threshold has come and kept until another one does.
@@ -396,11 +396,16 @@ class Npcs {
     // spawns) at `p`, added to the list.
     void spawnCreature(const worldgen::Spawn &s, std::pair<int32_t, int32_t> key, size_t index, size_t base, uint64_t id,
                        const std::array<int64_t, 3> &position, bool descriptorBacked = true);
-    using ActiveZones = std::map<std::pair<int32_t, int32_t>, std::shared_ptr<const worldgen::Zone>>;
-    SpawnState &spawnState(const std::shared_ptr<const worldgen::Zone> &zone, size_t index);
+    struct ActiveZone {
+        std::shared_ptr<const worldgen::Zone> terrain;
+        uintptr_t recordBase;
+    };
+    using ActiveZones = std::map<worldgen::WorldMap::ZoneKey, ActiveZone>;
+    SpawnState &spawnState(worldgen::WorldMap::ZoneKey key, size_t index, uintptr_t recordBase);
     void advanceSpawnTimers(const ActiveZones &active, double timeOfDayMs, float dtMs);
     void activate(const ActiveZones &active, const std::vector<PlayerView> &players, double timeOfDayMs, int32_t day);
-    void processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame);
+    void processDeadCreatures(int32_t milliseconds, int32_t day, std::vector<PlayerView> &players, NpcFrame &frame,
+                              const worldgen::WorldMap &map);
     void think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &players, const BlockType &block,
                NpcFrame &frame, const worldgen::WorldMap &map);
     // Companion (client 0x03ACE0, held alpha-created-companion-navigation.md): follow the actor

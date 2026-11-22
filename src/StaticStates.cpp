@@ -82,18 +82,17 @@ void StaticStates::routeRecords(const worldgen::WorldMap &map, int32_t cellX, in
         return;
     const auto &source = held->second;
     auto &index = spatial[key];
-    // Compare ownership without locking a weak pointer on every bucket query.
-    if (index.address != source.get() || index.source.owner_before(source) || source.owner_before(index.source)) {
+    const uintptr_t base = map.recordBase(key);
+    if (index.recordBase != base) {
         index.buckets.build(*source);
-        index.source = source;
-        index.address = source.get();
+        index.recordBase = base;
     }
     const auto *states = zone(key.first, key.second);
     for (const uint32_t ordinal : index.buckets.at(cellX % 32, cellY % 32)) {
         const auto &object = source->statics[ordinal];
         const uint8_t state = states && ordinal < states->size() ? (*states)[ordinal].state : object.state;
         const creatures::route::Record record{
-            reinterpret_cast<uintptr_t>(&object), object.kind, {object.x, object.y, object.z}, object.rotation,
+            base + ordinal, object.kind, {object.x, object.y, object.z}, object.rotation,
             {object.scale[0], object.scale[1], object.scale[2]}, state, {key.first, key.second, int32_t(ordinal)}};
         if (!visit(record))
             break;
@@ -599,8 +598,8 @@ void StaticStates::activateRouteRecord(const worldgen::WorldMap &map, const crea
     const auto found = zones.find({reference[0], reference[1]});
     if (!source || reference[2] < 0 || size_t(reference[2]) >= source->statics.size() || found == zones.end() ||
         size_t(reference[2]) >= found->second.size() ||
-        uintptr_t(&source->statics[size_t(reference[2])]) != record.identity)
-        return; // engine ownership guard for a replaced/unloaded snapshot
+        map.recordBase({reference[0], reference[1]}) + size_t(reference[2]) != record.identity)
+        return;
     StaticState &state = found->second[size_t(reference[2])];
     state.state = 0;
     state.timerMs = 0;

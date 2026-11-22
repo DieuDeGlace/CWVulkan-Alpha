@@ -148,6 +148,16 @@ void residentLight() {
     BlockLightUpdate(resident, {{255, 32}, {257, 33}}).store(resident, copies);
     expect(resident.zone(0, 0) == litLeft && resident.zone(1, 0) == litRight, 1,
            "a later rectangle uses the existing writable copies during the same batch");
+    const WorldMap earlierFrame = resident;
+    const Block previous = earlierFrame.read(255, 32, 2);
+    auto relit = std::make_shared<Zone>(*litLeft);
+    relit->column(254, 32).blocks[1].typeByte = GLOWING;
+    BlockLightUpdate(*relit, {{255, 32}, {256, 33}}).store(resident, copies);
+    expect(resident.light(255, 32, 2), 216, "a later frame publishes the new lighting");
+    expect(previous.r != 216 && storedAs(earlierFrame.read(255, 32, 2), previous), 1,
+           "a snapshot of a previously writable area keeps every stored light lane");
+    expect(resident.zone(0, 0) != litLeft && resident.zone(1, 0) == litRight, 1,
+           "a shared area is copied only when a new rectangle publishes to it");
     expect(resident.placedObjects({1, 0}) && resident.placedObjects({1, 0})->size() == 1 &&
                !resident.needsZoneContents({0, 0}),
            1, "resident light publication preserves the area's network and placement records");

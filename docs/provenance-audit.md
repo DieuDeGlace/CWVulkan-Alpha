@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 82 and the rulings. The 307 tracked contracts
-comprise 271 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 83 and the rulings. The 308 tracked contracts
+comprise 272 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -162,6 +162,7 @@ Batch 79 records the original client's menu startup prerequisites.
 Batch 80 records terrain vertex accounting and fog mesh-slot population.
 Batch 81 records the terrain group bounds and renderer transfer window.
 Batch 82 records local front-end terrain readiness, the wait presentation and the creation cursor.
+Batch 83 records resident spawn and indexed object lifetimes across terrain updates.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -365,6 +366,7 @@ Batch 82 records local front-end terrain readiness, the wait presentation and th
 | `alpha-relationship-kind-89-admission.md` | A | 55 | 0 |
 | `alpha-remote-creature-interpolation.md` | A | 223 | 0 |
 | `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
+| `alpha-resident-zone-light-lifetimes.md` | A | 32 | 0 |
 | `alpha-rendering.md` | A | 1108 | 3 |
 | `alpha-riding-actor-step.md` | A | 203 | 1 |
 | `alpha-rock-color-precision.md` | A | 495 | 5 |

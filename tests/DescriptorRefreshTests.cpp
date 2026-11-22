@@ -1,6 +1,7 @@
 #include "creatures/DescriptorRefresh.h"
 #include "creatures/Npcs.h"
 #include "Missions.h"
+#include "worldgen/BlockLight.h"
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -192,6 +193,52 @@ void activationAdmission() {
     check(activation::inRange(actor, descriptor, 1), "raw position subtraction wraps before conversion and scaling");
     check(!activation::inRange(actor, actor, 0), "zero-radius equality is strictly rejected");
 }
+void residentSpawnState() {
+    const auto makeZone = [](bool schedule) {
+        auto zone = std::make_shared<worldgen::Zone>(1, 0);
+        auto &s = zone->spawns.emplace_back();
+        s.x = 276 * 65536ll; s.y = 20 * 65536ll; s.z = 12 * 65536ll;
+        s.type = 117; s.controller = 1; s.radius = 16; s.finished = true;
+        if (schedule)
+            s.schedule.push_back({s.x + 200 * 65536ll, s.y, s.z, 1000});
+        return zone;
+    };
+    worldgen::WorldMap map;
+    map.add(makeZone(true));
+    Npcs world;
+    Combatant player; player.id = 1; player.health = maxHealth(player);
+    Body body; body.place({276.5, 20.5, 12});
+    const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z < 10 ? 1 : 0); };
+    const auto step = [&](const worldgen::WorldMap &current, int32_t clock) {
+        world.step(16, current, {{player, body, 0, 0, false}}, clock, 0, floor);
+    };
+    step(map, 1000);
+    check(world.all().empty(), "initial schedule moves the active descriptor outside admission range");
+    map.replaceTerrain(std::make_shared<worldgen::Zone>(*map.zone(1, 0)));
+    step(map, 0);
+    check(world.all().empty(), "terrain replacement retains the scheduled position below its clock threshold");
+    map.add(makeZone(false));
+    step(map, 0);
+    check(world.all().size() == 1, "direct resident replacement releases the previous schedule position");
+    world.npcs().clear();
+
+    Combatant target; target.backing = {1, 0, 0};
+    // Before the new area's first simulation turn, fatal outcome resolution can
+    // write its descriptor. The first timer/activation pass must see that write.
+    map.add(makeZone(false));
+    check(world.markFatalBacking(target, map, 0), "fatal write resolves a newly admitted descriptor before its first step");
+    step(map, 0);
+    check(world.all().empty(), "same-day preactivation fatal countdown survives the first binding pass");
+    worldgen::WorldMap other;
+    other.add(makeZone(false));
+    step(other, 0);
+    check(world.all().size() == 1, "an independent resident at the same key inherits no fatal countdown");
+    world.npcs().clear();
+    Npcs fresh;
+    check(fresh.markFatalBacking(target, map, 0), "a never-stepped wrapper records a fatal outcome");
+    fresh.step(16, other, {{player, body, 0, 0, false}}, 0, 0, floor);
+    check(fresh.all().size() == 1, "a fatal outcome before first simulation stays bound to its original world");
+}
 void production() {
     for (const int32_t role : {1, 6, 0x106}) {
         auto zone = std::make_shared<worldgen::Zone>(1, 0);
@@ -246,6 +293,11 @@ void production() {
               "reactivation retains descriptor mutations without altering the shared generated snapshot");
         world.npcs().clear();
         mission.kind = 0;
+        const auto frozen = map.neighbourhood(1, 0);
+        worldgen::BlockLightUpdate::AreaCopies copies;
+        worldgen::BlockLightUpdate(map, {{276, 150}, {277, 151}}).store(map, copies);
+        check(map.zone(1, 0) != frozen.zone(1, 0) && map.recordBase({1, 0}) == frozen.recordBase({1, 0}),
+              "relighting publishes new terrain while retaining the resident descriptor identity");
         step();
         check(world.all().size() == 1 && world.all()[0].fighter.specials == repeated && random.count() == 16,
               "ineligible refresh still activates from retained descriptor state without clearing flags or reseeding");
@@ -255,11 +307,24 @@ void production() {
         step();
         check(world.all().size() == 1 && world.all()[0].fighter.specials == actions && random.count() == 24,
               "replacing a generated snapshot drops its old overlay before the next eligible refresh");
+        check(world.markFatalBacking(world.all()[0].fighter, map, 0), "the resident descriptor accepts a same-day respawn delay");
+        world.npcs().clear();
+        step();
+        check(world.all().empty(), "the same-day respawn delay blocks reactivation in the old residency");
+        map.remove(1, 0);
+        world.forgetZone(1, 0);
+        map.add(std::make_shared<worldgen::Zone>(*zone));
+        mission.kind = 0;
+        world.onActivate = {};
+        step();
+        check(world.all().size() == 1 && world.all()[0].fighter.specials == source.specials &&
+                  world.all()[0].looks.flags == source.appearanceFlags && random.count() == 24,
+              "same-coordinate departure and reload starts from the fresh generated descriptor without another refresh draw");
     }
 }
 } // namespace
 int main() {
-    admissionAndFlags(); equipmentAndInventory(); contextLookup(); activationAdmission(); production();
+    admissionAndFlags(); equipmentAndInventory(); contextLookup(); activationAdmission(); residentSpawnState(); production();
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
 }
