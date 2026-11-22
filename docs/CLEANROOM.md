@@ -4640,3 +4640,12 @@ AVZD files preserve the observed samples. They lack the writer phase, camera
 sequence and mesh scheduling information required to reproduce a particular
 frame. The project changed measurement labels and the committed water byte
 comparison. The native locking and recording routes stayed as previously used.
+
+## Streaming radius at world entry (2026-11-21)
+
+The CLI loading radius and the conversion from the options menu's
+render distance to the engine streaming radius are engine controls.
+A private instrumented run found that startup applied two different
+values, depending on whether terrain had already been loaded. The same
+source recordings and native mesh-budget contracts apply. This adjustment
+changes which zones the engine requests when a radius is explicitly set.

@@ -109,6 +109,7 @@ struct Options {
     float yaw = 35, pitch = 25, hour = 12;
     bool hourOverride = false; // explicit diagnostic time in an unsaved world
     WorldViewOptions worldOptions;
+    bool zoneRadiusSpecified = false;
     float travel = 0; // --travel: blocks to fly east before a capture
     std::string connect, name;
     std::string saveWorld; // --save-world: a single-player world kept in Save/
@@ -198,8 +199,10 @@ Options parse(int argc, char **argv) {
             o.worldOptions.seed = (uint32_t)std::strtoul(next().c_str(), nullptr, 10);
             seedGiven = true;
         }
-        else if (!std::strcmp(argv[i], "--radius"))
+        else if (!std::strcmp(argv[i], "--radius")) {
             o.worldOptions.radius = std::clamp(std::atoi(next().c_str()), 0, 8);
+            o.zoneRadiusSpecified = true;
+        }
         else if (!std::strcmp(argv[i], "--at")) {
             o.worldOptions.x = std::atoi(next().c_str());
             o.worldOptions.y = std::atoi(next().c_str());
@@ -451,6 +454,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         game[GameOptions::RESOLUTION_X] = desktop->width, game[GameOptions::RESOLUTION_Y] = desktop->height;
     game.load(optionsFile);
     worldOptions.renderDistance = game[GameOptions::RENDER_DISTANCE];
+    const auto configuredZoneRadius = [&] {
+        return std::max(1, int32_t(std::ceil(float(game[GameOptions::RENDER_DISTANCE]) * 0.01f * 384.f / 256.f)));
+    };
+    if (!options.zoneRadiusSpecified)
+        worldOptions.radius = configuredZoneRadius();
     const bool localEntry = options.start || (options.walk && options.connect.empty() && !options.saveWorld.empty());
     worldOptions.preloadTerrain = !localEntry || !options.capture.empty() || options.travel != 0 ||
                                   options.crater || options.quest;
@@ -1279,8 +1287,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             look.smoothness = game[GameOptions::CAMERA_SMOOTHNESS];
             look.invertY = game[GameOptions::INVERT_Y] != 0;
         }
-        // Render distance: a radius of (distance % of 384) blocks, in whole zones (§6.4).
-        view.setRadius((int32_t)std::ceil((float)game[GameOptions::RENDER_DISTANCE] * 0.01f * 384.f / 256.f));
+        if (!first && !options.zoneRadiusSpecified)
+            view.setRadius(configuredZoneRadius());
         view.setMeshRenderDistance(game[GameOptions::RENDER_DISTANCE]);
         // Fullscreen at the chosen size, or windowed as the window is (the resolution only
         // counts in fullscreen). Anti-aliasing stays the engine's own (SMAA + TAA).

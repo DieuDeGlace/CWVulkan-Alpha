@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Honor the selected terrain streaming radius at construction and
+  during travel. The explicit diagnostic radius overrides the saved
+  options for zone loading. The saved vertex allowance still applies.
+
 - [x] Compare the committed first light byte for both air and water.
   Report recorded scratch separately and label generation-only and
   static-neighbour comparisons. Count sampled zones separately from their

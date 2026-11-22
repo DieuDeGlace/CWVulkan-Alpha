@@ -3313,3 +3313,38 @@ All 60 serial tests passed in 107.98 seconds. The production client
 executable matched the SHA-256 of the client used for the preceding
 controller, five client flow and Vulkan travel checks. The runtime
 package passed all 36 digests across 37 files.
+
+## Streaming radius at startup and after travel (2026-11-21)
+
+In a measured 1,024-block flight, the previous client initially loaded
+25 zones for an explicit radius of two. It later applied the saved
+render distance of 50 and finished with only 19 resident zones, fewer
+than the 25 needed for the requested five-by-five window. Its 1,528
+successful presentations therefore measured two different loading radii.
+
+With the correction, the production client started with nine zones
+and 484 chunks at the default saved setting. With an explicit radius
+of zero and a saved render distance of 100, it started with one zone
+and 36 chunks. Both runs produced a Vulkan frame. All 60 serial tests
+passed in 203.98 seconds. The three focused suites passed in 6.24 seconds.
+
+The corrected client completed the same flight with 2,683 successful
+presentations. All 25 requested zones surrounded the destination, with
+five additional resident zones retained along the route. It started
+with 1,213 chunks and finished with 1,357. Across 299 settled intervals
+the median frame interval was 24.90 ms and the 95th percentile was
+33.35 ms. During flight the median was 32.75 ms, the 95th percentile
+was 72.78 ms and the longest interval was 1.284 seconds. Concurrent
+builds ran during this measurement. Peak process working set was
+1,184.7 MiB and the highest sampled private allocation was 2,038.8 MiB.
+Longer play, world transitions and attribution of that stall remain open.
+
+Both travel captures showed terrain cut away in the foreground. The
+diagnostic flies at a fixed height. At the destination the eye was at
+214.15 and the generated column began at 225 with its highest solid
+at 226. This puts the eye inside implicit solid terrain. The flight
+establishes residency and timing at that camera position.
+An above-ground run at the same horizontal position, with the eye at
+240, showed a continuous valley floor and surrounding wooded slopes.
+The client passed the production controller diagnostic and all five
+client flows. All 36 package digests across 37 files verified.
