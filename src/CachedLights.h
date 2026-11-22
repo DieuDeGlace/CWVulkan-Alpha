@@ -2,6 +2,7 @@
 // Bounded current/pending sprite-light state from the held lifecycle contract.
 // Engine job and geometry readiness adapters do not certify native scheduling.
 #include "TerrainLights.h"
+#include "SoundRules.h"
 #include <map>
 
 namespace worldgen { struct Sprite; struct PositionedDecoration; }
@@ -25,8 +26,10 @@ inline glm::vec4 decorationMaterial(glm::vec4 tint, float light, bool emits) {
     return tint;
 }
 
-void appendDecorationLights(std::vector<Candidate> &out, std::span<const worldgen::PositionedDecoration> records,
-                            const ViewAdmission &view, int32_t clockMs, float daylight);
+// Visit the physical slot's active records, including on failed draw admission with a retained key.
+void visitDecorations(std::vector<Candidate> &lights, std::span<const worldgen::PositionedDecoration> records,
+                      const ViewAdmission &view, float daylight, std::optional<float> slotSquared,
+                      const sound::AmbienceFrame &frame);
 
 class CachedSources {
   public:

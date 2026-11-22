@@ -33,15 +33,20 @@ std::vector<CachedSource> chunkSources(std::span<const worldgen::Sprite> sprites
     return sources;
 }
 
-void appendDecorationLights(std::vector<Candidate> &out, std::span<const worldgen::PositionedDecoration> records,
-                            const ViewAdmission &view, int32_t clockMs, float daylight) {
+void visitDecorations(std::vector<Candidate> &lights, std::span<const worldgen::PositionedDecoration> records,
+                      const ViewAdmission &view, float daylight, std::optional<float> slotSquared,
+                      const sound::AmbienceFrame &frame) {
+    const bool ambience = slotSquared && *slotSquared < 4096.f && frame.draw && frame.dispatch;
     int32_t phase = 0;
     const float dayFactor = 1.f - daylight * .5f;
     for (const auto &record : records) {
         const auto &s = record.sprite;
         if (s.flags & 1)
-            appendSource(out, {{s.x, s.y, s.z}, {s.tint[0], s.tint[1], s.tint[2]}, s.kind, uint32_t(s.flags)},
-                         view, clockMs, dayFactor, phase);
+            appendSource(lights, {{s.x, s.y, s.z}, {s.tint[0], s.tint[1], s.tint[2]}, s.kind, uint32_t(s.flags)},
+                         view, frame.worldClock, dayFactor, phase);
+        if (ambience)
+            if (const auto request = frame.request({s.kind, {s.x, s.y, s.z}}))
+                frame.dispatch(*request);
     }
 }
 

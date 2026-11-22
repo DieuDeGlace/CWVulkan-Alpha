@@ -133,7 +133,7 @@ static void positionedDecorationLights() {
     emitters[1].sprite.kind = 13;
     emitters[1].light = 0;
     std::vector<Candidate> sources;
-    appendDecorationLights(sources, emitters, ViewAdmission({}, {}, {}, 100), 0, 1.f);
+    visitDecorations(sources, emitters, ViewAdmission({}, {}, {}, 100), 1.f, std::nullopt, {});
     check(sources.size() == 2 && sources[0].colour == glm::vec3(.2f, .4f, .8f) &&
               sources[1].colour == glm::vec3(.5f) && sources[0].radius != sources[1].radius,
           "only flagged active records emit in encounter order; midday halves the lantern despite its zero sample");
@@ -399,6 +399,54 @@ static void terrainSlotOrder() {
               return *a->lastSquared < *b->lastSquared;
           }), "33-slot partition retains all pointers and reproduces the established mixed tie");
 }
+
+static void slotAmbience() {
+    worldgen::DecorationList records;
+    const auto add = [&](int kind, int height, int flags) {
+        worldgen::PositionedDecoration record{};
+        record.sprite.kind = kind;
+        record.sprite.z = int64_t(height) * 65536;
+        record.sprite.flags = flags;
+        records.push_back(record);
+    };
+    add(62, 101, 1);
+    add(60, 0, 0);
+    add(4, 100, 0);
+    add(63, 0, 1);
+    add(61, 7, 1);
+    const ViewAdmission view({}, {}, {}, 200);
+    std::vector<Candidate> lights;
+    std::vector<int32_t> requested, audible;
+    std::vector<float> gains;
+    const std::array draws{10, 16383, 70, 0, 1, 20, 32767};
+    size_t next = 0;
+    const sound::AmbienceFrame frame{54000000, 666, 15000,
+        [&] {
+            // First light precedes the first draw. The rejected kind-63 gate still sees its own light.
+            if (next == 0 || next == 4)
+                check(lights.size() == (next == 0 ? 1u : 2u), "current light precedes its record's chance");
+            return next < draws.size() ? draws[next++] : -1;
+        },
+        [&](const sound::Request &call) {
+            requested.push_back(call.id);
+            if (const auto a = sound::attenuation(call.position, {}, call.volume)) {
+                audible.push_back(call.id);
+                gains.push_back(*a);
+            }
+        }};
+    for (const auto key : {std::optional<float>{}, std::optional<float>(4096.f),
+                           std::optional<float>(std::numeric_limits<float>::quiet_NaN())}) {
+        lights.clear();
+        visitDecorations(lights, records, view, 1, key, frame);
+        check(lights.size() == 3 && next == 0, "no key, an equal key and NaN skip all calls while lights still run");
+    }
+    lights.clear();
+    visitDecorations(lights, records, view, 1, std::nextafter(4096.f, 0.f), frame);
+    check(next == 7 && requested == std::vector<int32_t>{95, 97, 94} &&
+          audible == std::vector<int32_t>{97, 94} && gains == std::vector<float>{0, (1.f - 7.f / 100) * .1f},
+          "a 15-second step creates one chance per eligible record; inaudible and failed chances advance the stream");
+}
+
 
 static void indexedModelTable() {
     uint64_t hash = UINT64_C(14695981039346656037);
@@ -806,6 +854,7 @@ int main() {
     fogMeshElevations();
     editedSongPositions();
     terrainSlotOrder();
+    slotAmbience();
     indexedModelTable();
     producedSlotBounds();
     decorationAdmission();

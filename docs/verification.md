@@ -3592,3 +3592,23 @@ blocks. The previous hinge failed all eight cases, with a base error of
 0.91 blocks and the closed lid at the base's floor. Vulkan frames show the
 lid flush when closed and turning on its back edge. These are engine
 observations, not matching original-client frames.
+
+## Terrain-slot ambience (2026-11-22)
+
+Fixtures cover the strict 4096 key gate with equality and NaN, light before
+sound for every record, one opportunity across several boundaries, interval
+endpoints, signed clock wrap, the Y offset before truncation, inaudible and
+zero-gain requests, and the owl's pitch-then-variant draws. Admitting an
+equal key, deciding sound before light, or drawing the owl variant first
+each failed its control.
+
+A production world view at two seed-123 locations ran 96 frames with
+day, night and afternoon clocks, full-second and 16 ms increments and a
+turning camera. An independent model of the contract replayed every
+recorded random draw through the slot window in X-then-Y order. All
+5,593 draws and 83 requests matched, including 4 birds, 11 owls and 68
+crickets. 56 requests came from slots that failed admission that frame
+and kept an earlier key. Bird 1 and 2, both crickets and both owls decode
+from the owned store and start a voice; zero-gain requests start none. The
+owned store has no bird3.wav, so its requests resolve nothing. Original
+client audio has not been compared.

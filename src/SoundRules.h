@@ -1,21 +1,10 @@
 #pragma once
-// The rules that turn a sound request into what is heard, and the ambient calls, from the held
-// docs/specs/alpha-audio.md (re-certified 2026-11-16) with the held rulings
-// alpha-rulings-audio-ui-sounds.md and alpha-rulings-zone-fields.md (ruling 1). Pure functions
-// and a small slot table; playback itself is Audio's.
+// Positional playback and pre-sort terrain ambience from the held audio and terrain-slot contracts.
 #include <glm/glm.hpp>
 #include <array>
 #include <cstdint>
 #include <functional>
-#include <limits>
-#include <map>
 #include <optional>
-#include <utility>
-#include <vector>
-
-namespace worldgen {
-struct Zone;
-}
 
 namespace sound {
 
@@ -62,75 +51,14 @@ struct AmbientRecord {
     Fixed position{};
 };
 
-// §3: one record's decision order, tests and draws (chance, then pitch, then the owl's file;
-// nothing for a record that does not tick). `timeOfDay` in ms of the day; appends at most one
-// request.
-void ambientRecord(const AmbientRecord &record, double timeOfDay, int32_t clock, int32_t dt,
-                   const std::function<int32_t()> &draw, std::vector<Request> &out);
+// A world step updates worldClock independently of dayClock. The renderer compares this
+// clock against one full frame increment ahead, once per published decoration.
+struct AmbienceFrame {
+    int32_t dayClock = 0, worldClock = 0, elapsed = 0;
+    std::function<int32_t()> draw;
+    std::function<void(const Request &)> dispatch;
 
-// Zone-fields ruling 1 §1.3: |chunk midpoint - L|² in blocks² (fixed-point dot product with
-// per-axis truncating /65536, the sum converted to float and scaled by 2^-16). No square root.
-float chunkSquaredDistance(const Fixed &midpoint, const Fixed &listener);
-// Ruling 1 §1.4: the record gate, strictly below 4096 blocks² (64 blocks); NaN fails.
-inline bool withinAmbience(float squared) { return squared < 4096.f; }
-
-// A built chunk as the ambience slot keeps it: its indices (32-block units), the midpoint of
-// its bounds and its bounding radius 1.5·|midpoint - bound| (ruling 1 §1.2).
-struct ChunkShape {
-    glm::ivec2 index{-1};
-    Fixed midpoint{};
-    float radius = 0;
-};
-// Ruling 1 §1.2: the shape of a chunk with the two bound corners `low` and `high` (fixed point):
-// midpoint (low + high) / 2 truncated toward zero, radius 1.5 times its float distance to `high`.
-ChunkShape chunkShape(glm::ivec2 index, const Fixed &low, const Fixed &high);
-
-// Ruling 1 §1.3-§1.4: the render routine's walk over the chunk slot grid. Each slot keeps the
-// squared camera distance of its last refresh, which can be stale, and the chunk last published
-// into it.
-class AmbienceGrid {
-  public:
-    struct Source {
-        // Whether the engine holds built geometry for chunk (x, y): the slot's "populated" test.
-        std::function<bool(int32_t x, int32_t y)> built;
-        // The shape of the built chunk (x, y), asked when a slot takes it in.
-        std::function<ChunkShape(int32_t x, int32_t y)> shape;
-        // The view test of a slot's chunk.
-        std::function<bool(const ChunkShape &)> visible;
-        // Walks the records of chunk `index` (a slot whose distance passes the gate).
-        std::function<void(glm::ivec2 index)> records;
-    };
-    // One frame: x outer from `origin.x`, y inner from `origin.y`, each over `width` positions;
-    // positions outside 0 <= x, y < 0x80000 are skipped; slot (y rem w)·w + (x rem w).
-    void walk(glm::ivec2 origin, int32_t width, const Fixed &listener, const Source &source);
-
-  private:
-    struct Slot {
-        std::optional<ChunkShape> chunk;
-        // Engine adapter: the native value before a slot's first refresh is indeterminate; NaN
-        // (which the gate rejects) stands in for it.
-        float squared = std::numeric_limits<float>::quiet_NaN();
-    };
-    std::vector<Slot> slots;
-    int32_t width = 0;
-};
-
-// The sounding records of held zones by chunk, in zone-list order: the tree pass's kind-61
-// records (the tree grid runs before the plant pass), then plants of kinds 0-4 at their column
-// centres. Other kinds never sound and are left out. Rebuilt when a zone's lists change.
-class ZoneAmbience {
-  public:
-    void records(const worldgen::Zone &zone, glm::ivec2 chunk, std::vector<AmbientRecord> &out);
-    // Lets go of zones no longer held (`held` answers for a zone's coordinates).
-    void retain(const std::function<bool(int32_t zx, int32_t zy)> &held);
-
-  private:
-    struct Entry {
-        const worldgen::Zone *zone = nullptr;
-        size_t posts = 0, plants = 0;
-        std::array<std::vector<AmbientRecord>, 64> byChunk; // 8 x 8 chunks, index i + 8 j
-    };
-    std::map<std::pair<int32_t, int32_t>, Entry> zones;
+    std::optional<Request> request(const AmbientRecord &record) const;
 };
 
 } // namespace sound

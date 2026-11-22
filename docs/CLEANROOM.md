@@ -4761,3 +4761,13 @@ the original executable and content store.
 The implementation places both parts in original grid-corner coordinates.
 Per-band native draw identity, long equal-key ties, timed slot effects and
 original framebuffer comparison remain open.
+
+## Terrain-slot ambience (2026-11-22)
+
+The clean team read the complete 138-line held source-author contract
+`alpha-terrain-slot-presort-ambient-audio.md`, SHA-256 `754acf4e39d33c69421f5ff1790988b5357acf698484cee421c4fa986f8677e3`. It governs where ambient calls are decided,
+the retained slot key, the table, the draw order and the hearing cutoff.
+It replaces the earlier engine adapter built on `alpha-rulings-zone-fields.md`
+ruling 1, which remains a held record for the facts it states. The clock
+producers, the frame increment's source and the native random stream's
+history outside this branch remain open.

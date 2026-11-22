@@ -1264,7 +1264,7 @@ int main() {
         same(sound::ambienceTicks(-5 * 65536, 0, 1000, 667, 1), 0, "C remainders: -5 + 333 + 667 does not cross");
         same(sound::ambienceTicks(-5 * 65536, 0, 1000, 671, 1), 1, "... -5 + 333 + 671 does");
         const AmbientRecord crown{61, {0, 0, 7 * 65536}};
-        const double ten = 36000000, night = 3600000, afternoon = 46800000;
+        const int32_t ten = 36000000, night = 3600000, afternoon = 46800000;
         std::vector<int32_t> given;
         size_t next = 0;
         int draws = 0;
@@ -1273,10 +1273,12 @@ int main() {
             return given[next++];
         };
         std::vector<sound::Request> out;
-        const auto run = [&](const AmbientRecord &r, double t, int32_t clock, std::vector<int32_t> values) {
+        const auto run = [&](const AmbientRecord &r, int32_t t, int32_t clock, std::vector<int32_t> values) {
             given = std::move(values), next = 0, draws = 0;
             out.clear();
-            sound::ambientRecord(r, t, clock, 1, draw, out);
+            const sound::AmbienceFrame frame{t, clock, 1, draw};
+            if (const auto request = frame.request(r))
+                out.push_back(*request);
         };
         run(crown, ten, 666, {20, 16383});
         same(out.size() == 1 && out[0].id == 94 && out[0].volume == 0.1f && draws == 2, 1, "a bird: chance, pitch");
@@ -1300,41 +1302,19 @@ int main() {
         run({1, {0, 0, 0}}, afternoon, 4666, {70, 0});
         same(out.size() == 1 && out[0].id == 98, 1, "a flower chirp");
 
-        // Ruling 1 §1.3-§1.4: the squared distance and the strict 4096 gate (64 blocks).
-        const sound::Fixed L{0, 0, 0};
-        same(sound::chunkSquaredDistance({64ll * 65536, 0, 0}, L), 4096, "squared, in blocks²");
-        same(sound::withinAmbience(sound::chunkSquaredDistance({64ll * 65536, 0, 0}, L)), 0, "64 blocks is out");
-        same(sound::withinAmbience(sound::chunkSquaredDistance({60ll * 65536, 0, 16ll * 65536}, L)), 1, "60, 16 is in");
-        same(sound::withinAmbience(sound::chunkSquaredDistance({63ll * 65536, 0, 16ll * 65536}, L)), 0,
-             "63, 16 is out: the gate is three-dimensional");
-        same(sound::withinAmbience(std::numeric_limits<float>::quiet_NaN()), 0, "NaN skips");
-        const sound::ChunkShape shape = sound::chunkShape({1, 2}, {32ll * 65536, 64ll * 65536, 10ll * 65536},
-                                                          {64ll * 65536, 96ll * 65536, 30ll * 65536});
-        same(shape.midpoint[0] == 48ll * 65536 && shape.midpoint[1] == 80ll * 65536 && shape.midpoint[2] == 20ll * 65536, 1,
-             "the bounds midpoint");
-        same(shape.radius, 1.5 * std::sqrt(16. * 16 + 16 * 16 + 10 * 10), "bounding radius", 1e-4);
-
-        // The slot walk: refreshed only when visible, stale otherwise, walked for every in-range slot.
-        sound::AmbienceGrid grid;
-        bool visible = true;
-        int walked = 0;
-        sound::AmbienceGrid::Source source;
-        source.built = [](int32_t x, int32_t y) { return x == 0 && y == 0; };
-        source.shape = [](int32_t x, int32_t y) {
-            return sound::chunkShape({x, y}, {0, 0, 0}, {32ll * 65536, 32ll * 65536, 0});
-        };
-        source.visible = [&](const sound::ChunkShape &) { return visible; };
-        source.records = [&](glm::ivec2 c) { walked += c == glm::ivec2(0) ? 1 : 100; };
-        grid.walk({-1, -1}, 2, {16ll * 65536, 16ll * 65536, 0}, source);
-        same(walked, 1, "a near, visible built chunk is walked; out-of-range and empty slots are not");
-        visible = false;
-        walked = 0;
-        grid.walk({-1, -1}, 2, {5000ll * 65536, 0, 0}, source);
-        same(walked, 1, "out of view the slot keeps its stale distance");
-        visible = true;
-        walked = 0;
-        grid.walk({-1, -1}, 2, {5000ll * 65536, 0, 0}, source);
-        same(walked, 0, "back in view it is refreshed and gated out");
+        run(crown, 21600000, 666, {0, 32767, 2});
+        same(out.size() == 1 && out[0].id == 99 && draws == 3, 1, "06:00 still selects the owl");
+        run(crown, 75600000, 666, {0, 0, 1});
+        same(out.size() == 1 && out[0].id == 100 && draws == 3, 1, "21:00 already selects the owl");
+        run(grass, 43200000, 4666, {});
+        same(out.empty() && !draws, 1, "no crickets at exact noon");
+        run(grass, 86400000, 4666, {});
+        same(out.empty() && !draws, 1, "no crickets at the end of the day");
+        run({60, crown.position}, afternoon, 666, {});
+        same(out.empty() && !draws, 1, "the later leaf opportunity spends no ambience draw");
+        same(sound::ambienceTicks(0, 0, 1000, INT32_MAX - 333, 1), 1, "signed clock addition wraps");
+        same(sound::ambienceTicks(0, -334ll * 65536 + 1, 1000, -1000, 1), 1,
+             "the Y offset precedes truncation toward zero");
     });
 
     // Quests (docs/design/quests.md): the board is the same for everyone; a battle's allies

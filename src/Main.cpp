@@ -774,9 +774,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     creatures::Particles particles;
     std::vector<creatures::Burst> bursts;
     double leafClockMs = -1; // the world clock the falling leaves last looked at (§7.1)
-    // Audio §3, zone-fields ruling 1: the ambience's chunk slots and the zones' sounding records.
-    sound::AmbienceGrid ambienceGrid;
-    sound::ZoneAmbience zoneAmbience;
     mods.hooks().getQuests = [&] { // mod SDK v8
         std::vector<AvQuest> out;
         for (const quests::Quest &q : questBook.quests)
@@ -793,10 +790,13 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     // Audio §1.2: the play routine, a sound at a fixed position heard from L: nothing past
     // 100 blocks, fading linearly to silence there; the pan is computed natively and discarded,
     // so none is applied (ruling audio-ui-sounds 1).
-    const auto playFixed = [&](int32_t id, const sound::Fixed &at, float volume, float pitch) {
-        if (const auto a = sound::attenuation(at, listener(), volume))
+    const auto playRelative = [&](int32_t id, const sound::Fixed &at, const sound::Fixed &reference, float volume, float pitch) {
+        if (const auto a = sound::attenuation(at, reference, volume))
             if (const char *key = creatures::soundKey(id))
                 audio.play(key, *a, pitch);
+    };
+    const auto playFixed = [&](int32_t id, const sound::Fixed &at, float volume, float pitch) {
+        playRelative(id, at, listener(), volume, pitch);
     };
     // §1.3: a sound record, its position carried as float blocks. Right after a record with id
     // 81 or 82 the camera shakes, at any distance.
@@ -1666,7 +1666,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     uint64_t simulationWorldCalls = 0, simulationInputFrames = 0;
     int32_t simulationMaxPiece = 0;
     uint32_t previousFrameTick = 0;
-    uint32_t lightClockMs = 0;
+    uint32_t worldElapsedMs = 0;
     std::vector<DrawItem> items;
     std::vector<EffectVertex> effects; // weapon trails (trails §1.3)
     glm::dvec2 mapCursor(0); // the cursor last frame, for the map's drags
@@ -1880,7 +1880,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         return actor.controller == 0 && actor.action == 84 && actor.health > 0;
     };
     const auto advanceWorldClock = [&](int32_t elapsed, bool accelerated) {
-        lightClockMs += uint32_t(elapsed);
+        worldElapsedMs += uint32_t(elapsed);
         const bool named = client.connected() || (session && !session->name().empty());
         npcs.setNamedWorld(named || options.pet); // --pet retains its explicit diagnostic world adapter
         // Explicit unsaved capture/viewer time remains a diagnostic override.
@@ -1894,7 +1894,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         scene.timeOfDayMs = clock.timeOfDayMs;
         if (session)
             session->clock = clock;
-        if (session && named && simulation::clockWriteDue(lightClockMs, elapsed))
+        if (session && named && simulation::clockWriteDue(worldElapsedMs, elapsed))
             session->saveClock();
     };
     const std::function<creatures::Combatant *(uint64_t)> frameActor = [&](uint64_t key) -> creatures::Combatant * {
@@ -3078,7 +3078,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         view.playerColumn = player ? std::optional<glm::ivec2>(glm::ivec2(int32_t(player->body().position[0] / 65536),
                                                                           int32_t(player->body().position[1] / 65536)))
                                    : std::nullopt;
-        items = view.items((now - start) * 1000, scene, &statics, terrainEye);
+        const auto reference = terrainEye.value_or(sound::fixedOf(view.worldPosition()));
+        const sound::AmbienceFrame ambience{
+            std::bit_cast<int32_t>(uint32_t(int64_t(scene.timeOfDayMs))),
+            std::bit_cast<int32_t>(worldElapsedMs), frameElapsedMs, worldDraw,
+            [&](const sound::Request &call) { playRelative(call.id, call.position, reference, call.volume, call.pitch); }};
+        items = view.items((now - start) * 1000, scene, &statics, reference, ambience);
         effects.clear();
         // Screens §5.2.2: with the map open, the zoom eases to its target, a middle drag pans
         // (turned with the camera) and a left drag turns and tilts the camera; closed, the pan
@@ -3600,7 +3605,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const auto &position = player->body().position;
             lightController = terrain_lights::FixedPosition{position[0], position[1], position[2]};
         }
-        view.finishLighting(scene, worldItems, std::bit_cast<int32_t>(lightClockMs), lightController);
+        view.finishLighting(scene, worldItems, lightController);
         const Camera frameCamera = view.camera(renderer.size());
         FrameConstants frame = makeFrame(frameCamera, scene, shadowSettings, moonSettings);
         // Screens §5.1: the corner map while playing, 3 x 3 zones round the player's at the
@@ -4796,52 +4801,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             // lets one leaf in sixteen fall.
             const bool second = leafClockMs >= 0 && std::floor(leafClockMs / 1000) != std::floor(scene.timeOfDayMs / 1000);
             leafClockMs = scene.timeOfDayMs;
-            // Audio §3 with zone-fields ruling 1: birds sing from the crowns by day and owls call
-            // at night; crickets chirp in the flowers and grass in the afternoon and evening. The
-            // walk visits the chunk slot grid; a slot's records are tested only while its (possibly
-            // stale) squared camera distance is below 4096 blocks². Engine adapters: the grid is
-            // the fog window round the camera's chunk, the world clock is the time of day as an
-            // integer, the view test is the shared admission with reach fog + 22.4 + 32 on the
-            // chunk's bounding sphere, and a chunk's bounds span its columns' stored blocks.
-            {
-                const auto sight = view.viewAdmission(scene.fogDistance + 22.4f + 32.f);
-                const int32_t clock = std::bit_cast<int32_t>(uint32_t(scene.timeOfDayMs));
-                std::vector<sound::AmbientRecord> records;
-                std::vector<sound::Request> calls;
-                sound::AmbienceGrid::Source source;
-                source.built = [&](int32_t x, int32_t y) { return view.chunkBuilt(x, y); };
-                source.shape = [&](int32_t x, int32_t y) {
-                    const int32_t x0 = x * 32, y0 = y * 32;
-                    int32_t bottom = 0, top = 0;
-                    if (const worldgen::Zone *zone = view.held().zoneAt(x0, y0)) {
-                        bottom = INT32_MAX, top = INT32_MIN;
-                        for (int32_t i = x0; i < x0 + 32; i++)
-                            for (int32_t j = y0; j < y0 + 32; j++) {
-                                const worldgen::Column &column = zone->column(i, j);
-                                bottom = std::min(bottom, column.bottom);
-                                top = std::max(top, column.top());
-                            }
-                    }
-                    const int64_t one = 65536;
-                    return sound::chunkShape({x, y}, {x0 * one, y0 * one, bottom * one},
-                                             {(x0 + 32) * one, (y0 + 32) * one, top * one});
-                };
-                source.visible = [&](const sound::ChunkShape &c) { return sight && sight->accepts(c.midpoint, c.radius); };
-                source.records = [&](glm::ivec2 c) {
-                    const worldgen::Zone *zone = view.held().zoneAt(c.x * 32, c.y * 32);
-                    if (!zone)
-                        return; // (engine adapter: the slot's copies went with the zone)
-                    records.clear();
-                    zoneAmbience.records(*zone, c, records);
-                    for (const sound::AmbientRecord &r : records)
-                        sound::ambientRecord(r, scene.timeOfDayMs, clock, frameElapsedMs,
-                                             [&] { return (int32_t)worldRandom.draw(); }, calls);
-                };
-                ambienceGrid.walk(view.chunkWindow(), alpha::FOG_WINDOW_CHUNKS, listener(), source);
-                for (const sound::Request &call : calls) // (playing draws nothing)
-                    playFixed(call.id, call.position, call.volume, call.pitch);
-                zoneAmbience.retain([&](int32_t zx, int32_t zy) { return view.held().zone(zx, zy) != nullptr; });
-            }
             const auto u = [&] { return (float)worldRandom.draw() / 32767.f; };
             for (const auto &[key, zone] : view.held().zones()) {
                 const glm::dvec2 centre = glm::dvec2(key.first + 0.5, key.second + 0.5) * (double)worldgen::ZONE;

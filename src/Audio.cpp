@@ -73,7 +73,7 @@ bool Audio::active() const { return state->running; }
 
 bool Audio::play(const std::string &key, float volume, float pitch) {
     const float voice = sound::voiceVolume(soundVolume, volume);
-    if (!state->running || !content || voice <= 0)
+    if (!state->running || !content)
         return false;
     state->reapFinished();
     auto &clip = clips[key];
@@ -86,6 +86,9 @@ bool Audio::play(const std::string &key, float volume, float pitch) {
         }
         clip = decoded;
     }
+    // Even a silent in-range request resolves its sample before the voice gain check.
+    if (voice <= 0)
+        return false;
     Voice &v = state->voices.emplace_back();
     v.clip = clip;
     ma_audio_buffer_config config =

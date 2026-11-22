@@ -1104,7 +1104,8 @@ void WorldView::appendStatics(std::vector<DrawItem> &out, const terrain_models::
 }
 
 std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const StaticStates *staticStates,
-                                       std::optional<terrain_lights::FixedPosition> cameraFixed) {
+                                       std::optional<terrain_lights::FixedPosition> cameraFixed,
+                                       const sound::AmbienceFrame &ambience) {
     std::vector<DrawItem> out;
     out.reserve(chunks.size() * 2 + 4096);
     const float sunlight = alpha::sunlight(scene.timeOfDayMs);
@@ -1117,8 +1118,12 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const
     const float outer = alpha::RENDER_RADIUS * .2f;
     const float sceneRange = scene.fogDistance + 22.4f;
     std::optional<terrain_models::ModelView> modelView;
-    if (cameraFixed)
+    std::optional<terrain_lights::ViewAdmission> earlyView;
+    if (cameraFixed) {
         modelView.emplace(*cameraFixed, shift, planes, outer);
+        earlyView.emplace(*cameraFixed, shift, storedLightPlanes, sceneRange);
+    }
+    lightCandidates.clear();
     admittedSlots.clear();
     deferredDraws.clear();
     deferredModels.clear();
@@ -1134,6 +1139,9 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const
         }
         if (cameraFixed && slot.admit(meshCache.owns(coordinate), *cameraFixed, shift, storedLightPlanes, sceneRange + 32.f))
             admittedSlots.push_back(&slot);
+        if (earlyView && entry->activeDecorations)
+            terrain_lights::visitDecorations(lightCandidates, *entry->activeDecorations, *earlyView,
+                                             sunlight, slot.lastSquared, ambience);
     });
     terrain_models::orderSlots(admittedSlots);
     const auto terrainDraw = [&](MeshId mesh, glm::ivec2 corner, bool water, bool admitted) {
@@ -1292,7 +1300,7 @@ void WorldView::fillScene(Scene &scene) const {
     scene.lights.clear();
 }
 
-void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t sourceClockMs,
+void WorldView::finishLighting(Scene &scene, const WorldItems &items,
                                 std::optional<terrain_lights::FixedPosition> controlled) const {
     const auto reference = terrain_lights::fromBlocks(worldPosition());
     if (!reference) {
@@ -1300,17 +1308,8 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
         return;
     }
     const terrain_lights::FixedPosition shift{-int64_t(origin.x) * 65536, -int64_t(origin.y) * 65536, 0};
-    lightCandidates.clear();
-    lightCandidates.reserve(scene.lights.size());
     const float daylight = alpha::sunlight(scene.timeOfDayMs);
     const float reach = scene.fogDistance + 22.4f;
-    const terrain_lights::ViewAdmission earlyView(*reference, shift, storedLightPlanes, reach);
-    visitChunkRenderWindow(windowOrigin, [&](glm::ivec2 coordinate) {
-        const auto *entry = renderSlots[ChunkMeshCache::index(coordinate)].resident;
-        if (entry && entry->activeDecorations)
-            terrain_lights::appendDecorationLights(lightCandidates, *entry->activeDecorations,
-                                                  earlyView, sourceClockMs, daylight);
-    });
     // Native cached-source reads precede current plane production. This engine
     // retains its last completed publication; native publication age is unknown.
     storedLightPlanes = camera(renderer.size()).lightAdmissionPlanes();

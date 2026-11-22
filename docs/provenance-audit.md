@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 90 and the rulings. The 319 tracked contracts
-comprise 284 A, 30 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 91 and the rulings. The 320 tracked contracts
+comprise 285 A, 30 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -170,6 +170,7 @@ Batch 87 corrects the final static-index pass and locates the preceding decorati
 Batch 88 records the independently reviewed recipe grant and the separate level and progress presentation contract.
 Batch 89 records the shared item-list layout, pointer movement and refresh order for bag and crafting controls.
 Batch 90 records terrain-slot bounds, box range and fade, slot visit order and the chest base and lid placement.
+Batch 91 records ambient bird, owl and cricket decisions during the pre-sort terrain-slot walk.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -450,6 +451,7 @@ Batch 90 records terrain-slot bounds, box range and fade, slot visit order and t
 | `alpha-terrain-mesh-window-origin.md` | A | 58 | 0 |
 | `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
 | `alpha-terrain-slot-bounds-and-static-model-admission.md` | A | 178 | 0 |
+| `alpha-terrain-slot-presort-ambient-audio.md` | A | 139 | 0 |
 | `alpha-terrain-slot-sort-key-and-pass-order.md` | A | 144 | 0 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
 | `alpha-timed-consumables.md` | A | 263 | 0 |

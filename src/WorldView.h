@@ -84,12 +84,6 @@ class WorldView {
     std::optional<glm::ivec2> playerColumn;
     // §7.1 steps 1-3: this frame's fog target from the chunks held round the camera.
     float fogTarget(std::optional<terrain_lights::FixedPosition> camera = {}) const;
-    // Whether chunk (cx, cy) (32-block units) has built geometry here: the ambience slot's
-    // "populated" test (zone-fields ruling 1 §1.2).
-    bool chunkBuilt(int32_t cx, int32_t cy) const {
-        const auto it = chunks.find({cx * CHUNK, cy * CHUNK});
-        return it != chunks.end() && it->second.active.populated();
-    }
     // The render origin as raw fixed coordinates; heights are not rebased.
     std::array<int64_t, 3> originFixed() const { return {int64_t(origin.x) * 65536, int64_t(origin.y) * 65536, 0}; }
     void move(glm::vec3 local, float seconds, bool fast); // x right, y forward, z up
@@ -104,7 +98,7 @@ class WorldView {
     void fillScene(Scene &scene) const;
     // After dynamic sources have joined the scene, sort the common candidates
     // and rebuild each terrain chunk's resident light records.
-    void finishLighting(Scene &scene, const WorldItems &items, int32_t sourceClockMs,
+    void finishLighting(Scene &scene, const WorldItems &items,
                         std::optional<terrain_lights::FixedPosition> controlled = std::nullopt) const;
     // The shared light view test on an absolute block position against the last
     // published planes. The engine supplies the terrain gather's distance (fog + 22.4);
@@ -124,7 +118,8 @@ class WorldView {
     // This frame's draw list. `clockMs` is the world's millisecond clock, which sways the
     // plants that sway (vegetation-wind.md §4).
     std::vector<DrawItem> items(double clockMs, const Scene &scene = {}, const StaticStates *staticStates = nullptr,
-                                std::optional<terrain_lights::FixedPosition> cameraFixed = {});
+                                std::optional<terrain_lights::FixedPosition> cameraFixed = {},
+                                const sound::AmbienceFrame &ambience = {});
     // Screens §5.1.2, §5.2.4: the map tiles of the zones (zx0..zx1, zy0..zy1) in render-origin
     // blocks, each rising into place over its first 250 ms (`dtMs` advances that), with the
     // land-border markers. With `extras` (the world map) undiscovered tiles are dimmed and

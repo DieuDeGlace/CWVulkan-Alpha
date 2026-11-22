@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Decide bird, owl and cricket calls inside the terrain-slot walk,
+  after each decoration's light check, using the slot's retained key,
+  the spatial clock phase and the ordered chance, pitch and owl draws.
+  This replaces the separate ambience grid and zone record adapter.
+
 - [x] Admit terrain slots by logical tag, box range and planes; visit them
   nearest first for terrain and models and in reverse for water; fade
   distant scenery through the deferred sort; resolve all indexed model
