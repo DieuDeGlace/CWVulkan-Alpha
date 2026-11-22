@@ -3384,3 +3384,33 @@ Six focused tests passed in 16.70 seconds. All 60 serial tests passed
 in 154.37 seconds. The controller diagnostic and the reward, health,
 network, save and town client flows passed on the integrated build.
 The package verifier checked all 36 digests in the 37-file archive.
+
+## Terrain decoration lighting on Vulkan (2026-11-21)
+
+At midday a generated nine-zone world contained 484 chunks and 10,039
+accepted ordinary model instances. Of those, 2,187 had a material strength
+strictly between zero and one. An owned flower model sampled 155 from
+its column and passed 0.607843161 to the vertex shader.
+
+Two 960 × 720 frames used the same camera, meshes, animation, scene
+lights and draw list. Setting the decoration light to full strength
+changed 51,292 pixels across the same 1,675 draw items. Drawing the
+same flower alone changed 10,398 pixels. One pixel changed from
+RGB (88, 80, 0) to (144, 131, 0). With a controlled underwater tint
+at midnight, the ordinary model was black at the sampled point and
+the emitting version produced RGB (122, 139, 0).
+
+Four deliberate controls exposed errors in the light fallback, snapshot
+value, transfer gate and empty rebuild. Separate checks covered original
+record order, fixed-coordinate boundaries, stale-source rejection and
+edits made through the source-module API. Comparison with corresponding
+frames from the original Alpha client remains open.
+
+The same six captures were repeated against the integrated client build's
+world, renderer, shader and engine objects. The flower sample, all draw
+counts, all three pixel-difference counts and the recorded RGB values
+matched the isolated build.
+All five focused checks passed in 22.16 seconds. All 60 tests passed in
+143.48 seconds. The production controller diagnostic and the reward,
+health, network, save and town flows passed. The release package verified
+all 36 digests across 37 files.

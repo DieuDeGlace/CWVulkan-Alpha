@@ -1,5 +1,6 @@
 #include "ChunkMesher.h"
 #include "FileHash.h"
+#include "CachedLights.h"
 #include "TerrainLights.h"
 #include "creatures/Spirits.h"
 #include <bit>
@@ -21,6 +22,111 @@ static Candidate light(int64_t x, int64_t y, float radius, glm::vec3 colour = {1
     result.colour = colour;
     result.radius = radius;
     return result;
+}
+
+static void positionedDecorationLights() {
+    using namespace worldgen;
+    constexpr int64_t unit = 65536;
+    const auto zone = std::make_shared<Zone>();
+    auto &column = zone->column(0, 0);
+    column.bottom = -3;
+    column.blocks = {{7, 230, 240, AIR}, {1, 230, 240, uint8_t(AIR | DRY_AIR)}, {14, 230, 240, WATER},
+                     {17, 230, 240, GLOWING}, {12, 230, 240, ROCK}, {71, 230, 240, AIR}};
+    const auto sprite = [](int32_t kind, int64_t x, int64_t z, int32_t flags = 2) {
+        return Sprite{kind, x, 0, z, .125f, 17.f, flags, {.2f, .4f, .8f}};
+    };
+    zone->addSprite(sprite(14, -1, -2 * unit - 1, 1));
+    zone->addSongPost({0, 0, -3 * unit});
+    zone->addLeafSource({0, 0, -unit, 1.f, .5f, .25f});
+    zone->addPlant({0, 0, 3, .09f, 91.f, 31, 2, true});
+    zone->addSprite(sprite(1, -unit, 0));
+    zone->addSprite(sprite(2, 0, 1));
+    zone->addSprite(sprite(3, 0, unit));
+    zone->addSprite(sprite(4, 0, 100 * unit));
+    zone->addSprite(sprite(5, 0, -4 * unit));
+    zone->addSprite(sprite(6, 32 * unit, 0));
+
+    WorldMap map;
+    map.add(zone);
+    map.refreshDecorations({0, 0});
+    const WorldMap previous = map.neighbourhood(0, 0);
+    auto result = map.sampleDecorations(0, 0);
+    check(result.sampled && result.sampled->size() == 9 && map.decorations(1, 0)->size() == 1,
+          "chunk sampling merges tree, plant and structure occurrences and splits exact chunk edges");
+    if (!result.sampled || result.sampled->size() != 9)
+        return;
+    constexpr int32_t kinds[] = {14, 61, 60, 31, 1, 2, 3, 4, 5};
+    constexpr float values[] = {5, 255, 14, 71, 0, 255, 0, 255, 0};
+    bool ordered = true, sampled = true;
+    for (size_t i = 0; i < result.sampled->size(); ++i) {
+        ordered &= (*result.sampled)[i].sprite.kind == kinds[i];
+        sampled &= (*result.sampled)[i].light == values[i];
+    }
+    check(ordered, "native lists preserve encounter order across typed generators");
+    check(sampled, "signed truncation, invalid X, dry flag, water fallback, committed byte, glow and solid bounds");
+    const auto &flame = result.sampled->front().sprite;
+    const auto &lily = (*result.sampled)[3].sprite;
+    check(flame.flags == 1 && flame.tint[1] == .4f && flame.angle == 17.f && flame.size == .125f &&
+          lily.x == unit / 2 && lily.y == unit / 2 && lily.z == 3 * unit - 6553 && lily.tint[0] == 1,
+          "copies preserve original payload, light color and the lily's fixed elevation");
+    auto emitters = *result.sampled;
+    emitters[1].sprite.flags = 1;
+    emitters[1].sprite.kind = 13;
+    emitters[1].light = 0;
+    std::vector<Candidate> sources;
+    appendDecorationLights(sources, emitters, ViewAdmission({}, {}, {}, 100), 0, 1.f);
+    check(sources.size() == 2 && sources[0].colour == glm::vec3(.2f, .4f, .8f) &&
+              sources[1].colour == glm::vec3(.5f) && sources[0].radius != sources[1].radius,
+          "only flagged active records emit in encounter order; midday halves the lantern despite its zero sample");
+    check(map.publishDecorations(0, 0, result) && map.decorations(0, 0)->front().light == 5 &&
+              previous.decorations(0, 0)->front().light == 0 && previous.zone(0, 0) == map.zone(0, 0),
+          "resident field changes while a retained area keeps its old values and shares all terrain columns");
+    ChunkRenderState slot;
+    slot.publish({1, 2}, result.sampled);
+    slot.renderVisit(true);
+    check(!slot.activeDecorations, "a dirty key holds the pending decoration with its groups");
+    slot.renderVisit(false);
+    check(slot.activeDecorations == result.sampled && slot.pendingDecorations == result.sampled,
+          "first accepted groups copy pending decorations to the active slot");
+    auto change = std::make_shared<Zone>(*zone);
+    change->sprites.erase(change->sprites.begin());
+    map.replaceTerrain(change);
+    map.refreshDecorations({0, 0});
+    const auto edited = map.sampleDecorations(0, 0);
+    check(!map.publishDecorations(0, 0, result) && map.decorations(0, 0)->front().light == 255,
+          "a support edit preserves surviving sampled values and rejects an old job");
+    slot.publish({}, edited.sampled);
+    slot.renderVisit(false);
+    check(slot.activeDecorations == result.sampled && slot.pendingDecorations == edited.sampled,
+          "empty geometry preserves active copies independently of fresh pending and resident data");
+    slot.publish({3, 0}, edited.sampled);
+    slot.renderVisit(false);
+    check(slot.activeDecorations->front().sprite.kind == 61 && slot.activeDecorations->size() == 8,
+          "successful rebuilt geometry transfers the pruned list");
+    const uint64_t before = map.recordBase({0, 0});
+    map.remove(0, 0);
+    map.add(zone);
+    map.refreshDecorations({0, 0});
+    check(map.recordBase({0, 0}) != before && !map.publishDecorations(0, 0, edited) &&
+              map.decorations(0, 0)->front().light == 0,
+          "departure and a new generation reject pending samples and begin with new resident fields");
+    // Existing source modules may mutate the same fields directly, including inserting
+    // an unranked record in the middle of a typed collection.
+    auto altered = std::make_shared<Zone>(*zone);
+    altered->sprites.insert(altered->sprites.begin(), sprite(29, 0, 0));
+    std::swap(altered->sprites[1], altered->sprites[2]);
+    map.replaceTerrain(altered);
+    map.refreshDecorations({0, 0});
+    std::vector<int32_t> typed;
+    for (const auto &entry : *map.decorations(0, 0))
+        if (entry.sprite.kind == 29 || entry.sprite.kind == 1 || entry.sprite.kind == 14)
+            typed.push_back(entry.sprite.kind);
+    check(typed == std::vector<int32_t>({29, 1, 14}), "SDK typed vector edits retain caller order and coordinates");
+    const glm::vec4 wet(.4f, .5f, 1, .25f);
+    check(decorationMaterial(wet, 71, false) == glm::vec4(.4f, .5f, 1, (71.f / 255.f) * .25f) &&
+          decorationMaterial({1, 1, 1, 0}, 0, true) == glm::vec4(1) &&
+          decorationMaterial({.4f, .5f, 1, 0}, 255, false) == glm::vec4(.4f, .5f, 1, 0),
+          "unflagged illumination uses sample then daytime; a source stays full at midnight under its camera tint");
 }
 
 static void packedTerrainLight() {
@@ -407,6 +513,7 @@ static void fogMeshElevations() {
 int main() {
     fogMeshTransfers();
     fogMeshElevations();
+    positionedDecorationLights();
     packedTerrainLight();
     meshLightRequests();
     meshDispatch();

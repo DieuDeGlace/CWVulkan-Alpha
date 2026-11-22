@@ -765,7 +765,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                     if (cl.warmth > 0.2f &&
                         std::fabs(floatArgNoise(0.05f * (float)x + 9843.f, 0.05f * (float)y + 8437.f)) > 0.5f) {
                         if ((draw() & 7) == 0) // the flags word is set to exactly 4
-                            zone.plants.push_back({x, y, zt, 0.09f, spin(), 22, 4});
+                            zone.addPlant({x, y, zt, 0.09f, spin(), 22, 4});
                     }
                     continue;
                 }
@@ -776,7 +776,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                             Plant lily{x, y, zt, 0.09f, spin()};
                             lily.kind = 31 + (draw() & 1);
                             lily.sink = true;
-                            zone.plants.push_back(lily);
+                            zone.addPlant(lily);
                         }
                     }
                     continue;
@@ -803,7 +803,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                         }
                     }
                     p.scale *= (float)draw() / 32767.f + 1.f;
-                    zone.plants.push_back(p);
+                    zone.addPlant(p);
                     continue;
                 }
                 if (zt < 1)
@@ -817,7 +817,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                         p.kind = 10;
                         p.scale = (float)(draw() * 0.02 / 32767.0 + 0.03);
                     }
-                    zone.plants.push_back(p);
+                    zone.addPlant(p);
                     continue;
                 }
                 if (here == GRASS || here == SAND) {
@@ -829,7 +829,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                             if (r % 100 == 0) {
                                 Plant p{x, y, zt, 0.075f, (float)((draw() & 3) * 90)};
                                 p.kind = 28 - ((draw() & 1) != 0 ? 1 : 0);
-                                zone.plants.push_back(p);
+                                zone.addPlant(p);
                             }
                         } else {
                             Plant p{x, y, zt, 0.075f, spin()};
@@ -847,7 +847,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                                 p.scale = (float)draw() * 0.02f / 32767.f + 0.1f;
                             }
                             if (here == GRASS || p.kind == 2 || p.kind == 3)
-                                zone.plants.push_back(p);
+                                zone.addPlant(p);
                         }
                     } else {
                         Plant p{x, y, zt, 0.075f, (float)((draw() & 3) * 90)};
@@ -860,7 +860,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                         if (p.kind == 12)
                             p.scale = (float)draw() * 0.02f / 32767.f + 0.1f;
                         if (here == GRASS || p.kind == 2 || p.kind == 3 || p.kind == 4)
-                            zone.plants.push_back(p);
+                            zone.addPlant(p);
                     }
                 }
                 // §4: ground items.

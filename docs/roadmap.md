@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Carry ordered terrain decoration records and their sampled illumination
+  from the resident world through mesh acceptance into the actual model draw.
+  Preserve the active set during blocked transfers and empty rebuilds.
+  Check ordinary, emitting and underwater materials on the Vulkan renderer.
+
 - [x] Retain addressed item results in wire order through the two frame
   lookups. Apply a resolved mana cube to the observing player's count.
   Limit platinum and experience to their local recipient. Handle named

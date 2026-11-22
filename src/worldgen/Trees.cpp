@@ -306,11 +306,11 @@ void TreeBuilder::build(int32_t x, int32_t y, int32_t z, int32_t s, int32_t t, i
     // §4.9: the marker draw: one crown in ten of a warm enough tree gets a kind-61 record,
     // where birds sing by day and owls call by night (audio §3).
     if (draw() % 10 == 0 && w > 0.2f)
-        zone.songPosts.push_back({(int64_t)x * 65536 + 32768, (int64_t)y * 65536 + 32768, (int64_t)(z + t) * 65536});
+        zone.addSongPost({(int64_t)x * 65536 + 32768, (int64_t)y * 65536 + 32768, (int64_t)(z + t) * 65536});
 
     // §5: a kind-60 record, in the leaves' colour as the crown is made.
     const auto leaves = [&](int64_t px, int64_t py, int64_t pz) {
-        zone.leafSources.push_back({px, py, pz, L1.r / 255.f, L1.g / 255.f, L1.b / 255.f});
+        zone.addLeafSource({px, py, pz, L1.r / 255.f, L1.g / 255.f, L1.b / 255.f});
     };
 
     // §4.10: crowns.

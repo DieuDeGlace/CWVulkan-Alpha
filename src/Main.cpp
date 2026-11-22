@@ -3028,7 +3028,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         view.playerColumn = player ? std::optional<glm::ivec2>(glm::ivec2(int32_t(player->body().position[0] / 65536),
                                                                           int32_t(player->body().position[1] / 65536)))
                                    : std::nullopt;
-        items = view.items((now - start) * 1000);
+        items = view.items((now - start) * 1000, scene);
         effects.clear();
         // Screens §5.2.2: with the map open, the zoom eases to its target, a middle drag pans
         // (turned with the camera) and a left drag turns and tilts the camera; closed, the pan

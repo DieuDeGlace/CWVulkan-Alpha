@@ -72,6 +72,7 @@ struct Plant {
     int32_t kind = 0;   // plant kind table A (vegetation §1.1)
     uint32_t flags = 2; // the record initializer writes 2 (vegetation §1.3); bit 4: sways (vegetation-wind.md §3)
     bool sink = false;  // a water lily floats 0.1 below z (open points 12 §2)
+    uint32_t encounter = UINT32_MAX; // insertion order in the shared native decoration list
 };
 
 // Vegetation spec §5: where the tree grid decided a tree stands. The tree builder is not
@@ -126,6 +127,7 @@ struct Sprite {
     int32_t flags = 2;           // +0x38: 4 sways like a plant; 1 is set on lit sprites with a `tint`
                                  // (what 1 and 2 do is open)
     float tint[3] = {0, 0, 0};
+    uint32_t encounter = UINT32_MAX; // insertion order in the shared native decoration list
 };
 
 // Structures spec §1.10.6: an item lying in the world (table loot).
@@ -228,6 +230,7 @@ struct Spawn {
 struct LeafSource {
     int64_t x = 0, y = 0, z = 0;
     float r = 0, g = 0, b = 0;
+    uint32_t encounter = UINT32_MAX; // insertion order in the shared native decoration list
 };
 
 // Structures §5.5.4 step 16: a furnished house, for its residents' seats (trails spec §4.4):
@@ -281,6 +284,17 @@ struct Zone {
         int32_t ox = 0, oy = 0, size = 0, kind = 0, sub = 0, face = 0;
     };
     std::vector<TownPlot> townPlots;
+    // The source SDK retains its typed generation collections. Ordinary writers record the
+    // native cross-collection order. Modules can use these appenders for that same ordering.
+    std::vector<std::pair<std::array<int64_t, 3>, uint32_t>> songEncounters;
+    uint32_t nextDecoration() const { return uint32_t(plants.size() + sprites.size() + leafSources.size() + songPosts.size()); }
+    void addPlant(Plant record) { record.encounter = nextDecoration(); plants.push_back(record); }
+    void addSprite(Sprite record) { record.encounter = nextDecoration(); sprites.push_back(record); }
+    void addLeafSource(LeafSource record) { record.encounter = nextDecoration(); leafSources.push_back(record); }
+    void addSongPost(std::array<int64_t, 3> position) {
+        songEncounters.emplace_back(position, nextDecoration());
+        songPosts.push_back(position);
+    }
     int32_t originX() const { return zx * SIZE; }
     int32_t originY() const { return zy * SIZE; }
     bool contains(int32_t x, int32_t y) const {

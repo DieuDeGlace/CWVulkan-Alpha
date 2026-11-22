@@ -4659,3 +4659,17 @@ audience, the two frame-time lookups and the UI, sound and progression
 order. The earlier mixed sender-turn FIFO contract still governs request
 consumption and random draws. The client retains each addressed result
 through delivery to its game frame.
+
+## Active terrain decoration lighting (2026-11-21)
+
+Two original-only contracts were held and read in full before integration.
+The 46-line sampling and rendering record has SHA-256
+`aa081b1acb7a6e4238368dee126bf17be5fd02f99fd9900b583ea5e79a9e72e6`.
+The 70-line model and distance record has SHA-256
+`f407aaa690ecf112d0affde75bc4872c804ee1b2df883237cfe10a65125b0f8b`.
+The latter supplies the ordinary model lookup keys. Its slot bounds,
+distance gates, sorting and final render state have a separate delivery
+and verification scope. The clean implementation retains immutable
+records for each resident chunk and updates the Vulkan draw material
+when the active mesh changes. The engine keeps bank reeds on their
+owner-requested placement path.

@@ -277,7 +277,7 @@ class Placer {
             if (random.draw() % 5 == 0) {
                 Sprite s = makeSprite(41 + random.draw() % 3, px + 32964, py + 32964, pz + 196, 0.15f,
                                       (float)(-90 * at.rotation), 0);
-                zone.sprites.push_back(s);
+                zone.addSprite(s);
             }
             air(X, Y, Z);
             return true;
@@ -302,12 +302,12 @@ class Placer {
         case LANTERN: {
             Sprite s = makeSprite(13, px + HALF, py + HALF, pz, 0.1f, 0, 1);
             s.tint[0] = 0.6f, s.tint[1] = 0.5f, s.tint[2] = 0.4f;
-            zone.sprites.push_back(s);
+            zone.addSprite(s);
             airIfInside(inside, X, Y, Z);
             return true;
         }
         case CREST:
-            zone.sprites.push_back(makeSprite(48, px + HALF, py + HALF, pz + HALF, 0.065f, (float)(-90 * at.rotation), 0));
+            zone.addSprite(makeSprite(48, px + HALF, py + HALF, pz + HALF, 0.065f, (float)(-90 * at.rotation), 0));
             airIfInside(inside, X, Y, Z);
             return true;
         case SIGN: {
@@ -324,7 +324,7 @@ class Placer {
             default: break;
             }
             if (kind >= 0)
-                zone.sprites.push_back(makeSprite(kind, px + HALF, py + HALF, pz - HALF, 0.1f, (float)((-1 - at.rotation) * 90), 0));
+                zone.addSprite(makeSprite(kind, px + HALF, py + HALF, pz - HALF, 0.1f, (float)((-1 - at.rotation) * 90), 0));
             airIfInside(inside, X, Y, Z);
             return true;
         }

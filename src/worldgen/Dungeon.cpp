@@ -959,7 +959,7 @@ class Builder : StructureWriter {
                 const int32_t y = Y + 2 + random.draw() % 5;
                 const int32_t x = X + 2 + random.draw() % 5;
                 s.x = (int64_t)x * ONE, s.y = (int64_t)y * ONE, s.z = fx(z);
-                zone.sprites.push_back(s);
+                zone.addSprite(s);
             }
             if (v == 1 || v == 2) {
                 const int32_t order[4][2] = {{-1, 0}, {1, 0}, {0, 1}, {0, -1}};
@@ -981,7 +981,7 @@ class Builder : StructureWriter {
                     }
                     s.x = fx(px), s.y = fx(py), s.z = fx(z);
                     s.kind = 57 + (random.draw() & 1);
-                    zone.sprites.push_back(s);
+                    zone.addSprite(s);
                 }
             }
         }
@@ -1014,7 +1014,7 @@ class Builder : StructureWriter {
                 // Open points 10 §9.2: the fixed-point read's negative-value rule on every axis.
                 const int32_t wx = blockOfFixed(p.x + s.da * ONE), wy = blockOfFixed(p.y + s.db * ONE);
                 if (blockSolid(wx, wy, blockOfFixed((int64_t)(Z + 2) * ONE)))
-                    zone.sprites.push_back(torch(v, p.x, p.y, p.z, s.torchAngle));
+                    zone.addSprite(torch(v, p.x, p.y, p.z, s.torchAngle));
                 if (s.db > 0) // (open points 8: on the +y wall a torch's chance rules out furniture)
                     continue;
             }
@@ -1118,7 +1118,7 @@ class Builder : StructureWriter {
             s.angle = 0;
             s.flags = 1;
             s.tint[0] = lampTint[0], s.tint[1] = lampTint[1], s.tint[2] = lampTint[2];
-            zone.sprites.push_back(s);
+            zone.addSprite(s);
         }
     }
 

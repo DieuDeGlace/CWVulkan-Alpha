@@ -1,14 +1,10 @@
 #include "CachedLights.h"
-#include "worldgen/Zone.h"
+#include "worldgen/WorldMap.h"
 #include <bit>
 #include <cmath>
 
 namespace terrain_lights {
 namespace {
-int64_t sourceChunk(int64_t fixed) {
-    const double scaled = double(fixed) * (1.0 / 32.0);
-    return int64_t(scaled) / 65536;
-}
 float radius(int32_t clockMs, int32_t phase) {
     const float clock = float(clockMs) * .01f;
     const float angle = clock + float(phase);
@@ -18,15 +14,35 @@ float radius(int32_t clockMs, int32_t phase) {
     const float half = wave * .5f;
     return half + 15.f;
 }
+void appendSource(std::vector<Candidate> &out, const CachedSource &source, const ViewAdmission &view,
+                  int32_t clockMs, float dayFactor, int32_t &phase) {
+    if (!(source.flags & 1) || !view.accepts(source.position, 16))
+        return;
+    phase = std::bit_cast<int32_t>(uint32_t(phase) + 33u);
+    const glm::vec3 colour = source.kind == 13 ? source.colour * dayFactor : source.colour;
+    out.push_back({source.position, colour, radius(clockMs, phase), 0});
+}
 } // namespace
 
 std::vector<CachedSource> chunkSources(std::span<const worldgen::Sprite> sprites, glm::ivec2 chunk) {
     std::vector<CachedSource> sources;
     for (const auto &sprite : sprites)
-        if (sourceChunk(sprite.x) == chunk.x && sourceChunk(sprite.y) == chunk.y)
+        if (worldgen::decorationChunkOf(sprite.x) == chunk.x && worldgen::decorationChunkOf(sprite.y) == chunk.y)
             sources.push_back({{sprite.x, sprite.y, sprite.z}, {sprite.tint[0], sprite.tint[1], sprite.tint[2]},
                                 sprite.kind, uint32_t(sprite.flags)});
     return sources;
+}
+
+void appendDecorationLights(std::vector<Candidate> &out, std::span<const worldgen::PositionedDecoration> records,
+                            const ViewAdmission &view, int32_t clockMs, float daylight) {
+    int32_t phase = 0;
+    const float dayFactor = 1.f - daylight * .5f;
+    for (const auto &record : records) {
+        const auto &s = record.sprite;
+        if (s.flags & 1)
+            appendSource(out, {{s.x, s.y, s.z}, {s.tint[0], s.tint[1], s.tint[2]}, s.kind, uint32_t(s.flags)},
+                         view, clockMs, dayFactor, phase);
+    }
 }
 
 void CachedSources::stage(glm::ivec2 chunk, std::vector<CachedSource> sources) {
@@ -48,13 +64,8 @@ void CachedSources::append(std::vector<Candidate> &out, const ViewAdmission &vie
         if (uint32_t(chunk.first) >= 0x80000u || uint32_t(chunk.second) >= 0x80000u)
             continue;
         int32_t phase = 0;
-        for (const auto &source : state.current) {
-            if (!(source.flags & 1) || !view.accepts(source.position, 16))
-                continue;
-            phase = std::bit_cast<int32_t>(uint32_t(phase) + 33u);
-            const glm::vec3 colour = source.kind == 13 ? source.colour * dayFactor : source.colour;
-            out.push_back({source.position, colour, radius(clockMs, phase), 0});
-        }
+        for (const auto &source : state.current)
+            appendSource(out, source, view, clockMs, dayFactor, phase);
     }
 }
 

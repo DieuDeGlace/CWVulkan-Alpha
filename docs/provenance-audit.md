@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 85 and the rulings. The 310 tracked contracts
-comprise 274 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 86 and the rulings. The 312 tracked contracts
+comprise 276 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -165,9 +165,12 @@ Batch 82 records local front-end terrain readiness, the wait presentation and th
 Batch 83 records resident spawn and indexed object lifetimes across terrain updates.
 Batch 84 records live terrain observation scopes and the meaning of the three stored light bytes.
 Batch 85 records section 9's dedicated audience, two client lookups and item presentation.
+Batch 86 records the active decoration lighting path, model keys and the native distance passes.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
+| `alpha-active-decoration-distance-models.md` | A | 71 | 0 |
+| `alpha-active-decoration-light-rendering.md` | A | 47 | 0 |
 | `alpha-actor-creation-configuration.md` | A | 130 | 0 |
 | `alpha-actor-identity-publication.md` | B | 60 | 2 |
 | `alpha-actor-inventory-consumers.md` | A | 70 | 1 |

@@ -17,6 +17,7 @@ layout(push_constant) uniform Draw {
     // x: shininess (materials §1.2: only its sign matters), y: point-light row, z: white (§5
     // step 9, the creature's hit flash), w: the pixel alpha constant (§6.2 step 6)
     vec4 extra;
+    uint decorationMaterial;
 } draw;
 
 layout(location = 0) centroid out vec4 lit; // floating-point colour, without a final colour clamp
@@ -52,7 +53,8 @@ void main() {
     vec3 n = normalize(mat3(draw.world) * inNormal);
     vec3 d = f.lightDirection.xyz;
     float baked = inColour.a;
-    float scale = f.material.a * draw.material.a * baked;
+    float materialLight = draw.decorationMaterial != 0u ? draw.material.a : f.material.a * draw.material.a;
+    float scale = materialLight * baked;
     float frontFactor = max(dot(n, d), 0.0);
     float backFactor = max(dot(n, -d), 0.0);
     vec3 directional = fma(vec3(frontFactor), f.front.rgb, f.ambient.rgb);
@@ -74,7 +76,7 @@ void main() {
     vec3 moonShaded = moonCasts ? moonFill + moonDirect * (1.0 - shadowAmount) : moonFill + moonDirect;
 
     // §5.8, §5.9: clamp, colour, darkness (black here); moonlight on greyed colour; hit flash.
-    vec3 material = f.material.rgb * draw.material.rgb;
+    vec3 material = draw.decorationMaterial != 0u ? draw.material.rgb : f.material.rgb * draw.material.rgb;
     vec3 colour = inColour.rgb * material;
     vec3 moonColour = mix(colour, vec3(dot(colour, LUMA)), MOON_GREY);
     precise vec3 vertexProduct = clamp(T, 0.0, 1.2) * inColour.rgb;

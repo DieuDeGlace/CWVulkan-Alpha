@@ -62,6 +62,7 @@ struct DrawItem {
     // Translucent creatures: consecutive items with one nonzero group are one creature, drawn
     // depth-only and then in colour.
     uint32_t group = 0;
+    bool decorationMaterial = false; // the frame tint and sun strength are already included
 };
 
 // One corner of a blended effect triangle (weapon trails): world blocks and an RGBA colour

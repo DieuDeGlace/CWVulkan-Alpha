@@ -475,7 +475,7 @@ bool Renderer::createScenePipelines() {
     for (size_t i = 0; i < stars.size(); i++)
         sprites[2 + i] = glm::vec4(stars[i].position, stars[i].size);
 
-    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4) + 2 * sizeof(glm::vec4)};
+    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4) + 2 * sizeof(glm::vec4) + sizeof(uint32_t)};
     VkPipelineLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     layoutInfo.setLayoutCount = 1;
     layoutInfo.pSetLayouts = &frameLayout;
@@ -947,9 +947,10 @@ bool Renderer::drawItem(VkCommandBuffer cmd, const DrawItem &item, const std::ar
         // x: shininess, y: point-light row (zero selects the frame list), z: white (the hit
         // flash), w: the pixel alpha constant
         glm::vec4 extra;
+        uint32_t decorationMaterial;
     } constants{item.world, world ? item.material : glm::vec4(1),
                 glm::vec4(item.shine && world ? 1.f : 0.f, float(lightRow), world ? item.white : 0.f,
-                          world ? item.alpha : 1.f)};
+                          world ? item.alpha : 1.f), uint32_t(item.decorationMaterial && world)};
     vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof constants, &constants);
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &m.vertices.buffer, &offset);

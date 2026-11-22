@@ -33,13 +33,18 @@ struct TerrainMeshBuffers {
 
 struct ChunkRenderState {
     TerrainMeshBuffers active, pending;
+    worldgen::DecorationSnapshot activeDecorations, pendingDecorations;
     // The returned buffers are retired by their Vulkan owner.
-    TerrainMeshBuffers publish(TerrainMeshBuffers groups) { return std::exchange(pending, groups); }
+    TerrainMeshBuffers publish(TerrainMeshBuffers groups, worldgen::DecorationSnapshot records = {}) {
+        pendingDecorations = std::move(records);
+        return std::exchange(pending, groups);
+    }
     TerrainMeshBuffers renderVisit(bool blocked) {
         if (blocked || !pending.populated())
             return {};
         const auto previous = active;
         active = std::exchange(pending, {});
+        activeDecorations = pendingDecorations;
         return previous;
     }
 };

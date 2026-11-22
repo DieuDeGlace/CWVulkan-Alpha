@@ -23,6 +23,21 @@ inline bool zoneKeptNear(int32_t zx, int32_t zy, int32_t px, int32_t py) {
     return dx * dx + dy * dy < KEPT_ZONE_DISTANCE2;
 }
 
+// A record owned by a resident area. Its chunk snapshots retain native encounter order.
+struct PositionedDecoration {
+    Sprite sprite;
+    float light = 0; // defined by the first matched mesh build
+    int32_t plantIndex = -1; // wind phase for the engine's cell-centred plant adapter
+};
+using DecorationList = std::vector<PositionedDecoration>;
+using DecorationSnapshot = std::shared_ptr<const DecorationList>;
+struct DecorationUpdate {
+    DecorationSnapshot source, sampled;
+};
+
+// The membership conversion first rounds the fixed coordinate to double.
+inline int64_t decorationChunkOf(int64_t fixed) { return int64_t(double(fixed) * (1.0 / 32.0)) / 65536; }
+
 class WorldMap {
   public:
     using ZoneKey = std::pair<int32_t, int32_t>;
@@ -30,6 +45,11 @@ class WorldMap {
     void add(std::shared_ptr<const Zone> zone);
     // Publish changed terrain or decorations while retaining the resident descriptor and object identities.
     void replaceTerrain(std::shared_ptr<const Zone> zone);
+    // Build fixed-position records for the client on admission or after a change in its source list.
+    void refreshDecorations(ZoneKey zone);
+    DecorationSnapshot decorations(int32_t cx, int32_t cy) const;
+    DecorationUpdate sampleDecorations(int32_t cx, int32_t cy) const;
+    bool publishDecorations(int32_t cx, int32_t cy, const DecorationUpdate &update);
     // Nonzero for a held zone. Its indexed static objects have IDs base + ordinal.
     uintptr_t recordBase(ZoneKey key) const;
     void remove(int32_t zx, int32_t zy);
@@ -51,9 +71,11 @@ class WorldMap {
 
   private:
     std::map<std::pair<int32_t, int32_t>, std::shared_ptr<const Zone>> held;
+    using DecorationArea = std::array<DecorationSnapshot, 64>;
     struct ResidentState {
         uintptr_t recordBase = 0;
         std::optional<PlacedObjects> placed;
+        std::shared_ptr<DecorationArea> decorations;
     };
     std::map<ZoneKey, ResidentState> residents;
 };

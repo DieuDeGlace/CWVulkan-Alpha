@@ -121,7 +121,7 @@ class WorldView {
     }
     // This frame's draw list. `clockMs` is the world's millisecond clock, which sways the
     // plants that sway (vegetation-wind.md §4).
-    std::vector<DrawItem> items(double clockMs);
+    std::vector<DrawItem> items(double clockMs, const Scene &scene = {});
     // Screens §5.1.2, §5.2.4: the map tiles of the zones (zx0..zx1, zy0..zy1) in render-origin
     // blocks, each rising into place over its first 250 ms (`dtMs` advances that), with the
     // land-border markers. With `extras` (the world map) undiscovered tiles are dimmed and
@@ -201,7 +201,13 @@ class WorldView {
         float scale, height;
         int phase;
         bool sways;
+        float light = 0;
+        bool emits = false;
     };
+    struct ChunkEntry : ChunkRenderState {
+        std::vector<PlantInstance> models;
+    };
+    void prepareDecorationModels(ChunkEntry &entry);
     void releaseGroups(TerrainMeshBuffers groups);
 
     void post(std::function<void()> job);
@@ -228,7 +234,7 @@ class WorldView {
         enum class Operation { Publish, Exterior, Reset };
         glm::ivec2 corner;
         ChunkMeshes meshes;
-        std::vector<terrain_lights::CachedSource> lights;
+        worldgen::DecorationUpdate decorations;
         uint64_t lightChange;
         std::shared_ptr<const worldgen::BlockLightUpdate> prepared;
         Operation operation;
@@ -260,14 +266,13 @@ class WorldView {
 
     std::map<Key, std::vector<PlantInstance>> plants;
     terrain_lights::SectorSources sectorSources;
-    terrain_lights::CachedSources cachedSources;
     // Deterministic engine startup value. Native initial plane contents are open.
     mutable std::array<glm::vec4, 6> storedLightPlanes{};
     mutable terrain_lights::Selector lightSelector;
     mutable std::vector<terrain_lights::Candidate> lightCandidates;
     mutable std::vector<terrain_lights::Chunk> lightChunks;
-    std::map<Key, ChunkRenderState> chunks; // active and pending Vulkan streams, by chunk corner
-    std::array<ChunkRenderState *, ChunkMeshCache::SIDE * ChunkMeshCache::SIDE> renderSlots{}; // stable map entries
+    std::map<Key, ChunkEntry> chunks; // active and pending Vulkan streams, by chunk corner
+    std::array<ChunkEntry *, ChunkMeshCache::SIDE * ChunkMeshCache::SIDE> renderSlots{}; // stable map entries
     ChunkLightUpdates chunkLightUpdates;
     std::vector<glm::ivec2> changedLightColumns;
     std::set<Key> editedChunks;

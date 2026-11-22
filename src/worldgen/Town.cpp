@@ -408,7 +408,7 @@ class TownBuilder : StructureWriter {
                     plant.angle = c.plant == 25 ? 0.f : f((float)random.draw() * 360.f / 32767.f);
                     plant.x = (int64_t)x * ONE + HALF, plant.y = (int64_t)y * ONE + HALF, plant.z = (int64_t)T * ONE;
                     plant.size = c.size;
-                    zone.sprites.push_back(plant);
+                    zone.addSprite(plant);
                 } else {
                     ItemDrop drop;
                     drop.item.type = 11;
@@ -1045,7 +1045,7 @@ class TownBuilder : StructureWriter {
                         lantern.angle = 0;
                         lantern.flags = 1;
                         lantern.tint[0] = 0.6f, lantern.tint[1] = 0.5f, lantern.tint[2] = 0.4f;
-                        zone.sprites.push_back(lantern);
+                        zone.addSprite(lantern);
                     }
                     if (h.at(a, b, z + 1).stairs)
                         continue;

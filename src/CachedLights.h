@@ -4,7 +4,7 @@
 #include "TerrainLights.h"
 #include <map>
 
-namespace worldgen { struct Sprite; }
+namespace worldgen { struct Sprite; struct PositionedDecoration; }
 
 namespace terrain_lights {
 
@@ -19,6 +19,14 @@ struct CachedSource {
 // native two-stage truncating chunk membership calculation. Unused presentation
 // metadata and native sector-list construction remain separate dependencies.
 std::vector<CachedSource> chunkSources(std::span<const worldgen::Sprite> sprites, glm::ivec2 chunk);
+
+inline glm::vec4 decorationMaterial(glm::vec4 tint, float light, bool emits) {
+    tint.w = emits ? 1.f : (light / 255.f) * tint.w;
+    return tint;
+}
+
+void appendDecorationLights(std::vector<Candidate> &out, std::span<const worldgen::PositionedDecoration> records,
+                            const ViewAdmission &view, int32_t clockMs, float daylight);
 
 class CachedSources {
   public:
