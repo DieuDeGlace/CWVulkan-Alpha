@@ -769,6 +769,14 @@ plasma::Document clone(const plasma::Document &doc, int32_t node) {
     return out;
 }
 
+glm::vec2 widgetSize(const plasma::Document &doc, int32_t node, glm::vec2 fallback) {
+    const int32_t index = doc.nodes[node].widget;
+    if (index < 0)
+        return fallback;
+    const plasma::Widget &w = doc.widgets[index];
+    return w.deformed ? w.bindSize + (w.deformedSize - w.innerBindSize) : w.bindSize;
+}
+
 void resizeWidget(plasma::Document &doc, int32_t node, glm::vec2 size) {
     const int32_t index = doc.nodes[node].widget;
     if (index < 0)

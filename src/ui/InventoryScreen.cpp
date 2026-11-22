@@ -20,18 +20,11 @@ using namespace widgets;
 // §8.1.2, §8.1.3: the bag window, 400 x 285, centred with its bottom on the screen's centre
 // line; 8 x 5 slots of 40 px at a 45 px pitch.
 constexpr glm::vec2 PANEL{400, 285};
-constexpr int COLUMNS = 8, ROWS = 5;
-constexpr float PITCH = 45, SLOT = 40;
 constexpr glm::vec2 CHARACTER_AT{20, 340}, CHARACTER_SIZE{260, 200};
 constexpr glm::vec2 TOOLTIP_SIZE{300, 300};
 
 glm::vec2 panelOrigin(glm::vec2 W) { return {std::trunc(W.x / 2) - 200, std::trunc(W.y / 2) - 285}; } // integer halves
-glm::vec2 slotCorner(int c, int r) { return {10 + PITCH * (float)c, 40 + PITCH * (float)r}; }
 glm::vec2 tabCorner(int k) { return {4 + 40.f * (float)k, -41.07f}; }
-glm::vec2 upCorner() { return {PANEL.x - 30, 10}; }
-glm::vec2 downCorner() { return {PANEL.x - 30, PANEL.y - 30}; }
-constexpr glm::vec2 BUTTON{21, 19};
-
 // §8.1.5: equipment box i's pivot, and its top-left corner (the right template's pivot is its
 // top-left, the left template's its top-right).
 glm::vec2 boxPivot(glm::vec2 W, int i) { return {W.x / 2 - 200 + 400.f * (float)(i % 2), W.y / 2 + 10 + 56.f * (float)(i / 2)}; }
@@ -73,7 +66,8 @@ void Interface::loadInventory() {
     if (const int32_t n = gui.find("downbutton"); n >= 0)
         downButton = clone(gui, n);
     if (const int32_t n = gui.find("scrollbutton"); n >= 0)
-        scrollThumb = clone(gui, n);
+        bagList.thumb = clone(gui, n);
+    bagList.measure(inventoryPanel, itemBox);
     if (const int32_t n = gui.find("tab"); n >= 0)
         for (int k = 0; k < 4; k++)
             inventoryTabs.push_back(clone(gui, n));
@@ -90,16 +84,43 @@ void Interface::loadInventory() {
         equippedPreview = clone(gui, n);
 }
 
-// §8.1.3 (0x4c6350): how many scroll rows each bag has, the current rows clamped to them.
-void Interface::scrollRange() {
-    for (size_t b = 0; b < scrollRow.size(); b++) {
-        // §8.1.3 (correction 107): no bag for the tab gives one position, an empty bag none.
-        const bool hasBag = inventory && b < inventory->bags.size();
-        const size_t m = hasBag ? inventory->bags[b].size() : 0;
-        const int32_t n = !hasBag ? 1 : m == 0 ? 0 : std::max(1, (int32_t)((m - 1) / COLUMNS) - ROWS + 2);
-        scrollPositions[b] = n;
-        scrollRow[b] = std::clamp(scrollRow[b], 0, std::max(n - 1, 0));
+void Interface::refreshInventoryRows() {
+    if (inventory) {
+        bagList.recalculate(inventory->bags);
+        bagList.placeThumb();
     }
+}
+
+void Interface::layoutItemLists(glm::vec2 window) {
+    if (itemListWindow == window)
+        return;
+    itemListWindow = window;
+    if (itemBox)
+        refreshInventoryRows();
+    if (wideItemBox && inventory) {
+        craftList.recalculate(craftRecipes);
+        craftList.placeThumb();
+    }
+}
+
+void Interface::releaseItemList() {
+    bagList.releaseThumb();
+    craftList.releaseThumb();
+}
+
+void Interface::itemListMove(float pointerY, bool leftDown) {
+    if (!leftDown || !inventory || !inGameVisible() || mapOpen || systemMenu || optionsOpen || controllerKeyboardOpen()) {
+        releaseItemList();
+        return;
+    }
+    if (inventoryOpen)
+        bagList.moveThumb(pointerY);
+    else
+        bagList.releaseThumb();
+    if (craftingOpen)
+        craftList.moveThumb(pointerY);
+    else
+        craftList.releaseThumb();
 }
 
 void Interface::drawItem(Painter &painter, glm::vec2 W, const ItemRecord &item, glm::vec2 at, float scale, float depth) {
@@ -123,7 +144,7 @@ void Interface::drawItem(Painter &painter, glm::vec2 W, const ItemRecord &item, 
 void Interface::drawInventory(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
     if (!inventory)
         return;
-    scrollRange();
+    bagList.recalculate(inventory->bags);
     const glm::vec2 O = panelOrigin(W), local = mouse - O;
     if (inventoryPanel) {
         placeWidget(*inventoryPanel, 0, O);
@@ -131,41 +152,41 @@ void Interface::drawInventory(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
     }
     // The slots: boxes first, then the items in them, then their counts.
     const std::vector<creatures::Stack> empty;
-    const auto &bag = inventoryTab < (int)inventory->bags.size() ? inventory->bags[inventoryTab] : empty;
-    const int32_t row0 = scrollRow[inventoryTab];
+    const auto &bag = bagList.currentGroup < (int)inventory->bags.size() ? inventory->bags[bagList.currentGroup] : empty;
+    const int32_t row0 = bagList.offset();
     std::optional<size_t> hovered;
     if (itemBox)
-        for (int r = 0; r < ROWS; r++)
-            for (int c = 0; c < COLUMNS; c++) {
-                placeWidget(*itemBox, 0, O + slotCorner(c, r));
+        for (int r = 0; r < bagList.rows; r++)
+            for (int c = 0; c < bagList.columns; c++) {
+                placeWidget(*itemBox, 0, O + bagList.cellAt(c, r));
                 painter.draw(*itemBox, 0, Transform(1));
             }
-    for (int r = 0; r < ROWS; r++)
-        for (int c = 0; c < COLUMNS; c++) {
-            const size_t i = (size_t)(row0 + r) * COLUMNS + c;
+    for (int r = 0; r < bagList.rows; r++)
+        for (int c = 0; c < bagList.columns; c++) {
+            const size_t i = (size_t)(row0 + r) * bagList.columns + c;
             if (i >= bag.size())
                 continue;
-            const glm::vec2 corner = O + slotCorner(c, r);
-            const bool over = inside(mouse, corner, glm::vec2(SLOT));
+            const glm::vec2 corner = O + bagList.cellAt(c, r);
+            const bool over = inside(mouse, corner, bagList.cellSize);
             if (over)
                 hovered = i;
             const creatures::Stack &s = bag[i];
             if (s.count == 0)
                 continue;
             const float ring = creatures::itemType(s.item) == 9 ? 0.75f : 1.f;
-            drawItem(painter, W, s.item, corner + glm::vec2(SLOT / 2), (over ? 0.045f : 0.03f) * ring);
+            drawItem(painter, W, s.item, corner + bagList.cellSize * 0.5f, (over ? 0.045f : 0.03f) * ring);
         }
-    for (int r = 0; r < ROWS; r++)
-        for (int c = 0; c < COLUMNS; c++) {
-            const size_t i = (size_t)(row0 + r) * COLUMNS + c;
+    for (int r = 0; r < bagList.rows; r++)
+        for (int c = 0; c < bagList.columns; c++) {
+            const size_t i = (size_t)(row0 + r) * bagList.columns + c;
             if (i >= bag.size() || bag[i].count <= 0 || !creatures::stackable(creatures::itemType(bag[i].item)))
                 continue;
-            outlined(painter, number(bag[i].count), O + slotCorner(c, r) + glm::vec2(36, 37), 10, 2, glm::vec4(1),
+            outlined(painter, number(bag[i].count), O + bagList.cellAt(c, r) + (bagList.cellSize - glm::vec2(4, 3)), 10, 2, glm::vec4(1),
                      plasma::RIGHT);
         }
     // Title and money row.
     static const char16_t *const TITLES[4] = {u"Equipment", u"Items", u"Ingredients", u""};
-    outlined(painter, TITLES[inventoryTab & 3], O + glm::vec2(15, 25), 12, 3, glm::vec4(1));
+    outlined(painter, TITLES[bagList.currentGroup & 3], O + glm::vec2(15, 25), 12, 3, glm::vec4(1));
     const uint32_t M = inventory->money;
     const float baseline = PANEL.y - 10;
     outlined(painter, number(M % 100) + u" C ", O + glm::vec2(PANEL.x - 30, baseline), 10, 2, COPPER, plasma::RIGHT);
@@ -173,27 +194,11 @@ void Interface::drawInventory(Painter &painter, glm::vec2 W, glm::vec2 mouse) {
     outlined(painter, number(M / 10000) + u" G ", O + glm::vec2(PANEL.x - 110, baseline), 10, 2, GOLD, plasma::RIGHT);
     outlined(painter, number(std::bit_cast<int32_t>(inventory->platinum)) + u"  Platinum Coins ", O + glm::vec2(15, baseline), 10, 2, PLATINUM);
     // Scroll buttons and the thumb, cyan under the cursor.
-    for (auto [doc, at] : {std::pair{&upButton, upCorner()}, std::pair{&downButton, downCorner()}}) {
-        if (!*doc)
-            continue;
-        tint(**doc, 0, inside(local, at, BUTTON) ? CYAN : glm::vec4(1));
-        placeWidget(**doc, 0, O + at);
-        painter.draw(**doc, 0, Transform(1));
-    }
-    const int32_t n = scrollPositions[inventoryTab];
-    if (scrollThumb && n > 0) {
-        const float track = PANEL.y - 70;
-        const float th = n > 1 ? std::trunc(track / (float)n) : track;
-        const float y = n > 1 ? 35 + std::trunc((track - th) * (float)row0 / (float)(n - 1)) : 35;
-        resizeWidget(*scrollThumb, 0, {16, th});
-        tint(*scrollThumb, 0, inside(local, {PANEL.x - 28, y}, {16, th}) ? CYAN : glm::vec4(1));
-        placeWidget(*scrollThumb, 0, O + glm::vec2(PANEL.x - 28, y));
-        painter.draw(*scrollThumb, 0, Transform(1));
-    }
+    drawScrollChildren(bagList, painter, O, local);
     // Tabs above the panel: bright when current or hovered; frame cyan hovered, green current.
     for (int k = 0; k < (int)inventoryTabs.size(); k++) {
         plasma::Document &doc = inventoryTabs[k];
-        const bool over = inside(local, tabCorner(k), {38, 38}), current = k == inventoryTab;
+        const bool over = inside(local, tabCorner(k), {38, 38}), current = k == bagList.currentGroup;
         tint(doc, 0, over || current ? glm::vec4(1) : glm::vec4(0.8f, 0.8f, 0.8f, 1));
         tint(doc, doc.find("frame"), over ? CYAN : current ? glm::vec4(0, 1, 0, 1) : glm::vec4(1));
         placeWidget(doc, 0, O + tabCorner(k));
@@ -370,7 +375,30 @@ void Interface::drawItemText(Painter &painter, glm::vec2 at, const ItemRecord &r
             line(u"HP +" + number((int64_t)v), {0.25f, 1, 0.25f, 1}, 14);
 }
 
+int Interface::scrollArrowUnder(const ItemListControl &list, glm::vec2 local) const {
+    if (upButton && inside(local, list.upAt(), widgetSize(*upButton, 0, {21, 19})))
+        return -1;
+    if (downButton && inside(local, list.downAt(), widgetSize(*downButton, 0, {21, 19})))
+        return 1;
+    return 0;
+}
+
+void Interface::drawScrollChildren(ItemListControl &list, Painter &painter, glm::vec2 origin, glm::vec2 local) {
+    for (auto [doc, at] : {std::pair{&upButton, list.upAt()}, std::pair{&downButton, list.downAt()}}) {
+        if (!*doc)
+            continue;
+        const bool hover = inside(local, at, widgetSize(**doc, 0, {21, 19}));
+        tint(**doc, 0, hover ? CYAN : glm::vec4(1));
+        placeWidget(**doc, 0, origin + at);
+        painter.draw(**doc, 0, Transform(1));
+    }
+    list.drawThumb(painter, origin, local);
+}
+
 bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
+    if (button == 0)
+        releaseItemList();
+    layoutItemLists(W);
     if (skillsPress(W, mouse, button))
         return true;
     if (craftingOpen && craftingPress(W, mouse, button))
@@ -383,7 +411,6 @@ bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
         return true;
     if (!inventory || !inventoryOpen)
         return false;
-    scrollRange();
     const glm::vec2 O = panelOrigin(W), local = mouse - O;
     const auto sound = [&](int32_t s) {
         if (s)
@@ -391,57 +418,44 @@ bool Interface::inventoryPress(glm::vec2 W, glm::vec2 mouse, int button) {
     };
     for (int k = 0; k < (int)inventoryTabs.size(); k++)
         if (inside(local, tabCorner(k), {38, 38})) {
-            if (button == 0 && k != inventoryTab) {
-                inventoryTab = k;
-                scrollRange();
+            if (button == 0 && k != bagList.currentGroup) {
+                bagList.currentGroup = k;
+                refreshInventoryRows();
                 sound(creatures::SOUND_TAB);
             }
             return true;
         }
     if (inside(local, {0, 0}, PANEL)) {
-        int32_t &row = scrollRow[inventoryTab];
-        const int32_t n = scrollPositions[inventoryTab];
-        if (button == 0 && inside(local, upCorner(), BUTTON)) {
-            row = std::max(row - 1, 0);
+        if (button == 0 && pressScrollChild(bagList, local, mouse.y, inventory->bags))
             return true;
-        }
-        if (button == 0 && inside(local, downCorner(), BUTTON)) {
-            row = std::clamp(row + 1, 0, std::max(n - 1, 0));
-            return true;
-        }
-        // A press on the track moves the thumb's centre there (the drag rule of 0x4c5bb0).
-        const float track = PANEL.y - 70;
-        if (button == 0 && n > 1 && inside(local, {PANEL.x - 28, 35}, {16, track})) {
-            const float th = std::trunc(track / (float)n);
-            const float top = std::clamp(local.y - th / 2, 35.f, 35 + track - th);
-            row = (int32_t)((top - 35) * (float)(n - 1) / (track - th));
-            return true;
-        }
-        for (int r = 0; r < ROWS; r++)
-            for (int c = 0; c < COLUMNS; c++) {
-                if (!inside(local, slotCorner(c, r), glm::vec2(SLOT)))
+        const int row = bagList.offset();
+        for (int r = 0; r < bagList.rows; r++)
+            for (int c = 0; c < bagList.columns; c++) {
+                if (!inside(local, bagList.cellAt(c, r), bagList.cellSize))
                     continue;
-                const size_t i = (size_t)(row + r) * COLUMNS + c;
+                const size_t i = (size_t)(row + r) * bagList.columns + c;
                 if (button == 0) {
-                    sound(inventory->pressSlot(inventoryTab, i));
+                    sound(inventory->pressSlot(bagList.currentGroup, i));
                 } else if (adaptOpen) { // item services §2.2: the item to adapt
-                    adaptBag = inventoryTab, adaptSlot = i, adaptBox = -1;
+                    adaptBag = bagList.currentGroup, adaptSlot = i, adaptBox = -1;
                 } else if (identifyOpen) { // §1.3: the item to identify
-                    identifyBag = inventoryTab, identifySlot = i;
+                    identifyBag = bagList.currentGroup, identifySlot = i;
                 } else if (vendorOpen) { // talk §3.4: sell one (before the bench, item services §3.2)
-                    if (inventoryTab < (int)inventory->bags.size() && i < inventory->bags[inventoryTab].size())
-                        sell(inventory->bags[inventoryTab][i]);
+                    if (bagList.currentGroup < (int)inventory->bags.size() && i < inventory->bags[bagList.currentGroup].size())
+                        sell(inventory->bags[bagList.currentGroup][i]);
                 } else if (benchOpen) { // item services §3.2: the weapon to customize
-                    const bool weapon = inventoryTab < (int)inventory->bags.size() && i < inventory->bags[inventoryTab].size() &&
-                                        creatures::itemType(inventory->bags[inventoryTab][i].item) == 3;
+                    const bool weapon = bagList.currentGroup < (int)inventory->bags.size() && i < inventory->bags[bagList.currentGroup].size() &&
+                                        creatures::itemType(inventory->bags[bagList.currentGroup][i].item) == 3;
                     if (weapon)
-                        benchBag = inventoryTab, benchSlot = i, benchBox = -1, benchReset();
+                        benchBag = bagList.currentGroup, benchSlot = i, benchBox = -1, benchReset();
                     else
                         sound(creatures::SOUND_NOT_HERE);
                 } else {
-                    const creatures::UseOutcome u = inventory->useSlot(inventoryTab, i, button == 2, sheet.level,
+                    const creatures::UseOutcome u = inventory->useSlot(bagList.currentGroup, i, button == 2, sheet.level,
                                                                        sheet.characterClass, sheet.canAct);
                     sound(u.sound);
+                    if (u.sound == creatures::SOUND_RECIPE_LEARNT)
+                        refreshCraftingRows();
                     if (u.consume)
                         itemsToUse.push_back(*u.consume);
                     gliderEquipped |= u.clearAction;

@@ -215,7 +215,9 @@ class Interface {
     // §8.1: the inventory screen (B or I): the bag window, the character panel and the twelve
     // equipment boxes. The game points `inventory` at the player's belongings and fills
     // `sheet` each frame; `itemModel` gives an item's mesh and size, `itemName` its name.
-    void refreshInventoryRows() { if (inventory) scrollRange(); }
+    void refreshInventoryRows();
+    void itemListMove(float pointerY, bool leftDown);
+    void releaseItemList();
     bool inventoryOpen = false;
     creatures::Inventory *inventory = nullptr;
     struct CharacterSheet {
@@ -372,10 +374,10 @@ class Interface {
     // `finishedCraft` holds and empties it.
     void refreshCraftingRows();
     bool craftingOpen = false;
-    int craftingTab = 0;
+    void toggleCrafting(std::optional<int> tab = std::nullopt);
     std::function<bool(int32_t station)> stationNear;
     std::optional<creatures::Recipe> finishedCraft;
-    void selectRecipe(int tab, size_t row) { craftingTab = tab, craftSelection = std::pair{tab, row}; }
+    void selectRecipe(int tab, size_t row) { craftList.currentGroup = tab; craftSelection = std::pair{tab, row}; refreshCraftingRows(); }
     // §5.1, §5.2: the craft timer, run by the game every frame with the left button's state.
     void stepCraft(float dtMs, bool leftHeld);
     // What presses asked for, taken by the game: sounds, items to use, equipment changes.
@@ -490,7 +492,19 @@ class Interface {
                       bool nameLine = true);
     void drawItem(Painter &painter, glm::vec2 window, const creatures::ItemRecord &item, glm::vec2 at, float scale,
                   float depth = 0);
-    void scrollRange();
+    void drawScrollChildren(ItemListControl &list, Painter &painter, glm::vec2 origin, glm::vec2 local);
+    int scrollArrowUnder(const ItemListControl &list, glm::vec2 local) const;
+    template<class Groups>
+    bool pressScrollChild(ItemListControl &list, glm::vec2 local, float pointerY, const Groups &groups) {
+        if (const int arrow = scrollArrowUnder(list, local)) {
+            list.recalculate(groups);
+            list.step(arrow);
+            return true;
+        }
+        return list.pressThumb(local, pointerY);
+    }
+    void layoutItemLists(glm::vec2 window);
+    std::optional<glm::vec2> itemListWindow;
     // The character and world screens, in FrontScreens.cpp.
     void loadFront();
     void drawFront(Painter &painter, glm::vec2 window, glm::vec2 mouse, float dtMs, double seconds,
@@ -603,18 +617,18 @@ class Interface {
     std::optional<plasma::Document> craftingPanel, previewPanel, wideItemBox, itemSelector, craftButton, craftBar;
     std::vector<plasma::Document> craftingTabs;
     std::map<std::string, int32_t> craftingIcons; // texture ids in each tab document
-    std::array<int32_t, 6> craftingRow{};          // scroll rows
+    ItemListControl craftList{{350, 285}};
+    struct CraftRow { creatures::Recipe recipe; int32_t available; };
+    std::array<std::vector<CraftRow>, 6> craftRecipes;
     std::optional<std::pair<int, size_t>> craftSelection;
     creatures::Recipe crafting;  // the recipe being made (copied at the start, §5.1)
     float craftTimer = -1;
     bool craftReady = false;     // ready and under the mouse last frame (+0x3c4)
     glm::vec3 previewTurn{-120, 0, 0};
-    std::optional<plasma::Document> inventoryPanel, characterPanel, itemBox, upButton, downButton, scrollThumb, preview;
+    std::optional<plasma::Document> inventoryPanel, characterPanel, itemBox, upButton, downButton, preview;
     std::optional<plasma::Document> equippedPreview; // the compare box (open points 2 §3)
     std::vector<plasma::Document> inventoryTabs, equipmentBoxes;
-    int inventoryTab = 0;
-    std::array<int32_t, 4> scrollRow{}, scrollPositions{};
-    bool draggingThumb = false;
+    ItemListControl bagList{{400, 285}};
     void drawOptions(Painter &painter, glm::vec2 window, glm::vec2 mouse);
     std::optional<Action> clickOptions(glm::vec2 window, glm::vec2 mouse);
     std::optional<plasma::Document> optionsPanel, leftArrow, rightArrow;

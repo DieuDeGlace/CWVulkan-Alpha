@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Retain bag and crafting scroll offsets by tab and preserve the
+  thumb's actual drag position until a layout or item-result refresh.
+  Route movement from the mouse and the engine's controller cursor.
+
 - [x] Preserve selected recipes through world entry, initialize progress
   observations on load, and apply destination-level grants after pending credits.
   Keep duplicate checks and the shared random draws in their original order.

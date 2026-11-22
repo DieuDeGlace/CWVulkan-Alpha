@@ -13,17 +13,12 @@ using creatures::ItemRecord;
 
 // §4.1: the list window, 350 x 285, left of the inventory; wide rows of 300 x 40 at a 45 px
 // pitch (one column, five rows). §4.2: the preview, 350 x 330, under it.
-constexpr glm::vec2 LIST{350, 285}, PREVIEW{350, 330}, ROW{300, 40};
-constexpr int ROWS = 5;
-constexpr float PITCH = 45;
+constexpr glm::vec2 LIST{350, 285}, PREVIEW{350, 330};
 // §2, §8.1.2 (corrections 7, 8, 92): integer halves of W and H; tops level with the inventory's
 // (its height 285), the blueprint preview 10 below the crafting window (also 285 high).
 glm::vec2 listOrigin(glm::vec2 W) { return {std::trunc(W.x / 2) - 200 - 350 - 10, std::trunc(W.y / 2) - 285}; }
 glm::vec2 previewOrigin(glm::vec2 W) { return {std::trunc(W.x / 2) - 200 - 350 - 10, std::trunc(W.y / 2) - 285 + 10 + 285}; }
-glm::vec2 rowCorner(int r) { return {10, 40 + PITCH * (float)r}; }
 glm::vec2 tabCorner(int k) { return {4 + 40.f * (float)k, -41.07f}; }
-glm::vec2 upCorner() { return {LIST.x - 30, 10}; }
-glm::vec2 downCorner() { return {LIST.x - 30, LIST.y - 30}; }
 // (Where the button and the bar sit in the preview comes from gui.plx and is not traced, open
 // point C-3: the bottom right here.)
 constexpr glm::vec2 BUTTON_AT{PREVIEW.x - 56, PREVIEW.y - 56}, BAR_AT{PREVIEW.x - 106, PREVIEW.y - 56};
@@ -60,6 +55,9 @@ void Interface::loadCrafting() {
     }
     if (const int32_t n = gui.find("wideitembox"); n >= 0)
         wideItemBox = clone(gui, n);
+    if (const int32_t n = gui.find("scrollbutton"); n >= 0)
+        craftList.thumb = clone(gui, n);
+    craftList.measure(craftingPanel, wideItemBox);
     if (const int32_t n = gui.find("itemselector"); n >= 0)
         itemSelector = clone(gui, n);
     if (const int32_t n = gui.find("craftbutton"); n >= 0)
@@ -78,10 +76,9 @@ void Interface::stepCraft(float dtMs, bool leftHeld) {
     if (craftReady && leftHeld && craftTimer < 0) {
         craftTimer = 0;
         if (craftSelection && inventory) {
-            const auto tabs = creatures::recipeTabs(inventory->recipes);
-            const auto &list = tabs[craftSelection->first];
+            const auto &list = craftRecipes[craftSelection->first];
             if (craftSelection->second < list.size())
-                crafting = list[craftSelection->second];
+                crafting = list[craftSelection->second].recipe;
         }
     }
     if (craftTimer >= 0) {
@@ -96,19 +93,36 @@ void Interface::stepCraft(float dtMs, bool leftHeld) {
 void Interface::refreshCraftingRows() {
     if (!inventory)
         return;
-    const auto tabs = creatures::recipeTabs(inventory->recipes);
-    for (size_t i = 0; i < tabs.size(); ++i)
-        craftingRow[i] = std::clamp(craftingRow[i], 0, std::max(0, int32_t(tabs[i].size()) - ROWS));
+    auto sorted = creatures::recipeTabs(inventory->recipes);
+    for (size_t tab = 0; tab < sorted.size(); ++tab) {
+        auto &rows = craftRecipes[tab];
+        rows.clear();
+        rows.reserve(sorted[tab].size());
+        for (auto &recipe : sorted[tab]) {
+            const int32_t count = creatures::timesCraftable(*inventory, recipe);
+            rows.push_back({std::move(recipe), count});
+        }
+    }
+    craftList.recalculate(craftRecipes);
+    craftList.placeThumb();
+}
+
+void Interface::toggleCrafting(std::optional<int> tab) {
+    craftingOpen = !craftingOpen;
+    craftList.releaseThumb();
+    if (tab)
+        craftList.currentGroup = *tab;
+    refreshCraftingRows();
 }
 
 void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, float dtMs) {
     if (!inventory)
         return;
-    const auto tabs = creatures::recipeTabs(inventory->recipes);
-    const auto &list = tabs[craftingTab];
-    const int32_t rows = (int32_t)list.size();
-    int32_t &row0 = craftingRow[craftingTab];
-    row0 = std::clamp(row0, 0, std::max(0, rows - ROWS));
+    craftList.recalculate(craftRecipes);
+    const int craftingTab = craftList.currentGroup;
+    auto &list = craftRecipes[craftingTab];
+    const glm::vec2 cell = craftList.cellSize;
+    const int row0 = craftList.offset();
 
     // §4.1: the list window.
     const glm::vec2 O = listOrigin(W), local = mouse - O;
@@ -117,17 +131,17 @@ void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, flo
         painter.draw(*craftingPanel, 0, Transform(1));
     }
     outlined(painter, TITLES[craftingTab], O + glm::vec2(15, 25), 12, 3, glm::vec4(1));
-    for (int r = 0; r < ROWS; r++) {
-        const size_t i = (size_t)(row0 + r);
-        const glm::vec2 corner = O + rowCorner(r);
+    for (int slot = 0; slot < craftList.columns * craftList.rows; ++slot) {
+        const size_t i = size_t(row0) * craftList.columns + slot;
+        const glm::vec2 corner = O + craftList.cellAt(slot % craftList.columns, slot / craftList.columns);
         if (wideItemBox) {
             placeWidget(*wideItemBox, 0, corner);
             painter.draw(*wideItemBox, 0, Transform(1));
         }
         if (i >= list.size())
             continue;
-        const ItemRecord &product = list[i].product;
-        const bool over = inside(mouse, corner, ROW);
+        const ItemRecord &product = list[i].recipe.product;
+        const bool over = inside(mouse, corner, cell);
         if (itemModel && creatures::itemType(product)) {
             const ItemModel m = itemModel(product);
             painter.item(itemDraw(m.mesh, m.size, creatures::itemType(product) == 9, corner + glm::vec2(20), itemTurn,
@@ -136,23 +150,19 @@ void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, flo
         std::u16string name = itemName ? itemName(product) : u"";
         if (!creatures::quantityType(product))
             name += u" +" + number(creatures::powerOf(creatures::itemLevel(product)));
-        outlined(painter, name, corner + glm::vec2(ROW.y + 10, 10), 10, 2, glm::vec4(creatures::nameColour(product), 1),
-                 plasma::WRAP, ROW.x - ROW.y - 20);
+        outlined(painter, name, corner + glm::vec2(cell.y + 10, 10), 10, 2, glm::vec4(creatures::nameColour(product), 1),
+                 plasma::WRAP, cell.x - cell.y - 20);
         // §4.1: the count shows for a non-empty item type with a count above 0.
-        if (const int32_t n = creatures::timesCraftable(*inventory, list[i]); n > 0 && creatures::itemType(product) != 0)
-            outlined(painter, number(n), corner + glm::vec2(ROW.x - 4, 37), 10, 2, glm::vec4(1), plasma::RIGHT);
+        // Bag quantities can also change through engine-side services between rebuilds.
+        list[i].available = creatures::timesCraftable(*inventory, list[i].recipe);
+        if (list[i].available > 0 && creatures::itemType(product) != 0)
+            outlined(painter, number(list[i].available), corner + glm::vec2(cell.x - 4, 37), 10, 2, glm::vec4(1), plasma::RIGHT);
         if (craftSelection && craftSelection->first == craftingTab && craftSelection->second == i && itemSelector) {
             placeWidget(*itemSelector, 0, corner);
             painter.draw(*itemSelector, 0, Transform(1));
         }
     }
-    if (upButton && downButton && rows > ROWS) {
-        for (auto [doc, at] : {std::pair{&*upButton, upCorner()}, std::pair{&*downButton, downCorner()}}) {
-            tint(*doc, 0, inside(local, at, {21, 19}) ? CYAN : glm::vec4(1));
-            placeWidget(*doc, 0, O + at);
-            painter.draw(*doc, 0, Transform(1));
-        }
-    }
+    drawScrollChildren(craftList, painter, O, local);
     for (int k = 0; k < (int)craftingTabs.size(); k++) {
         plasma::Document &doc = craftingTabs[k];
         const plasma::Node &root = doc.nodes[0];
@@ -173,8 +183,8 @@ void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, flo
         painter.draw(*previewPanel, 0, Transform(1));
     }
     const creatures::Recipe *recipe = nullptr;
-    if (craftSelection && craftSelection->first < 6 && craftSelection->second < tabs[craftSelection->first].size())
-        recipe = &tabs[craftSelection->first][craftSelection->second];
+    if (craftSelection && craftSelection->first < 6 && craftSelection->second < craftRecipes[craftSelection->first].size())
+        recipe = &craftRecipes[craftSelection->first][craftSelection->second].recipe;
     previewTurn.z += dtMs * 0.02f;
     craftReady = false;
     if (!recipe) {
@@ -248,24 +258,32 @@ bool Interface::craftingPress(glm::vec2 W, glm::vec2 mouse, int button) {
     const glm::vec2 O = listOrigin(W), local = mouse - O;
     for (int k = 0; k < 6; k++)
         if (inside(local, tabCorner(k), {38, 38})) {
-            if (button == 0 && k != craftingTab) {
-                craftingTab = k;
+            if (button == 0 && k != craftList.currentGroup) {
+                craftList.currentGroup = k;
+                craftList.recalculate(craftRecipes);
+                const size_t first = size_t(craftList.offset()) * craftList.columns;
+                if (first < craftRecipes[k].size())
+                    craftSelection = std::pair{k, first};
+                else
+                    craftSelection.reset();
+                craftList.placeThumb();
                 inventorySounds.push_back(creatures::SOUND_TAB);
             }
             return true;
         }
     if (inside(local, {0, 0}, LIST)) {
-        const int32_t rows = (int32_t)creatures::recipeTabs(inventory->recipes)[craftingTab].size();
-        int32_t &row0 = craftingRow[craftingTab];
-        if (inside(local, upCorner(), {21, 19}))
-            row0 = std::max(row0 - 1, 0);
-        else if (inside(local, downCorner(), {21, 19}))
-            row0 = std::min(row0 + 1, std::max(0, rows - ROWS));
-        for (int r = 0; r < ROWS; r++)
-            if (inside(local, rowCorner(r), ROW) && row0 + r < rows) {
-                craftSelection = std::pair{craftingTab, (size_t)(row0 + r)};
+        if (button == 0 && pressScrollChild(craftList, local, mouse.y, craftRecipes))
+            return true;
+        const int tab = craftList.currentGroup;
+        for (int slot = 0; slot < craftList.columns * craftList.rows; ++slot) {
+            const size_t i = size_t(craftList.offset()) * craftList.columns + slot;
+            if (i < craftRecipes[tab].size() &&
+                inside(local, craftList.cellAt(slot % craftList.columns, slot / craftList.columns), craftList.cellSize)) {
+                craftSelection = std::pair{tab, i};
                 inventorySounds.push_back(0x55);
+                break;
             }
+        }
         return true;
     }
     return inside(mouse, previewOrigin(W), PREVIEW);

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 88 and the rulings. The 314 tracked contracts
-comprise 279 A, 30 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 89 and the rulings. The 315 tracked contracts
+comprise 280 A, 30 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -168,6 +168,7 @@ Batch 85 records section 9's dedicated audience, two client lookups and item pre
 Batch 86 records the active decoration lighting path, model keys and the native distance passes.
 Batch 87 corrects the final static-index pass and locates the preceding decoration-light initialization.
 Batch 88 records the independently reviewed recipe grant and the separate level and progress presentation contract.
+Batch 89 records the shared item-list layout, pointer movement and refresh order for bag and crafting controls.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -294,6 +295,7 @@ Batch 88 records the independently reviewed recipe grant and the separate level 
 | `alpha-house-furniture.md` | A | 222 | 1 |
 | `alpha-interaction.md` | A | 773 | 3 |
 | `alpha-inventory-equality-consumers.md` | A | 94 | 0 |
+| `alpha-item-list-scroll-controls.md` | A | 148 | 0 |
 | `alpha-item-names.md` | A | 666 | 0 |
 | `alpha-item-services.md` | A | 668 | 2 |
 | `alpha-items-generator.md` | A | 426 | 0 |

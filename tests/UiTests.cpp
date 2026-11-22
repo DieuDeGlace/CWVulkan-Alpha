@@ -8,6 +8,7 @@
 #include "ui/LandNames.h"
 #include "ui/Screens.h"
 #include "creatures/Hits.h"
+#include "creatures/Credits.h"
 #include "creatures/Physics.h"
 #include "Loot.h"
 #include <cmath>
@@ -21,6 +22,186 @@ static void check(bool ok, const std::string &what) {
         failures++;
         std::printf("FAIL %s\n", what.c_str());
     }
+}
+
+static plasma::Document testWidget(glm::vec2 size) {
+    plasma::Document doc;
+    doc.nodes.emplace_back().widget = 0;
+    doc.nodes.front().transformation = 0;
+    doc.transformations.emplace_back();
+    doc.widgets.emplace_back().bindSize = size;
+    doc.widgets.front().innerBindSize = size - 4.f;
+    return doc;
+}
+
+static void checkItemListControls() {
+    Interface headless;
+    auto belongings = creatures::Inventory::fresh();
+    belongings.bags[0][0].item[0] = 3;
+    belongings.bags[0][0].count = 1;
+    headless.inventory = &belongings;
+    headless.inventoryOpen = true;
+    check(headless.inventoryPress({1280, 720}, {460, 125}, 0) && belongings.hand.count == 1,
+          "default grid accepts a first slot press before a draw without a skin");
+    std::optional<plasma::Document> panel = testWidget({211, 200}), cell = testWidget({40.9f, 40.5f});
+    resizeWidget(*panel, 0, {190.5f, 171.75f});
+    ItemListControl bag{{400, 285}};
+    bag.measure(panel, cell);
+    bag.thumb = testWidget({17.5f, 22});
+    std::vector<std::vector<int>> tabs(2);
+    tabs[0].resize(17);
+    tabs[1].resize(36);
+    bag.recalculate(tabs);
+    bag.placeThumb();
+    check(bag.columns == 4 && bag.rows == 2 && bag.range == 4 && bag.thumbAt == glm::vec2(162.5f, 35) &&
+              widgetSize(*bag.thumb, 0, {}) == glm::vec2(17.5f, 25),
+          "list measures its resized panel, truncated cell and fractional child width");
+    tabs[0].resize(13);
+    bag.recalculate(tabs);
+    bag.placeThumb();
+    check(bag.range == 3 && bag.pressThumb({165, 43}, 143), "left press captures the current thumb");
+    bag.moveThumb(195.8f);
+    check(bag.offset() == 1 && bag.thumbAt.y == 87 && widgetSize(*bag.thumb, 0, {}).y == 33,
+          "between-row drag keeps its integer top after float delta and carries the cursor grip");
+    bag.recalculate(tabs);
+    check(bag.thumbAt.y == 87, "ordinary draw's range calculation preserves unsnapped placement");
+    bag.placeThumb();
+    check(bag.thumbAt.y == 69, "explicit rectangle dispatch snaps an unchanged offset");
+    bag.moveThumb(500);
+    check(bag.offset() == 2 && bag.thumbAt.y == 103 && !bag.step(1), "drag and blocked down at the exact lower end");
+    bag.moveThumb(-500);
+    bag.moveThumb(-490);
+    check(!bag.step(-1) && bag.offset() == 0 && bag.thumbAt.y == 45,
+          "blocked up preserves a between-row position at offset zero");
+    bag.releaseThumb();
+    bag.moveThumb(400);
+    check(bag.thumbAt.y == 45 && !bag.pressThumb({164, 95}, 95), "release and blank track cannot move the thumb");
+    bag.step(1);
+    check(bag.offset() == 1 && bag.thumbAt.y == 69, "one-row move reapplies the rectangle");
+    bag.currentGroup = 1;
+    bag.recalculate(tabs);
+    bag.step(1);
+    tabs[0].clear();
+    bag.recalculate(tabs);
+    check(bag.scroll[0] == 1 && bag.range == 8 && bag.offset() == 1, "inactive group retains its offset");
+    const auto oldAt = bag.thumbAt, oldSize = widgetSize(*bag.thumb, 0, {});
+    bag.currentGroup = 0;
+    bag.recalculate(tabs);
+    bag.placeThumb();
+    check(bag.range == 0 && bag.offset() == 0 && oldAt == bag.thumbAt && oldSize == widgetSize(*bag.thumb, 0, {}),
+          "bound empty tab resets only its row and retains the previous child rectangle");
+    bag.currentGroup = 5;
+    bag.recalculate(tabs);
+    bag.placeThumb();
+    check(bag.range == 1 && bag.thumbAt.y == 35 && widgetSize(*bag.thumb, 0, {}).y == 101,
+          "invalid active tab in a nonempty collection fills the track without an offset read");
+    tabs.clear();
+    bag.recalculate(tabs);
+    bag.panelSize.y = 200;
+    bag.placeThumb();
+    check(bag.range == 1 && bag.scroll.empty() && widgetSize(*bag.thumb, 0, {}).y == 101,
+          "an empty outer collection leaves the child's rectangle intact");
+    tabs.resize(1);
+    tabs.front().resize(1);
+    bag.currentGroup = 0;
+    bag.recalculate(tabs);
+    bag.scroll[0] = -4;
+    bag.recalculate(tabs);
+    check(bag.offset() == -4 && bag.range == 1, "range recalculation does not lower-clamp stored offsets");
+    bag.placeThumb();
+    bag.pressThumb(bag.thumbAt, 0);
+    bag.moveThumb(700);
+    check(bag.thumbAt.y == 35 && bag.offset() == 0, "zero travel skips division and clamps the stored offset");
+    tabs.front().resize(800);
+    bag.recalculate(tabs);
+    bag.placeThumb();
+    check(widgetSize(*bag.thumb, 0, {}).y == 0, "thumb height can truncate to zero");
+}
+
+static void checkItemListHandlers(const fs::path &game) {
+    Interface ui;
+    if (!ui.load(game)) {
+        check(false, "owned list skin loads");
+        return;
+    }
+    creatures::Inventory inventory;
+    inventory.bags.resize(4);
+    for (int i = 0; i < 57; ++i) {
+        creatures::ItemRecord item{};
+        item[0] = 3;
+        item[4] = uint8_t(i + 1);
+        creatures::setItemLevel(item, 1);
+        inventory.bags[0].push_back({1, item});
+        if (i < 9)
+            inventory.recipes.push_back(item);
+    }
+    ui.inventory = &inventory;
+    ui.inventoryOpen = ui.craftingOpen = true;
+    ui.refreshInventoryRows();
+    ui.refreshCraftingRows();
+    ui.itemModel = [](const creatures::ItemRecord &item) { return Interface::ItemModel{item[4], {1,1,1}}; };
+    const glm::vec2 window{1280, 720}, bagOrigin{440,75}, craftOrigin{80,75}, off{-50,-50};
+    auto draw = [&](glm::vec2 size) { return ui.draw(size, off, 0); };
+    const auto firsts = [](const Frame &frame) {
+        // No preview is selected. The crafting list submits first, then the bag.
+        return std::pair{frame.items.at(0).mesh, frame.items.at(5).mesh};
+    };
+    auto left = [&](glm::vec2 at) { return ui.inventoryPress(window, at, 0); };
+    check(firsts(draw(window)) == std::pair{1u,1u}, "ordinary draw uses the first recipe and bag rows");
+    left(bagOrigin + glm::vec2(375, 40));
+    ui.itemListMove(bagOrigin.y + 105, true);
+    ui.releaseItemList();
+    check(firsts(draw(window)) == std::pair{1u,9u}, "bag drag affects only the bag's visible models");
+    left(craftOrigin + glm::vec2(325, 40));
+    ui.itemListMove(craftOrigin.y + 140, true);
+    ui.releaseItemList();
+    check(firsts(draw(window)) == std::pair{3u,9u}, "independent crafting drag uses one-column geometry");
+    left(bagOrigin + glm::vec2(375, 235));
+    ui.itemListMove(bagOrigin.y + 15, true);
+    ui.releaseItemList();
+    check(firsts(draw(window)) == std::pair{3u,9u}, "press on a bare track cannot start a drag");
+
+    // At range four the row-one canonical top is 89. The first drag left
+    // the top at 100. A grip at 92 can only catch it after rectangle refresh.
+    left(bagOrigin + glm::vec2(375, 92));
+    ui.itemListMove(bagOrigin.y + 245, true);
+    ui.releaseItemList();
+    check(firsts(draw(window)).second == 9u, "draw does not snap the actual thumb between rows");
+    ui.inventoryOpen = ui.craftingOpen = false;
+    creatures::Combatant local, foreign;
+    local.id = 17; foreign.id = 23;
+    int32_t cubes = 0;
+    creatures::ItemRecord coin{}, cube{};
+    coin[0] = 13;
+    creatures::setItemLevel(coin, 1);
+    cube[0] = 25;
+    const std::array<creatures::ItemGrant, 5> grants{{{99, coin}, {23, coin}, {17, cube}, {17, coin}, {17, coin}}};
+    std::string order;
+    creatures::applyItemGrants({}, grants, local, inventory, cubes, [&](uint64_t id) {
+        return id == local.id ? &local : id == foreign.id ? &foreign : nullptr;
+    }, {[&] { order += 'b'; ui.refreshInventoryRows(); }, [&] { order += 'c'; ui.refreshCraftingRows(); }, [](const auto &, const auto &) {}});
+    ui.inventoryOpen = ui.craftingOpen = true;
+    check(order == "bbccc" && cubes == 1, "hidden bag and crafting handle each addressed refresh in pass order");
+    left(bagOrigin + glm::vec2(375, 92));
+    ui.itemListMove(bagOrigin.y + 245, true);
+    ui.releaseItemList();
+    check(firsts(draw(window)).second == 25u, "the hidden receipt refresh placed the bag thumb");
+    // Craft's unsnapped row-two top was 135. The receipt snapped it to 121.
+    left(craftOrigin + glm::vec2(325, 124));
+    ui.itemListMove(craftOrigin.y + 240, true);
+    ui.releaseItemList();
+    check(firsts(draw(window)).first == 5u, "the hidden local crafting rebuild placed its separate thumb");
+    ui.inventoryPress(window, bagOrigin + glm::vec2(375, 14), 1);
+    check(firsts(draw(window)).second == 25u, "nonprimary arrow press leaves the bag row alone");
+    left(bagOrigin + glm::vec2(375, 14));
+    check(firsts(draw(window)).second == 17u, "up child recalculates and scrolls one bag row");
+    left(bagOrigin + glm::vec2(45, -34)); // empty Items tab, then back to Equipment
+    left(bagOrigin + glm::vec2(10, -34));
+    check(firsts(draw(window)).second == 17u, "switching tabs retains the inactive bag offset");
+    const glm::vec2 resized = window + glm::vec2(100, 80);
+    draw(resized);
+    ui.inventoryPress(resized, bagOrigin + glm::vec2(50, 40) + glm::vec2(375, 260), 0);
+    check(firsts(draw(resized)).second == 25u, "resized viewport routes the down child at its new origin");
 }
 
 static void checkTerrainWait() {
@@ -726,6 +907,7 @@ int main(int argc, char **argv) {
     checkInteractionTargets();
     checkPlatinumAdaption();
     checkMenuRequests();
+    checkItemListControls();
     checkTerrainWait();
     checkCharacterScreens();
     checkSkillTooltip();
@@ -917,6 +1099,7 @@ int main(int argc, char **argv) {
         std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
         return failures ? 1 : 0;
     }
+    checkItemListHandlers(game);
     checkFrontRendering(game);
 
     // §3.8: nodes, mesh shapes, text shapes, transformations, widgets, textures.

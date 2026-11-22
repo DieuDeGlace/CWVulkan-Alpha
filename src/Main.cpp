@@ -1085,6 +1085,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     interface.loadIcons([&](const std::string &key) { return content.read(key); });
     // Screens §8.1: the inventory screen shows the player's belongings, each item by its model.
     interface.inventory = &inventory;
+    interface.refreshInventoryRows();
+    interface.refreshCraftingRows();
     interface.dictionary = &dictionary;
     // Quests: a creature type's plural name ("Goblins"), empty when the dictionary has none.
     const auto plural = [&](int32_t type) {
@@ -1321,6 +1323,23 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         bool cursorKnown = false; // no look delta until one sample in the current cursor mode
         bool dropOne = false; // screens §8.1.8: a left press over nothing with an item in hand
         bool revived = false; // interaction §5.2: this R press revived (the rest of the R block waits)
+        glm::vec2 uiPoint(GLFWwindow *window, double x, double y) const {
+            int width, height;
+            glfwGetWindowSize(window, &width, &height);
+            const auto size = renderer->size();
+            return width > 0 && height > 0 ? glm::vec2(float(x * size.width / width), float(y * size.height / height))
+                                           : glm::vec2(float(x), float(y));
+        }
+        std::optional<glm::dvec2> lastListPointer;
+        void moveItemLists(GLFWwindow *window, double x, double y) {
+            if (!pointerButtons.held(0) || (!interface->inventoryOpen && !interface->craftingOpen))
+                return;
+            const glm::dvec2 point{x, y};
+            if (lastListPointer == point)
+                return; // a native notification and the controller fallback can describe the same move
+            lastListPointer = point;
+            interface->itemListMove(uiPoint(window, x, y).y, true);
+        }
         Gamepad::PointerButtons pointerButtons;
         std::function<void(int, int, Gamepad::PointerButtons::Source)> mouseDispatch;
     } input{&view, &scene, &interface, &renderer, player ? &*player : nullptr};
@@ -1381,7 +1400,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             return;
         }
         if (key == GLFW_KEY_C && action == GLFW_PRESS && !ui.startScreen && in->player) {
-            ui.craftingOpen = !ui.craftingOpen; // crafting §4.1
+            ui.toggleCrafting(); // crafting §4.1
             return;
         }
         if (key == GLFW_KEY_X && action == GLFW_PRESS && !ui.startScreen && in->player) {
@@ -1392,6 +1411,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         if ((key == GLFW_KEY_B || key == GLFW_KEY_I) && action == GLFW_PRESS && !ui.startScreen && in->player) {
             // Screens §8.1.2: B or I toggles the inventory; opening it hides the system panel.
             ui.inventoryOpen = !ui.inventoryOpen;
+            ui.releaseItemList();
+            ui.refreshInventoryRows();
             if (ui.inventoryOpen)
                 ui.systemMenu = false;
             return;
@@ -1440,6 +1461,11 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             action = *transition ? GLFW_PRESS : GLFW_RELEASE;
         }
         ui::Interface &menu = *in->interface;
+        if (button == GLFW_MOUSE_BUTTON_LEFT) {
+            in->lastListPointer.reset();
+            if (action == GLFW_RELEASE)
+                menu.releaseItemList();
+        }
         if (menu.controllerKeyboardOpen()) {
             if (action == GLFW_PRESS) {
                 double x, y;
@@ -1490,7 +1516,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             const VkExtent2D size = in->renderer->size();
             const int b = button == GLFW_MOUSE_BUTTON_LEFT ? 0 : button == GLFW_MOUSE_BUTTON_RIGHT ? 1
                           : button == GLFW_MOUSE_BUTTON_MIDDLE ? 2 : -1;
-            if (b >= 0 && menu.inventoryPress({(float)size.width, (float)size.height}, {(float)x, (float)y}, b))
+            if (b >= 0 && menu.inventoryPress({(float)size.width, (float)size.height}, in->uiPoint(w, x, y), b))
                 return;
             if (b == 0 && menu.inventory && !menu.inventory->hand.empty() && !menu.menuRow) {
                 in->dropOne = true;
@@ -1553,13 +1579,15 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             case ui::Action::Inventory: // §7: the menu row's inventory button, as B
                 if (in->player) {
                     menu.inventoryOpen = !menu.inventoryOpen;
+                    menu.releaseItemList();
+                    menu.refreshInventoryRows();
                     if (menu.inventoryOpen)
                         menu.systemMenu = false;
                 }
                 break;
             case ui::Action::Crafting: // §7: the menu row's crafting button, as C
                 if (in->player)
-                    menu.craftingOpen = !menu.craftingOpen;
+                    menu.toggleCrafting();
                 break;
             case ui::Action::Skills: // §7: the menu row's skills button, as X
                 if (in->player) {
@@ -1585,6 +1613,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     glfwSetCursorPosCallback(window, [](GLFWwindow *w, double x, double y) {
         auto *in = (Input *)glfwGetWindowUserPointer(w);
         const bool menus = in->interface->wantsMouse();
+        in->moveItemLists(w, x, y);
         // Character screens §3.3: the list drag's smoothing follows every move (ms clock).
         in->interface->frontMouseMove((float)y, (uint32_t)(uint64_t)(glfwGetTime() * 1000.0));
         // The first sample only establishes a reference: where the cursor rests
@@ -2141,6 +2170,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         input.pointerButtons.clear();
                     else
                         input.pointerButtons.cancelController();
+                    if (!input.pointerButtons.held(0))
+                        interface.releaseItemList();
                     controllerMouse.fill(false);
                 }
                 syncCursor();
@@ -2209,6 +2240,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     glfwSetCursorPos(window, std::clamp(x + stick.x * pad.cursorSpeed * dt, 0.0, double(std::max(0, width - 1))), toY);
                     // A moved cursor is a mouse move for the character screens' list drag (the
                     // platform may not report a programmatic move).
+                    if (input.pointerButtons.held(0) && (interface.inventoryOpen || interface.craftingOpen)) {
+                        // GLFW can quantize the requested position to a platform pixel. Use that
+                        // same position for the fallback and a later native move notification.
+                        glfwGetCursorPos(window, &x, &y);
+                        input.moveItemLists(window, x, y);
+                    }
                     interface.frontMouseMove((float)toY, (uint32_t)(uint64_t)(glfwGetTime() * 1000.0));
                 };
                 if (pad.context() == Gamepad::Context::Map) {
@@ -2234,6 +2271,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 if (!pad.connected) {
                     controllerMouse[button] = false;
                     input.pointerButtons.cancelController();
+                    if (!input.pointerButtons.held(0))
+                        interface.releaseItemList();
                     continue;
                 }
                 const bool ui = pad.context() == Gamepad::Context::Menu || pad.context() == Gamepad::Context::Map ||
@@ -2277,6 +2316,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                     if (std::exchange(diagnosticStarterRecipes, false)) {
                         player->observedLevel = c.level;
                         creatures::grantLevel(inventory.recipes, c.level, c.characterClass, [&] { return worldRandom.draw(); });
+                        interface.refreshCraftingRows();
                     }
                     interface.stationNear = [&](int32_t station) {
                         const glm::dvec3 me = player->body().blocks();
@@ -2313,6 +2353,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                             if (const char *key = creatures::soundKey(sound))
                                 audio.play(key);
                         if (made.made) {
+                            interface.refreshCraftingRows();
                             interface.chatAdd("You receive ", {255, 255, 255});
                             interface.chatAdd(receivedText(*made.made, dictionary), creatures::nameColour(*made.made) * 255.f);
                             interface.chatAdd(".\n", {255, 255, 255});
@@ -3550,6 +3591,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 player->observedExperience = 0;
                 const int32_t level = player->combat().level;
                 creatures::grantLevel(inventory.recipes, level, player->combat().characterClass, [&] { return worldRandom.draw(); });
+                interface.refreshCraftingRows();
             } else if (player->combat().experience > player->observedExperience) {
                 const auto gain = [&] {
                     return std::bit_cast<int32_t>(uint32_t(player->combat().experience) - uint32_t(player->observedExperience));
@@ -4278,11 +4320,12 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         interface.benchReset();
                     }
                     if (station && kind != 77) {
-                        interface.craftingOpen = !interface.craftingOpen;
+                        std::optional<int> tab;
                         if (kind == 65)
-                            interface.craftingTab = 3;
+                            tab = 3;
                         else if (kind == 71 || kind == 73 || kind == 75)
-                            interface.craftingTab = 5;
+                            tab = 5;
+                        interface.toggleCrafting(tab);
                     }
                     if (!station)
                         queueItemRequest({ItemRequest::UseStatic, {}, {zx, zy, (int32_t)k}});
@@ -4776,12 +4819,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             // Screens §8.1.6: every interface item turns 30 degrees a second about z.
             interface.itemTurn.z += seconds * 1000.f * 0.03f;
             glm::vec2 uiMouse{float(mx), float(my)};
-            if (interface.controllerKeyboardOpen()) {
-                int width, height;
-                glfwGetWindowSize(window, &width, &height);
-                if (width > 0 && height > 0)
-                    uiMouse *= glm::vec2(float(size.width) / width, float(size.height) / height);
-            }
+            if (interface.inventoryOpen || interface.craftingOpen || interface.skillsOpen || interface.controllerKeyboardOpen())
+                uiMouse = input.uiPoint(window, mx, my);
             if (player)
                 syncCursor(); // the front form can change after controller input
             renderer.setInterface(interface.draw({float(size.width), float(size.height)}, uiMouse, now - start, terrainWait));

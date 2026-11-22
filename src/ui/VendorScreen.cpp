@@ -47,7 +47,7 @@ vendor::Services Interface::vendorServices() {
     services.carryLimit = [&] { chatAdd("You can't carry more of these items.\n", {255, 51, 51}); };
     services.refresh = [&] { refreshVendor(); };
     // The engine's player widget derives its layout from the current bags.
-    services.updatePlayer = [&] { scrollRange(); };
+    services.updatePlayer = [&] { refreshInventoryRows(); };
     return services;
 }
 

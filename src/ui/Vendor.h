@@ -1,5 +1,6 @@
 #pragma once
 #include "creatures/InventoryValue.h"
+#include "ui/ItemList.h"
 #include <array>
 #include <functional>
 #include <list>
@@ -17,10 +18,7 @@ struct Index {
 
 // Logical rows retain zero/negative quantities. Geometry/rendering is supplied
 // by the engine; these are the held widget's group, index and scroll rules.
-struct Grid {
-    int32_t currentGroup = 0;
-    int32_t columns = 0, rows = 0, range = 1;
-    std::vector<int32_t> scroll;
+struct Grid : ItemListRange {
     Index hover, selected;
 
     void update(const creatures::InventoryValue *buffer, float width, float height,

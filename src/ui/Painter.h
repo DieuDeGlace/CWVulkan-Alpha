@@ -144,6 +144,8 @@ class Painter {
 // (alpha-ui-plasma.md §6.4). Textures are copied along, so the clone stands alone.
 plasma::Document clone(const plasma::Document &doc, int32_t node);
 
+// Current outer widget dimensions in bind space, including its live resize.
+glm::vec2 widgetSize(const plasma::Document &doc, int32_t node, glm::vec2 fallback);
 // Resizes a widget node to `size` pixels (alpha-ui-plasma.md §5.5): its inner rectangle grows
 // by the change of its outer one, so corners keep their shape (open question P-11).
 void resizeWidget(plasma::Document &doc, int32_t node, glm::vec2 size);

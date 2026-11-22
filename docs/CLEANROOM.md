@@ -4734,3 +4734,12 @@ accepted network entry, and the observation after credit processing were
 implemented from those records. The engine's explicit unsaved diagnostic
 character has its own starter grant. Original update cadence, visible
 text and device playback remain open.
+
+## Bag and crafting scroll controls (2026-11-21)
+
+The clean team read the complete 147-line source-author contract and the
+earlier recipient presentation record. The scroll contract has SHA-256
+`f94078c8e7b660ae32d986bb60e77736bfd7f942fcd1d0822e4029e4effb764d`. Its measurements and event order govern each list independently.
+The controller cursor maps engine input onto the same movement events.
+Original skin transforms and the initial drawing of an unplaced child
+remain open.

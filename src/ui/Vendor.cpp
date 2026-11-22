@@ -43,23 +43,9 @@ void Grid::update(const creatures::InventoryValue *buffer, float width, float he
         throw std::invalid_argument("Inventory layout requires positive columns and rows");
     columns = int32_t(c);
     rows = int32_t(r);
-    scroll.resize(buffer->groups.size(), 0);
     if (currentGroup < 0) throw std::invalid_argument("Negative inventory group");
-    if (size_t(currentGroup) >= buffer->groups.size()) {
-        range = 1;
-        return;
-    }
-    const size_t n = buffer->groups[size_t(currentGroup)].size();
-    auto &position = scroll[size_t(currentGroup)];
-    if (!n) {
-        range = position = 0;
-        return;
-    }
-    if (n > std::numeric_limits<uint32_t>::max())
-        throw std::length_error("Inventory row count exceeds the held width");
-    const uint32_t value = (uint32_t(n) - 1u) / uint32_t(columns) - uint32_t(rows) + 2u;
-    range = std::max(1, signedWord(value));
-    if (position > range - 1) position = range - 1;
+    const auto &groups = buffer->groups;
+    updateRange(groups.size(), size_t(currentGroup) < groups.size() ? groups[currentGroup].size() : 0);
 }
 
 std::pair<size_t, size_t> Grid::visible(const creatures::InventoryValue &buffer) const {

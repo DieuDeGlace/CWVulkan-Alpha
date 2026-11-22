@@ -213,6 +213,7 @@ add_library(engine STATIC
     src/ui/Screens.cpp
     src/ui/LandNames.cpp
     src/ui/Interaction.cpp
+    src/ui/ItemList.cpp
     src/ui/InventoryScreen.cpp
     src/ui/CraftingScreen.cpp
     src/ui/SpeechBubbles.cpp

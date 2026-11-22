@@ -1061,6 +1061,7 @@ Frame Interface::draw(glm::vec2 size, glm::vec2 mouse, double seconds, bool terr
     Painter painter(fonts, atlas);
     const float dtMs = lastSeconds < 0 ? 0.f : (float)((seconds - lastSeconds) * 1000.0);
     lastSeconds = seconds;
+    layoutItemLists(size);
     const bool inGame = inGameVisible();
     // Rulings manacubebar §2 timeline: the game's update has run (pickups); the HUD block reads
     // "a sequence plays" for the mana-cube icons, then the interface update advances the

@@ -3549,3 +3549,24 @@ saves and concurrent catalog changes remain open.
 
 Integrated on a2d3ac4 with line offsets only, the full x64 build succeeded
 and all 60 serial CTests passed in 110.69 seconds.
+
+## Bag and crafting thumb movement (2026-11-21)
+
+An x64 Vulkan client loaded the owned skin and exercised the same handlers
+used during play. Mouse movement took the bag to row one of four at Y 100.
+Through the engine controller cursor, the craft list reached row two of six
+at Y 134 and held it through button release and two subsequent draws.
+A previous run moved one pixel on release because the cursor position GLFW
+accepted differed from the requested position. Reading the accepted pointer
+position fixed that case. Forcing a thumb to snap at the end of every
+movement failed five checks, including one with the owned skin.
+
+The fixtures cover independent tab offsets, hidden lists refreshed by item
+results, empty groups, zero travel and drag positions between rows. Physical
+controller use and matching original-client frames remain open.
+
+The same replay was rebuilt from the integrated tree after the recipe grant
+checkpoint, which also refreshes the crafting rows after both grant paths.
+It reproduced bag row 1/4 at Y 100 and crafting row 2/6 at Y 134 held
+through release and two later draws. The full x64 build succeeded and all
+60 serial CTests passed in 126.08 seconds.
