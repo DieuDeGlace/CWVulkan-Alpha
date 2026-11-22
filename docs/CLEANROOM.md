@@ -4804,3 +4804,12 @@ in the frame. The by-value world-view entry remains available to callers.
 Both paths use the same gather and sort. This is an engine storage change.
 The published terrain slot admission, point lighting and ambient draw-order
 contracts continue to govern the observable output.
+
+### Original-client save readback (2026-11-22)
+
+This is a black-box interoperability result for one synthetic character and
+world. The owner selected them in a private copy of the original client.
+The clean team compared the closed databases and reopened the output in two
+fresh Vulkan sessions. The stored visit, character, terrain edits and map
+tiles are recorded in verification.md. This evidence concerns the observed
+save flow. It adds no source-author contract or native menu pixel comparison.

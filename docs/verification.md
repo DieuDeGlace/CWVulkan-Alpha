@@ -3668,3 +3668,30 @@ test covered those transitions from the same initial state. The travel
 observer used fixed 16 ms updates and exercised both builders each frame.
 These measurements establish a reduction in allocation traffic. Frame-rate
 and peak-memory impact remain unmeasured.
+
+## Original Alpha and Vulkan single-player save round trip (2026-11-22)
+
+The Vulkan client created a level-one warrior and a seed-123 world. An isolated
+original Alpha runtime received copies of the four closed databases. The owner
+selected the character and world, entered single-player and quit normally.
+The process exited and all four database hashes changed. The original Vulkan
+fixture retained its four pre-launch hashes. The original menu was owner-operated.
+The desktop capture helper did not return an original-client image.
+
+Original Alpha advanced the world clock from 43,221,100 to 44,830,860 ms.
+It retained the seed, the visit, the required water profile and the 172 ordered
+crater edits. The map grew from nine to 29 decoded tiles. The stock session
+updated character fields and the world preview. All 224 represented item
+identities, stack counts and the ordered recipes matched. Of 250 changed
+character bytes, 224 were in unused item-copy gaps. The rest were in the
+two saved positions, two orientation words and two unspecified appearance bytes.
+The returned zone contained none of the 11 prior ground items and six new
+dynamic-object records. These snapshots do not establish the cause.
+
+Two new Vulkan processes opened a further copy. Each received a different
+requested seed and start coordinate from the saved visit so falling back to
+a new world would be observable. Both loaded seed 123 and the saved location,
+decoded 29 tiles and the same 172 edits, and retained the original-exit
+character blob byte for byte. The clock advanced to 44,838,250 and then
+44,845,650 ms. The rendered captures showed the player, terrain, health HUD
+and minimap. Broader interchange, modded saves and long-play remain open.

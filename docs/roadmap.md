@@ -496,8 +496,12 @@ Differences from the Steam engine that shape the plan:
   rerolling grants, install startup map persistence before generation, and display
   the saved character name unless explicitly overridden. An isolated actual-client
   run retained character payload, seed/location, clock, nine map tiles, world
-  preview and 170 edited blocks across reload. Interactive menu and original-game
-  save interoperability acceptance remain open.
+  preview and 170 edited blocks across reload. The separate original-client readback below covers this synthetic flow.
+  Broader menu and save acceptance remain open.
+- [x] Single-player save interchange for one generated warrior and world. The owner
+  entered the Vulkan-written save in original Alpha and quit normally. Two fresh Vulkan
+  processes reopened the result. The saved visit, 172 ordered edits, 29 map tiles
+  and complete post-Alpha character data survived both Vulkan saves.
 - [x] Original dedicated world-clock interchange. The engine read an isolated
   original server save. The original server loaded an engine-written day and time
   from a separate copy and advertised them over loopback. Wider save interchange
