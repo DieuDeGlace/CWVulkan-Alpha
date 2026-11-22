@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Compare the committed first light byte for both air and water.
+  Report recorded scratch separately and label generation-only and
+  static-neighbour comparisons. Count sampled zones separately from their
+  auxiliary files. Reconstructing the native mesh history of a recorded
+  column still requires independent timing and residency evidence.
+
 - [x] Preserve resident spawn descriptors and indexed object identities
   across lighting and terrain-only changes. Discard the offline world's
   spawn state on departure. Reuse writable lighting areas during a batch

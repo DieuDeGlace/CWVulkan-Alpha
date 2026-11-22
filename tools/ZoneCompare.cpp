@@ -4,7 +4,7 @@
 // Usage: ZoneCompare [--strict] [--grid] [--list] [--edges] file.avzd|file.avrg|file.avsp|file.avzc [more ...]
 //        (--strict: fail on any compared mismatch, including light, or trailing data)
 //        (--list: every spawn of both sides)   (--grid: a map of where they differ)
-//        (--edges: light as flooded again at zone edges, rendering §9.2)
+//        (--edges: compare static edge floods with all eight neighbours present)
 //        ZoneCompare --record seed zx zy out.avzd [unnamed]   (writes our own zone in the same form, to
 //        check the tool and the extractor's format)
 //
@@ -147,7 +147,8 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
 
     int sameColumns = 0, shown = 0;
     long long blocks = 0, sameBlocks = 0;
-    long long lit = 0, sameLight = 0; // air and water cells in Alpha's stored range: their light
+    long long lit = 0, sameLight = 0;
+    long long recordedClear = 0, mixedLight = 0;
     std::map<std::pair<int, int>, long long> lights; // (Alpha's light, ours) where they differ
     int cells[256] = {};
     long long lightCells[256] = {}; // differing light cells per 16 x 16 columns (for --grid)
@@ -161,9 +162,15 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
             return false;
         }
         std::vector<Block> theirs(count);
-        for (Block &b : theirs)
+        for (Block &b : theirs) {
             if (!in.get(b.r) || !in.get(b.g) || !in.get(b.b) || !in.get(b.typeByte))
                 return false;
+            if (clear(b.type())) {
+                ++recordedClear;
+                if (b.g != b.r || b.b != b.r)
+                    ++mixedLight;
+            }
+        }
         const Column &mine = ours->columns[(size_t)i];
         // Block by block over the z range either side holds (air outside a column's blocks).
         const int32_t lo = std::min(bottom, mine.bottom), hi = std::max(bottom + (int32_t)count, mine.top());
@@ -172,11 +179,11 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
         for (int32_t z = lo; z < hi; z++) {
             const Block a = z >= bottom && z < bottom + (int32_t)count ? theirs[(size_t)(z - bottom)] : Block{};
             const Block b = z >= mine.bottom && z < mine.top() ? mine.blocks[(size_t)(z - mine.bottom)] : Block{};
-            // Keep the first-air and third-water lanes used by existing AVZD comparisons.
-            // Initial area preparation writes the same value to both lanes.
+            // Byte zero is the committed output for both materials. The other two
+            // bytes also hold propagation scratch in a live resident column.
             if (clear(a.type()) && a.type() == b.type()) {
                 if (z >= bottom && z < bottom + (int32_t)count) {
-                    const int theirLight = a.type() == WATER ? a.b : a.r;
+                    const int theirLight = a.r;
                     const int32_t x = ours->originX() + i % Zone::SIZE, y = ours->originY() + i / Zone::SIZE;
                     int ourLight = ours->light(x, y, z);
                     if (floods)
@@ -227,6 +234,10 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
                         b.type(), b.r, b.g, b.b);
         }
     }
+    if (strict && in.at != in.bytes.size()) {
+        std::fprintf(stderr, "%s: trailing zone data\n", path);
+        return false;
+    }
     std::printf("%s: zone (%d, %d) seed %u: %d of %d columns the same, %lld of %lld solid blocks (%.3f%%)\n", path, zx,
                 zy, seed, sameColumns, Zone::SIZE * Zone::SIZE, sameBlocks, blocks,
                 blocks ? 100.0 * (double)sameBlocks / (double)blocks : 100.0);
@@ -250,9 +261,11 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
             std::printf("\n");
         }
     }
-    if (lit)
-        std::printf("  light of air and water: %lld of %lld cells the same (%.3f%%)\n", sameLight, lit,
-                    100.0 * (double)sameLight / (double)lit);
+    std::printf("  light of air and water: %lld of %lld cells the same (%.3f%%), %s\n", sameLight, lit,
+                lit ? 100.0 * (double)sameLight / (double)lit : 100.0,
+                edges ? "static neighbour floods" : "generation only");
+    std::printf("  recorded scratch differs from committed light: %lld of %lld stored air/water cells\n",
+                mixedLight, recordedClear);
     {
         std::vector<std::pair<long long, std::pair<int, int>>> worst;
         for (const auto &[pair, n] : lights)
@@ -265,7 +278,7 @@ bool compare(const char *path, bool grid, bool edges, bool strict) {
     for (const auto &[pair, n] : kinds)
         if (n * 200 >= blocks - sameBlocks) // the kinds of difference worth naming (0.5% or more)
             std::printf("  Alpha type %d where ours is type %d: %lld blocks\n", pair.first, pair.second, n);
-    return !strict || (sameColumns == Zone::SIZE * Zone::SIZE && sameLight == lit && in.at == in.bytes.size());
+    return !strict || (sameColumns == Zone::SIZE * Zone::SIZE && sameLight == lit);
 }
 
 // Writes our generated zone as a recording.

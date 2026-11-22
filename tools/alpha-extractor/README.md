@@ -46,9 +46,17 @@ build\ZoneCompare.exe --strict --prefix AlphaExtract\spawns_32800_32800.avsp
 
 `ZoneCompare` builds the same world (seed and whether it is named come with each recording)
 and reports the share of solid blocks that match, the kinds of block that differ and,
-with `--grid`, where in the zone they are. Air and water are compared by their light, which
-Alpha keeps in their colour bytes (rendering §9.2); near zone edges Alpha's light also takes
-in the neighbouring zones (it floods again when chunks are meshed), so a little of it differs.
+with `--grid`, where in the zone they are. Air and water both store the last copied light
+output in their first byte. The next two bytes also serve as propagation scratch.
+The comparator reports scratch differences separately. Its default compares the recorded
+light with fresh generation. The `--edges` option models static floods with all eight
+neighbours present. A live capture has its own residency and mesh history.
+
+The recorder holds the world's C0 lock while it copies resident columns. A mesh worker
+can update their light during that copy. AVZD stores the bytes observed without a frame
+number or lighting phase. The `zones` line in new manifests counts resident zones sampled.
+Earlier manifests counted the buffered zone and auxiliary files together. Inventory an
+older recording from its actual AVZD files. See the [live column observation contract](../../docs/specs/alpha-live-column-observation-locks.md).
 
 Use `--strict` for a failing exit code on compared differences; plain reporting
 mode only requires a readable recording. The current writer uses AVSP version 2:

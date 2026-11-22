@@ -24,6 +24,13 @@ for ($first = 0; $first -lt $files.Count; $first += $BatchSize) {
 }
 [long]$same = 0
 [long]$total = 0
+[long]$sameLight = 0
+[long]$totalLight = 0
+[long]$mixedLight = 0
+[long]$recordedClear = 0
+$lightZones = 0
+$scratchZones = 0
+$differentLightZones = 0
 $zones = 0
 $exact = 0
 foreach ($line in Get-Content -LiteralPath $log) {
@@ -32,10 +39,24 @@ foreach ($line in Get-Content -LiteralPath $log) {
         $same += [long]$Matches[3]
         $total += [long]$Matches[4]
         if ($Matches[1] -eq $Matches[2]) { $exact++ }
+    } elseif ($line -match 'light of air and water: (\d+) of (\d+) cells the same .*generation only$') {
+        $lightZones++
+        $sameLight += [long]$Matches[1]
+        $totalLight += [long]$Matches[2]
+        if ($Matches[1] -ne $Matches[2]) { $differentLightZones++ }
+    } elseif ($line -match 'recorded scratch differs from committed light: (\d+) of (\d+) stored air/water cells') {
+        $scratchZones++
+        $mixedLight += [long]$Matches[1]
+        $recordedClear += [long]$Matches[2]
     }
 }
-if ($zones -ne $files.Count) { throw "Only $zones of $($files.Count) zone summaries were recorded. See $log" }
+if ($zones -ne $files.Count -or $lightZones -ne $zones -or $scratchZones -ne $zones) {
+    throw "Incomplete zone, generation-light or scratch summaries in $log"
+}
 $summary = "Audited $zones zones; $exact with all columns equal; $same of $total solid blocks equal."
-[IO.File]::AppendAllText($log, "$summary`n")
-Write-Output $summary
-Write-Output 'Stored lighting remains included in the per-batch strict exit status; geometry counts alone do not establish parity.'
+$lightSummary = "Generation-only committed light matched $sameLight of $totalLight comparable cells. Zones with differences: $differentLightZones."
+$scratchSummary = "Recorded scratch differed from committed light in $mixedLight of $recordedClear stored air/water cells."
+foreach ($line in $summary, $lightSummary, $scratchSummary) {
+    [IO.File]::AppendAllText($log, "$line`n")
+    Write-Output $line
+}

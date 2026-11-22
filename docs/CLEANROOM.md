@@ -4623,3 +4623,20 @@ departure ends it. The renderer can reuse a writable area across
 publications in the same batch and takes a new copy when another reader
 holds the current version. These ownership and allocation choices are
 specific to the replacement engine.
+
+## What the resident column recordings establish (2026-11-21)
+
+The clean team read the full 35-line held source contract on live column
+observation, SHA-256 `7201e8ca2afd1b2628038499c36af138ebe65a822f3f66b559d79c90353d8b01`.
+It supersedes the inherited extractor description where that description treats
+resident column bytes as unlit or mesh work as read-only. Generation lights a
+new zone before publication. Mesh work can subsequently write the same
+resident columns. Main simulation also has a conditional lighting route.
+The original routes use two distinct critical sections, with conflicting
+nesting orders during zone and region departure.
+
+The project recorder holds one of those sections across its reads. Historical
+AVZD files preserve the observed samples. They lack the writer phase, camera
+sequence and mesh scheduling information required to reproduce a particular
+frame. The project changed measurement labels and the committed water byte
+comparison. The native locking and recording routes stayed as previously used.

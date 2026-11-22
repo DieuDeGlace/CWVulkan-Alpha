@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 83 and the rulings. The 308 tracked contracts
-comprise 272 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 84 and the rulings. The 309 tracked contracts
+comprise 273 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -163,6 +163,7 @@ Batch 80 records terrain vertex accounting and fog mesh-slot population.
 Batch 81 records the terrain group bounds and renderer transfer window.
 Batch 82 records local front-end terrain readiness, the wait presentation and the creation cursor.
 Batch 83 records resident spawn and indexed object lifetimes across terrain updates.
+Batch 84 records live terrain observation scopes and the meaning of the three stored light bytes.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -293,6 +294,7 @@ Batch 83 records resident spawn and indexed object lifetimes across terrain upda
 | `alpha-light-admission-plane-production.md` | A | 104 | 1 |
 | `alpha-light-propagation-lifecycle.md` | A | 229 | 0 |
 | `alpha-linked-item-storage-producers.md` | A | 87 | 0 |
+| `alpha-live-column-observation-locks.md` | A | 36 | 0 |
 | `alpha-location-creatures.md` | A | 519 | 0 |
 | `alpha-loot-rolls.md` | A | 503 | 0 |
 | `alpha-materials-wildlife-routes.md` | A | 905 | 0 |

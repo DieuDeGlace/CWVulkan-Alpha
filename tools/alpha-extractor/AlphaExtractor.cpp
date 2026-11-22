@@ -218,7 +218,8 @@ struct Capture {
     uint32_t seed = 0, requestedSeed = 0;
     int32_t timeOfDay = 0, day = 0;
     int64_t player[3] = {};
-    std::vector<std::pair<std::wstring, std::vector<uint8_t>>> zones;
+    std::vector<std::pair<std::wstring, std::vector<uint8_t>>> terrainFiles;
+    size_t zoneCount = 0;
     std::vector<uint8_t> creatures;
     uint32_t creatureCount = 0;
 };
@@ -253,14 +254,15 @@ bool read(uintptr_t game, Capture &c, const char *&why) {
         for (int32_t zy = py - ZONE_REACH; zy <= py + ZONE_REACH; zy++)
             if (const uintptr_t zone = zoneAt(world, zx, zy); zone && peek<uint32_t>(zone) == rebased(ZONE_VTABLE)) {
                 const std::wstring name = std::to_wstring(zx) + L"_" + std::to_wstring(zy);
-                c.zones.push_back({L"zone_" + name + L".avzd", recordZone(zone, c.seed, flags)});
-                c.zones.push_back({L"spawns_" + name + L".avsp", recordSpawns(zone, c.seed, flags)});
-                c.zones.push_back({L"contents_" + name + L".avzc", recordContents(zone, c.seed, flags)});
+                c.terrainFiles.push_back({L"zone_" + name + L".avzd", recordZone(zone, c.seed, flags)});
+                c.terrainFiles.push_back({L"spawns_" + name + L".avsp", recordSpawns(zone, c.seed, flags)});
+                c.terrainFiles.push_back({L"contents_" + name + L".avzc", recordContents(zone, c.seed, flags)});
+                ++c.zoneCount;
             }
     for (int32_t rx = (px - ZONE_REACH) >> 6; rx <= (px + ZONE_REACH) >> 6; rx++)
         for (int32_t ry = (py - ZONE_REACH) >> 6; ry <= (py + ZONE_REACH) >> 6; ry++)
             if (const uintptr_t region = peek<uintptr_t>(world + REGIONS + 4 * ((size_t)rx * 1024 + (size_t)ry)))
-                c.zones.push_back({L"region_" + std::to_wstring(rx) + L"_" + std::to_wstring(ry) + L".avrg",
+                c.terrainFiles.push_back({L"region_" + std::to_wstring(rx) + L"_" + std::to_wstring(ry) + L".avrg",
                                    recordRegion(region, c.seed, flags, rx, ry)});
     c.creatures = recordCreatures(world, c.creatureCount);
     return true;
@@ -323,14 +325,8 @@ void track(uintptr_t game) {
     log("tracked creatures for %u samples", samples);
 }
 
-void dump(uintptr_t game) {
-    Capture c;
-    const char *why = "";
-    if (!capture(game, c, why)) {
-        log("no dump: %s", why);
-        return;
-    }
-    for (const auto &[name, bytes] : c.zones)
+void writeCapture(const Capture &c) {
+    for (const auto &[name, bytes] : c.terrainFiles)
         writeFile(name, bytes);
     std::vector<uint8_t> creatures;
     const uint32_t version = 1;
@@ -338,13 +334,23 @@ void dump(uintptr_t game) {
     put(creatures, c.creatures.data(), c.creatures.size());
     writeFile(L"creatures.avcr", creatures);
     if (FILE *f = _wfopen((folder + L"capture.txt").c_str(), L"w")) {
-        std::fprintf(f, "seed %u\nday %d\ntime %d\nplayer %.3f %.3f %.3f\nzones %zu\ncreatures %u\n", c.seed, c.day,
-                     c.timeOfDay, c.player[0] / 65536.0, c.player[1] / 65536.0, c.player[2] / 65536.0, c.zones.size(),
-                     c.creatureCount);
+        std::fprintf(f, "seed %u\nday %d\ntime %d\nplayer %.3f %.3f %.3f\nzones %zu\nterrainFiles %zu\n"
+                     "observation resident\nworldLock C0\nmeshPhase unknown\ncreatures %u\n",
+                     c.seed, c.day, c.timeOfDay, c.player[0] / 65536.0, c.player[1] / 65536.0,
+                     c.player[2] / 65536.0, c.zoneCount, c.terrainFiles.size(), c.creatureCount);
         std::fclose(f);
     }
-    log("dumped seed %u: %zu zones, %u creatures, player at (%.1f, %.1f, %.1f)", c.seed, c.zones.size(),
+    log("dumped seed %u: %zu zones, %u creatures, player at (%.1f, %.1f, %.1f)", c.seed, c.zoneCount,
         c.creatureCount, c.player[0] / 65536.0, c.player[1] / 65536.0, c.player[2] / 65536.0);
+}
+
+void dump(uintptr_t game) {
+    Capture c;
+    const char *why = "";
+    if (capture(game, c, why))
+        writeCapture(c);
+    else
+        log("no dump: %s", why);
 }
 
 // The game object once it is up (§1.1), or 0.

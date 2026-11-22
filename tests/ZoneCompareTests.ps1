@@ -36,7 +36,6 @@ for ($column = 0; $column -lt 65536 -and ($solidOffset -lt 0 -or $lightOffset -l
         if ($kind -eq 0 -or $kind -eq 2) {
             if ($lightOffset -lt 0) {
                 $lightOffset = $offset
-                if ($kind -eq 2) { $lightOffset += 2 }
             }
         } elseif ($solidOffset -lt 0) {
             $solidOffset = $offset
@@ -55,6 +54,37 @@ foreach ($change in @(@('solid', $solidOffset), @('light', $lightOffset))) {
     [System.IO.File]::WriteAllBytes($path, $changed)
     Invoke-Comparison $change[0] @($path, '--strict') $false
     Invoke-Comparison "$($change[0])-report" @($path) $true
+}
+
+# This named zone starts in water. Mutate its recorded output and scratch
+# independently to exercise the same strict comparison the corpus uses.
+$waterFile = Join-Path $scratch 'generated-water.avzd'
+Invoke-Comparison 'record-water' @('--record', '41', '32644', '32657', $waterFile) $true
+$waterBytes = [IO.File]::ReadAllBytes($waterFile)
+$firstCount = [BitConverter]::ToUInt32($waterBytes, 28)
+$waterOffset = 32
+while ($waterOffset -lt 32 + 4 * $firstCount -and ($waterBytes[$waterOffset + 3] -band 31) -ne 2) {
+    $waterOffset += 4
+}
+if ($waterOffset -ge 32 + 4 * $firstCount) { throw 'Expected stored water in the first column.' }
+$corpus = Join-Path $scratch 'water-corpus'
+New-Item -ItemType Directory -Path $corpus -Force | Out-Null
+foreach ($lane in 0, 1, 2) {
+    $changed = [byte[]]$waterBytes.Clone()
+    $offset = $waterOffset + $lane
+    $changed[$offset] = $changed[$offset] -bxor 1
+    $path = Join-Path $corpus "water-lane-$lane.avzd"
+    [IO.File]::WriteAllBytes($path, $changed)
+    Invoke-Comparison "water-lane-$lane" @('--strict', $path) ($lane -ne 0)
+    if (!(Select-String -LiteralPath (Join-Path $scratch "water-lane-$lane.log") -SimpleMatch 'scratch differs from committed light: 1 of' -Quiet)) {
+        throw "Missing recorded water scratch difference for lane $lane."
+    }
+}
+$log = Join-Path $scratch 'water-corpus.log'
+& (Join-Path $PSScriptRoot '../tools/CompareCorpus.ps1') -Recordings $corpus -ZoneCompare $ZoneCompare -OutputLog $log -BatchSize 2
+if (!(Select-String -LiteralPath $log -SimpleMatch 'Zones with differences: 1.' -Quiet) -or
+    !(Select-String -LiteralPath $log -SimpleMatch 'differed from committed light in 3 of' -Quiet)) {
+    throw 'The corpus summary did not distinguish committed water light from scratch.'
 }
 
 $trailing = Join-Path $scratch 'trailing.avzd'

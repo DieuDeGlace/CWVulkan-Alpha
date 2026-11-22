@@ -3267,3 +3267,49 @@ nine zones and 484 chunks. At the destination it had twelve zones and
 All 60 serial tests passed in 118.64 seconds. The release archive passed
 all 36 file digests across 37 files.
 The production controller diagnostic and all five client checks passed.
+
+## Generation and resident light observations (2026-11-21)
+
+All 209 retained AVZD files are version 2. Each has a unique combination
+of seed, named-world flag and zone coordinates. Across the corpus, all
+41,433,579 recorded air cells and 902,621 water cells had equal values
+in bytes zero, one and two. Moving the water comparison from scratch to
+the committed output therefore preserves the historical score. The
+files contain no earlier or later observation of the same zone identity.
+
+For the named seed 123 home zone, generation alone matched 242,742 of
+244,984 stored light values. A static flood with all eight neighbours
+matched all 244,984. Two independent runs of the engine's production
+terrain and mesh workers used owned model data and a headless render sink.
+Both settled at nine zones and 484 chunks. The home zone went from
+2,242 differences on the first observation to zero. Two other recorded
+zones went from zero to 36 and 23 differences. The remaining three
+settled with 421, 209 and 454 differences. Every remaining difference
+was within 48 columns of an edge. Across those six zones, the recorded
+column layout, material types, flags and nontransparent colors matched.
+The native camera sequence and mesh phase at the time of capture remain
+unknown. These measurements leave the full runtime lighting comparison open.
+
+The updated corpus tool compared all 209 files to fresh generation. It
+reported 87,447,092 of 87,447,092 matching solid/material comparisons
+and 42,240,313 of 42,336,200 matching committed light values. The
+95,887 light differences were spread across 122 zones. The comparator's
+historical solid count includes matching water materials.
+
+Three generated water fixtures each changed one byte of a single cell.
+Changing byte zero caused the strict comparison to fail. Changing byte
+one or two preserved the committed-light result, and all three fixtures
+reported the scratch difference. The previous tool accepted the byte-zero
+change and rejected the byte-two change. The two focused suites passed
+in 26.04 seconds.
+
+The recorder built as an x86 DLL. An isolated test of its actual file
+writer produced a manifest reporting two sampled zones and seven terrain
+files, consistent with the two AVZD files on disk. The manifest also
+identified its resident observation, the single world lock and the
+unknown mesh phase. A new native gameplay capture still requires a
+host that can start the original client.
+All 60 serial tests passed in 107.98 seconds. The production client
+executable matched the SHA-256 of the client used for the preceding
+controller, five client flow and Vulkan travel checks. The runtime
+package passed all 36 digests across 37 files.
