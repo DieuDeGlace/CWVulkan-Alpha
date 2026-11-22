@@ -4848,3 +4848,26 @@ periodic hit on a living role-zero player produces an adjacent pair in each
 connection's queue. An already-produced incoming hit takes the application
 path once. This concerns server queue construction. The recipient's HP
 outcome and original network runtime remain open.
+
+## Projectile contact and critical-source re-certification (2026-11-22)
+
+A source-only author checked the full direct and area hit boundary against
+the original client and delivered a new 117-line canonical record,
+`alpha-client-projectile-hit-call-boundary.md`, SHA-256
+`5c96f7e563ed0560f899443f189a3c2ded118b0347944bf19cbc7c1d9031aa60`. The clean team read the complete held delivery and
+installed its original bytes under the historical contract name.
+
+An independent source-only author separately reported FINAL / STABLE / HELD
+for the 28-line `alpha-projectile-critical-source-identity.md`, SHA-256
+`f27ab06c23e566e29017d01e7072f86ef25ff2f60530f53c3580314444c37951`. This status comes from the author's delivery receipt.
+The clean team verified the digest and read the ruling in full. It traces the
+conditional repeated lookup, the separate later result and the receiver at
+each critical call. Native mapping stability between these reads and the
+lifetime of the returned actors remain open.
+
+The replaced 116-line version attributed area critical chance to the later
+lookup. That attribution is withdrawn. The direct critical roll uses the
+later actor. The area critical roll and both source buffs use the earlier
+saved actor. Both ordinary hit calls pass the later actor. The historical
+version remains in public commit `0972a1ac8c253f56d47764d361c7a21bdb172041`, Git blob `d89baacaff145a6d80c04725d0e87244b15b4e6d`,
+SHA-256 `8ddd54046ef056efef83f8dcf6f20024a2c2eabff2d40b9fc75bf8b69991cf04`. [Historical published contract](https://github.com/DieuDeGlace/CWVulkan-Alpha/blob/0972a1ac8c253f56d47764d361c7a21bdb172041/docs/specs/alpha-client-projectile-hit-call-boundary.md)

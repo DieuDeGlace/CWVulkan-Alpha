@@ -1,4 +1,5 @@
 #include "creatures/Projectiles.h"
+#include "creatures/CameraView.h"
 #include "creatures/Names.h"
 #include "creatures/Npcs.h"
 #include "creatures/Strike.h"
@@ -165,10 +166,11 @@ void spendBuff(Combatant &c, uint8_t kind, ShotEffects &out) {
         out.buffs.push_back(*event);
 }
 
-void gainBuff(Combatant &c, uint8_t kind, glm::dvec3 at, const CombatFeedback &feedback) {
+void gainBuff(Combatant &c, uint8_t kind, const int64_t (&position)[3], const CombatFeedback &feedback) {
     const Buff record{kind, 0, 30000};
     applyBuff(c, record);
     feedback.buffs.push_back({c.id, c.id, record});
+    const auto at = camera_view::toFloat({position[0], position[1], position[2]});
     feedback.sounds.push_back({at, 47, 1, 1}); // upgrade2.wav
 }
 
@@ -640,15 +642,16 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
     for (size_t index = 0; index < list.size(); index++) {
         Projectile &p = list[index];
         const ShotTarget *shooter = find(p.shooter);
-        Combatant *from = lookup ? lookup(p.shooter) : nullptr;
-        if (!from && shooter)
-            from = shooter->fighter;
-        const bool buffAuthority = from && (from == context.controlled || (!context.networkMode && from->controller != 0));
-        const bool resourceAuthority = from && (!context.networkMode || from == context.controlled);
+        const auto source = [&]() -> Combatant * {
+            if (lookup)
+                return lookup(p.shooter);
+            return shooter ? shooter->fighter : nullptr;
+        };
         const int32_t ageBefore = p.age;
 
         // §4 step 1: velocity.
         if (p.kind == BOOMERANG_SHOT) {
+            Combatant *from = source();
             if (!from || !shooter || p.age > 1200) {
                 removed[index] = true;
                 continue;
@@ -689,13 +692,16 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
         const glm::vec3 d = tau * p.velocity;
         p.age = std::bit_cast<int32_t>((uint32_t)p.age + (uint32_t)dt);
         if (p.kind != BOOMERANG_SHOT && p.age > 5000) {
-            if (p.kind != BURST && from)
-                endChain(*from);
+            if (p.kind != BURST)
+                if (Combatant *from = source())
+                    endChain(*from);
             removed[index] = true;
             continue;
         }
 
         // §5: the flight in sub-steps (kind 3 too: n grows with its gravity-fed velocity).
+        // The producer retains the second lookup only when its presence probe succeeds.
+        Combatant *cachedSource = source() ? source() : nullptr;
         const float count = float(std::sqrt(double(squaredLength(d)))) * 2.f + 1.f;
         if (!(count >= 1.f && count < 2147483648.f))
             continue;
@@ -708,6 +714,20 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             knock *= 1.f / float(std::sqrt(double(square)));
         knock *= 5.f * p.strength;
         knock.z = 3 * p.strength;
+        // Both hit calls pass this separate lookup, including a null result.
+        Combatant *from = source();
+        const auto bodyFor = [&](const Combatant *actor) -> const Body * {
+            if (!actor)
+                return nullptr;
+            if (shooter && shooter->fighter == actor)
+                return shooter->body;
+            for (const ShotTarget &entry : creatures)
+                if (entry.fighter == actor)
+                    return entry.body;
+            return nullptr;
+        };
+        const Body *hitBody = bodyFor(from);
+        const Body *cachedBody = cachedSource == from ? hitBody : bodyFor(cachedSource);
         // §5.1 step 2: the overlap in world units, half-sizes converted separately; all three
         // lower tests, then the strict upper ones.
         const auto overlaps = [&](const Body &b, float half) {
@@ -731,7 +751,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
         const bool secondTick = ageBefore / 1000 != p.age / 1000, tenthTick = ageBefore / 100 != p.age / 100;
 
         enum class HitPath { Contact, Impact };
-        const auto hitCreature = [&](const ShotTarget &C, HitPath path) {
+        const auto hitCreature = [&](const ShotTarget &C, HitPath path, uint8_t flag) {
             const bool contact = path == HitPath::Contact;
             // The gain draws precede ownership of the eventual resource write.
             if (contact && from && (p.kind == ARROW || p.kind == BOOMERANG_SHOT) && !p.special) {
@@ -743,46 +763,47 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 g *= (float)duration(*from, from->action) / 300.f;
                 if (draw() % 8 == 0)
                     g *= 2;
-                if (resourceAuthority) {
+                if (!context.networkMode || from == context.controlled) {
                     from->mana += g;
                     if (from->mana > 1)
                         from->mana = 1;
                 }
             }
             bool critical = false;
-            if (from) {
-                const float probability = criticalChance(*from);
+            const Combatant *criticalSource = contact ? from : cachedSource;
+            if (criticalSource) {
+                const float probability = criticalChance(*criticalSource);
                 critical = probability > u();
             }
             float x = p.damage;
             if (critical)
                 x *= 2.f;
-            if (buffAuthority) {
+            if (cachedSource && (cachedSource == context.controlled || (!context.networkMode && cachedSource->controller != 0))) {
                 // Chance precedes the producer-only flag/class/element checks and
                 // generic hit admission. Neither a failed producer nor a rejected
                 // generic hit refunds these draws.
                 if (contact) {
-                    if (procChance(*from, .15f, draw) && !p.special &&
-                        from->characterClass == 2 && from->specialization == 1)
-                        gainBuff(*from, 10, shooter ? shooter->body->blocks() : p.blocks(), feedback);
-                } else if (procChance(*from, .25f, draw) && !p.special && p.kind == SPELL && p.element == 1) {
-                    gainBuff(*from, 9, shooter ? shooter->body->blocks() : p.blocks(), feedback);
+                    if (procChance(*cachedSource, .15f, draw) && !p.special &&
+                        cachedSource->characterClass == 2 && cachedSource->specialization == 1)
+                        gainBuff(*cachedSource, 10, cachedBody ? cachedBody->position : p.position, feedback);
+                } else if (procChance(*cachedSource, .25f, draw) && !flag && p.kind == SPELL && p.element == 1) {
+                    gainBuff(*cachedSource, 9, cachedBody ? cachedBody->position : p.position, feedback);
                 }
             }
             if (contact && x < 0)
                 x = 0;
             if (contact && p.element == 2) {
-                if (from && !hostile(*from, *C.fighter) && C.fighter->controller != 6) {
+                if (cachedSource && !hostile(*cachedSource, *C.fighter) && C.fighter->controller != 6) {
                     HitRecord h;
                     h.attacker = p.shooter;
                     h.target = C.fighter->id;
                     std::copy_n(C.body->position, h.position.size(), h.position.begin());
                     h.amount = std::bit_cast<float>(std::bit_cast<uint32_t>(x) ^ 0x80000000u);
-                    if (from->controller == 1)
+                    if (cachedSource->controller == 1)
                         h.amount *= .5f;
                     h.critical = critical;
                     emit({h, !context.networkMode});
-                    if (context.networkMode && from == context.controlled && C.fighter == context.controlled &&
+                    if (context.networkMode && cachedSource == context.controlled && C.fighter == context.controlled &&
                         context.applySelfHit)
                         context.applySelfHit(h);
                 }
@@ -796,16 +817,16 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
             in.amount = x;
             in.selector = 0; // both native projectile call sites pass the full-width zero selector
             in.critical = critical;
-            in.area = p.special;
+            in.area = contact ? p.special : flag;
             in.power = p.strength;
             in.magic = p.kind == SPELL;
             in.knockBack = knock;
             in.targetOnGround = (C.body->contact & ON_GROUND) != 0;
             in.targetPosition = p.blocks();
             std::copy_n(C.body->position, in.targetRecordPosition.size(), in.targetRecordPosition.begin());
-            in.attackerPosition = shooter ? shooter->body->blocks() : p.blocks();
-            if (shooter)
-                std::copy_n(shooter->body->position, in.attackerRecordPosition.size(), in.attackerRecordPosition.begin());
+            in.attackerPosition = hitBody ? hitBody->blocks() : p.blocks();
+            if (hitBody)
+                std::copy_n(hitBody->position, in.attackerRecordPosition.size(), in.attackerRecordPosition.begin());
             const auto resolve = [&](Combatant &target) {
                 return resolveHit(target, C.body->velocity, from, in, draw, [&](const HitEmission &emission) {
                     emit({emission.record, emission.applyLocally && !context.networkMode});
@@ -848,7 +869,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                 default: gate = false; break;
                 }
                 if (gate) {
-                    if (hitCreature(C, HitPath::Contact))
+                    if (hitCreature(C, HitPath::Contact, p.special))
                         landed = true;
                     if (p.slow > C.fighter->slowMs)
                         C.fighter->slowMs = p.slow;
@@ -903,13 +924,14 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                     const float pitch = (float)draw() * .4f / 32767.f + 1.f;
                     feedback.sounds.push_back({p.blocks(), sound, pitch, 1});
                 }
-                const bool skipCandidates = from && !context.networkMode && from->controller == 0 &&
-                                            from != context.controlled;
+                const uint8_t flag = p.special;
                 // The burst: a 5-block half-size cube; health and dodging count only with a shooter.
                 for (const ShotTarget &C : creatures) {
-                    if (skipCandidates)
+                    if (!C.fighter || !C.body)
+                        continue;
+                    if (cachedSource && !context.networkMode && cachedSource->controller == 0 && cachedSource != context.controlled)
                         break;
-                    if (!C.fighter || !C.body || (from && C.fighter->health <= 0) ||
+                    if ((from && C.fighter->health <= 0) ||
                         !eligible(C, HitPath::Impact) || !overlaps(*C.body, 5.f) ||
                         !sight(C))
                         continue;
@@ -917,7 +939,7 @@ void Projectiles::step(int32_t dt, const std::vector<ShotTarget> &creatures,
                         evaded(C.fighter->id);
                         continue;
                     }
-                    if (hitCreature(C, HitPath::Impact))
+                    if (hitCreature(C, HitPath::Impact, flag))
                         landed = true;
                 }
             }

@@ -3725,3 +3725,30 @@ pairs of periodic records over the 4.5-second observation window. The same
 two-client trial against the published revision 74 server delivered seven
 single periodic records to each peer. Both versions forwarded the direct hit
 once, and neither echoed the buff. Original-server runtime delivery remains open.
+
+## Projectile contact source identities (2026-11-22)
+
+The production projectile step was exercised with eleven synthetic source
+lookup and target scenarios. The fixture observed the actor, arguments, draw
+count and feedback at each ordinary hit call. It covered a stable actor,
+separate answers for one full 64-bit ID, missing results at each lookup stage,
+role and linked-ID exclusions, a locked candidate, the area flag snapshot
+and a change of authority between area candidates.
+
+With different actors returned for one ID, draws of 16,384, 0, 16,384 and 0
+produced a direct amount of 7 and an area amount of 14. Both hits carried the
+later source. Types 10 and 9 were installed on the earlier source and cue 47
+was emitted before each hit. The two real hit call sites supplied selector
+zero. Changing only the area critical receiver to the later actor failed
+five of 66 fixture checks. The revised caller passed all 66. The previous
+caller failed 23 of 46 checks reached. Different lookup and hit counts
+account for the different totals. The ordinary hit resolver also reproduced
+the different critical results with the synthetic lookup.
+
+A separate ordinary-resolver case kept the actor stable throughout both
+contacts. For raw signed XYZ (549755846657, 549755846655, -16777217),
+both buff cues emitted position (8388609, 8388608, -256) in blocks. Restoring
+the previous double-precision conversion failed the assertion for this pair
+of cues. The existing ranged-scheduling and source-auxiliary suites passed.
+Whether a mapping changes between source reads in native play, and a
+complete native replay of either contact, remain open.

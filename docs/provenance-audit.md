@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 94 and the rulings. The 326 tracked contracts
-comprise 292 A, 29 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 95 and the rulings. The 327 tracked contracts
+comprise 294 A, 28 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -178,6 +178,12 @@ including copy widths, signed overflow and pointer/identity distinctions. It als
 the separate reviews of periodic hits and source equipment effects. Their two earlier
 records retain additional details awaiting historical review.
 
+Batch 95 replaces the historical projectile call-boundary contract with a new
+source-author record and records an independent ruling on the actor used for
+area critical chance. The earlier saved actor owns that roll. The later actor
+is still the source passed to the ordinary area hit. CLEANROOM.md records the
+independent author's receipt, the withdrawn attribution and its public commit and blob.
+
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
 | `alpha-active-decoration-distance-models.md` | A | 71 | 0 |
@@ -217,7 +223,7 @@ records retain additional details awaiting historical review.
 | `alpha-client-menu-startup-prerequisites.md` | A | 52 | 0 |
 | `alpha-client-offline-projectile-lifecycle.md` | A | 164 | 0 |
 | `alpha-client-primary-start-boundary.md` | A | 221 | 3 |
-| `alpha-client-projectile-hit-call-boundary.md` | B | 117 | 3 |
+| `alpha-client-projectile-hit-call-boundary.md` | A | 118 | 0 |
 | `alpha-client-receiver-publication-locks.md` | A | 162 | 2 |
 | `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
 | `alpha-client-terrain-mesh-dispatch.md` | A | 51 | 0 |
@@ -376,6 +382,7 @@ records retain additional details awaiting historical review.
 | `alpha-pose-selectors-31-49.md` | A | 536 | 0 |
 | `alpha-power-helper-call-boundary.md` | B | 69 | 3 |
 | `alpha-primary-terrain-fog-upload-state.md` | A | 82 | 0 |
+| `alpha-projectile-critical-source-identity.md` | A | 29 | 0 |
 | `alpha-projectile-world-ownership.md` | B | 105 | 3 |
 | `alpha-projectiles.md` | A | 565 | 0 |
 | `alpha-projection-input-production.md` | A | 97 | 2 |

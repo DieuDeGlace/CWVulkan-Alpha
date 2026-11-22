@@ -747,6 +747,52 @@ int main() {
     offlineFlight();
     {
         Collision c;
+        // One full ID can return different actor pointers at the retained and hit lookups.
+        c.source.id = 0x100000029;
+        c.target.id = 0x200000048;
+        c.target.controller = 6; // no additional critical voice roll inside the generic hit helper
+        c.world.list.front().shooter = c.source.id;
+        c.source.stealth = -100.f;
+        Combatant retained = c.source;
+        retained.characterClass = 2;
+        retained.specialization = 1;
+        retained.buffs.push_back({11, 0, 0});
+        Body retainedBody;
+        retainedBody.place({30, 0, 0});
+        int lookups = 0, draws = 0;
+        c.world.step(1, {{&retained, &retainedBody}, {&c.source, &c.sourceBody}, {&c.target, &c.targetBody}},
+            [&](uint64_t id) {
+                check(id == c.source.id, "both projectile lookups use the full source ID");
+                return ++lookups <= 2 ? &retained : &c.source;
+            }, [](int32_t, int32_t, int32_t) { return uint8_t(0); },
+            [&] { return (++draws % 2) ? 16384 : 0; }, c.effects, {false, &retained});
+        check(lookups == 3 && draws == 4 && c.effects.hits.size() == 2 &&
+              !c.effects.hits[0].record.critical && c.effects.hits[1].record.critical,
+              "direct critical uses the later source and impact critical uses the retained source");
+        check(c.effects.buffs.size() == 2 && c.effects.buffs[0].record.kind == 10 &&
+              c.effects.buffs[1].record.kind == 9 && retained.hasBuff(10) && retained.hasBuff(9) &&
+              !c.source.hasBuff(10) && !c.source.hasBuff(9) && !c.target.hasBuff(9) &&
+              c.effects.sounds.size() == 4 && c.effects.sounds[0].sound == 47 && c.effects.sounds[2].sound == 47 &&
+              c.effects.sounds[0].position == retainedBody.blocks() && c.effects.sounds[2].position == retainedBody.blocks(),
+              "both successful producer rolls affect the retained actor and issue cues at its body");
+    }
+    {
+        Collision c;
+        c.source.characterClass = 2;
+        c.source.specialization = 1;
+        c.target.controller = 6;
+        c.sourceBody.position[0] = (int64_t{1} << 39) + 32769;
+        c.sourceBody.position[1] = (int64_t{1} << 39) + 32767;
+        c.sourceBody.position[2] = -16777217;
+        c.step([] { return 0; }, {false, &c.source});
+        const glm::dvec3 cue(8388609, 8388608, -256);
+        check(c.effects.sounds.size() == 4 && c.effects.sounds[0].sound == 47 && c.effects.sounds[2].sound == 47 &&
+              c.effects.sounds[0].position == cue && c.effects.sounds[2].position == cue,
+              "the direct and area buff cues narrow the stable actor's signed fixed coordinates to float before scaling");
+    }
+
+    {
+        Collision c;
         c.source.action = 17;
         // Spell hits are magic: their presentation makes no draw (attack-routine M5).
         const int values[] = {32767, 0, 32767, 0};
