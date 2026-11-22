@@ -139,7 +139,7 @@ Differences from the Steam engine that shape the plan:
   health and the client receiver locks; a third pinned the spatial scalars,
   created actor behavior and companion navigation. The fourth batch verified
   the order of fatal-credit writes and level checks. The recipe grant record
-  was then re-certified and pinned. 30 class B contracts remain.
+  was then re-certified and pinned. 29 class B contracts remain.
 
 - [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
   first, as held. A private dedicated-server observation of the seed-41 test
@@ -364,6 +364,12 @@ Differences from the Steam engine that shape the plan:
   runs returned twice over 6,144 blocks each. In a separate 96-frame fixture,
   warm frames avoided one draw-list allocation while preserving every draw,
   ambient call and chunk light selection. Frame-rate impact remains unmeasured.
+- [x] The periodic damage producer publishes its sounds and particles in order
+  with synchronous hit application. Player relays enter the outgoing hit list
+  before the next buff runs. For an ordinary server-produced hit on a living
+  role-zero player, both connected test clients receive the original and its
+  application copy. Forwarding an incoming hit contributes one. Equipment timer conversions preserve native
+  truncation for ordinary finite values and the masked overflow result.
 - [x] The NPC combat update carries the full signed decision step to its
   countdowns. Production regressions cover the three different target tie
   rules and the order of the two random draws on an inventory use.

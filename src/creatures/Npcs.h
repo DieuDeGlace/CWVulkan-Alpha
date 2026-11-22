@@ -419,6 +419,8 @@ class Npcs {
     bool directApproach(const Npc &npc, const Body &to, float reach, const worldgen::WorldMap &map) const;
     bool lookAtPlayer(Npc &npc, std::vector<PlayerView> &players);
     void randomWalk(Npc &npc, float dtMs);
+    void applyHitAndCollectRelays(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame,
+                                  const std::function<void(HitRecord &)> &localHit = {});
     // §5: `attacker` hits what is in reach at its hit moment: NPCs when a player strikes,
     // players when an NPC does.
     // One blow of `attacker` (at `from`) on `target`: the hit, its sounds and bursts, and what the

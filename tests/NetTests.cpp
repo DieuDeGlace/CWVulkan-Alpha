@@ -1683,7 +1683,8 @@ int main() {
     {
         a.takeHits();
         b.takeHits();
-        const creatures::BuffEvent periodic{a.id(), a.id(), {4, 2, 650, 0x123456789abcdef0ULL}};
+        // A surviving 799 ms resident can cross just one 400 ms boundary.
+        const creatures::BuffEvent periodic{a.id(), a.id(), {4, 2, 799, 0x123456789abcdef0ULL}};
         a.sendEvent40(periodic.serialize());
         std::vector<Hit> generated, observed;
         const auto collect = [&](Client &peer, std::vector<Hit> &records) {
@@ -1694,12 +1695,13 @@ int main() {
         check(waitFor([&] {
             collect(a, generated);
             collect(b, observed);
-            return !generated.empty() && !observed.empty();
+            return generated.size() >= 2 && observed.size() >= 2;
         }, 10000), "actual server countdown turns packet-8 resident damage into periodic hit output for both clients");
-        check(generated.size() == 1 && observed.size() == 1 && generated[0].bytes == observed[0].bytes &&
+        check(generated.size() == 2 && observed.size() == 2 && generated[0].bytes == generated[1].bytes &&
+              generated[0].bytes == observed[0].bytes && generated[1].bytes == observed[1].bytes &&
               generated[0].record().kind == creatures::HIT_DAMAGE && generated[0].record().stun == 0 &&
               generated[0].record().knockBack == glm::vec3(0),
-              "server-generated null-source hit retains category/vector/timer and reaches its target once");
+              "one server-generated periodic hit queues its producer and application copies for each peer");
     }
     ra.setPosition(0, ra.position(0) + (5 << 16));
     a.setOwn(ra);

@@ -209,14 +209,77 @@ int main() {
         player.health = 100;
         player.action = 84;
         player.stealth = 1;
-        player.buffs = {{DAMAGE_OVER_TIME, 10, 801, 999}};
+        player.buffs = {{DAMAGE_OVER_TIME, 10, 801, 999}, {DAMAGE_OVER_TIME, 11, 401, 998}};
         Body body;
         worldgen::WorldMap map;
         const auto frame = world.step(10, map, {{player, body, 0, 0, false, true}}, 43200000, 0,
             [](int32_t, int32_t, int32_t) { return uint8_t(0); });
         check(player.health == 100 && player.action == 84 && player.stealth == 1 &&
-              player.buffs[0].timeMs == 791 && frame.emittedHits.size() == 1 && frame.playerHits.size() == 1,
-              "actual dedicated-world player countdown relays role-zero output before scalar/action/health mutation");
+              player.buffs[0].timeMs == 791 && player.buffs[1].timeMs == 391 &&
+              frame.emittedHits.size() == 4 && frame.playerHits.size() == 2 &&
+              frame.emittedHits[0].amount == 10 && frame.emittedHits[2].amount == 11 &&
+              frame.emittedHits[0].serialize() == frame.emittedHits[1].serialize() &&
+              frame.emittedHits[2].serialize() == frame.emittedHits[3].serialize(),
+              "each periodic hit and its player relay reach the outgoing list together before the next buff");
+    }
+    {
+        worldgen::Random random{1234};
+        Npcs world{random};
+        auto source = actor(41, 0);
+        source.fighter.action = 28;
+        auto target = actor(71);
+        target.fighter.health = 5;
+        target.fighter.hitStun = -4001;
+        target.fighter.action = 84;
+        target.fighter.buffs = {{DAMAGE_OVER_TIME, 10, 400, 41}};
+        world.npcs().push_back(target);
+        int fatalCalls = 0;
+        world.onFatalObject = [&](const Combatant &, NpcFrame &live) {
+            ++fatalCalls;
+            check(random.count() == 2 && live.bursts.size() == 1 && live.sounds.size() == 2 &&
+                  live.sounds[0].sound == 23 && live.sounds[1].sound == 27 &&
+                  live.emittedHits.size() == 1 && live.emittedHits.front().stun == 3000 &&
+                  live.emittedHits.front().beam == 1,
+                  "the periodic beam effect and successful stun sound precede the synchronous fatal presentation");
+        };
+        worldgen::WorldMap map;
+        map.add(std::make_shared<worldgen::Zone>(0, 0));
+        const auto frame = world.step(1, map, {{source.fighter, source.body, 0, 0, false}}, 43200000, 0,
+            [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); });
+        check(fatalCalls == 1 && world.all()[0].fighter.health == 0 && frame.sounds.size() == 2,
+              "one lethal periodic tick runs fatal application once");
+    }
+    {
+        worldgen::Random random{1234};
+        Npcs world{random};
+        auto source = actor(41, 0), target = actor(71, 0);
+        auto &fighter = target.fighter;
+        fighter.health = 20;
+        fighter.level = 11;
+        fighter.powerTier = 3;
+        fighter.appearanceFlags = 0x20;
+        fighter.multipliers[4] = .41f;
+        auto armour = [&](int slot, uint8_t type, uint8_t material, int level, int spirits, uint8_t rarity) {
+            auto &item = fighter.equipment[slot];
+            item.type = type;
+            item.material = material;
+            item.level = level;
+            item.spirits = spirits;
+            item.rarity = rarity;
+        };
+        armour(CHEST_SLOT, 4, 1, 5, 3, 2);
+        armour(BOOTS_SLOT, 6, 19, -3, 4, 1);
+        armour(GLOVES_SLOT, 5, 26, 8, -2, 3);
+        armour(SHOULDERS_SLOT, 7, 27, 12, 5, 0);
+        fighter.buffs = {{DAMAGE_OVER_TIME, 20, 400, 41}};
+        worldgen::WorldMap map;
+        const auto frame = world.step(1, map, {{source.fighter, source.body, 0, 0, false},
+            {fighter, target.body, 0, 0, false, true, true}}, 43200000, 0,
+            [](int32_t, int32_t, int32_t) { return uint8_t(0); });
+        check(random.count() == 0 && frame.emittedHits.size() == 1 && frame.playerHits.empty() &&
+              std::bit_cast<uint32_t>(frame.emittedHits.front().amount) == 0x41311c1au &&
+              std::bit_cast<uint32_t>(fighter.health) == 0x410ee3e6u,
+              "a controlled periodic hit uses the signed item levels, material factors and four ordered defense additions");
     }
     {
         Npcs world;

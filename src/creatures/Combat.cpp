@@ -1170,7 +1170,7 @@ HitOutcome resolveHit(Combatant &target, const glm::vec3 &, Combatant *attacker,
                                 x += weighted * sweep;
                                 const float increase = sweep * 500.f;
                                 int32_t &counter = cube.material == 0x82 ? target.slowMs : attacker->hasteMs;
-                                counter = (int32_t)((float)counter + increase);
+                                counter = truncateToInt32((float)counter + increase);
                             }
                         }
                     }

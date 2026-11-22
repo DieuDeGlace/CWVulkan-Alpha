@@ -4805,6 +4805,34 @@ Both paths use the same gather and sort. This is an engine storage change.
 The published terrain slot admission, point lighting and ambient draw-order
 contracts continue to govern the observable output.
 
+## Independent re-certification of the historical NPC selection record (2026-11-22)
+
+A fresh source-only author reviewed the ordinary paths in the 77-line
+`alpha-behavior-target-selection.md`, SHA-256 `52addc27485ba0b947facff98cafa6236e29a40d18da8af518f6205579f2bcc5`.
+The clean team read the full record and the 17-line `alpha-target-selection-historical-readback.md`,
+SHA-256 `4af6ee65946a550429c55d6bc3ace95d44e6827cfe8d5a75ce99344968f4ff30`. The review covers partial copy and padding,
+wrapped counts, identity aliases, repeated score lookups, publication
+padding and exceptional-input limits. The author independently matched
+483 instructions in the selection prefix and 3,435 in 27 helpers. The
+original author's identity and exact counting manifest remain unverified.
+This records an independent current review of the historical behavioral
+claims. The actual NPC gameplay and native acceptance limits still apply.
+
+## Periodic hit publication and source equipment counters (2026-11-22)
+
+The clean team read both complete independent original-client reviews and
+compared them with their historical contracts.
+
+- `alpha-source-equipment-hit-effects.md` has 74 lines and SHA-256 `2ff1891cbc801976bfd058dc6f8369ccf647abc228d46dae55ce20fcb3a4d276`.
+- `alpha-periodic-hit-timing-and-defense.md` has 60 lines and SHA-256 `ab25d35a0cb60bae00066fb73cb59b787c2b600430bb84ecee639b93884535d3`.
+
+The source equipment review establishes the signed conversion after each
+counter increment. The periodic review follows a buff's source lookup,
+outgoing records and local application during a single update. Earlier
+contracts retain additional entry gates, copy semantics and downstream
+bookkeeping. Their remaining re-certification is separate. Wider original
+gameplay, fatal processing and server interoperability remain open.
+
 ### Original-client save readback (2026-11-22)
 
 This is a black-box interoperability result for one synthetic character and
@@ -4813,3 +4841,10 @@ The clean team compared the closed databases and reopened the output in two
 fresh Vulkan sessions. The stored visit, character, terrain edits and map
 tiles are recorded in verification.md. This evidence concerns the observed
 save flow. It adds no source-author contract or native menu pixel comparison.
+
+The separate original-server record `alpha-server-periodic-hit-delivery.md` is FINAL / STABLE / HELD.
+The clean team read all 40 lines and verified SHA-256 `49d40a663922db2c201cfefe36c528b91de953cbd1aa733fc760c52ce3e7f039`. One ordinary
+periodic hit on a living role-zero player produces an adjacent pair in each
+connection's queue. An already-produced incoming hit takes the application
+path once. This concerns server queue construction. The recipient's HP
+outcome and original network runtime remain open.

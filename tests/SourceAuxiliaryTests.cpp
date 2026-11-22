@@ -167,6 +167,20 @@ int main() {
     }
     {
         auto source = sourceActor(), target = targetActor();
+        source.combo = 1;
+        source.multipliers[1] = .16f; // divisor 8, increment 62.5 for each matching entry
+        source.hasteMs = -100;
+        target.slowMs = INT32_MAX;
+        auto &item = source.equipment[MAIN_HAND];
+        item.spirits = 3;
+        item.cubes = {{0, 0, 0, 0x82, 1}, {0, 0, 0, 0x83, 1}, {0, 0, 0, 0x83, 1}};
+        int draws = 0;
+        resolveHit(target, target.aim, &source, input(), [&] { ++draws; return 0; });
+        check(target.slowMs == INT32_MIN && source.hasteMs == 25 && draws == 0,
+              "timer conversion keeps the signed indefinite result and truncates each fractional increment before the next");
+    }
+    {
+        auto source = sourceActor(), target = targetActor();
         source.equipment[MAIN_HAND].subtype = BOW;
         source.combo = 60;
         Body sourceBody, targetBody;

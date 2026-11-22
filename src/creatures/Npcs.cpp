@@ -2252,6 +2252,14 @@ void Npcs::strike(Combatant &attacker, const Body &attackerBody, float yaw, std:
         visit(*v.fighter, *v.body, v.npc);
 }
 
+void Npcs::applyHitAndCollectRelays(const HitRecord &hit, std::span<PlayerView> players, NpcFrame &frame,
+                                    const std::function<void(HitRecord &)> &localHit) {
+    const size_t firstRelay = frame.playerHits.size();
+    applyWorldHit(hit, players, frame, localHit);
+    for (const auto &relay : std::span{frame.playerHits}.subspan(firstRelay))
+        frame.emittedHits.push_back(relay.record);
+}
+
 void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::span<PlayerView> players, NpcFrame &frame,
                       const std::function<void(HitRecord &)> &localHit) {
     if (!actorLookupActive)
@@ -2276,7 +2284,8 @@ void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::spa
     }
     // Selector stays zero even when the source is still performing action 17.
     // No critical, affix, ordinary presentation, base stun or initial impulse.
-    const HitOutcome out = resolveHit(target, body.velocity, source.combat(), input, [&] { return draw(); },
+    const CombatFeedback feedback{frame.sounds, frame.buffs, frame.bursts};
+    resolveHit(target, body.velocity, source.combat(), input, [&] { return draw(); },
         [&](const HitEmission &emission) {
             const HitRecord &record = emission.record;
             frame.emittedHits.push_back(record);
@@ -2284,11 +2293,8 @@ void Npcs::periodicHit(Combatant &target, Body &body, const Buff &buff, std::spa
             if (!recipient.combat() || !(recipient.combat()->health > 0))
                 return;
             frame.seen.push_back({record, recipient.body()->blocks()});
-            applyWorldHit(record, players, frame, localHit);
-        });
-    frame.buffs.insert(frame.buffs.end(), out.buffs.begin(), out.buffs.end());
-    frame.sounds.insert(frame.sounds.end(), out.sounds.begin(), out.sounds.end());
-    frame.bursts.insert(frame.bursts.end(), out.bursts.begin(), out.bursts.end());
+            applyHitAndCollectRelays(record, players, frame, localHit);
+        }, &feedback);
 }
 
 void Npcs::dispatchPlayerActions(std::span<PlayerView> players, int32_t dtMs, const BlockType &block, NpcFrame &frame) {
@@ -2453,11 +2459,7 @@ void Npcs::stepProjectiles(Projectiles &flight, int32_t elapsed, const worldgen:
                     frame.seen.emplace_back(hit.record, target->blocks());
             if (!hit.applyLocally)
                 return;
-            const size_t firstRelay = frame.playerHits.size();
-            applyWorldHit(hit.record, players, frame);
-            // Each player-target application can add a second wire record.
-            for (const auto &relay : std::span{frame.playerHits}.subspan(firstRelay))
-                frame.emittedHits.push_back(relay.record);
+            applyHitAndCollectRelays(hit.record, players, frame);
         }});
 }
 

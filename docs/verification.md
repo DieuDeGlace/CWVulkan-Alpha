@@ -3669,6 +3669,23 @@ observer used fixed 16 ms updates and exercised both builders each frame.
 These measurements establish a reduction in allocation traffic. Frame-rate
 and peak-memory impact remain unmeasured.
 
+## Periodic hit feedback and relays (2026-11-22)
+
+Two periodic hits on a player produced four outgoing records. Each hit
+was immediately followed by its byte-identical relay. The prior engine
+omitted both relays from the outgoing list. In a lethal tick, the normal
+world update recorded the beam effect and stun cue before the death cue.
+The former update failed this check. The corrected path reached the fatal
+callback once after two random draws.
+
+A controlled-player fixture exercised the four ordered armor contributions,
+including signed levels and materials 1, 19, 26 and 27. The outgoing damage
+had binary32 bits 0x41311C1A and remaining health 0x410EE3E6, with no draws.
+The equipment counter fixture checked per-entry fractional truncation and
+the signed indefinite result for an out-of-range conversion. A separate
+instrumented x64 build diagnosed undefined float-to-integer conversion at
+the former cast. The checked conversion passed the same fixture.
+
 ## Original Alpha and Vulkan single-player save round trip (2026-11-22)
 
 The Vulkan client created a level-one warrior and a seed-123 world. An isolated
@@ -3695,3 +3712,16 @@ decoded 29 tiles and the same 172 edits, and retained the original-exit
 character blob byte for byte. The clock advanced to 44,838,250 and then
 44,845,650 ms. The rendered captures showed the player, terrain, health HUD
 and minimap. Broader interchange, modded saves and long-play remain open.
+
+The two-client server regression distinguishes an incoming hit forwarded once
+from an ordinary periodic hit produced by the server. Both connections must
+receive the same two serialized records in order for a single qualifying tick.
+The former once-per-peer assertion failed on the corrected producer. The
+original-server record independently confirms this difference. The network
+fixture uses the replacement server and two replacement clients. An additional
+loopback run used the ordinary attack resolver to generate both a direct hit
+and its three-second buff. Both peers received the direct hit once and seven
+pairs of periodic records over the 4.5-second observation window. The same
+two-client trial against the published revision 74 server delivered seven
+single periodic records to each peer. Both versions forwarded the direct hit
+once, and neither echoed the buff. Original-server runtime delivery remains open.

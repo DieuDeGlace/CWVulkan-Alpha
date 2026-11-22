@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 93 and the rulings. The 322 tracked contracts
-comprise 287 A, 30 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 94 and the rulings. The 326 tracked contracts
+comprise 292 A, 29 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -173,7 +173,10 @@ Batch 90 records terrain-slot bounds, box range and fade, slot visit order and t
 Batch 91 records ambient bird, owl and cricket decisions during the pre-sort terrain-slot walk.
 Batch 92 records which point lights reach immediate terrain decorations.
 Batch 93 adds the independent review of target selection, ties and initial combat timing.
-The historical target-selection record awaits review of its additional details.
+Batch 94 independently re-certifies the additional historical target-selection details,
+including copy widths, signed overflow and pointer/identity distinctions. It also records
+the separate reviews of periodic hits and source equipment effects. Their two earlier
+records retain additional details awaiting historical review.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -188,7 +191,7 @@ The historical target-selection record awaits review of its additional details.
 | `alpha-audio.md` | A | 520 | 5 |
 | `alpha-backing-reference-producers.md` | A | 127 | 0 |
 | `alpha-beam-height-leftovers.md` | A | 228 | 0 |
-| `alpha-behavior-target-selection.md` | B | 78 | 0 |
+| `alpha-behavior-target-selection.md` | A | 78 | 0 |
 | `alpha-block-edits.md` | A | 688 | 1 |
 | `alpha-blueprint-zone-delivery.md` | A | 245 | 0 |
 | `alpha-buff-record-replication-recovered.md` | A | 583 | 3 |
@@ -364,6 +367,7 @@ The historical target-selection record awaits review of its additional details.
 | `alpha-periodic-hit-producer-state.md` | A | 127 | 2 |
 | `alpha-pets-bombs.md` | A | 1057 | 0 |
 | `alpha-physics-camera.md` | A | 944 | 0 |
+| `alpha-periodic-hit-timing-and-defense.md` | A | 61 | 0 |
 | `alpha-player-control.md` | A | 406 | 0 |
 | `alpha-pose-owner-inputs.md` | A | 212 | 1 |
 | `alpha-pose-selectors-01-18.md` | A | 360 | 0 |
@@ -423,10 +427,12 @@ The historical target-selection record awaits review of its additional details.
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
 | `alpha-server-hit-record-routing.md` | B | 77 | 1 |
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
+| `alpha-server-periodic-hit-delivery.md` | A | 41 | 0 |
 | `alpha-server-simulation.md` | A | 732 | 0 |
 | `alpha-server-vendor-stock.md` | A | 139 | 1 |
 | `alpha-skills.md` | A | 624 | 0 |
 | `alpha-sneak-light-inputs.md` | A | 283 | 0 |
+| `alpha-source-equipment-hit-effects.md` | A | 75 | 0 |
 | `alpha-spatial-association-producers.md` | A | 94 | 1 |
 | `alpha-spatial-bucket-production.md` | A | 76 | 1 |
 | `alpha-spatial-record-association-production.md` | A | 75 | 0 |
@@ -443,6 +449,7 @@ The historical target-selection record awaits review of its additional details.
 | `alpha-taming-progress-and-capture.md` | A | 262 | 0 |
 | `alpha-target-relation.md` | A | 178 | 0 |
 | `alpha-template-stamping-markers.md` | A | 504 | 0 |
+| `alpha-target-selection-historical-readback.md` | A | 18 | 0 |
 | `alpha-terrain-box-range-and-static-fade.md` | A | 106 | 0 |
 | `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
 | `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
