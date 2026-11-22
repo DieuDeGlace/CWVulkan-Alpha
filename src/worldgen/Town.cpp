@@ -416,7 +416,8 @@ class TownBuilder : StructureWriter {
                     drop.x = (int64_t)x * ONE + HALF, drop.y = (int64_t)y * ONE + HALF, drop.z = (int64_t)T * ONE;
                     drop.rotation = f((float)random.draw() * 360.f / 32767.f);
                     drop.scale = 0.1f;
-                    zone.drops.push_back(drop);
+                    drop.origin = 2;
+                    zone.addItemDrop(drop);
                 }
             }
         // Fences along the low-y and low-x edges.
@@ -508,6 +509,7 @@ class TownBuilder : StructureWriter {
                     z--;
                 GroundItem cube{at.x, at.y, z + 1, 25, 0, 0, 1};
                 cube.seed = (uint32_t)number;
+                cube.origin = 0;
                 zone.items.push_back(cube);
             }
         }

@@ -4886,3 +4886,15 @@ The clean team also read the full 31-line final source-author supplement
 object loot and defeat loot through the collected set and distinguishes the
 independent timer, static-state and terrain events. Multiple changes can
 contribute to the same zone's eventual item snapshot.
+
+## Original generated item placement order (2026-11-22)
+
+The clean team read the entire 32-line held record
+`alpha-generated-item-origin-sites.md`, SHA-256
+`9cab593d863828bc7b2140aaac3345ef714ca6f7aa810a4f573c0bfa0646dfd0`.
+The source author traced seven append sites in the original Alpha client.
+An early cave item, furniture loot, feature items and surface vegetation
+share a single ordered traversal. The producer supplies an origin byte
+and a scale independently. Odd origins retain their placement height.
+Even origins settle before the game reads the saved zone. The source
+record leaves indirect producers and some feature identities open.

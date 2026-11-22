@@ -4278,6 +4278,7 @@ int main() {
         same(list && list->size() == 1, 1, "the generated mushroom");
         same((*list)[0].blocks().x, 300.5, "on its column's centre");
         same((*list)[0].scale, 1.0 / 14, "at the default scale", 1e-7);
+        same((*list)[0].origin, 2, "an older ground-item initializer retains its vegetation tag");
         const BlockType ground = [](int32_t, int32_t, int32_t z) { return (uint8_t)(z < 10 ? 1 : 0); };
         ItemRecord sword{};
         sword[0] = 3;
@@ -4311,19 +4312,49 @@ int main() {
         zone.zx = 0, zone.zy = 0;
         for (auto &column : zone.columns)
             column.bottom = 5; // implicit solid below z = 5, air above
-        zone.items.push_back({20, 20, 12, 11, 15, 0, 1});              // vegetation, tag 2
+        worldgen::GroundItem ground{20, 20, 12, 11, 15, 0, 0.1f};
+        ground.origin = 2;
+        zone.items.push_back(ground);
         worldgen::ItemDrop loot;
-        loot.x = 30ll << 16, loot.y = 30ll << 16, loot.z = 12ll << 16; // scale 0.06, tag 1
+        loot.x = 30ll << 16, loot.y = 30ll << 16, loot.z = 12ll << 16;
         loot.item.type = 11;
-        zone.drops.push_back(loot);
-        loot.scale = 0.1f; // tag 2
-        zone.drops.push_back(loot);
+        loot.item.subtype = 15;
+        loot.scale = ground.scale;
+        loot.origin = 1;
+        zone.addItemDrop(loot);
+        ground.origin = 1;
+        zone.items.push_back(ground);
+        loot.origin = 2;
+        zone.addItemDrop(loot);
+        ground.origin = 0;
+        zone.items.push_back(ground);
         WorldItems world;
         world.generated(zone);
         const std::vector<WorldItem> &list = *world.zone(0, 0);
-        same(list[0].origin == 1 && list[0].position[2] == (12ll << 16), 1, "tag-1 loot is not moved");
-        same(list[1].origin == 2 && list[1].position[2] == (5ll << 16), 1, "tag-2 loot settles on the ground");
-        same(list[2].position[2], 5ll << 16, "a vegetation item settles block by block");
+        same(list.size(), 5, "all interleaved generated items reach the zone list");
+        const std::array<uint8_t, 5> origins{2, 1, 1, 2, 0};
+        for (size_t i = 0; i < std::min(list.size(), origins.size()); ++i) {
+            const auto &item = list[i];
+            same(item.origin, origins[i], "site origin follows insertion order for the same type and scale");
+            same(item.position[2], (origins[i] & 1 ? 12ll : 5ll) << 16, "only even-tagged records settle");
+            same(item.save()[312] == origins[i] && item.record()[312] == origins[i], 1,
+                 "saved and network records carry the producer's origin");
+        }
+
+        worldgen::Zone legacy;
+        legacy.items.push_back({20, 20, 12, 11, 19, 0, 0.1f});
+        worldgen::ItemDrop oldTable;
+        oldTable.item.type = 11;
+        oldTable.item.subtype = 26;
+        legacy.drops.push_back(oldTable);
+        oldTable.scale = 0.1f;
+        legacy.addItemDrop(oldTable);
+        WorldItems legacyWorld;
+        legacyWorld.generated(legacy);
+        const auto &oldItems = *legacyWorld.zone(0, 0);
+        same(oldItems.size() == 3 && oldItems[0].origin == 1 && oldItems[0].item[1] == 26 &&
+             oldItems[1].origin == 0 && oldItems[1].item[1] == 19 && oldItems[2].origin == 2, 1,
+             "untagged module records keep their conventions and an ordered append follows the existing ground item");
 
         WorldItem w;
         w.item[0] = 5;

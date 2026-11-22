@@ -3787,3 +3787,38 @@ processes also reopened a copy of the owner's earlier original-client exit.
 Both retained all 29 map tiles, the 172 edits and the original-exit character
 blob. The saved world clock advanced across both reopens. Six focused tests,
 all 60 serial tests, the controller diagnostic and five client flows passed.
+
+## Generated world-item placement (2026-11-22)
+
+The production generator ran with the owner's local models in five test
+zones. Before and after the correction, each zone contained the same set of
+325-byte item records, including duplicates. The comparison covered 181
+records and 253 spawn-finishing calls. The random draw count and next
+value agreed at every recorded entry and exit.
+
+Two seed-41 zones contained both cave mushrooms and table loot. At
+(32796, 32771), two mushrooms preceded eleven table items and nine surface
+plants. At (32812, 32796), six mushrooms preceded six table items and six
+surface plants. The previous build placed the table loot first in both
+zones. Restoring the placement order changed thirteen and twelve list
+indices respectively. The three other lists matched in their entirety.
+These comparisons use independently generated engine output and the held
+placement contract. An original-client pickup at either location remains open.
+
+The expanded comparison covered 1,260 complete item records in 68 zones
+from seeds 41 and 123. Four zones changed a total of 52 item indices.
+Every zone matched the independently expected order, including entries
+within each placement phase. All 2,802 recorded spawn-finishing calls
+matched. Their final counters covered 70,635,176 draws across the 67 zones
+with a finishing call. The remaining zone had none.
+The sample included both crop subtypes, ravine mushrooms and sixteen
+table-loot category/subtype combinations. The snow item and the two
+category-25 feature sites have source evidence only in this comparison.
+
+Two test items with identical contents and scale started eight blocks above
+the surface. The origin-1 item retained height 183 and the origin-2 item
+settled to 175. Removing the origin check lowered both to 175. Restoring
+the previous world-item conversion failed nine checks. Source-module
+tests cover direct insertion and callers that omit the new origin field.
+The integrated 64-bit build passed six focused suites and all 60 serial
+CTest suites.

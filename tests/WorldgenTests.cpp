@@ -1405,7 +1405,8 @@ int main() {
         ItemDrop drop;
         drop.x = drop.y = 5 * 65536 + 32768;
         drop.z = -2 * 65536 - 32768; // z = -2.5: the cell of z - 0.5 is -3 by floor, -4 as the game reads it
-        drop.scale = 0.1f;          // untagged (bit 0 of the origin clear)
+        drop.scale = 0.1f;
+        drop.origin = 2;            // bit 0 clear, so both copies settle
         drop.item.type = 11;
         zone.drops.push_back(drop);
         ItemDrop resting = drop;    // z = -2.0: cell of -2.5 is -3 either way, solid: stays

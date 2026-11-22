@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace worldgen {
@@ -90,6 +91,13 @@ struct GroundItem {
     uint8_t category = 0, subtype = 0;
     float rotation = 0, scale = 1;
     uint32_t seed = 0; // +0x04 (a mana cube's number)
+    std::optional<uint8_t> origin; // world-item +0x138; all built-in sites supply it
+    uint8_t originTag() const {
+        if (origin)
+            return *origin;
+        // Source modules predating explicit origins supplied only category and subtype.
+        return category == 25 || (category == 11 && subtype == 19) ? 0 : 2;
+    }
 };
 
 // The fields of an item record the generator writes (behaviour spec §10.1).
@@ -139,6 +147,14 @@ struct ItemDrop {
     float rotation = 0;          // degrees
     float scale = 0.06f;         // +0x134
     ItemRecord item;
+    std::optional<uint8_t> origin; // +0x138, assigned by the placement site
+    size_t groundItemsBefore = 0; // encounter order across the zone's two item lists
+    uint8_t originTag() const {
+        if (origin)
+            return *origin;
+        // Preserve the earlier scale convention only for source modules omitting this field.
+        return scale > 0.08f ? 2 : 1;
+    }
 };
 
 // Structures spec §1.10.6: a marker the zone keeps (type 5 a dungeon exit, type 6 a boss).
@@ -278,6 +294,10 @@ struct Zone {
     std::vector<Spawn> spawns;
     std::vector<Sprite> sprites;
     std::vector<ItemDrop> drops;
+    void addItemDrop(ItemDrop drop) {
+        drop.groundItemsBefore = items.size();
+        drops.push_back(drop);
+    }
     std::vector<ZoneMarker> markers;
     std::vector<LeafSource> leafSources;
     std::vector<std::array<int64_t, 3>> songPosts; // trees §4.9: kind-61 records (1/65536 blocks)

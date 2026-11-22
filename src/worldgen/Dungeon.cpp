@@ -1057,6 +1057,7 @@ class Builder : StructureWriter {
                 if (random.draw() % 10 != 0)
                     continue;
                 ItemDrop drop;
+                drop.origin = 1;
                 if (random.draw() % 6 != 0) {
                     switch (random.draw() & 3) {
                     case 0: drop.item.type = 11, drop.item.subtype = 26; break;
@@ -1084,7 +1085,7 @@ class Builder : StructureWriter {
                 drop.y = o.y + fx(f(f((float)w - f(o.scale[1] * 0.5f)) + 0.5f));
                 drop.z = o.z + fx(o.scale[2]);
                 drop.rotation = f((float)random.draw() * 360.f / 32767.f);
-                zone.drops.push_back(drop);
+                zone.addItemDrop(drop);
             }
     }
 

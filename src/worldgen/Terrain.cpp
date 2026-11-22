@@ -478,9 +478,12 @@ std::unique_ptr<Zone> Terrain::generate(int32_t zx, int32_t zy) const {
             s.inventory.push_back(spirit);
         }
     // Open points 5 §4.1: generated items sink to what is under them, through water too.
-    for (GroundItem &item : zone->items)
+    for (GroundItem &item : zone->items) {
+        if (item.originTag() & 1)
+            continue;
         while (clear(zone->read(item.x, item.y, item.z - 1).type()))
             item.z--;
+    }
     av::modules::applyTerrainPasses(*zone, *this);
     if (swimmableWater)
         makeWaterSwimmable(*zone, [&](int32_t x, int32_t y, int32_t z) { return gapBlock(x, y, z, *zone); });
@@ -575,9 +578,12 @@ void Terrain::surfacePass(Zone &zone, const std::vector<float> &heights, Random 
                 if (topZ - floorZ > 2.f && (x + 3 * y) % 7 == 0 && random.draw() % 30 == 0) {
                     switch (random.draw() & 3) {
                     case 0: // a glowing mushroom; its angle is in radians (open points 12 §7.3)
-                        if (topZ <= S && (random.draw() & 3) == 0)
-                            zone.items.push_back({x, y, (int32_t)floorZ, 11, 19,
-                                                  (float)((double)random.draw() * 6.283185307179586 / 32767.0), 0.1f});
+                        if (topZ <= S && (random.draw() & 3) == 0) {
+                            GroundItem item{x, y, (int32_t)floorZ, 11, 19,
+                                            (float)((double)random.draw() * 6.283185307179586 / 32767.0), 0.1f};
+                            item.origin = 0;
+                            zone.items.push_back(item);
+                        }
                         break;
                     case 1: // a mineral deposit
                         if (topZ <= S) {
@@ -869,6 +875,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                     const int r = draw();
                     if (r % 150 == 0) {
                         GroundItem item{x, y, zt, 11, 15, (float)draw() / 32767.f * 360.f, 1};
+                        item.origin = 2;
                         if (draw() & 1) {
                             item.subtype = 22;
                             item.scale = 0.1f;
@@ -878,6 +885,7 @@ void Terrain::plantPass(Zone &zone, Random &random) const {
                 } else if (here == SNOW) {
                     if (draw() % 300 == 0) {
                         GroundItem item{x, y, zt, 11, 24, (float)draw() / 32767.f * 360.f, 0.1f};
+                        item.origin = 2;
                         draw(); // (its value always selects subtype 24)
                         zone.items.push_back(item);
                     }

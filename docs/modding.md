@@ -137,6 +137,16 @@ Passes run in registration order after native generation, before the swimmable-w
 extension and lighting. They can change the supplied zone's blocks, plants, items,
 statics and spawn records directly through `worldgen/Zone.h`.
 
+For a generated ground item or fixed-position drop, set its `origin` byte at
+placement. An odd byte retains the supplied height. An even byte lets the
+item settle onto supporting terrain. Append a ground item to `zone.items`
+and call `zone.addItemDrop(drop)` for a fixed-position drop. The latter
+captures the number of preceding ground items for the combined save and
+pickup order. Inserting or erasing earlier ground elements changes which
+items those stored counts refer to. Direct insertion into `zone.drops`
+retains the legacy default count of zero. Existing source initializers that
+omit `origin` keep their previous category/subtype or scale convention.
+
 Generation can run on several threads. Own only the supplied zone, use deterministic
 seed/coordinate-derived decisions, avoid native random-stream consumption, and
 do not register or unregister from inside a pass. Unregister waits for active passes

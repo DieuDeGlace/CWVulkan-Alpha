@@ -160,7 +160,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
   <main>
     <header class="doc">
-      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 78 · 2026-11-22</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
+      <div class="docid"><span>ALPHAVULKAN · CLEAN-ROOM SPECIFICATION</span><span>Revision 79 · 2026-11-22</span><span>Target: Cube World Alpha (Cube.exe and Server.exe)</span></div>
       <h1>AlphaVulkan Clean-Room Implementation</h1>
       <p class="lede">AlphaVulkan is a 64-bit Vulkan replacement engine for Cube World Alpha that aims for 1:1 behaviour with the player's own Alpha client and server. This document has four parts: the interoperability facts any implementation may reuse, the functional specification the engine must meet, the material those facts come from, and the tests that confirm the behaviour matches the original.</p>
       <div class="parts">
@@ -208,6 +208,7 @@ footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule);
 
     <section id="formats">
       <h3><span class="num">A2</span>File formats</h3>
+      <p><b>Generated zone items.</b> An early cave item precedes loose items on generated furniture. Feature items follow, then surface vegetation. Each placement supplies its own origin and scale. Items with origins 0 and 2 settle through air and water. Origin 1 retains the placement height. The saved zone is applied after this traversal. The <a href="specs/alpha-generated-item-origin-sites.md">seven original placement sites</a> establish the order and field values.</p>
       <p><b>Saved zone items.</b> A missing zone row keeps the generated items. An existing row filters saved items by signed day, then compares the survivors in order. A difference replaces the list and marks the zone modified. An edit-only zone writes zero items while its modified flag is clear. A marked zone writes the resident items in order. The <a href="specs/alpha-saved-world-item-admission.md">original-client zone record</a> gives the comparison fields and the separate object overlays. Successful pickup and placement mark the destination. Item timers, static toggles and terrain edits have their own outcomes under the <a href="specs/alpha-zone-item-modification-sources.md">modification rules</a>.</p>
       <p><b>Original client save interchange.</b> Original Alpha opened and saved one engine-created character and world. Two fresh Vulkan sessions reopened the resulting save at its stored visit with all 172 ordered terrain edits and 29 map tiles. Both kept the complete character record written by original Alpha. Multiple characters, worlds and longer sessions still need acceptance.</p>
       <p><b>Engine save import.</b> AlphaSetup can copy the player's character and world catalogs and their associated world and map databases into a fresh engine Save folder. It preserves the original records and adds the required water profile to each copied world database. On local world entry the selected character resumes at the exact signed fixed-point coordinates for that world’s seed and name. A first visit starts at the world’s home anchor. The actor and its drawable position agree before the first motion update. <a href="owner-content.md">Setup instructions</a>.</p>

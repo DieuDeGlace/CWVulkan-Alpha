@@ -19,7 +19,7 @@ struct WorldItem {
     int64_t position[3] = {0, 0, 0}; // 1/65536 blocks: the footprint's centre, z its base
     float angle = 0;                 // degrees about the vertical
     float scale = 1.f / 14;          // blocks per model voxel
-    uint8_t origin = 0;              // 0 dropped, 1 structure or cave loot, 2 vegetation (no behaviour)
+    uint8_t origin = 0;              // producer tag; bit 0 keeps a generated item at its placed height
     int32_t landingMs = 0;           // the hop and tumble run while this counts down
     int32_t hideMs = 0;              // hidden while not 0
     int32_t day = -1;                // the day it was dropped; -1 for generated items

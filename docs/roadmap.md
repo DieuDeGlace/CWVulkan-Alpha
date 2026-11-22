@@ -1153,6 +1153,9 @@ Differences from the Steam engine that shape the plan:
   coins in chat; ContentTests check every worked example). The compare panel
   (`alpha-open-points-2.md` §3): "Currently equipped" and the
   equipped items of the same type (weapons and rings as pairs), left of the tooltip.
+- [x] Preserve the placement order of generated world items across terrain,
+  furniture, feature and surface passes. Carry each producer's origin into
+  ground settling and the resident list used by pickups and zone saves.
 - [x] Single-player zone item save and reload. Item changes mark the resident
   zone. Terrain edits alone qualify a zone for saving with zero items, and an
   ordinary static toggle alone leaves the stored row alone. On reload, the
