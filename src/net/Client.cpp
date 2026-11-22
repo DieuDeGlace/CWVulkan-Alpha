@@ -87,6 +87,7 @@ void Client::disconnect() {
     incomingCombat = {};
     relationshipEvents.clear();
     credits.clear();
+    gifts.clear();
     outgoingEvents.clear();
     outgoingHits.clear();
     outgoingShoots.clear();
@@ -200,9 +201,19 @@ std::vector<std::array<uint8_t, 20>> Client::takeBlockEdits() {
     return std::exchange(blockEdits, {});
 }
 
-std::vector<std::array<uint8_t, 280>> Client::takeGifts() {
+std::vector<::creatures::ItemGrant> Client::takeItemGrants() {
     std::lock_guard guard(lock);
     return std::exchange(gifts, {});
+}
+
+std::vector<std::array<uint8_t, 280>> Client::takeGifts() {
+    std::lock_guard guard(lock);
+    std::vector<std::array<uint8_t, 280>> local;
+    for (const auto &grant : gifts)
+        if (grant.recipient == ownId)
+            local.push_back(grant.item);
+    gifts.clear();
+    return local;
 }
 
 std::map<uint64_t, CreatureRecord> Client::others() const {
@@ -682,19 +693,10 @@ void Client::receiveLoop() {
                 std::memcpy(record.data(), bytes.data(), record.size());
                 incomingCombat.missions.push_back(record);
             }
-            // Section 9 grants inventory items. Category 13 credits Platinum
-            // Coins through the same item route; kill experience is section 10.
-            for (const auto &bytes : update->sections[8]) {
-                if (bytes.size() < 0x1a)
-                    continue;
-                uint64_t who;
-                std::memcpy(&who, bytes.data(), 8);
-                if (who == ownId && bytes.size() >= 288) {
-                    std::array<uint8_t, 280> item;
-                    std::memcpy(item.data(), &bytes[8], 280);
-                    gifts.push_back(item);
-                }
-            }
+            // The frame resolves recipients after world simulation.
+            for (const auto &bytes : update->sections[8])
+                if (bytes.size() == 288)
+                    gifts.push_back(::creatures::ItemGrant::parse(bytes.data()));
             // Preserve each complete record. Even a foreign recipient can have
             // designated-victim cleanup at the later frame consumer.
             for (const auto &bytes : update->sections[9])

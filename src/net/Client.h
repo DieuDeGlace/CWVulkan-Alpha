@@ -149,7 +149,9 @@ class Client {
     // Section 8 snapshots in receipt order. Each record holds model number, X, Y and Z.
     using ZonePlacements = std::pair<std::pair<int32_t, int32_t>, std::vector<std::array<int32_t, 4>>>;
     std::vector<ZonePlacements> takeZonePlacements();
-    // Inventory grants to the local player in section 9 (pick-ups and rewards).
+    // Complete section-9 receipts, kept in order for frame-time recipient lookup.
+    std::vector<::creatures::ItemGrant> takeItemGrants();
+    // Local-only compatibility view of the same pending receipts.
     std::vector<std::array<uint8_t, 280>> takeGifts();
     // Static-object states received in section 6 (88-byte records, interaction §4.5).
     std::vector<std::array<uint8_t, 88>> takeStaticStates();
@@ -182,7 +184,7 @@ class Client {
     std::vector<std::pair<int32_t, int32_t>> outgoingZones, outgoingRegions;
     std::vector<ZoneItems> zoneItems;
     std::vector<ZonePlacements> zonePlacements;
-    std::vector<std::array<uint8_t, 280>> gifts;
+    std::vector<::creatures::ItemGrant> gifts;
     std::vector<std::array<uint8_t, 88>> staticStates;
     std::vector<std::array<uint8_t, 20>> blockEdits;
     std::map<uint64_t, CreatureRecord> creatures;

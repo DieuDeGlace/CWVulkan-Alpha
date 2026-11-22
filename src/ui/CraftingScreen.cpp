@@ -93,6 +93,14 @@ void Interface::stepCraft(float dtMs, bool leftHeld) {
     }
 }
 
+void Interface::refreshCraftingRows() {
+    if (!inventory)
+        return;
+    const auto tabs = creatures::recipeTabs(inventory->recipes);
+    for (size_t i = 0; i < tabs.size(); ++i)
+        craftingRow[i] = std::clamp(craftingRow[i], 0, std::max(0, int32_t(tabs[i].size()) - ROWS));
+}
+
 void Interface::drawCrafting(Painter &painter, glm::vec2 W, glm::vec2 mouse, float dtMs) {
     if (!inventory)
         return;

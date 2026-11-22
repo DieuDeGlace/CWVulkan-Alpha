@@ -657,6 +657,17 @@ static void checkCombatTransport() {
         creatures::setItemLevel(platinum, quantity);
         expectedGifts.push_back(platinum);
     }
+    // Complete section-9 records retain their order through transport, even if
+    // the actor only arrives later in this network batch or never resolves.
+    std::vector<creatures::ItemGrant> wireGrants;
+    for (const auto &item : expectedGifts)
+        wireGrants.push_back({1, item});
+    for (const auto [key, type] : std::array<std::pair<uint64_t, uint8_t>, 5>{{{19,25}, {777,25}, {19,3}, {1,25}, {19,25}}}) {
+        creatures::ItemRecord item{};
+        item[0] = type;
+        item.back() = uint8_t(wireGrants.size());
+        wireGrants.push_back({key, item});
+    }
     auto objectZone = std::make_shared<worldgen::Zone>(4, 6);
     for (int32_t association : {7, 8}) {
         worldgen::StaticObject object;
@@ -749,11 +760,9 @@ static void checkCombatTransport() {
         }
         update.sections[5] = expectedStaticPayloads;
         update.sections[12] = expectedMissionPayloads;
-        for (const auto &item : expectedGifts) {
-            ByteWriter grant;
-            grant.u64(1);
-            grant.write(item.data(), item.size());
-            update.sections[8].push_back(grant.data());
+        for (const auto &grant : wireGrants) {
+            const auto bytes = grant.serialize();
+            update.sections[8].emplace_back(bytes.begin(), bytes.end());
         }
         for (const auto &credit : expectedCredits) {
             const auto bytes = credit.serialize();
@@ -766,12 +775,12 @@ static void checkCombatTransport() {
         CreatureRecord remote;
         remote.setPosition(0, 123456789);
         remote.setPosition(1, -987654321);
+        response.u32(WORLD_UPDATE);
+        response.bytes(compressed(update.encode()));
         response.u32(CREATURE);
         response.bytes(compressed(encodeDelta(19, remote, 1)));
         response.u32(CREATURE);
         response.bytes(compressed(encodeDelta(1, remote, 1))); // controlled state stays local
-        response.u32(WORLD_UPDATE);
-        response.bytes(compressed(update.encode()));
         if (!socket.send(response.data())) return;
         worldSent = true;
         CreatureRecord latestOwn;
@@ -822,6 +831,11 @@ static void checkCombatTransport() {
         if (finish) return;
         remote.setPosition(2, 654321);
         ByteWriter finalDelta;
+        WorldUpdate leftover;
+        const auto bytes = wireGrants.front().serialize();
+        leftover.sections[8].emplace_back(bytes.begin(), bytes.end());
+        finalDelta.u32(WORLD_UPDATE);
+        finalDelta.bytes(compressed(leftover.encode()));
         finalDelta.u32(CREATURE);
         finalDelta.bytes(compressed(encodeDelta(19, remote, 1)));
         finalDelta.u32(END_OF_BATCH);
@@ -873,7 +887,7 @@ static void checkCombatTransport() {
         std::vector<creatures::RelationshipRecord> receivedRelationships;
         std::vector<std::vector<uint8_t>> receivedStatics;
         const auto &receivedMissions = combat.missions;
-        std::vector<creatures::ItemRecord> receivedGifts;
+        std::vector<creatures::ItemGrant> grants;
         std::vector<creatures::KillRecord> receivedCredits;
         check(waitFor([&] {
             if (shots.empty()) {
@@ -884,10 +898,10 @@ static void checkCombatTransport() {
             }
             for (const auto &event : client.takeRelationships()) receivedRelationships.push_back(event);
             for (const auto &event : client.takeStaticStates()) receivedStatics.emplace_back(event.begin(), event.end());
-            for (const auto &item : client.takeGifts()) receivedGifts.push_back(item);
+            for (const auto &grant : client.takeItemGrants()) grants.push_back(grant);
             for (const auto &credit : client.takeCredits()) receivedCredits.push_back(credit);
             return events.size() >= 2 && receivedRelationships.size() >= relationships.size() &&
-                   receivedStatics.size() >= expectedStaticPayloads.size() && receivedGifts.size() >= expectedGifts.size() &&
+                   receivedStatics.size() >= expectedStaticPayloads.size() && grants.size() >= wireGrants.size() &&
                    receivedCredits.size() >= expectedCredits.size() &&
                    receivedMissions.size() >= expectedMissionPayloads.size() &&
                    !hits.empty() && shots.size() >= inboundShots.size() && received && receivedHit && receivedShots;
@@ -912,7 +926,38 @@ static void checkCombatTransport() {
             sameMissions = std::equal(receivedMissions[i].begin(), receivedMissions[i].end(), expectedMissionPayloads[i].begin());
         check(sameMissions && drained.missions.empty() && client.takeMissionRecords().empty(),
               "section-thirteen retains intermediate regional snapshots, opaque received bytes and order through one frame drain");
-        check(receivedGifts == expectedGifts && client.takeGifts().empty(),
+        check(grants.size() == wireGrants.size() && std::equal(grants.begin(), grants.end(), wireGrants.begin(),
+                  [](const auto &a, const auto &b) { return a.serialize() == b.serialize(); }) && client.takeItemGrants().empty(),
+              "all complete section-nine grants retain IDs, opaque bytes, duplicates and order across one drain");
+        auto walletForGrants = creatures::Inventory::fresh();
+        int32_t cubes = 3;
+        creatures::Combatant controlled, other;
+        controlled.id = client.id();
+        const auto residents = client.others();
+        const auto find = [&](uint64_t key) -> creatures::Combatant * {
+            if (key == controlled.id) return &controlled;
+            return residents.contains(key) ? &other : nullptr;
+        };
+        std::vector<int32_t> counts;
+        int foreignOrdinary = 0;
+        int bagRefreshes = 0, craftRefreshes = 0;
+        creatures::applyItemGrants({}, grants, controlled, walletForGrants, cubes, find, {
+            [&] { ++bagRefreshes; }, [&] { ++craftRefreshes; },
+            [&](const creatures::ItemGrant &grant, const creatures::Combatant &recipient) {
+                if (creatures::itemType(grant.item) == 25)
+                    counts.push_back(cubes);
+                else if (&recipient != &controlled)
+                    ++foreignOrdinary;
+            }});
+        check(counts == std::vector<int32_t>{4,5,6} && foreignOrdinary == 1 && walletForGrants.platinum == 2 &&
+              controlled.level == 2 && controlled.experience == -30 && controlled.action == 109 && controlled.actionMs == 0 &&
+              bagRefreshes == 3 && craftRefreshes == 4,
+              "frame resolves the later-arriving actor, skips the missing one, and applies mixed section-nine effects once");
+        std::vector<creatures::ItemRecord> receivedGifts;
+        for (const auto &grant : grants)
+            if (grant.recipient == client.id() && creatures::itemType(grant.item) == 13)
+                receivedGifts.push_back(grant.item);
+        check(receivedGifts == expectedGifts,
               "positive, zero and negative Platinum Coins grants retain item bytes without becoming or consuming kill experience");
         bool sameCredits = receivedCredits.size() == expectedCredits.size();
         for (size_t i = 0; sameCredits && i < expectedCredits.size(); i++)
@@ -995,6 +1040,7 @@ static void checkCombatTransport() {
     client.disconnect();
     listener.close();
     peer.join();
+    check(client.takeItemGrants().empty(), "disconnect releases undrained section-nine records before a new connection");
 }
 
 // One loopback connection for the receiver checks: the peer completes the handshake as
@@ -1992,6 +2038,8 @@ int main() {
         state.equipment[12].type = 19;
         state.equipment[12].subtype = 19;
         state.equipment[12].level = 1;
+        state.equipment[12].spirits = 2;
+        state.equipment[12].cubes = {{0,0,0,'B'}, {0,0,0,0xe9}};
         ra.setFighter(state);
         a.setOwn(ra);
         check(waitFor([&] {
@@ -2022,6 +2070,8 @@ int main() {
         check(waitFor([&] { pet = receivedPet(); return pet.has_value(); }),
               "clearing only glider admits the same equipped pet on the actual server");
         if (pet) {
+            check(pet->name() == std::string({'B', char(0xe9)}) && pet->fighter().nameBytes[2] == 0,
+                  "the equipped pet's narrow name reaches observers through the actual server record");
             check(pet->homeSpawn() == std::array<int32_t, 3>{-1, -1, 0} &&
                   pet->fighter().behaviorReference == std::array<int64_t, 3>{} && pet->talkKind() == 0 &&
                   pet->talkTarget() == glm::ivec2(-1, -1),

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 84 and the rulings. The 309 tracked contracts
-comprise 273 A, 31 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 85 and the rulings. The 310 tracked contracts
+comprise 274 A, 31 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -164,6 +164,7 @@ Batch 81 records the terrain group bounds and renderer transfer window.
 Batch 82 records local front-end terrain readiness, the wait presentation and the creation cursor.
 Batch 83 records resident spawn and indexed object lifetimes across terrain updates.
 Batch 84 records live terrain observation scopes and the meaning of the three stored light bytes.
+Batch 85 records section 9's dedicated audience, two client lookups and item presentation.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -403,6 +404,7 @@ Batch 84 records live terrain observation scopes and the meaning of the three st
 | `alpha-rulings-zone-fields.md` | A | 211 | 0 |
 | `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
+| `alpha-section9-result-presentation.md` | A | 42 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
 | `alpha-server-hit-record-routing.md` | B | 77 | 1 |
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |

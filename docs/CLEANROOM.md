@@ -4649,3 +4649,13 @@ A private instrumented run found that startup applied two different
 values, depending on whether terrain had already been loaded. The same
 source recordings and native mesh-budget contracts apply. This adjustment
 changes which zones the engine requests when a radius is explicitly set.
+
+## Addressed item result presentation (2026-11-21)
+
+The clean team read the complete 41-line held contract, SHA-256
+`36e06dd434f8d62a3867df267b2c103fb06bdbe55f81e38c1b068909779b826b`.
+The source author independently established the dedicated section's
+audience, the two frame-time lookups and the UI, sound and progression
+order. The earlier mixed sender-turn FIFO contract still governs request
+consumption and random draws. The client retains each addressed result
+through delivery to its game frame.

@@ -39,6 +39,85 @@ struct Fixture {
     }
 };
 
+static void addressedItems() {
+    Combatant local, remote;
+    local.id = 1; remote.id = 19;
+    local.action = 7; local.actionMs = 80; local.experience = 11;
+    auto inventory = Inventory::fresh();
+    int32_t cubes = 3;
+    const auto gift = [](uint64_t key, uint8_t category, int16_t amount) {
+        ItemGrant grant;
+        grant.recipient = key; grant.item[0] = category;
+        setItemLevel(grant.item, amount);
+        return grant;
+    };
+    const std::array made{gift(1, 13, 6)};
+    const std::array pending{gift(19, 25, 1), gift(777, 25, 2), gift(19, 13, 7), gift(1, 13, -3),
+                             gift(1, 25, 3), gift(19, 3, 4), gift(0, 13, 5), gift(23, 25, 6)};
+    inventory.add(made[0].item); // immediate world-local producer
+    std::map<uint64_t, Combatant *> actors{{0, &local}, {1, &local}, {19, &remote}, {23, &remote}};
+    std::vector<int> shown, cubeCounts;
+    const auto lookup = [&](uint64_t key) {
+        const auto it = actors.find(key);
+        return it == actors.end() ? nullptr : it->second;
+    };
+    std::vector<char> phases;
+    applyItemGrants(made, pending, local, inventory, cubes, lookup, {
+        [&] { phases.push_back('I'); }, [&] { phases.push_back('C'); }, [&](const ItemGrant &grant, const Combatant &recipient) {
+        if (shown.empty()) {
+            check(inventory.platinum == 8 && local.level == 2 && local.health == maxHealth(local) && local.experience == 21,
+                  "all received inventory credits precede the first presentation, after its signed XP and level threshold");
+            actors.erase(23); // resolver reads the current actor again for each result
+        }
+        phases.push_back('P');
+        shown.push_back(int(itemLevel(grant.item)) * (&recipient == &local ? 1 : -1));
+        if (itemType(grant.item) == 25) {
+            cubeCounts.push_back(cubes);
+            check(local.action == 109 && local.actionMs == 0, "controlled cube action and timer are set before presentation");
+        }
+    }});
+    check(shown == std::vector<int>{6,-1,-7,-3,3,-4,5} && cubeCounts == std::vector<int>{4,5} &&
+          phases == std::vector<char>{'I','I','C','P','P','P','C','P','C','P','P','C','P'},
+          "fresh result precedes stored FIFO, including the foreign fourth cube, with unresolved or departed recipients skipped");
+    check(local.experience == -9 && remote.experience == 0 && remote.action == 0 && inventory.platinum == 8,
+          "inventory uses the resolved local pointer while ten-times signed experience requires the local record ID");
+}
+
+static void platinumBeforePendingKills() {
+    Combatant player, hostile, civilian;
+    player.id = 1;
+    player.health = 50;
+    hostile.controller = 1;
+    Fixture f;
+    f.controlled = &player;
+    f.actors = {{1,&player}, {19,&hostile}, {20,&civilian}};
+    const auto world = f.world(1);
+    auto inventory = Inventory::fresh();
+    inventory.platinum = 5;
+    int32_t cubes = 0;
+    std::array<ItemGrant,3> grants{};
+    const std::array<int16_t,3> amounts{9,0,-7};
+    for (size_t i = 0; i < amounts.size(); ++i) {
+        grants[i].recipient = player.id;
+        grants[i].item[0] = 13;
+        setItemLevel(grants[i].item, amounts[i]);
+    }
+    std::vector<int32_t> afterGrants, afterKills;
+    applyItemGrants({}, grants, player, inventory, cubes, world.lookup, {[] {}, [] {},
+        [&](const ItemGrant &, const Combatant &) {
+            afterGrants.push_back(player.experience);
+            check(player.level == 2 && player.health == maxHealth(player) && inventory.platinum == 7,
+                  "the first Platinum receipt already observes the new level, health and complete wallet credit");
+        }});
+    for (const auto &record : std::array<KillRecord,6>{{
+             {1,404,4,1000}, {1,20,4,1000}, {19,1,4,1000}, {1,19,INT32_MIN,50}, {1,19,-1,-50}, {1,19,INT32_MAX,17}}}) {
+        receiveCredit(record, world);
+        afterKills.push_back(player.experience);
+    }
+    check(afterGrants == std::vector<int32_t>{40,40,-30} && afterKills == std::vector<int32_t>{-30,-30,-30,20,-30,-13},
+          "three signed Platinum results precede six pending kill records, preserving the saved reward-flow outcome");
+}
+
 static void codecAndAdmission() {
     std::array<uint8_t, 24> bytes;
     for (size_t i = 0; i < bytes.size(); i++) bytes[i] = uint8_t(i * 71 + 3);
@@ -280,6 +359,8 @@ static void preparedFatalAmount() {
 }
 
 int main() {
+    addressedItems();
+    platinumBeforePendingKills();
     codecAndAdmission();
     designatedCleanup();
     independentLinkedAward();

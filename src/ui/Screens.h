@@ -211,6 +211,7 @@ class Interface {
     // §8.1: the inventory screen (B or I): the bag window, the character panel and the twelve
     // equipment boxes. The game points `inventory` at the player's belongings and fills
     // `sheet` each frame; `itemModel` gives an item's mesh and size, `itemName` its name.
+    void refreshInventoryRows() { if (inventory) scrollRange(); }
     bool inventoryOpen = false;
     creatures::Inventory *inventory = nullptr;
     struct CharacterSheet {
@@ -365,6 +366,7 @@ class Interface {
     // Crafting (alpha-crafting.md §4, §5): the recipe window (C or a station) and its preview.
     // `stationNear` says whether the player is near a station; the game makes what
     // `finishedCraft` holds and empties it.
+    void refreshCraftingRows();
     bool craftingOpen = false;
     int craftingTab = 0;
     std::function<bool(int32_t station)> stationNear;

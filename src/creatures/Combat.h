@@ -104,6 +104,7 @@ struct Combatant {
     // contract §3), written by the local controller for action 0x22.
     uint64_t healTarget = 0;
     BackingReference backing;
+    std::array<uint8_t, 16> nameBytes{}; // field 45, narrow actor name
     int32_t type = 2;       // creature type
     uint8_t controller = 0; // 0 player, 1 hostile NPC, …
     uint8_t characterClass = 1, specialization = 0;

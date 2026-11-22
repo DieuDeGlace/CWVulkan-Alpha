@@ -42,6 +42,41 @@ ItemGrant ItemGrant::parse(const uint8_t *bytes) {
     return grant;
 }
 
+void applyItemGrants(std::span<const ItemGrant> produced, std::span<const ItemGrant> received,
+                     Combatant &controlled, Inventory &inventory, int32_t &manaCubes,
+                     const std::function<Combatant *(uint64_t)> &lookup, const ItemGrantView &view) {
+    for (const auto &grant : received)
+        if (lookup(grant.recipient) == &controlled && itemType(grant.item) != 25) {
+            inventory.add(grant.item);
+            view.refreshInventory();
+        }
+
+    const auto results = [&](std::span<const ItemGrant> grants) {
+        for (const auto &grant : grants) {
+            const auto *recipient = lookup(grant.recipient);
+            if (!recipient)
+                continue;
+            const bool local = recipient == &controlled;
+            if (local)
+                view.refreshCrafting();
+            switch (itemType(grant.item)) {
+            case 13:
+                if (grant.recipient == controlled.id)
+                    addExperience(controlled, 10 * int32_t(itemLevel(grant.item)));
+                break;
+            case 25:
+                manaCubes = std::bit_cast<int32_t>(uint32_t(manaCubes) + 1u);
+                controlled.action = 109;
+                controlled.actionMs = 0;
+                break;
+            }
+            view.present(grant, *recipient);
+        }
+    };
+    results(produced);
+    results(received);
+}
+
 void stampLinkedCredit(Combatant &actor, const Combatant &linked, CreditItems items) {
     std::memcpy(items.source.data() + 4, &linked.experience, 4);
     const int16_t level = std::bit_cast<int16_t>(uint16_t(linked.level));

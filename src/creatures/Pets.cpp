@@ -148,7 +148,10 @@ void Npcs::makePet(Npc &pet, const Item &item, const Combatant &owner) {
     c.type = item.subtype;
     c.level = std::max(1, item.level);
     c.experience = (int32_t)item.seed;
-    // Step 3, the item's name characters: the engine creature record carries no name.
+    // The reset cleared the name. One material byte per active pet-item entry precedes its terminator.
+    if (item.spirits > 0 && size_t(item.spirits) < c.nameBytes.size() && size_t(item.spirits) <= item.cubes.size())
+        for (int32_t i = 0; i < item.spirits; ++i)
+            c.nameBytes[i] = item.cubes[i].material;
     c.ownerId = owner.id; // step 4
     int32_t type = c.type;
     generate(type, pet.looks, nullptr, [&] { return draw(); });

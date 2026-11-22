@@ -1,6 +1,7 @@
 #pragma once
 #include "creatures/Inventory.h"
 #include <functional>
+#include <span>
 
 namespace creatures {
 
@@ -20,6 +21,16 @@ struct ItemGrant {
     std::array<uint8_t, 288> serialize() const;
     static ItemGrant parse(const uint8_t *bytes); // complete 288-byte payload required
 };
+
+// Received ordinary items enter the local inventory before the shared result pass.
+// Produced items already ran their producer's inventory side effect.
+struct ItemGrantView {
+    std::function<void()> refreshInventory, refreshCrafting;
+    std::function<void(const ItemGrant &, const Combatant &recipient)> present;
+};
+void applyItemGrants(std::span<const ItemGrant> produced, std::span<const ItemGrant> received,
+                     Combatant &controlled, Inventory &inventory, int32_t &manaCubes,
+                     const std::function<Combatant *(uint64_t)> &lookup, const ItemGrantView &view);
 
 // Engine presentation metadata for a credit already consumed synchronously.
 struct AppliedCredit {

@@ -3348,3 +3348,39 @@ An above-ground run at the same horizontal position, with the eye at
 240, showed a continuous valley floor and surrounding wooded slopes.
 The client passed the production controller diagnostic and all five
 client flows. All 36 package digests across 37 files verified.
+
+## Multiplayer item receipts and mana cubes (2026-11-21)
+
+A synthetic peer sent four ordered pickups to the Vulkan client. An
+existing remote player received a mana cube, an unknown actor received a
+mana cube, the remote player received 41 Platinum and the local player
+received two Platinum. The local character began with three cubes, five
+Platinum and zero XP. Before the change its save contained three cubes,
+seven Platinum and 20 XP. Its captured HUD also showed three cubes.
+Repeating this sequence on the rebuilt client left four cubes, seven
+Platinum and 20 XP in the save. Its HUD showed four glowing cubes and
+the player raised a cube. The chat named the remote recipient, Witness,
+on the 41-Platinum line and addressed the two-Platinum line to the local
+player. The wallet showed seven Platinum Coins.
+
+A separate instrumented game-frame replay consumed one local result and
+mixed incoming results, including duplicates and an actor announced later
+in the network batch. The local counter advanced from three to six,
+action 109 started at time zero, three requests for sound 30 occurred
+and the fourth-cube animation ran once. At 16 ms per frame it showed four
+icons for 84 frames, then settled on two. The inventory refreshed three
+times and crafting four times. Remote receipt text used the actor's name,
+including a non-ASCII byte, for both a connected peer and a named offline
+pet. Clearing the pet's name took effect on its next rebuild. A dedicated
+server test also observed the pet's name in a real creature update.
+
+The mixed-sender regression covers the order of requests and random draws.
+The receipt changes take effect after those requests. The widget checks
+cover the engine's scroll positions and drawing path. Original widget
+transforms, audible playback and a physical client-to-client comparison
+remain open.
+
+Six focused tests passed in 16.70 seconds. All 60 serial tests passed
+in 154.37 seconds. The controller diagnostic and the reward, health,
+network, save and town client flows passed on the integrated build.
+The package verifier checked all 36 digests in the 37-file archive.

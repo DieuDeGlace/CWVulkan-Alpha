@@ -23,6 +23,12 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Retain addressed item results in wire order through the two frame
+  lookups. Apply a resolved mana cube to the observing player's count.
+  Limit platinum and experience to their local recipient. Handle named
+  foreign receipts and refresh the inventory and crafting lists at the
+  corresponding local-result boundaries.
+
 - [x] Honor the selected terrain streaming radius at construction and
   during travel. The explicit diagnostic radius overrides the saved
   options for zone loading. The saved vertex allowance still applies.

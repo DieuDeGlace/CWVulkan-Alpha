@@ -1077,45 +1077,32 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         return slot == creatures::NO_MODEL ? nullptr : creatureView.voxelModel(slot);
     };
     interface.itemName = [&](const creatures::ItemRecord &record) { return ui::utf16(itemName(record, dictionary)); };
-    // Screens §8.1.9: an item the player received, into the bags and announced in the chat.
-    const auto receive = [&](const creatures::ItemRecord &got, bool store = true) {
-        const uint8_t type = creatures::itemType(got);
-        mods.itemReceived(type, creatures::itemSubtype(got), creatures::itemLevel(got));
-        if (type == 25) {
-            // Rulings manacubebar §1 step 4 (type 0x19): the count rises, the message and sound
-            // 0x1e follow; on a multiple of 4 `manacubes` plays once on the bar and the skill
-            // point is announced (skills §3.1).
-            manaCubes++;
-            interface.manaCubes = manaCubes;
-            interface.chatAdd("You receive a mana cube.\n", {100, 150, 255});
-            if (const char *key = creatures::soundKey(0x1e))
-                audio.play(key);
-            if (manaCubes % 4 == 0) {
-                interface.playManaCubes();
-                interface.chatAdd("You gain one skill point.\n", {150, 128, 255});
-            }
-            return;
+    const auto announceCube = [&] {
+        interface.manaCubes = manaCubes;
+        interface.chatAdd("You receive a mana cube.\n", {100, 150, 255});
+        if (const char *key = creatures::soundKey(0x1e))
+            audio.play(key);
+        if (manaCubes % 4 == 0) {
+            interface.playManaCubes();
+            interface.chatAdd("You gain one skill point.\n", {150, 128, 255});
         }
-        if (store)
-            inventory.add(got);
-        interface.chatAdd("You receive ", {255, 255, 255});
-        interface.chatAdd(receivedText(got, dictionary), type == 12 ? glm::vec3(255) : creatures::nameColour(got) * 255.f);
+    };
+    const auto announceItem = [&](const creatures::ItemRecord &item, const std::string &prefix) {
+        interface.chatAdd(prefix, {255, 255, 255});
+        const glm::vec3 colour = creatures::itemType(item) == 12 ? glm::vec3(255) : glm::trunc(creatures::nameColour(item) * 255.f);
+        interface.chatAdd(receivedText(item, dictionary), colour);
         interface.chatAdd(".\n", {255, 255, 255});
     };
-    const auto receiveGrant = [&](const creatures::ItemRecord &item, bool store) {
-        receive(item, store);
-        auto &fighter = player->combat();
-        switch (creatures::itemType(item)) {
-        case 13:
-            fighter.experience = std::bit_cast<int32_t>(uint32_t(fighter.experience) +
-                                                        uint32_t(10 * int32_t(creatures::itemLevel(item))));
-            break;
-        case 25:
-            fighter.action = 109;
-            fighter.actionMs = 0;
-            break;
-        default:
-            break;
+    // Direct engine quest/reward adapters supply local items outside the frame grant list.
+    const auto receive = [&](const creatures::ItemRecord &item) {
+        const uint8_t type = creatures::itemType(item);
+        mods.itemReceived(type, creatures::itemSubtype(item), creatures::itemLevel(item));
+        if (type == 25) {
+            manaCubes = std::bit_cast<int32_t>(uint32_t(manaCubes) + 1u);
+            announceCube();
+        } else {
+            inventory.add(item);
+            announceItem(item, "You receive ");
         }
     };
     const creatures::BlockType worldBlock = [&](int32_t x, int32_t y, int32_t z) { return view.held().read(x, y, z).type(); };
@@ -2854,12 +2841,26 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                                 capturePet(hit, frameActor(hit.attacker));
                     }
                     applyReceivedZoneContents();
-                    if (client.connected())
-                        for (const auto &gift : client.takeGifts())
-                            receiveGrant(gift, true);
-                    for (const auto &grant : aggregate.grants)
-                        if (grant.recipient == player->combat().id)
-                            receiveGrant(grant.item, false);
+                    const auto pendingGrants = client.connected() ? client.takeItemGrants() : std::vector<creatures::ItemGrant>{};
+                    if (!aggregate.grants.empty() || !pendingGrants.empty())
+                        creatures::applyItemGrants(aggregate.grants, pendingGrants, player->combat(), inventory, manaCubes,
+                            frameActor, {[&] { interface.refreshInventoryRows(); }, [&] { interface.refreshCraftingRows(); },
+                            [&](const creatures::ItemGrant &grant, const creatures::Combatant &recipient) {
+                                const auto &item = grant.item;
+                                const uint8_t type = creatures::itemType(item);
+                                const bool local = &recipient == &player->combat();
+                                if (local)
+                                    mods.itemReceived(type, creatures::itemSubtype(item), creatures::itemLevel(item));
+                                if (type == 25) {
+                                    announceCube();
+                                } else if (local) {
+                                    announceItem(item, "You receive ");
+                                } else {
+                                    const auto &name = recipient.nameBytes;
+                                    const std::vector<uint16_t> units(name.begin(), std::find(name.begin(), name.end(), 0));
+                                    announceItem(item, net::fromUtf16(units) + " receives ");
+                                }
+                            }});
                     applyReceivedRelationships();
                     simulationInputFrames++;
                     auto &wheel = interface.quickWheel;
@@ -3550,7 +3551,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 const std::vector<uint16_t> name = net::toUtf16(argument);
                 if (name.size() >= 16) {
                     interface.chatAdd("Pet name too long\n", {255, 51, 51});
-                } else if (!argument.empty() && creatures::itemType(inventory.equipment[12]) == 19) {
+                } else if (creatures::itemType(inventory.equipment[12]) == 19) {
                     creatures::ItemRecord &pet = inventory.equipment[12];
                     const int32_t count = (int32_t)name.size();
                     std::memcpy(pet.data() + 0x114, &count, 4);

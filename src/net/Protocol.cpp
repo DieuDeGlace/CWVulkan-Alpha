@@ -156,6 +156,7 @@ void CreatureRecord::updateFighter(creatures::Combatant &c) const {
 }
 
 void CreatureRecord::readFighter(creatures::Combatant &c, bool retainItemPadding) const {
+    std::memcpy(c.nameBytes.data(), bytes.data() + CREATURE_FIELDS[45].offset, c.nameBytes.size());
     c.appearanceFlags = get<uint16_t>(bytes, 0x06e); // appearance field13, flags at +6
     c.contact = contactFlags();
     c.mode = get<uint16_t>(bytes, 0x114);

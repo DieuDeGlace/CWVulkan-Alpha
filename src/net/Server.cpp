@@ -70,6 +70,7 @@ void writeNpcRecord(CreatureRecord &r, const creatures::Npc &n) {
     r.setContactFlags(n.body.contact);
     r.setAppearance(n.looks);
     r.setFighter(n.fighter); // includes the backing descriptor and its separate raw home position
+    std::memcpy(r.bytes.data() + CREATURE_FIELDS[45].offset, n.fighter.nameBytes.data(), n.fighter.nameBytes.size());
     r.setTalk(uint8_t(n.talkKind), n.talkTarget);
 }
 

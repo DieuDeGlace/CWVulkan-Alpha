@@ -122,6 +122,29 @@ struct PetFixture {
     }
 };
 
+static void petRecordName() {
+    PetFixture f;
+    auto &item = f.owner.equipment[12];
+    item.cubes[0].material = 'A';
+    item.cubes[1].material = 0xe9;
+    f.step();
+    const auto *child = f.npcs.petOf(f.owner);
+    check(child && child->fighter.nameBytes[0] == 'A' && child->fighter.nameBytes[1] == 0xe9 &&
+          child->fighter.nameBytes[2] == 0, "pet creation copies narrow material bytes and terminates the actor name");
+    const uint64_t id = f.owner.linkedId;
+    item.cubes.resize(15);
+    item.spirits = 15;
+    item.cubes.back().material = 'Z';
+    f.step();
+    check(child && f.owner.linkedId == id && child->fighter.nameBytes[14] == 'Z' && child->fighter.nameBytes[15] == 0,
+          "a fifteen-byte name fits on the same rebuilt actor");
+    item.cubes.resize(16);
+    item.spirits = 16;
+    f.step();
+    check(child && child->fighter.nameBytes == std::array<uint8_t,16>{},
+          "a sixteen-entry pet item clears the previous name on real reconstruction");
+}
+
 static void maintenancePublication() {
     PetFixture f;
     f.owner.linkedItem.retained.item.fill(0xa5);
@@ -243,6 +266,7 @@ static void orphanedRoleFive() {
 int main() {
     storageAndWire();
     actualCreditStorage();
+    petRecordName();
     maintenancePublication();
     lateMirror();
     orphanedRoleFive();
