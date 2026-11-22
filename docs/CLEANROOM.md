@@ -4871,3 +4871,18 @@ later actor. The area critical roll and both source buffs use the earlier
 saved actor. Both ordinary hit calls pass the later actor. The historical
 version remains in public commit `0972a1ac8c253f56d47764d361c7a21bdb172041`, Git blob `d89baacaff145a6d80c04725d0e87244b15b4e6d`,
 SHA-256 `8ddd54046ef056efef83f8dcf6f20024a2c2eabff2d40b9fc75bf8b69991cf04`. [Historical published contract](https://github.com/DieuDeGlace/CWVulkan-Alpha/blob/0972a1ac8c253f56d47764d361c7a21bdb172041/docs/specs/alpha-client-projectile-hit-call-boundary.md)
+
+## Saved world-item admission and writeback (2026-11-22)
+
+The independent source author held `alpha-saved-world-item-admission.md` at 59 lines, SHA-256 `1da8a885ee6cb880f00044b7e27bde85f83b4103b8d8f4497b7d1e4c531cb09c`.
+The clean team verified the digest and read the complete record. It covers
+the single-player zone reader, signed day handling, ordered list comparison,
+world teardown and zone-write gates. The two final object-state sections are
+counted overlays. The original runtime's modified flag during the owner's
+FlowSmoke session was not observed. The scope excludes the dedicated server.
+
+The clean team also read the full 31-line final source-author supplement
+`alpha-zone-item-modification-sources.md`, SHA-256 `21118992a9d65749f804457595ec3e22c56e27cc3771c6c7d5dad7055c9db080`. It traces successful pickup, drop,
+object loot and defeat loot through the collected set and distinguishes the
+independent timer, static-state and terrain events. Multiple changes can
+contribute to the same zone's eventual item snapshot.

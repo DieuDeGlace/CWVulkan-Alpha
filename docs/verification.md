@@ -3752,3 +3752,38 @@ the previous double-precision conversion failed the assertion for this pair
 of cues. The existing ranged-scheduling and source-auxiliary suites passed.
 Whether a mapping changes between source reads in native play, and a
 complete native replay of either contact, remain open.
+
+## Single-player zone item writeback (2026-11-22)
+
+The closed FlowSmoke files isolate the original session's zone difference to
+two sections. The 11 generated ground items became an empty list, and the count
+of two-word object-state overlays changed from zero to six. The remaining
+3,453 bytes, including all 172 terrain edits and the static state, match.
+All 11 items had saved day −1. The earlier Vulkan build retained all 11 over
+10,061 no-input steps and an explicit write. A separate in-range pickup left
+ten. The original player's intermediate path and the zone's live modified
+flag were not recorded.
+
+Fifty focused checks exercised the single-player comparator and zone writer.
+The preceding client replaced a resident day of 19 with 17 when day was the
+only difference, and wrote one resident item on an edit-only save. The new
+client kept day 19 and wrote zero items in those cases. It also preserved a
+neighbor's pending change when a different zone left the live world.
+
+In a headless WorldView run, a second SQLite connection held a write
+reservation during ordinary distance-based cleanup. The failed write left
+the zone resident, the previous database row intact and both zones marked.
+After the lock was released, the next cleanup saved and evicted the target.
+The neighboring zone retained its mark. In a copy with eleven matched
+FlowSmoke items and the 172 edits, the candidate retained eleven live items
+until disposal and wrote an empty item list. The six object-state entries
+added during original play account for the remaining 48 bytes.
+
+The production Vulkan crater flow wrote zero ground items on the first save
+and again after reload, with only the edited zone present in each database.
+Both files contained the same 172 ordered edits as the original-exit fixture.
+The preceding published build wrote 11 items on both saves. Two new Vulkan
+processes also reopened a copy of the owner's earlier original-client exit.
+Both retained all 29 map tiles, the 172 edits and the original-exit character
+blob. The saved world clock advanced across both reopens. Six focused tests,
+all 60 serial tests, the controller diagnostic and five client flows passed.

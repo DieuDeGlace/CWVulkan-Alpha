@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 95 and the rulings. The 327 tracked contracts
-comprise 294 A, 28 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 96 and the rulings. The 329 tracked contracts
+comprise 296 A, 28 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -428,6 +428,7 @@ independent author's receipt, the withdrawn attribution and its public commit an
 | `alpha-rulings-spawn-rounds-ruin-routes.md` | A | 204 | 0 |
 | `alpha-rulings-walk-flag-pitch.md` | A | 163 | 0 |
 | `alpha-rulings-zone-fields.md` | A | 211 | 0 |
+| `alpha-saved-world-item-admission.md` | A | 60 | 0 |
 | `alpha-saves.md` | A | 499 | 0 |
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-section9-result-presentation.md` | A | 42 | 0 |
@@ -509,6 +510,7 @@ independent author's receipt, the withdrawn attribution and its public commit an
 | `alpha-yaw-trig-scalar-abi.md` | A | 77 | 1 |
 | `alpha-zone-final-static-bucket-index.md` | A | 39 | 0 |
 | `alpha-zone-generator-observation-boundaries.md` | A | 39 | 0 |
+| `alpha-zone-item-modification-sources.md` | A | 32 | 0 |
 | `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
 | `shadows.md` | E | 194 | 3 |
 | `sky-and-clouds.md` | E | 481 | 6 |

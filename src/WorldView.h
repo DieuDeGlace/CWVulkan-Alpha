@@ -177,6 +177,8 @@ class WorldView {
     std::function<std::optional<worldgen::MapTile>(int32_t zx, int32_t zy)> savedTile;
     // Called on the main thread each time a zone is taken in (mods hear of it).
     std::function<void(int32_t zx, int32_t zy)> onZoneReady;
+    // Returning false retains a zone whose save failed so the next cleanup can retry it.
+    std::function<bool(int32_t zx, int32_t zy)> onZoneUnload;
     // Screens §5.2.4 item 2: whether a zone is the target of a discovered mission (its map
     // tile is then drawn undimmed).
     std::function<bool(int32_t zx, int32_t zy)> missionTarget;

@@ -1,4 +1,5 @@
 #include "WorldItems.h"
+#include "BlockEdits.h"
 #include "worldgen/Random.h"
 #include "worldgen/Regions.h"
 #include <bit>
@@ -139,14 +140,27 @@ void WorldItems::generated(const worldgen::Zone &zone) {
 }
 
 void WorldItems::restore(int32_t zx, int32_t zy, const std::vector<std::array<uint8_t, 325>> &saved, int32_t today) {
+    restore(zx, zy, saved, today, RestoreComparison::FullRecord);
+}
+
+void WorldItems::restore(int32_t zx, int32_t zy, const std::vector<std::array<uint8_t, 325>> &saved, int32_t today,
+                         RestoreComparison comparison) {
     std::vector<WorldItem> kept;
+    kept.reserve(saved.size());
     for (const auto &bytes : saved) {
         WorldItem w = WorldItem::load(bytes.data());
-        if (w.day < 0 || w.day >= today - 3)
+        if (editKept(w.day, today))
             kept.push_back(w);
     }
     std::vector<WorldItem> &list = lists[{zx, zy}];
-    if (kept != list) {
+    const auto equal = [comparison](const WorldItem &a, const WorldItem &b) {
+        if (comparison == RestoreComparison::FullRecord)
+            return a == b;
+        return creatures::sameItem(a.item, b.item) && std::equal(std::begin(a.position), std::end(a.position), b.position) &&
+               a.angle == b.angle && a.scale == b.scale && a.origin == b.origin &&
+               a.landingMs == b.landingMs && a.hideMs == b.hideMs;
+    };
+    if (!std::equal(kept.begin(), kept.end(), list.begin(), list.end(), equal)) {
         list = std::move(kept);
         changed.insert({zx, zy});
     }

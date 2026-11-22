@@ -509,6 +509,8 @@ void WorldView::removeChunk(Key corner) {
 }
 
 void WorldView::dropZone(Key key) {
+    if (onZoneUnload && !onZoneUnload(key.first, key.second))
+        return;
     cancelMeshBatch(true);
     rescanMeshWindow = true;
     map.remove(key.first, key.second);

@@ -6,6 +6,10 @@
 #include <glm/glm.hpp>
 #include <map>
 
+class BlockEditLists;
+class StaticStates;
+class WorldItems;
+
 class WorldSession {
   public:
     // Opens world `name` in `folder`/Save, adding it to the world list with `seed` when it is
@@ -42,12 +46,10 @@ class WorldSession {
     uint32_t discoveryCount();
     void saveDiscoveryCount(uint32_t count);
 
-    // §5.2: a zone's stored changes, and writing back its world items (the rest of the record
-    // is kept as it was).
+    // §5.2: save a resident zone before removal or shutdown. All sections share one row.
     std::optional<ZoneSave> loadZone(int32_t zx, int32_t zy);
-    void saveZoneItems(int32_t zx, int32_t zy, std::vector<std::array<uint8_t, 325>> items);
-    void saveZoneStates(int32_t zx, int32_t zy, std::vector<uint8_t> states); // one byte per static
-    void saveZoneEdits(int32_t zx, int32_t zy, std::vector<std::array<uint8_t, 20>> edits); // block edits §12
+    bool saveResidentZone(int32_t zx, int32_t zy, const WorldItems &items, const StaticStates &statics,
+                          const BlockEditLists &edits);
 
     // Plain values of world_<name>.db by key, read or written together (missions §7: the
     // `mission<cx>_<cy>` and `monster<cx>_<cy>` values of a region's cells).

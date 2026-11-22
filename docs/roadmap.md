@@ -1153,6 +1153,11 @@ Differences from the Steam engine that shape the plan:
   coins in chat; ContentTests check every worked example). The compare panel
   (`alpha-open-points-2.md` §3): "Currently equipped" and the
   equipped items of the same type (weapons and rings as pairs), left of the tooltip.
+- [x] Single-player zone item save and reload. Item changes mark the resident
+  zone. Terrain edits alone qualify a zone for saving with zero items, and an
+  ordinary static toggle alone leaves the stored row alone. On reload, the
+  ordered comparison ignores item padding and saved day. Equal items retain
+  their resident days. The dedicated server has a separate persistence path.
 - [x] World items (`WorldItems.h`, spec `alpha-world-items.md`): each zone's list from the generator's
   ground items and loot, replaced by the zone save (drops older than three days left out); drawn in
   the standing, spinning, floating or lying pose with the landing hop and tumble; landing sounds;

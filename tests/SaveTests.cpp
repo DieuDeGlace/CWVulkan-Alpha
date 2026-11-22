@@ -2,7 +2,10 @@
 // Alpha saves must parse and serialize back to the same bytes, and a written save must read
 // back. The owner's files are opened read-only and never written; writing uses a scratch file.
 // Usage: SaveTests [game folder]
+#include "BlockEdits.h"
 #include "Bytes.h"
+#include "StaticStates.h"
+#include "WorldItems.h"
 #include "Config.h"
 #include "CubModel.h"
 #include "DataStore.h"
@@ -24,6 +27,173 @@ static void check(bool ok, const std::string &what) {
         failures++;
         std::printf("FAIL %s\n", what.c_str());
     }
+}
+
+static void zoneWriteback(WorldSession &session, const fs::path &saveFolder) {
+    const WorldItems::Key key{2, 3};
+    WorldItem resident;
+    resident.item[0] = 11;
+    resident.item[1] = 15;
+    resident.item[0x114] = 1;
+    resident.position[0] = 512LL * 65536;
+    resident.position[1] = 768LL * 65536;
+    resident.day = 19;
+    WorldItem saved = resident;
+    saved.day = 17;
+    saved.angle = -0.f;
+    // Alignment, the inactive backing and the last four bytes of an active entry.
+    for (int i : {2, 3, 15, 18, 19, 24, 25, 26, 27, 28, 275})
+        saved.item[i] = 0xac;
+    WorldItems items;
+    const auto restore = [&](std::vector<std::array<uint8_t, 325>> rows, int32_t day = 20) {
+        items.restore(2, 3, rows, day, WorldItems::RestoreComparison::ClientSave);
+    };
+    items.replace(2, 3, {resident});
+    restore({saved.save()});
+    check(!items.modified(2, 3) && items.zone(2, 3)->front().save() == resident.save(),
+          "equal saved entries retain all resident bytes, day and clear flag");
+
+    WorldItem other = resident;
+    for (int offset : {0, 1, 4, 8, 12, 13, 14, 16, 20, 21, 22, 23, 276,
+                       280, 288, 296, 304, 308, 312, 313, 317}) {
+        auto changed = saved.save();
+        changed[offset] ^= 1;
+        items.forgetSavedZone(2, 3);
+        items.replace(2, 3, {resident});
+        restore({changed});
+        check(items.modified(2, 3) && items.zone(2, 3)->front().day == 17,
+              "significant saved item difference at byte " + std::to_string(offset));
+    }
+    const auto live = items.zone(2, 3)->front();
+    other = live;
+    other.day = 18;
+    restore({other.save()});
+    check(items.modified(2, 3) && items.zone(2, 3)->front().day == 17,
+          "equal reload preserves the existing flag and resident day");
+
+    const auto days = [&](int32_t worldDay, std::initializer_list<int32_t> input) {
+        items.forgetSavedZone(2, 3);
+        items.replace(2, 3, {});
+        std::vector<std::array<uint8_t, 325>> rows;
+        for (const int32_t day : input) {
+            other.day = day;
+            rows.push_back(other.save());
+        }
+        restore(rows, worldDay);
+        std::vector<int32_t> result;
+        for (const auto &v : *items.zone(2, 3))
+            result.push_back(v.day);
+        return result;
+    };
+    check(days(20, {16, 17, 20, 21, -7, -1, 17}) == std::vector<int32_t>{17, 20, 21, -7, -1, 17},
+          "saved-day threshold and negative, future and repeated stamps preserve order");
+    check(days(INT32_MIN, {0, INT32_MAX-3, INT32_MAX-2, INT32_MIN}) ==
+          std::vector<int32_t>{INT32_MAX-2, INT32_MIN}, "saved-day subtraction wraps before the signed comparison");
+    check(days(21, {17}).empty() && days(2, {0}) == std::vector<int32_t>{0}, "adjacent threshold days");
+
+    worldgen::Zone generated;
+    generated.zx = key.first;
+    generated.zy = key.second;
+    auto &door = generated.statics.emplace_back();
+    door.kind = 1;
+    door.state = 1;
+    StaticStates statics;
+    statics.generated(generated);
+    BlockEditLists edits;
+    SaveDb db;
+    check(db.open(worldSavePath(saveFolder, session.name()), SaveDb::Mode::ReadWrite), "zone fixture database");
+    const auto name = zoneKey(2, 3);
+    const auto write = [&] { return session.saveResidentZone(2, 3, items, statics, edits); };
+    items.forgetSavedZone(2, 3);
+    items.replace(2, 3, {resident});
+    check(!session.loadZone(2, 3) && write() && !db.get(name), "absent clean zone row leaves resident items alone");
+    ZoneSave prior;
+    prior.items = {saved.save()};
+    prior.objects = {{{555, 666}}, {{777, 888}}};
+    prior.staticStates = {1};
+    check(db.put(name, prior.serialize()), "seed the prior complete zone");
+    restore(prior.items);
+    check(write() && *db.get(name) == prior.serialize(), "equal lists and clear flag skip the existing row");
+    const auto ground = [](int32_t, int32_t, int32_t) { return uint8_t(1); };
+    std::vector<creatures::SoundEvent> sounds;
+    creatures::Combatant actor;
+    creatures::Body body;
+    float yaw = 0;
+    statics.use(generated, 0, actor, body, yaw, items, 20, ground, [] { return 0; }, sounds);
+    check(statics.stateBytes(2, 3) == std::vector<uint8_t>{0} && statics.takeChanged().contains(key) &&
+          !items.modified(2, 3) && write() && *db.get(name) == prior.serialize(),
+          "an ordinary object toggle publishes separately and cannot qualify a zone write");
+    edits.add(key, {512, 768, 3, 1, 2, 3, 0, -7});
+    auto expected = prior;
+    expected.items.clear();
+    expected.blockEdits = edits.saved(2, 3);
+    expected.staticStates = {0};
+    check(write() && *db.get(name) == expected.serialize(), "edit-only write stores zero items and both overlays");
+    items.forgetSavedZone(2, 3);
+    items.replace(2, 3, {resident});
+    restore(expected.items);
+    check(items.modified(2, 3) && items.zone(2, 3)->empty(), "saved empty list clears a generated resident");
+    check(write() && *db.get(name) == expected.serialize(), "set flag persists a deliberately empty item list");
+    other = resident;
+    other.day = 17;
+    other.origin = 2;
+    restore({other.save(), resident.save()});
+    auto atDay21 = expected;
+    atDay21.items = {other.save(), resident.save()};
+    session.clock.day = 21;
+    check(write() && *db.get(name) == atDay21.serialize(), "writer keeps resident order and days without re-filtering");
+    items.forgetSavedZone(2, 3);
+    edits.forget(2, 3);
+    items.replace(2, 3, {resident});
+    check(!items.modified(2, 3), "forgetting clears the mark for the next resident lifetime");
+    restore(atDay21.items, 21);
+    check(!items.modified(2, 3) && items.zone(2, 3)->size() == 1, "reloaded expired entry is removed before comparison");
+    check(items.pickUpFixed(2, 3, 0, resident.position, std::nullopt).has_value() && items.modified(2, 3),
+          "an in-range pickup marks this otherwise unedited zone");
+    atDay21.items.clear();
+    atDay21.blockEdits.clear();
+    check(write() && *db.get(name) == atDay21.serialize(), "picking up the last item clears the stored list");
+    items.forgetSavedZone(2, 3);
+    items.replace(2, 3, {});
+    check(items.drop(resident.item, resident.position, 1.f, 21, ground, [] { return 0; }) &&
+          items.modified(2, 3), "a successful placement marks the resident list");
+    const auto placed = items.zone(2, 3)->front().save();
+    check(db.put(name, {0x55}) && !write() && *db.get(name) == std::vector<uint8_t>{0x55} &&
+          items.modified(2, 3), "an unreadable prior overlay is preserved for retry");
+    atDay21.items = {placed};
+    check(db.put(name, expected.serialize()) && write() && *db.get(name) == atDay21.serialize(),
+          "the retained mark retries the complete zone with its placed item");
+    items.forgetSavedZone(2, 3);
+    WorldItem cube;
+    cube.item[0] = 25;
+    cube.item[4] = 114;
+    cube.origin = 2;
+    cube.day = -7;
+    cube.landingMs = 5;
+    cube.hideMs = 9;
+    items.replace(2, 3, {cube});
+    sounds.clear();
+    items.step(6, true, ground, [] { return 0; }, sounds);
+    const auto &ticked = items.zone(2, 3)->front();
+    check(ticked.landingMs == 0 && ticked.hideMs == 3 && ticked.day == -7 && sounds.size() == 1 &&
+          sounds.front().sound == 59 && !items.modified(2, 3) && write() && *db.get(name) == atDay21.serialize(),
+          "passive item timers update the live record and sound without qualifying a write");
+    int64_t at[3] = {4*65536 + 1, 0, 0};
+    check(!items.pickUpFixed(2, 3, 0, at, 214) && !items.modified(2, 3), "pickup just outside four blocks");
+    at[0] = 4*65536;
+    check(!items.pickUpFixed(2, 3, 0, at, 215) && !items.pickUpFixed(2, 3, -1, at, 214) &&
+          !items.pickUpFixed(2, 3, 1, at, 214) && !items.modified(2, 3),
+          "mana cube eligibility and invalid indices fail before the mark");
+    check(items.pickUpFixed(2, 3, 0, at, 214) && items.modified(2, 3) && items.zone(2,3)->empty(),
+          "pickup accepts the inclusive four-block boundary and matching folded mana counter despite hide timer");
+    check(!items.pickUpFixed(2, 3, 0, at, 214) && items.modified(2, 3),
+          "a failed request preserves the existing item mark");
+    check(items.drop(resident.item, resident.position, 1.f, 21, ground, [] { return 0; }) && write() &&
+          session.loadZone(2, 3)->items == std::vector{items.zone(2,3)->front().save()},
+          "a pickup and a placement in one zone publish the final resident list on unload");
+    items.forgetSavedZone(2, 3);
+    check(!items.drop(resident.item, resident.position, 1.f, 21, ground, [] { return 0; }) && !items.modified(2, 3),
+          "placement without a resident destination adds neither an item nor a mark");
 }
 
 int main(int argc, char **argv) {
@@ -240,6 +410,7 @@ int main(int argc, char **argv) {
                   "connected selection registers each pair once and creates no local terrain archive");
             worlds.close();
         }
+        zoneWriteback(first, folder / "Save");
         fs::remove_all(folder, ec);
     }
 

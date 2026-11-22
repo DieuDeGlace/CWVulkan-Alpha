@@ -51,14 +51,20 @@ class WorldItems {
     void generated(const worldgen::Zone &zone);
     // §3.5: a zone's saved items, kept when dropped within three days of `today` (or
     // generated); they replace the generated list when different.
+    enum class RestoreComparison { FullRecord, ClientSave };
     void restore(int32_t zx, int32_t zy, const std::vector<std::array<uint8_t, 325>> &saved, int32_t today);
+    void restore(int32_t zx, int32_t zy, const std::vector<std::array<uint8_t, 325>> &saved, int32_t today,
+                 RestoreComparison comparison);
     // Forgets a zone (it has gone out of range).
     void forget(int32_t zx, int32_t zy) { lists.erase({zx, zy}); }
+    // The local save keeps the mark until this resident lifetime ends.
+    void forgetSavedZone(int32_t zx, int32_t zy) { forget(zx, zy); changed.erase({zx, zy}); }
+    bool modified(int32_t zx, int32_t zy) const { return changed.contains({zx, zy}); }
     const std::vector<WorldItem> *zone(int32_t zx, int32_t zy) const;
     // Online: the server's list for a zone (section 7).
     void replace(int32_t zx, int32_t zy, std::vector<WorldItem> items);
     const std::map<Key, std::vector<WorldItem>> &all() const { return lists; }
-    // Zones whose list changed since the last call (to save).
+    // Server snapshot delivery consumes its per-step changes.
     std::set<Key> takeChanged() { return std::exchange(changed, {}); }
 
     // §3.1: one step: paintings snap to walls, the timers run, and offline a landing plays its

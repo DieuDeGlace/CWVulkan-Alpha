@@ -555,19 +555,23 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         }
         if (session)
             if (const auto saved = session->loadZone(zx, zy)) {
-                worldItems.restore(zx, zy, saved->items, (int32_t)session->clock.day);
+                worldItems.restore(zx, zy, saved->items, (int32_t)session->clock.day, WorldItems::RestoreComparison::ClientSave);
                 statics.restore(zx, zy, saved->staticStates);
                 // Block edits §4.2: the edits of the last three days are written again.
                 const auto &kept = blockEdits.restore(zx, zy, saved->blockEdits, (int32_t)session->clock.day);
                 if (!saved->blockEdits.empty())
                     view.applyEdits(kept, TerrainEditSource::Saved, glm::ivec2(zx, zy));
             }
-        worldItems.takeChanged(); // (what came from the save is already saved)
-        statics.takeChanged();
     };
     for (const auto &[key, zone] : view.held().zones()) // (the zones made before the first frame)
         zoneReady(key.first, key.second);
     view.onZoneReady = zoneReady;
+    const auto saveZone = [&](int32_t zx, int32_t zy) {
+        if (session->saveResidentZone(zx, zy, worldItems, statics, blockEdits))
+            return true;
+        std::fprintf(stderr, "Could not save zone %d,%d\n", zx, zy);
+        return false;
+    };
     // Screens §5.1.6: land pictures and map tiles go into map_<name>.db as they are made.
     view.onLandReady = [&](int32_t lx, int32_t ly, const worldgen::RegionCell &cell, glm::ivec2 origin, const CubModel &picture) {
         WorldSession *saved = mapSession();
@@ -674,6 +678,17 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
     };
     creatures::Npcs npcs{worldRandom};
     npcs.enableClientMotion();
+    if (session) {
+        view.onZoneUnload = [&](int32_t zx, int32_t zy) {
+            if (!saveZone(zx, zy))
+                return false;
+            worldItems.forgetSavedZone(zx, zy);
+            statics.forget(zx, zy);
+            blockEdits.forget(zx, zy);
+            npcs.forgetZone(zx, zy);
+            return true;
+        };
+    }
     // World objects: the airships (offline this program runs them; online none arrive).
     creatures::Airships airships;
     if (const auto model = view.prefab("airship.cub"))
@@ -2448,7 +2463,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         refreshReceivedLinks();
                     else
                         refreshAirships();
-                    if (firstWorldCall) {
+                    if (!session && firstWorldCall) {
                         std::vector<WorldItems::Key> gone;
                         for (const auto &[key, items] : worldItems.all())
                             if (!view.held().zone(key.first, key.second))
@@ -2593,25 +2608,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         stepAirships(elapsed);
                         remotes.finishStep(otherFighters, &controlled);
                     }
-                    const auto flushZoneState = [&] {
-                        // Changed zones are saved, items and states together (a zone save without its
-                        // items would empty the zone when it loads again, world items §4.3).
-                        std::set<WorldItems::Key> changedZones = worldItems.takeChanged();
-                        for (const auto &key : statics.takeChanged())
-                            changedZones.insert(key);
-                        for (const auto &key : blockEdits.takeChanged())
-                            changedZones.insert(key);
-                        for (const auto &[zx, zy] : changedZones)
-                            if (session && !client.connected())
-                                if (const auto *list = worldItems.zone(zx, zy)) {
-                                    std::vector<std::array<uint8_t, 325>> saved;
-                                    for (const WorldItem &w : *list)
-                                        saved.push_back(w.save());
-                                    session->saveZoneItems(zx, zy, std::move(saved));
-                                    session->saveZoneStates(zx, zy, statics.stateBytes(zx, zy));
-                                    session->saveZoneEdits(zx, zy, blockEdits.saved(zx, zy));
-                                }
-                    };
                     // Offline the creatures live here (behaviour §13.1); online the server runs them.
                     if (!client.connected()) {
                         creatures::Combatant &c = player->combat();
@@ -2870,7 +2866,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                         aggregate.bursts.insert(aggregate.bursts.end(), flight.bursts.begin(), flight.bursts.end());
                     }
                     blockEdits.appendWorldHistory(view.held(), frameBlockEdits);
-                    flushZoneState();
+                    if (!session)
+                        worldItems.takeChanged();
+                    statics.takeChanged();
+                    blockEdits.takeChanged();
                     firstWorldCall = false;
                 },
                 [&](creatures::NpcFrame &aggregate) {
@@ -4990,6 +4989,9 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         remoteMap->saveDiscoveryCount(view.discoveryCount());
     }
     if (session) {
+        for (const auto &[key, list] : worldItems.all())
+            if (!saveZone(key.first, key.second))
+                status = 1;
         regionPass(player ? player->body().blocks() : view.worldPosition());
         {
             // Saves §4.1: the world's preview is the map tile of the zone the player stands in.
@@ -5220,7 +5222,7 @@ int main(int argc, char **argv) {
                 status = runWorld(window, renderer, content, game, worldRun, shadowSettings, moonSettings, mods,
                                   activeScene, activeView, activePlayer, activeInterface, audio, restart, entryProgress);
                 renderer.releaseWorld();
-                if (!restart || glfwWindowShouldClose(window))
+                if (status != 0 || !restart || glfwWindowShouldClose(window))
                     break;
                 worldRun = *restart;
             }

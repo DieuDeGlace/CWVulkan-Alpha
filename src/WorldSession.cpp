@@ -1,4 +1,7 @@
 #include "WorldSession.h"
+#include "BlockEdits.h"
+#include "StaticStates.h"
+#include "WorldItems.h"
 #include "GenerationProfile.h"
 #include "AlphaLook.h"
 
@@ -164,40 +167,36 @@ std::optional<ZoneSave> WorldSession::loadZone(int32_t zx, int32_t zy) {
     return bytes ? ZoneSave::parse(*bytes) : std::nullopt;
 }
 
-void WorldSession::saveZoneItems(int32_t zx, int32_t zy, std::vector<std::array<uint8_t, 325>> items) {
+bool WorldSession::saveResidentZone(int32_t zx, int32_t zy, const WorldItems &items, const StaticStates &statics,
+                                    const BlockEditLists &edits) {
+    const bool modified = items.modified(zx, zy);
+    const auto *history = edits.zone(zx, zy);
+    if (!modified && (!history || history->empty()))
+        return true;
+    const auto *list = items.zone(zx, zy);
+    if (!list)
+        return false;
     SaveDb world;
     if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
-        return;
+        return false;
+    const auto key = zoneKey(zx, zy);
     ZoneSave zone;
-    if (const auto bytes = world.get(zoneKey(zx, zy)))
-        if (auto old = ZoneSave::parse(*bytes))
-            zone = std::move(*old);
-    zone.items = std::move(items);
-    world.put(zoneKey(zx, zy), zone.serialize());
-}
-
-void WorldSession::saveZoneStates(int32_t zx, int32_t zy, std::vector<uint8_t> states) {
-    SaveDb world;
-    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
-        return;
-    ZoneSave zone;
-    if (const auto bytes = world.get(zoneKey(zx, zy)))
-        if (auto old = ZoneSave::parse(*bytes))
-            zone = std::move(*old);
-    zone.staticStates = std::move(states);
-    world.put(zoneKey(zx, zy), zone.serialize());
-}
-
-void WorldSession::saveZoneEdits(int32_t zx, int32_t zy, std::vector<std::array<uint8_t, 20>> edits) {
-    SaveDb world;
-    if (!world.open(worldSavePath(saveFolder, entry.name), SaveDb::Mode::ReadWrite))
-        return;
-    ZoneSave zone;
-    if (const auto bytes = world.get(zoneKey(zx, zy)))
-        if (auto old = ZoneSave::parse(*bytes))
-            zone = std::move(*old);
-    zone.blockEdits = std::move(edits);
-    world.put(zoneKey(zx, zy), zone.serialize());
+    if (const auto old = world.get(key)) {
+        auto saved = ZoneSave::parse(*old);
+        if (!saved)
+            return false;
+        zone.objects = std::move(saved->objects);
+        zone.staticStates = std::move(saved->staticStates);
+    }
+    if (modified) {
+        zone.items.reserve(list->size());
+        for (const WorldItem &item : *list)
+            zone.items.push_back(item.save());
+    }
+    zone.blockEdits = edits.saved(zx, zy);
+    if (statics.zone(zx, zy))
+        zone.staticStates = statics.stateBytes(zx, zy);
+    return world.put(key, zone.serialize());
 }
 
 std::map<std::string, std::vector<uint8_t>> WorldSession::values(const std::vector<std::string> &keys) {
