@@ -1,5 +1,6 @@
 #include "Frame.h"
 #include "Projection.h"
+#include "WaterLook.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 
@@ -68,7 +69,8 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     c.fog = glm::vec4(palette.fog, 1);
     // §7.2: the gradient follows the camera's angle from straight up (90 = level).
     const float zenith = scene.mapFog ? 90.f : scene.currentFogAngle.value_or(90.f + camera.pitchDegrees);
-    c.params = glm::vec4(scene.fogDistance > 0 ? 1 / scene.fogDistance : 0, alpha::fogGradientTranslation(zenith), 0, 0);
+    const float fogDistance = scene.underwater ? std::min(scene.fogDistance, waterlook::underwaterVisibility) : scene.fogDistance;
+    c.params = glm::vec4(fogDistance > 0 ? 1 / fogDistance : 0, alpha::fogGradientTranslation(zenith), 0, 0);
     c.sunColour = alpha::sunSpriteColour(S);
     // The view's right and up axes are the first two rows of its rotation.
     c.skyRight = glm::vec4(view[0][0], view[1][0], view[2][0], 0);
@@ -90,13 +92,15 @@ FrameConstants makeFrame(const Camera &camera, const Scene &scene, const ShadowS
     c.nightAmbient = glm::vec4(moonLight.ambient, moon::phase(scene.day));
     const float disc = moonSettings.enabled && !scene.underwater ? moon::discVisibility(scene.timeOfDayMs) : 0;
     c.moonSprite = glm::vec4(moon::direction(scene.timeOfDayMs), disc);
-    c.water = glm::vec4(lens.nearPlane, lens.farPlane, float(std::fmod(scene.seconds, 3600.0)), 0);
+    const glm::vec2 waves = waterlook::waveOffsets(camera.renderOrigin, scene.seconds);
+    c.water = glm::vec4(lens.nearPlane, lens.farPlane, waves);
     if (scene.underwater) {
-        // The Omega look under water (references: water-underwater-reference.webp): the ground
-        // turns teal instead of Alpha's blue, and deep blue fog closes in within a few dozen
-        // blocks. It dims with the daylight, never quite to black.
-        c.material = glm::vec4(0.45f, 0.82f, 0.85f, S);
-        c.underwater = glm::vec4(glm::vec3(0.02f, 0.12f, 0.45f) * std::max(S, 0.15f), 0.045f);
+        const float brightness = waterlook::brightness(S);
+        c.sky1 = glm::vec4(glm::vec3(.02f, .45f, .82f) * brightness, 1);
+        c.sky2 = glm::vec4(glm::vec3(0, .35f, .72f) * brightness, 1);
+        c.fog = glm::vec4(glm::vec3(0, .42f, .79f) * brightness, 1);
+        c.underwater = c.fog;
+        c.material = glm::vec4(waterlook::underwaterMaterial, S);
     }
     c.leaves = glm::vec4(scene.leafSway, scene.leafRange, scene.leafFade);
     for (int i = 0; i < FRAME_LIGHTS; i++) {

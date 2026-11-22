@@ -34,6 +34,7 @@ struct Camera {
     // render origin. view() applies the explicit right-handed adapter, which
     // mirrors the view x and z axes by sign-bit inversion.
     std::optional<std::array<std::array<float, 4>, 4>> nativeView;
+    glm::ivec2 renderOrigin{0}; // absolute horizontal block coordinates of the rendered origin
     projection::Inputs mainInputs() const;
     // The main projection through the explicit right-handed Vulkan adapter.
     glm::mat4 mainProjection() const;
@@ -83,8 +84,8 @@ struct FrameConstants {
     glm::vec4 moonFront, moonBack; // Moon.h colours, already scaled by its strength
     glm::vec4 nightAmbient;        // rgb: the night floor; a: the moon's phase
     glm::vec4 moonSprite;          // xyz: towards the moon; w: how visible its disc is
-    glm::vec4 water;               // near, far, seconds, padding
-    glm::vec4 underwater;          // submerged fog colour and density (0: off)
+    glm::vec4 water;               // near, far, wrapped water wave phases
+    glm::vec4 underwater;          // submerged fog colour and flag
     glm::vec4 leaves;              // leaf sway: offset now (xy), full range, fade length
     glm::vec4 lightPositions[FRAME_LIGHTS]; // xyz: position; w: radius (0: off)
     glm::vec4 lightColours[FRAME_LIGHTS];
@@ -101,7 +102,7 @@ struct Scene {
     bool mapFog = false;
     glm::vec3 focus{0};      // what the shadow map is centred on (the player, in play)
     int day = 0;             // world day, for the moon's phase
-    double seconds = 0;      // a running clock for water waves and the leaf sway
+    double seconds = 0;      // monotonic water clock in seconds
     glm::vec2 leafSway{0};   // this frame's leaf offset (motion::leafOffset)
     float leafRange = 96, leafFade = 32;
     std::vector<PointLight> lights; // collected, then jointly ordered before frame construction

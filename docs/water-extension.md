@@ -1,11 +1,34 @@
 # Shared water and swimmable shallows
 
-The runtime uses the same original surface algorithm as the
-Steam engine's `shaders/omega_water.frag`. The Alpha adapter changes only its
-bindings, frame names and entry point. The renderer copies opaque color and
-depth before water. Refraction samples that background and the nearest surface
-writes depth. The shader supplies absorption, bank reflections, ripples,
-surface sheen and distance haze.
+Alpha uses the revised shared surface from the owner's GPL Steam engine. Five
+traveling waves perturb the top-face normal per pixel. Their strength falls
+from full at 40 blocks to zero at 120. Per-channel transmission refracts the
+opaque scene beneath the water. An above-water top face can reflect the sun
+when its alignment, height and shadow visibility permit. The revised surface
+retains the nearest water depth for later draws. Underwater, Alpha's sampled
+sunlight dims the blue horizon, zenith and fog. Visibility is capped at 48
+blocks and retains any shorter scene range. The surface and scene use the
+same camera water-volume test.
+
+The render origin and monotonically increasing seconds supply the two phases
+in double precision before each is wrapped to a turn. A world point keeps its
+ripple position as the local rendering coordinates change. Solar brightness
+continues to follow game time. This is the owner's water appearance extension.
+
+### Shared shader source
+
+| GPL Steam source | Pinned identity |
+| --- | --- |
+| Repository revision | `41ae7d1be330b171a846845f4000f4b22a51dd42` |
+| `shaders/omega_water.frag` Git blob | `aa23b6b16a14336886fc2202eeaab263f22f618f` |
+| Raw shader SHA-256 | `4d72d1c975bf3b3344fc50446203b9b99e5b6ea9a12e84e7d38a1c99f9a0ca52` |
+
+The Alpha adapter selects the revised branch of that shader and uses its
+existing frame bindings, face normals and solar shadow map. The optical
+inputs and origin projection follow the same revision's `src/RendererWater.cpp`
+and `src/WaterLook.cpp`. The surface needs only Alpha's opaque color and
+depth snapshots. The upstream style selector, the older reflection branch
+and Steam color grading apply to other rendering modes. [Pinned upstream shader](https://github.com/DieuDeGlace/CWVulkan/blob/41ae7d1be330b171a846845f4000f4b22a51dd42/shaders/omega_water.frag)
 
 The independent [native material contract](specs/alpha-water-material-contract.md)
 establishes that material 2 is liquid, while material 3 is solid wet ground with

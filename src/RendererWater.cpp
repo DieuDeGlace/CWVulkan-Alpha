@@ -1,27 +1,20 @@
 // The shared surface optics and snapshot pass, adapted from CubeVulkan's
 // original GPL RendererWater.cpp. No original-game shader or art is included.
 #include "Renderer.h"
+#include "WaterLook.h"
 #include "VulkanSync.h"
 #include <algorithm>
 #include <cstring>
 
-namespace {
-struct WaterConstants {
-    glm::vec4 optics, body, absorption, screen, fog, sky;
-};
-static_assert(sizeof(WaterConstants) == 96);
-}
-
 void Renderer::updateWaterConstants(const FrameConstants &frame) {
     const bool submerged = frame.underwater.w > 0;
-    const float brightness = .2f + .8f * std::clamp(frame.material.w, 0.f, 1.f);
-    const glm::vec3 fog = submerged ? glm::vec3(frame.underwater) : glm::vec3(frame.fog);
-    const auto scattering = submerged ? glm::vec4(fog, 1.f) : glm::vec4(.015f, .27f, .72f, brightness);
-    const WaterConstants constants{
-        {frame.water.x, frame.water.y, 24.f, .85f}, scattering, {.38f, .23f, .06f, 0},
-        {1.f / extent.width, 1.f / extent.height, submerged ? 1.f : 0.f, frame.water.z},
-        {fog, frame.params.x > 0 ? 1.f / frame.params.x : 640.f},
-        {glm::vec3(.12f, .35f, .62f) * brightness, 1}};
+    const auto body = submerged ? glm::vec4(glm::vec3(frame.fog), 1.f)
+                                : glm::vec4(0.f, .33f, .76f, waterlook::brightness(frame.material.w));
+    const float defaultRange = submerged ? waterlook::underwaterVisibility : alpha::RENDER_RADIUS;
+    const float range = frame.params.x > 0 ? 1.f / frame.params.x : defaultRange;
+    const waterlook::Constants constants{frame.water, body,
+        {1.f / extent.width, 1.f / extent.height, submerged ? 1.f : 0.f, 0.f},
+        {glm::vec3(frame.fog), range}};
     std::memcpy(waterBuffer.mapped, &constants, sizeof constants);
 
     const VkDescriptorImageInfo images[] = {

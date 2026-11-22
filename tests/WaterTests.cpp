@@ -1,6 +1,8 @@
 // User extension checks against synthetic terrain and the actual movement code.
 #include "creatures/Physics.h"
 #include "ChunkMesher.h"
+#include "Frame.h"
+#include "WaterLook.h"
 #include "worldgen/WaterFeatures.h"
 #include <cstdio>
 #include <memory>
@@ -12,6 +14,52 @@ void check(bool value, const char *description) {
     if (!value) {
         std::printf("FAIL %s\n", description);
         failures++;
+    }
+}
+
+void revisedFrame() {
+    Camera camera;
+    Scene scene;
+    scene.seconds = 1;
+    auto frame = makeFrame(camera, scene, {}, {});
+    check(std::abs(frame.water.z - .80f) < 1e-6f && std::abs(frame.water.w + .65f) < 1e-6f,
+          "zero origin and one monotonic second supply the two signed phase offsets");
+    camera.renderOrigin = {8397056, 8396288};
+    scene.seconds = 935000.125;
+    frame = makeFrame(camera, scene, {}, {});
+    const glm::vec2 local{113.5f, 27.25f};
+    const auto phases = [](const FrameConstants &f, glm::vec2 point) {
+        return glm::vec2(glm::dot(point, {.65f, .31f}) + f.water.z,
+                         glm::dot(point, {-.27f, .72f}) + f.water.w);
+    };
+    const auto before = phases(frame, local);
+    const glm::ivec2 rebase{256, -256};
+    camera.renderOrigin += rebase;
+    const auto after = phases(makeFrame(camera, scene, {}, {}), local - glm::vec2(rebase));
+    for (int axis = 0; axis < 2; ++axis)
+        check(std::abs(std::remainder(double(after[axis]) - before[axis], 2 * std::numbers::pi)) < 3e-5,
+              "a fixed water point keeps its wave phase across a render-origin change");
+    for (double time : {0., 43200000.}) {
+        scene.timeOfDayMs = time;
+        scene.underwater = true;
+        scene.fogDistance = 200;
+        frame = makeFrame(camera, scene, {}, {});
+        const float bright = .2f + .8f * alpha::sunlight(time);
+        check(frame.fog == glm::vec4(glm::vec3(0, .42f, .79f) * bright, 1) &&
+              frame.sky1 == glm::vec4(glm::vec3(.02f, .45f, .82f) * bright, 1) &&
+              frame.sky2 == glm::vec4(glm::vec3(0, .35f, .72f) * bright, 1) &&
+              frame.underwater == frame.fog && frame.params.x == 1.f / 48.f &&
+              glm::vec3(frame.material) == glm::vec3(.38f, .82f, 1.f),
+              "the revised submerged palette dims with sunlight and limits the Alpha scene to 48 blocks");
+        scene.fogDistance = 24;
+        check(makeFrame(camera, scene, {}, {}).params.x == 1.f / 24.f,
+              "a shorter Alpha view distance survives the submerged visibility ceiling");
+        scene.underwater = false;
+        scene.fogDistance = 200;
+        frame = makeFrame(camera, scene, {}, {});
+        check(frame.underwater.w == 0 && frame.params.x == 1.f / 200.f &&
+              frame.material == alpha::material(alpha::sunlight(time), false),
+              "dry-camera Alpha fog and material remain available to the surface pass");
     }
 }
 
@@ -28,6 +76,7 @@ std::shared_ptr<Zone> dryZone(int zx = 0) {
 }
 
 int main() {
+    revisedFrame();
     {
         auto nativeZone = dryZone();
         nativeZone->column(10, 10).blocks.back().typeByte = LAKE_BED;

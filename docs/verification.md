@@ -3469,3 +3469,33 @@ the combined resident list. Reading absent terrain for a blueprint also
 preserves the existing implicit-solid fallback.
 
 The integrated x64 world view reproduced both counts across 37 mesh uploads. Five focused tests passed in 26.46 seconds and all 60 tests passed in 370.06 seconds. The production controller test and all five client flows passed. Packaging verified 36 hashes across 37 files.
+
+## Revised Steam water in Alpha (2026-11-21)
+
+The previous and revised x64 clients rendered the same seed-123 bank at
+the same dry camera position. Nine zones and 484 chunks were loaded. In
+the 960 × 720 comparison, all 10,075 pixels in a sample of open water
+changed. A 32,400-pixel bank sample and an 832-pixel reed head matched
+exactly. The integrated client also reached that camera and rendered the
+reeds, lilies and rocks. Both revised builds averaged RGB (1, 85, 194)
+in the pond sample. The live clock produced differences of at most two
+channel values there. The first radius-zero camera faced missing
+neighbor geometry and supplied no evidence about the shore.
+
+Below the surface, all 691,200 pixels changed with the revised palette
+at the same submerged camera position. In a controlled render, moving
+the sun below the horizon changed 11,367 pixels above water and zero
+underwater. Advancing the wave clock by 3.25 seconds changed 14,191 of
+21,420 central water pixels. After shifting the render origin under a
+fixed world point, those central pixels differed by at most one channel
+value. Eight edge pixels in the full frame differed by more than two.
+These comparisons measure the owner's chosen Steam appearance.
+
+The generated lake and converted shallow stream each kept the player
+swimming for 150 of 150 movement steps, with zero standing steps. All
+11 lake reeds and 48 stream reeds stood on dry ground beside surface
+water. Five focused tests passed in 40.49 seconds and the full 60 passed
+in 186.09 seconds. The production controller check, reward, health, network,
+save/reload and town flows passed. The dedicated server wrote the swimmable
+world profile even with the old native-water switch and settings present.
+The package verifier checked 36 hashes across 37 files.

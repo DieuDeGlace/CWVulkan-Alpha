@@ -67,7 +67,7 @@ foreach(shader ui.vert ui.frag model.vert model.frag water.frag shadow.vert clou
     add_custom_command(OUTPUT ${out}
         COMMAND spirv_compile ${SHADER_DIR}/${shader} ${out} spv_${symbol} ${SHADER_DIR}
         DEPENDS ${SHADER_DIR}/${shader} ${SHADER_DIR}/frame.glsl ${SHADER_DIR}/smaa_common.glsl
-                ${SHADER_DIR}/water_surface.glsl
+                ${SHADER_DIR}/water_surface.glsl ${SHADER_DIR}/shadow_share.glsl
                 ${CMAKE_CURRENT_SOURCE_DIR}/third_party/smaa/SMAA.hlsl spirv_compile
         COMMENT "Compiling ${shader}")
     list(APPEND SHADER_HEADERS ${out})

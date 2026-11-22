@@ -3018,10 +3018,10 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         // An active group transferred by items() later in this frame first affects the next update.
         const bool terrainWait = player && options.connect.empty() &&
                                  interface.terrainWaitVisible(worldMatches, fogDistance.value());
-        scene.seconds = now - start;
+        scene.seconds = now;
         const auto &motionSettings = options.worldOptions.motion;
         scene.leafSway = motionSettings.leaves
-                             ? motion::leafOffset(scene.seconds * motionSettings.windSpeed, motionSettings.leafAmplitude)
+                             ? motion::leafOffset((now - start) * motionSettings.windSpeed, motionSettings.leafAmplitude)
                              : glm::vec2(0);
         scene.leafRange = motionSettings.leafRange;
         // Rendering §11.4: the clouds are gated at the local player's block column.

@@ -23,6 +23,9 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Bring the owner's revised Steam water appearance to Alpha, including
+  origin-stable wave phases, refraction and sunlight on the water surface.
+
 - [x] Remove unsupported terrain decorations throughout the client edit
   rectangle, including held zones between unloaded endpoints. Restore a
   saved area's support check when every serialized edit has expired.

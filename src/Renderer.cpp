@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "WaterLook.h"
 #include "Config.h"
 #include "Install.h"
 #include "VulkanSync.h"
@@ -424,7 +425,7 @@ bool Renderer::createScenePipelines() {
     vkAllocateDescriptorSets(device, &allocInfo, &frameSet);
 
     frameBuffer = makeBuffer(sizeof(FrameConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-    waterBuffer = makeBuffer(6 * sizeof(glm::vec4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    waterBuffer = makeBuffer(sizeof(waterlook::Constants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     terrainLightBuffer = makeBuffer(sizeof(terrain_lights::ShaderLights), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     if (!frameBuffer.mapped || !waterBuffer.mapped || !terrainLightBuffer.mapped)
         return false;

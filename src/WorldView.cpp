@@ -1,4 +1,5 @@
 #include "WorldView.h"
+#include "WaterLook.h"
 #include "creatures/Npcs.h"
 #include "DataStore.h"
 #include "worldgen/MapTile.h"
@@ -1110,7 +1111,9 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene) {
             prepareDecorationModels(*entry);
         }
     });
-    const glm::vec4 decorationTint = alpha::material(alpha::sunlight(scene.timeOfDayMs), scene.underwater);
+    const float sunlight = alpha::sunlight(scene.timeOfDayMs);
+    const glm::vec4 decorationTint = scene.underwater ? glm::vec4(waterlook::underwaterMaterial, sunlight)
+                                                      : alpha::material(sunlight, false);
     for (const auto &[corner, entry] : chunks) {
         const glm::ivec2 chunk{corner.first / CHUNK, corner.second / CHUNK};
         if (renderSlots[ChunkMeshCache::index(chunk)] == &entry) {
@@ -1177,6 +1180,7 @@ float WorldView::fogTarget(std::optional<terrain_lights::FixedPosition> referenc
 Camera WorldView::camera(VkExtent2D size) const {
     Camera c;
     c.eye = eye;
+    c.renderOrigin = origin;
     c.yawDegrees = yaw;
     c.pitchDegrees = pitch;
     c.aspect = (float)size.width / (float)std::max(1u, size.height);

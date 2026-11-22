@@ -4696,3 +4696,15 @@ batch endpoints. The engine compacts its typed decoration collections and
 retains earlier snapshots for readers. Indexed statics and spawn records
 keep their identities. Original-client playback across a live removal and
 restore remains open.
+
+## Revised shared water surface (2026-11-21)
+
+The Alpha adapter uses the owner's project-owned GPL Steam engine shader
+at commit 41ae7d1be330b171a846845f4000f4b22a51dd42. Its shader blob is
+`aa23b6b16a14336886fc2202eeaab263f22f618f`, also present on the verified
+Steam main revision 354d3349f9f91d79ad0d08d2966d5437a3aab2e2. The shader's
+SHA-256 is `4d72d1c975bf3b3344fc50446203b9b99e5b6ea9a12e84e7d38a1c99f9a0ca52`.
+The clean team also read the complete Steam project records for the later
+appearance (SHA-256 `3d5e81ca56d5767a019b0ed068a4afc580ce68c0e799dfda5e06ce32df0bc5c5`)
+and wave offsets (`c1ac07764a504ba3675c37c0434314f45f83efdf90aa6e99d4f02c99a7d59271`).
+The visual treatment, swimmable shallows and bank reeds are owner extensions.
