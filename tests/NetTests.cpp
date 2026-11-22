@@ -1592,7 +1592,12 @@ int main() {
     std::mutex modMutex;
     std::vector<std::string> modSeen;
     std::atomic<int> modFrames{0};
-    options.modEvents.frame = [&](double) { modFrames++; };
+    std::atomic<int> longestStepMs{0}; // the longest simulation step since the last reset
+    options.modEvents.frame = [&](double seconds) {
+        modFrames++;
+        const int ms = int(seconds * 1000.0);
+        for (int seen = longestStepMs; ms > seen && !longestStepMs.compare_exchange_weak(seen, ms);) {}
+    };
     options.modEvents.playerJoin = [&](uint64_t id) {
         std::lock_guard guard(modMutex);
         modSeen.push_back("join " + std::to_string(id));
@@ -1683,20 +1688,33 @@ int main() {
     {
         a.takeHits();
         b.takeHits();
-        // A surviving 799 ms resident can cross just one 400 ms boundary.
+        // A surviving 799 ms resident can cross just one 400 ms boundary. The server steps by
+        // real elapsed time, and expiry is tested before the boundary, so a step of 400 ms or
+        // more can carry the resident from at least 400 to zero without a hit. Only such an
+        // explained miss is retried, with a fresh resident.
         const creatures::BuffEvent periodic{a.id(), a.id(), {4, 2, 799, 0x123456789abcdef0ULL}};
-        a.sendEvent40(periodic.serialize());
         std::vector<Hit> generated, observed;
         const auto collect = [&](Client &peer, std::vector<Hit> &records) {
             for (const auto &hit : peer.takeHits())
                 if (hit.attacker() == 0 && hit.target() == a.id() && hit.record().amount == 2)
                     records.push_back(hit);
         };
-        check(waitFor([&] {
-            collect(a, generated);
-            collect(b, observed);
-            return generated.size() >= 2 && observed.size() >= 2;
-        }, 10000), "actual server countdown turns packet-8 resident damage into periodic hit output for both clients");
+        bool produced = false;
+        for (int attempt = 1; attempt <= 5 && !produced; ++attempt) {
+            longestStepMs = 0;
+            a.sendEvent40(periodic.serialize());
+            produced = waitFor([&] {
+                collect(a, generated);
+                collect(b, observed);
+                return generated.size() >= 2 && observed.size() >= 2;
+            }, 10000);
+            const bool explained = !produced && generated.empty() && observed.empty() && longestStepMs >= 400;
+            std::printf("periodic attempt %d: longest server step %d ms, %zu generated, %zu observed\n", attempt,
+                        longestStepMs.load(), generated.size(), observed.size());
+            if (!explained)
+                break;
+        }
+        check(produced, "actual server countdown turns packet-8 resident damage into periodic hit output for both clients");
         check(generated.size() == 2 && observed.size() == 2 && generated[0].bytes == generated[1].bytes &&
               generated[0].bytes == observed[0].bytes && generated[1].bytes == observed[1].bytes &&
               generated[0].record().kind == creatures::HIT_DAMAGE && generated[0].record().stun == 0 &&

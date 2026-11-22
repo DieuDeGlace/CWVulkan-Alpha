@@ -3881,3 +3881,20 @@ earlier boss and item-group records. Five mutants each failed the new
 checks: a strict threshold, a low-byte controller, a required zero
 window start, any controller and unsigned type order. A live observation
 of the original resident records remains open.
+
+## Real-time periodic step in the two-peer check (2026-11-22)
+
+The real-server two-peer check sends a 799 ms damage-over-time resident
+and expects exactly one periodic hit with its producer and application
+copies at both peers. The server steps by real elapsed time, and the
+countdown tests expiry before the 400 ms boundary, so one step of 400 ms
+or more can carry the resident from at least 400 ms to zero with no hit.
+One full serial run recorded that outcome during a 671 ms server stall.
+The check now records the longest server step through the frame hook. A
+miss is retried with a fresh resident only when nothing arrived at either
+peer and a step of at least 400 ms occurred. Any other miss fails. A
+resident unit check pins both step sequences: 100 ms then 700 ms expires
+it unvisited, while a single 400 ms step visits once at 399 ms. With
+periodic calls disabled, the server check failed without retrying (its
+longest step was 47 ms) and the resident unit checks failed, including the
+new 400 ms step check.

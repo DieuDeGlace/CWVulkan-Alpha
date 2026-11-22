@@ -221,6 +221,16 @@ int main() {
         int calls = 0;
         tickBuffs(actor, 400, true, [&](const Buff &) { calls++; });
         check(calls == 0 && actor.buffs.empty(), "an expiring type 4 makes no periodic call despite the changed bucket");
+        // Real-time steps: 799 ms survives a 100 ms step, then one 700 ms step expires it unvisited;
+        // a 400 ms step instead visits once at 399.
+        actor.buffs = {{DAMAGE_OVER_TIME, 2, 799, 5}};
+        tickBuffs(actor, 100, true, [&](const Buff &) { calls++; });
+        tickBuffs(actor, 700, true, [&](const Buff &) { calls++; });
+        check(calls == 0 && actor.buffs.empty(), "a step of 400 ms or more can expire a 799 ms type 4 without a periodic call");
+        actor.buffs = {{DAMAGE_OVER_TIME, 2, 799, 5}};
+        tickBuffs(actor, 400, true, [&](const Buff &) { calls++; });
+        check(calls == 1 && actor.buffs.size() == 1 && actor.buffs[0].timeMs == 399,
+              "a 400 ms step carries a 799 ms type 4 across its one boundary");
         actor.buffs = {{DAMAGE_OVER_TIME, 2, 801, 5}, {SURE_CRITICAL, 0, 900, 0}};
         std::vector<uint8_t> visited;
         tickBuffs(actor, 2, true, [&](const Buff &record) {
