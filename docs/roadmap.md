@@ -23,6 +23,11 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Admit terrain slots by logical tag, box range and planes; visit them
+  nearest first for terrain and models and in reverse for water; fade
+  distant scenery through the deferred sort; resolve all indexed model
+  keys; assemble the chest base and hinged lid from the original grid.
+
 - [x] Retain bag and crafting scroll offsets by tab and preserve the
   thumb's actual drag position until a layout or item-result refresh.
   Route movement from the mouse and the engine's controller cursor.

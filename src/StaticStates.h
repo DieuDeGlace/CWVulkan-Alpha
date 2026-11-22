@@ -37,7 +37,11 @@ struct StaticState {
     std::optional<Placement> receivedPlacement; // live section-six placement and shape
 };
 
-// §6.3: how far a moving static is open (0 closed … 1 open) for the drawing of §4.4.
+// Original indexed-static model table. Unassigned and out-of-range indices have no model.
+const char *staticModelName(int32_t kind);
+
+// §6.3 animation, including the one-sided limits for signed elapsed time.
+float openFraction(int32_t kind, uint8_t state, int32_t elapsedMs);
 float openFraction(int32_t kind, const StaticState &s);
 
 class StaticStates {

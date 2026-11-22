@@ -73,8 +73,15 @@ constexpr int CORNERS[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
 } // namespace
 
 ModelMesh CubModel::mesh(glm::vec3 shade, bool keyColours) const {
+    return meshAtOffset({-sx * .5f, -sy * .5f, 0}, shade, keyColours);
+}
+
+ModelMesh CubModel::cornerMesh() const {
+    return meshAtOffset({}, {}, false);
+}
+
+ModelMesh CubModel::meshAtOffset(glm::vec3 offset, glm::vec3 shade, bool keyColours) const {
     ModelMesh m;
-    const glm::vec3 offset(-sx * .5f, -sy * .5f, 0);
 
     // Openness of a face corner (§11.1): the share of empty voxels in the layer just outside
     // the face, over offsets -3..+2 from the corner along both axes across the face.

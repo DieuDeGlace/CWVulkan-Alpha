@@ -1,3 +1,6 @@
+#include "StaticStates.h"
+#include "ChestPose.h"
+#include "ModelAdmission.h"
 #include "ChunkMesher.h"
 #include "FileHash.h"
 #include "CachedLights.h"
@@ -7,6 +10,7 @@
 #include <cstdio>
 #include <limits>
 #include <memory>
+#include <tuple>
 
 using namespace terrain_lights;
 static int failures = 0;
@@ -22,6 +26,61 @@ static Candidate light(int64_t x, int64_t y, float radius, glm::vec3 colour = {1
     result.colour = colour;
     result.radius = radius;
     return result;
+}
+
+static void indexedChest() {
+    CubModel model;
+    model.sx = 3;
+    model.sy = 2;
+    model.sz = 1;
+    model.rgb.assign(18, 100);
+    const auto centred = model.mesh(), corner = model.cornerMesh();
+    bool sameSurface = !corner.indices.empty() && centred.indices == corner.indices &&
+                       centred.vertices.size() == corner.vertices.size();
+    if (sameSurface)
+        for (size_t i = 0; i < corner.vertices.size(); ++i) {
+            const auto &a = centred.vertices[i], &b = corner.vertices[i];
+            sameSurface &= a.position + glm::vec3(1.5f, 1, 0) == b.position &&
+                           a.normal == b.normal && a.colour == b.colour;
+        }
+    check(sameSurface, "chest voxels preserve the ordinary mesh surface in original grid-corner coordinates");
+
+    const glm::vec3 anchor(13.25f, -21.5f, 5.125f);
+    const auto close = [](glm::vec3 a, glm::vec3 b) { return glm::length(a - b) < 0.00002f; };
+    const auto at = [](const glm::mat4 &m, float x, float y, float z) {
+        return glm::vec3(m * glm::vec4(x, y, z, 1));
+    };
+    bool basePlaced = true, hingeFixed = true, farEdge = true, signedAngles = true;
+    for (const int orientation : {-1, 0, 1, 2, 3}) {
+        const float yaw = float(orientation * 90) * 0.01745329238474369f;
+        const float cy = float(std::cos(double(yaw))), sy = float(std::sin(double(yaw)));
+        const ChestPose pose(anchor, 4.6f, orientation);
+        const auto placed = [&](float x, float y, float z, float width) {
+            return anchor + (4.6f / width) * glm::vec3(cy * x - sy * y, sy * x + cy * y, z);
+        };
+        const auto base = pose.base({23,16,10});
+        basePlaced &= close(at(base, 0,0,0), placed(-11.5f,-8,0,23)) &&
+                      close(at(base, 23,16,10), placed(11.5f,8,10,23));
+        // Use an unequal lid grid as well as the registered one to distinguish per-model scaling.
+        for (const glm::vec3 grid : {glm::vec3(23,16,8), glm::vec3(17,12,5)}) {
+            for (const auto [state, ms, degrees] : {std::tuple{0,-250,-20}, {2,-250,100}, {0,0,0},
+                                                     {2,0,80}, {0,500,40}, {2,500,40}, {0,1800,80}, {2,1800,0}}) {
+                const float fraction = openFraction(10, uint8_t(state), ms);
+                signedAngles &= std::abs(80.f * fraction - degrees) < 0.00002f;
+                const auto lid = pose.lid(grid, fraction);
+                const float angle = float(degrees) * 0.01745329238474369f;
+                const float c = float(std::cos(double(angle))), sn = float(std::sin(double(angle)));
+                hingeFixed &= close(at(lid, 0,0,1), placed(-grid.x*.5f,-grid.y*.5f,9,grid.x));
+                farEdge &= close(at(lid, grid.x,grid.y,grid.z),
+                                 placed(grid.x*.5f, -grid.y*.5f + grid.y*c - (grid.z-1)*sn,
+                                        9 + grid.y*sn + (grid.z-1)*c, grid.x));
+            }
+        }
+    }
+    check(basePlaced, "base corners use object width, signed quarter turns and no vertical centering");
+    check(signedAngles, "closed, moving, open and negative elapsed chest states keep their one-sided bounds");
+    check(hingeFixed, "the lid's original y=0,z=1 pivot stays anchored in every position and orientation");
+    check(farEdge, "the far edge rises about local positive X using each lid's own grid and width ratio");
 }
 
 static void positionedDecorationLights() {
@@ -182,6 +241,182 @@ static void editedSongPositions() {
     check(list && list->size() == 5 && (*list)[0].light == 93 && (*list)[1].light == 62 &&
               (*list)[2].light == 62 && (*list)[3].light == 0 && (*list)[4].light == 0,
           "legacy song vector edits preserve distinct formation samples and leave new occurrences unsampled");
+}
+
+static void decorationAdmission() {
+    using namespace terrain_models;
+    constexpr int64_t u = 65536;
+    std::array<glm::vec4, 6> planes{};
+    planes[0] = {0, 1, 0, -6};
+    const FixedPosition eye{3000000 * u, 7000000 * u, 2 * u};
+    const FixedPosition shift{-eye[0], -eye[1], 0};
+    const ModelView view(eye, shift, planes, 640.f * .2f);
+    const auto bound = decorationBound({eye[0], eye[1], 0}, 6, 4, 1.f);
+    check(bound && bound->centre == eye && bound->radius == 6 && view.classify(*bound).has_value(),
+          "raised fixed centre and full X/Z model radius admit exact plane tangency");
+    check(!view.classify({eye, 5.999f}), "a smaller model radius falls beyond the same raw plane");
+    const auto at = [&](int64_t x) { return view.classify({{eye[0] + x, eye[1], eye[2]}, 6.f}); };
+    const auto near = at(115 * u), middle = at(120 * u), edge = at(128 * u);
+    check(near && !near->deferred && near->opacity == 1 && middle && middle->deferred &&
+              middle->squared == 14400 && std::abs(middle->opacity - .625f) < 1e-5f &&
+              edge && edge->deferred && edge->opacity == 0 && !at(128 * u + 1),
+          "separate fixed outer and float inner tests keep the endpoints and fade the deferred shell");
+    const ModelView exactInner(eye, shift, {}, 100.f * .2f);
+    const Bound inner{{eye[0] + 18 * u, eye[1], eye[2]}, 0};
+    check(exactInner.classify(inner) && !exactInner.classify(inner)->deferred &&
+              exactInner.classify({{inner.centre[0] + 1, eye[1], eye[2]}, 0})->deferred,
+          "equality at the float inner threshold is immediate");
+    const SlotBox box(64,96,11,37);
+    check(box.low == FixedPosition{64*u,96*u,11*u} && box.high == FixedPosition{97*u,129*u,38*u} &&
+              box.midpoint == FixedPosition{80*u+u/2,112*u+u/2,24*u+u/2},
+          "published horizontal extent is 33, upper height includes one, and both midpoint halves survive");
+    planes = {};
+    planes[0] = {1,-2,3,-19}; // highest support relative to lower XY: 33 + 3*38
+    planes[0].w = -147;
+    check(boxInside(box, {-64*u,-96*u,0}, planes), "slot box accepts exact support-plane tangency after XY shift");
+    planes[0].w -= 1;
+    check(!boxInside(box, {-64*u,-96*u,0}, planes), "slot box rejects a strictly negative support plane");
+    const FixedPosition base{eye[0],eye[1],eye[2]+89*u};
+    const auto indexed = staticBound(base, {4,23,20});
+    const ModelView statics(eye, shift, {}, 100);
+    check(indexed && indexed->radius == 24 && indexed->centre[2] == base[2]+10*u &&
+              statics.classify(*indexed,base) && !statics.classify(*indexed,base)->deferred &&
+              statics.classify(*indexed)->deferred,
+          "indexed statics use their largest dimension plus one, gate at raised Z, and sort by unraised position");
+    auto camera = box.midpoint;
+    camera[0] += 160*u;
+    camera[2] += 300*u;
+    check(horizontalRange(box,camera,160.f), "a slot admits radial equality using the two midpoint axes only");
+    ++camera[0];
+    check(!horizontalRange(box,camera,160.f), "one extra fixed unit outside the midpoint radius rejects the slot");
+    const FixedPosition below{eye[0],eye[1],eye[2]-101*u};
+    const auto highModel = staticBound(below,{1,1,8});
+    const auto unbounded = statics.classify(*highModel,below);
+    check(unbounded && unbounded->deferred && unbounded->opacity < 0,
+          "a raised static admitted inside the far radius keeps its negative unraised-origin fade");
+    struct Record { float squared; int id; };
+    std::vector<Record> records{{2,1},{8,2},{2,3},{8,4}};
+    orderDeferred(records);
+    check(records[0].id == 2 && records[1].id == 4 && records[2].id == 1 && records[3].id == 3,
+          "short deferred ordering keeps the arrival order of equal keys across both payload kinds");
+    for (int i=4; i<70; ++i)
+        records.push_back({float(i % 17), i});
+    orderDeferred(records);
+    check(std::is_sorted(records.begin(), records.end(), [](const auto &a, const auto &b) { return a.squared > b.squared; }),
+          "large deferred lists use only descending finite distance");
+}
+
+static void producedSlotBounds() {
+    using namespace worldgen;
+    auto zone = std::make_shared<Zone>();
+    for (int x = 31; x <= 64; ++x)
+        for (int y = 31; y <= 64; ++y) {
+            auto &column = zone->column(x,y);
+            column.bottom = 17;
+            column.blocks.push_back({123,123,123, ROCK});
+        }
+    // Only the first positive-Y neighbor has the high stored top. Its trailing empty cells expose no higher surface.
+    zone->column(32,33).blocks.resize(34, {52,52,52,AIR});
+    World world(41);
+    Terrain terrain(world);
+    WorldMap map;
+    map.add(zone);
+    const auto first = meshChunk(map,terrain,32,32);
+    check(first.slotLow == 17 && first.slotHigh == 18,
+          "first exposed cell overwrites an earlier positive-Y top before later columns raise it again");
+    auto changed = std::make_shared<Zone>(*zone);
+    changed->column(63,64).bottom = 79;
+    map.replaceTerrain(changed);
+    const auto last = meshChunk(map,terrain,32,32);
+    check(last.slotLow == 17 && last.slotHigh == 80 && last.vertexRecords() == first.vertexRecords(),
+          "the final positive-Y neighbor raises the slot box independently of the emitted mesh maximum");
+}
+
+static void terrainSlotOrder() {
+    struct Entry { TerrainMeshBuffers active; terrain_models::SlotBox bounds; };
+    using Slot = terrain_models::RenderSlot<Entry>;
+    std::array<Entry, 4> entries;
+    std::array<Slot, 4> slots;
+    const std::array<glm::ivec2, 4> corners{{{39,39}, {39,40}, {40,39}, {40,40}}};
+    const std::array<glm::vec4, 6> planes{};
+    const FixedPosition eye{1280 * 65536 + 32768, 1280 * 65536 + 32768, 4 * 65536 + 32768};
+    std::vector<const Slot *> admitted;
+    visitChunkRenderWindow({38,38}, [&](glm::ivec2 at) {
+        const auto found = std::find(corners.begin(), corners.end(), at);
+        if (found == corners.end())
+            return;
+        const auto i = size_t(found - corners.begin());
+        entries[i] = {{uint32_t(i + 1), uint32_t(i + 10)}, {at.x * 32, at.y * 32, 4, 4}};
+        auto &slot = slots[i];
+        slot.resident = &entries[i];
+        check(!slot.lastSquared && !slot.admit(false, eye, {}, planes, 800.f) && !slot.lastSquared,
+              "a rejected first physical slot visit has no assigned key");
+        if (slot.admit(true, eye, {}, planes, 800.f))
+            admitted.push_back(&slot);
+    });
+    terrain_models::orderSlots(admitted);
+    check(admitted == std::vector<const Slot *>{&slots[0], &slots[1], &slots[2], &slots[3]} &&
+          *slots[0].lastSquared == 512.f && *slots[3].lastSquared == 512.f,
+          "four naturally equidistant midpoints across the physical wrap keep short X then Y admission order");
+    const auto original = slots[0].lastSquared;
+    auto high = eye;
+    high[2] += 65536;
+    auto rejectedPlanes = planes;
+    rejectedPlanes[0].w = -1;
+    check(!slots[0].admit(true, high, {}, rejectedPlanes, 800.f) && slots[0].lastSquared == original &&
+          !slots[0].admit(true, high, {}, planes, 0.f) && slots[0].lastSquared == original,
+          "box and distance rejection retain the physical slot's previous key");
+    slots[0].resident = &entries[1];
+    entries[1].active = {};
+    check(!slots[0].admit(true, high, {}, planes, 800.f) && slots[0].lastSquared == original,
+          "an empty physical alias keeps the earlier write through a failed admission");
+    entries[1].active.solid = 5;
+    high[2] += 256;
+    check(slots[0].admit(true, high, {}, planes, 800.f) &&
+          *slots[0].lastSquared == 513.0078125f,
+          "successful newly tagged slot uses the current 3D fixed-reference key");
+    auto tiny = entries[1].bounds.midpoint;
+    for (auto &axis : tiny)
+        axis += 255;
+    check(slots[0].admit(true, tiny, {}, planes, 800.f) && *slots[0].lastSquared == 0.f,
+          "each raw square loses its own fractional fixed contribution before the slot key sum");
+    auto boundary = entries[2].bounds.midpoint;
+    boundary[0] += 160 * 65536;
+    boundary[1] += 256;
+    check(!terrain_models::horizontalRange(entries[2].bounds, boundary, 160.f) &&
+          terrain_models::withinDecorationRange(entries[2].bounds, boundary, 160.f),
+          "decoration slot XY float equality differs from terrain-box fixed truncation");
+    std::array<Slot, 33> large;
+    std::vector<const Slot *> sorted;
+    for (auto &slot : large) {
+        slot.lastSquared = 2.f;
+        sorted.push_back(&slot);
+    }
+    large.back().lastSquared = 1.f;
+    terrain_models::orderSlots(sorted);
+    check(sorted.size() == 33 && sorted.front() == &large[32] && sorted[1] == &large[1] && sorted[16] == &large[0] &&
+          std::is_sorted(sorted.begin(), sorted.end(), [](const auto *a, const auto *b) {
+              return *a->lastSquared < *b->lastSquared;
+          }), "33-slot partition retains all pointers and reproduces the established mixed tie");
+}
+
+static void indexedModelTable() {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    size_t count = 0;
+    for (int id = 0; id < 78; ++id) {
+        const char *key = staticModelName(id);
+        if (key) {
+            ++count;
+            while (*key) {
+                hash ^= uint8_t(*key++);
+                hash *= UINT64_C(1099511628211);
+            }
+        }
+        hash *= UINT64_C(1099511628211); // zero terminator for every slot, including empty slots
+    }
+    check(count == 75 && hash == UINT64_C(0x1d2344926819c11d) && !staticModelName(-1) && !staticModelName(78) &&
+              !staticModelName(6) && !staticModelName(14) && !staticModelName(70),
+          "complete ordered indexed-model table includes exactly three unassigned slots");
 }
 
 static void packedTerrainLight() {
@@ -566,9 +801,14 @@ static void fogMeshElevations() {
 }
 
 int main() {
+    indexedChest();
     fogMeshTransfers();
     fogMeshElevations();
     editedSongPositions();
+    terrainSlotOrder();
+    indexedModelTable();
+    producedSlotBounds();
+    decorationAdmission();
     initialDecorationLight();
     positionedDecorationLights();
     packedTerrainLight();

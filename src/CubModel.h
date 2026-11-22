@@ -9,7 +9,7 @@
 #include <vector>
 
 struct ModelVertex {
-    glm::vec3 position; // voxel units, model centred on x/y with its base at z = 0
+    glm::vec3 position; // voxel units, bottom-centred or measured from the grid corner
     glm::vec3 normal;
     glm::vec4 colour;   // 0..1, occlusion already applied
     float sway = 0;     // how much this corner moves with the leaf sway (0 for all but leaves)
@@ -42,4 +42,9 @@ struct CubModel {
     // With `keyColours` (hair and eye layers, alpha-creatures-models.md §5.1), voxels of
     // exactly (255, 0, 0), (0, 255, 0) or (0, 0, 255) are left out.
     ModelMesh mesh(glm::vec3 shade = glm::vec3(0), bool keyColours = false) const;
+    // Indexed chest parts are placed and hinged in the original grid-corner coordinates.
+    ModelMesh cornerMesh() const;
+
+  private:
+    ModelMesh meshAtOffset(glm::vec3 offset, glm::vec3 shade, bool keyColours) const;
 };

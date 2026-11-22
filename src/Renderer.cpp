@@ -395,6 +395,19 @@ VkPipeline Renderer::makePipeline(const PipelineDesc &desc) {
     return pipeline;
 }
 
+namespace {
+// shaders/model.vert declares these four fields in this order. A build may add tail padding.
+struct DrawConstants {
+    glm::mat4 world;
+    glm::vec4 material;
+    glm::vec4 extra; // shininess, point-light row, white hit flash, pixel alpha
+    uint32_t decorationMaterial;
+};
+static_assert(offsetof(DrawConstants, world) == 0 && offsetof(DrawConstants, material) == 64 &&
+              offsetof(DrawConstants, extra) == 80 && offsetof(DrawConstants, decorationMaterial) == 96);
+static_assert(sizeof(DrawConstants) <= 128 && sizeof(DrawConstants) % 4 == 0);
+} // namespace
+
 bool Renderer::createScenePipelines() {
     // The frame constants, seen by every stage, and the shadow map; the model's world matrix is
     // a push constant.
@@ -477,7 +490,7 @@ bool Renderer::createScenePipelines() {
     for (size_t i = 0; i < stars.size(); i++)
         sprites[2 + i] = glm::vec4(stars[i].position, stars[i].size);
 
-    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4) + 2 * sizeof(glm::vec4) + sizeof(uint32_t)};
+    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(DrawConstants)};
     VkPipelineLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     layoutInfo.setLayoutCount = 1;
     layoutInfo.pSetLayouts = &frameLayout;
@@ -924,33 +937,28 @@ uint32_t Renderer::drawItems(VkCommandBuffer cmd, const std::vector<DrawItem> &i
         // Rulings §13: terrain and water draw with their chunk's lights; the rest of the
         // objects pass sees the frame list (row 0). Clouds have no point lights at all
         // (shaders/cloud.vert reads none).
-        if (drawItem(cmd, item, planes, shadowPass || item.shading == Shading::Cloud ? 0 : lightRowOf(item.mesh)))
+        if (drawItem(cmd, item, planes, shadowPass || item.shading == Shading::Cloud ? 0 : lightRowOf(item.mesh), shadowPass))
             drawn++;
     }
     return drawn;
 }
 
 bool Renderer::drawItem(VkCommandBuffer cmd, const DrawItem &item, const std::array<glm::vec4, 6> &planes,
-                        uint32_t lightRow) {
+                        uint32_t lightRow, bool shadowPass) {
     if (item.mesh == 0 || item.mesh > meshes.size())
         return false;
     const Mesh &m = meshes[item.mesh - 1];
     if (!m.indexCount)
         return false;
-    const glm::vec3 centre = glm::vec3(item.world * glm::vec4(m.centre, 1));
-    const float scale = std::max({glm::length(glm::vec3(item.world[0])), glm::length(glm::vec3(item.world[1])),
-                                  glm::length(glm::vec3(item.world[2]))});
-    if (!sphereInside(planes, centre, m.radius * scale))
-        return false;
+    if (shadowPass || !item.viewAdmitted) {
+        const glm::vec3 centre = glm::vec3(item.world * glm::vec4(m.centre, 1));
+        const float scale = std::max({glm::length(glm::vec3(item.world[0])), glm::length(glm::vec3(item.world[1])),
+                                      glm::length(glm::vec3(item.world[2]))});
+        if (!sphereInside(planes, centre, m.radius * scale))
+            return false;
+    }
     const bool world = item.shading == Shading::World;
-    struct {
-        glm::mat4 world;
-        glm::vec4 material;
-        // x: shininess, y: point-light row (zero selects the frame list), z: white (the hit
-        // flash), w: the pixel alpha constant
-        glm::vec4 extra;
-        uint32_t decorationMaterial;
-    } constants{item.world, world ? item.material : glm::vec4(1),
+    const DrawConstants constants{item.world, world ? item.material : glm::vec4(1),
                 glm::vec4(item.shine && world ? 1.f : 0.f, float(lightRow), world ? item.white : 0.f,
                           world ? item.alpha : 1.f), uint32_t(item.decorationMaterial && world)};
     vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof constants, &constants);
@@ -1120,7 +1128,10 @@ void Renderer::recordScene(VkCommandBuffer cmd, const FrameConstants &frame, boo
     const bool anyTranslucent = std::any_of(items.begin(), items.end(), [](const DrawItem &i) {
         return i.shading == Shading::World && i.layer == DrawLayer::Translucent;
     });
-    if (!anyWater && !anyTranslucent)
+    const bool anyDeferred = std::any_of(items.begin(), items.end(), [](const DrawItem &item) {
+        return item.shading == Shading::World && item.layer == DrawLayer::Deferred;
+    });
+    if (!anyWater && !anyTranslucent && !anyDeferred)
         return;
     if (anyWater)
         snapshotWaterBackground(cmd);
@@ -1143,8 +1154,16 @@ void Renderer::recordScene(VkCommandBuffer cmd, const FrameConstants &frame, boo
                 lastDrawn++;
             }
     }
-    // Step 17 (the far statics) is not separated in this engine; step 18: the translucent
-    // creatures, lit by whatever the last water draw left bound.
+    // Step 17 uses the world shader, source-alpha blending and depth writes, with one draw per model.
+    if (anyDeferred) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, translucentPipeline);
+        const auto planes = planesOf(frame.viewProjection);
+        const uint32_t lightRow = postWaterLightRow(lastWaterRow);
+        for (const auto &item : items)
+            if (item.layer == DrawLayer::Deferred && item.shading == Shading::World && drawItem(cmd, item, planes, lightRow))
+                ++lastDrawn;
+    }
+    // Step 18 loads the light row left by water for translucent creatures.
     if (anyTranslucent)
         lastDrawn += drawTranslucent(cmd, items, frame.viewProjection, postWaterLightRow(lastWaterRow));
     vkCmdEndRendering(cmd);

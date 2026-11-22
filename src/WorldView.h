@@ -6,6 +6,7 @@
 //
 // Positions: the world is 2^24 blocks wide, more than a float holds to the block, so meshes and
 // the camera are kept relative to a render origin near the start point.
+#include "ModelAdmission.h"
 #include "BlockEdits.h"
 #include "CachedLights.h"
 #include "ChunkMesher.h"
@@ -34,6 +35,7 @@
 
 class Content;
 class WorldItems;
+class StaticStates;
 
 struct WorldViewOptions {
     uint32_t seed = 123;          // Alpha's default world seed (random spec §1.3)
@@ -121,7 +123,8 @@ class WorldView {
     }
     // This frame's draw list. `clockMs` is the world's millisecond clock, which sways the
     // plants that sway (vegetation-wind.md §4).
-    std::vector<DrawItem> items(double clockMs, const Scene &scene = {});
+    std::vector<DrawItem> items(double clockMs, const Scene &scene = {}, const StaticStates *staticStates = nullptr,
+                                std::optional<terrain_lights::FixedPosition> cameraFixed = {});
     // Screens §5.1.2, §5.2.4: the map tiles of the zones (zx0..zx1, zy0..zy1) in render-origin
     // blocks, each rising into place over its first 250 ms (`dtMs` advances that), with the
     // land-border markers. With `extras` (the world map) undiscovered tiles are dimmed and
@@ -180,7 +183,7 @@ class WorldView {
     // Screens §5.2.4 item 2: whether a zone is the target of a discovered mission (its map
     // tile is then drawn undimmed).
     std::function<bool(int32_t zx, int32_t zy)> missionTarget;
-    // A static object's model and its size in voxels (interaction §4.2).
+    // Indexed mesh and grid dimensions. Chest parts 10 and 11 use the original grid corner.
     std::pair<MeshId, glm::vec3> staticModel(int32_t kind);
     // World objects §5, §7: the airship model's mesh (0 when missing), loaded once.
     MeshId airshipMesh();
@@ -204,10 +207,14 @@ class WorldView {
         bool sways;
         float light = 0;
         bool emits = false;
+        terrain_models::Bound bound{};
     };
     struct ChunkEntry : ChunkRenderState {
+        terrain_models::SlotBox bounds;
         std::vector<PlantInstance> models;
     };
+    using RenderSlot = terrain_models::RenderSlot<ChunkEntry>;
+    std::vector<const RenderSlot *> admittedSlots;
     void prepareDecorationModels(ChunkEntry &entry);
     void releaseGroups(TerrainMeshBuffers groups);
 
@@ -243,7 +250,14 @@ class WorldView {
     void placeChunk(DoneChunk &chunk);
     void removeChunk(Key corner);
     std::vector<PlantInstance> plantsOf(const worldgen::Zone &zone);
-    std::pair<MeshId, float> plantModel(int32_t kind);
+    struct PlantModel { MeshId mesh = 0; int32_t width = 0, height = 0; };
+    struct DeferredModel { float squared; size_t first, count; };
+    void appendModel(std::vector<DrawItem> &immediate, const terrain_models::Distance &distance, std::span<DrawItem> parts);
+    void appendStatics(std::vector<DrawItem> &out, const terrain_models::ModelView &view,
+                       const terrain_lights::SectorRange &range, const StaticStates *states);
+    std::vector<DrawItem> deferredDraws;
+    std::vector<DeferredModel> deferredModels;
+    PlantModel plantModel(int32_t kind);
     Key cameraZone() const;
     bool idle();
 
@@ -273,12 +287,13 @@ class WorldView {
     mutable std::vector<terrain_lights::Candidate> lightCandidates;
     mutable std::vector<terrain_lights::Chunk> lightChunks;
     std::map<Key, ChunkEntry> chunks; // active and pending Vulkan streams, by chunk corner
-    std::array<ChunkEntry *, ChunkMeshCache::SIDE * ChunkMeshCache::SIDE> renderSlots{}; // stable map entries
+    std::array<RenderSlot, ChunkMeshCache::SIDE * ChunkMeshCache::SIDE> renderSlots{};
+    std::map<Key, const ChunkEntry *> exteriorChunks; // draw only the engine's wider-radius entries
     ChunkLightUpdates chunkLightUpdates;
     std::vector<glm::ivec2> changedLightColumns;
     std::set<Key> editedChunks;
     std::set<Key> requestedEdits; // includes saved edits that request geometry without marking native light dirty
-    std::map<int32_t, std::pair<MeshId, float>> plantModels;
+    std::map<int32_t, PlantModel> plantModels;
     std::map<int32_t, std::pair<MeshId, glm::vec3>> staticModels;
     MeshId airshipModelMesh = 0;
     bool airshipModelTried = false;

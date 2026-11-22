@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-21 after batch 89 and the rulings. The 315 tracked contracts
-comprise 280 A, 30 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-21 after batch 90 and the rulings. The 319 tracked contracts
+comprise 284 A, 30 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -169,6 +169,7 @@ Batch 86 records the active decoration lighting path, model keys and the native 
 Batch 87 corrects the final static-index pass and locates the preceding decoration-light initialization.
 Batch 88 records the independently reviewed recipe grant and the separate level and progress presentation contract.
 Batch 89 records the shared item-list layout, pointer movement and refresh order for bag and crafting controls.
+Batch 90 records terrain-slot bounds, box range and fade, slot visit order and the chest base and lid placement.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -293,6 +294,7 @@ Batch 89 records the shared item-list layout, pointer movement and refresh order
 | `alpha-hit-threat-death-lifecycle.md` | A | 157 | 1 |
 | `alpha-hostility-test.md` | A | 188 | 0 |
 | `alpha-house-furniture.md` | A | 222 | 1 |
+| `alpha-indexed-static-kind-10-base-and-lid-transforms.md` | A | 135 | 0 |
 | `alpha-interaction.md` | A | 773 | 3 |
 | `alpha-inventory-equality-consumers.md` | A | 94 | 0 |
 | `alpha-item-list-scroll-controls.md` | A | 148 | 0 |
@@ -436,6 +438,7 @@ Batch 89 records the shared item-list layout, pointer movement and refresh order
 | `alpha-taming-progress-and-capture.md` | A | 262 | 0 |
 | `alpha-target-relation.md` | A | 178 | 0 |
 | `alpha-template-stamping-markers.md` | A | 504 | 0 |
+| `alpha-terrain-box-range-and-static-fade.md` | A | 106 | 0 |
 | `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
 | `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
 | `alpha-terrain-chunk-point-lights.md` | A | 102 | 0 |
@@ -446,6 +449,8 @@ Batch 89 records the shared item-list layout, pointer movement and refresh order
 | `alpha-terrain-mesh-vertex-accounting.md` | A | 66 | 0 |
 | `alpha-terrain-mesh-window-origin.md` | A | 58 | 0 |
 | `alpha-terrain-shader-color-numerics.md` | A | 196 | 1 |
+| `alpha-terrain-slot-bounds-and-static-model-admission.md` | A | 178 | 0 |
+| `alpha-terrain-slot-sort-key-and-pass-order.md` | A | 144 | 0 |
 | `alpha-tick-period-rulings.md` | A | 145 | 0 |
 | `alpha-timed-consumables.md` | A | 263 | 0 |
 | `alpha-trails-poses-schedules.md` | A | 900 | 2 |

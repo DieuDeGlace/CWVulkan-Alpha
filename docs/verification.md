@@ -3570,3 +3570,25 @@ checkpoint, which also refreshes the crafting rows after both grant paths.
 It reproduced bag row 1/4 at Y 100 and crafting row 2/6 at Y 134 held
 through release and two later draws. The full x64 build succeeded and all
 60 serial CTests passed in 126.08 seconds.
+
+## Terrain slots, scenery distance and chests (2026-11-21)
+
+Fixtures cover fixed half-voxel centers, box planes, outer and inner
+equality, radius tangency, negative indexed fade, short mixed ties, slot
+wrap with aliases, and a 33-member mixed tie. Incorrect radius, origin,
+comparator, slot key, range and order variants each failed their controls.
+In the real engine world, an elevated seed-123 town sorted 11 decorations
+and three indexed objects at 108.7 to 120.5 blocks. Seed 41 drew 12 solid
+slots forward and 12 water resources in exact reverse. A hidden Vulkan run
+recorded all 34 water commands in reverse admitted-slot order. All 75
+assigned indexed keys loaded owned geometry; the three empty slots did not.
+
+The natural seed-123 chest at zone (32787,32780), ordinal 36, rotation 3,
+was generated in state 2 with zero elapsed time. In generated, closed,
+both midway, open and signed-time cases, every base and lid surface point
+matched the contract's corner equations within 2.2e-5 blocks. The pivot
+error was zero. The pair moved to the deferred layer together at 114
+blocks. The previous hinge failed all eight cases, with a base error of
+0.91 blocks and the closed lid at the base's floor. Vulkan frames show the
+lid flush when closed and turning on its back edge. These are engine
+observations, not matching original-client frames.

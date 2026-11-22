@@ -6,12 +6,44 @@
 #include <cstring>
 #include <utility>
 
-float openFraction(int32_t kind, const StaticState &s) {
-    const float t = (float)s.timerMs;
-    if (s.state == 0)
+const char *staticModelName(int32_t kind) {
+    // Alpha interaction §4.2. The loader reads the registered basename for each occupied slot.
+    static constexpr const char *names[] = {
+        "goddess2.cub", "door.cub", "big-door.cub", "window.cub",
+        "castle-window.cub", "gate.cub", nullptr, "spike-trap.cub",
+        "stomp-trap.cub", "lever.cub", "chest-base02.cub", "chest-top02.cub",
+        "table.cub", "stone-table.cub", nullptr, "stone-stool.cub",
+        "stool.cub", "sandstone-stool.cub", "bench.cub", "bed.cub",
+        "bedtable.cub", "market-stand1.cub", "market-stand2.cub", "market-stand3.cub",
+        "barrel.cub", "crate.cub", "open-crate.cub", "sack.cub",
+        "shelter.cub", "cupboard.cub", "desktop.cub", "counter.cub",
+        "shelf1.cub", "shelf2.cub", "shelf3.cub", "castle-shelf1.cub",
+        "castle-shelf2.cub", "castle-shelf3.cub", "stone-shelf1.cub", "stone-shelf2.cub",
+        "stone-shelf3.cub", "sandstone-shelf1.cub", "sandstone-shelf2.cub", "sandstone-shelf3.cub",
+        "corpse.cub", "runestone.cub", "artifact.cub", "flower-box01.cub",
+        "flower-box02.cub", "flower-box03.cub", "street-light02.cub", "street-light01.cub",
+        "fence01.cub", "fence02.cub", "fence03.cub", "fence04.cub",
+        "flower-vase1.cub", "flower-vase2.cub", "flower-vase3.cub", "flower-vase4.cub",
+        "flower-vase5.cub", "flower-vase6.cub", "flower-vase7.cub", "flower-vase8.cub",
+        "flower-vase9.cub", "campfire.cub", "tent.cub", "beach-umbrella.cub",
+        "beach-towel.cub", "wood-mat.cub", nullptr, "furnace.cub",
+        "anvil.cub", "spinningwheel.cub", "loom.cub", "sawbench.cub",
+        "workbench.cub", "customization-bench.cub",
+    };
+    static_assert(std::size(names) == 78);
+    return uint32_t(kind) < std::size(names) ? names[kind] : nullptr;
+}
+
+float openFraction(int32_t kind, uint8_t state, int32_t elapsedMs) {
+    const float t = float(elapsedMs);
+    if (state == 0)
         return std::min(t * 0.001f, 1.f);
     const float rate = kind == 7 || kind == 8 ? 0.01f : 0.001f; // traps close ten times faster
     return std::max(1 - t * rate, 0.f);
+}
+
+float openFraction(int32_t kind, const StaticState &s) {
+    return openFraction(kind, s.state, s.timerMs);
 }
 
 void StaticStates::generated(const worldgen::Zone &zone) {

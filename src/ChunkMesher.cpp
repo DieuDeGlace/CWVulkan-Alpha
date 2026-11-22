@@ -347,6 +347,7 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
         return out;
     out.preparedLighting = lightPatch != nullptr;
     const CellCache cache(map, x0, y0, lightPatch);
+    bool firstExposed = true;
 
     for (int32_t x = x0; x < x0 + CHUNK; x++)
         for (int32_t y = y0; y < y0 + CHUNK; y++) {
@@ -354,6 +355,8 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
             if (!zone)
                 continue;
             const Column &column = zone->column(x, y);
+            if (const auto *positiveY = map.zoneAt(x, y + 1))
+                out.slotHigh = std::max(out.slotHigh, positiveY->column(x, y + 1).top());
             // The native scan includes the implicit floor directly beneath the column's base.
             // Deeper implicit cells can expose a side only where a horizontal neighbour opens.
             int32_t zmin = column.bottom;
@@ -391,6 +394,7 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
                     colour = glm::vec3(b.r, b.g, b.b) / 255.f;
                 }
                 const glm::ivec3 voxel(x, y, z);
+                bool exposed = false;
                 for (const Face &f : FACES) {
                     glm::ivec3 next = voxel;
                     next[f.axis] += f.sign;
@@ -399,6 +403,7 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
                     // water-water or solid-solid.
                     if (neighbour != AIR && (water || neighbour != WATER))
                         continue;
+                    exposed = true;
                     glm::vec3 normal(0);
                     normal[f.axis] = (float)f.sign;
                     // One face of `rgbIn` into `mesh`: each corner through §9.3 and §9.4.
@@ -429,6 +434,15 @@ ChunkMeshes meshChunk(const WorldMap &map, const Terrain &terrain, int32_t x0, i
                     if (cell.type == LAKE_BED && neighbour == AIR && f.axis == 2 && f.sign > 0)
                         emit(out.water, glm::vec3(0, 0, 1), false);
                     emit(water ? out.water : out.solid, colour, cell.type == LEAVES_TYPE);
+                }
+                if (exposed) {
+                    if (firstExposed) {
+                        out.slotLow = out.slotHigh = z; // overrides even an earlier positive-Y column top
+                        firstExposed = false;
+                    } else {
+                        out.slotLow = std::min(out.slotLow, z);
+                        out.slotHigh = std::max(out.slotHigh, z);
+                    }
                 }
             }
         }

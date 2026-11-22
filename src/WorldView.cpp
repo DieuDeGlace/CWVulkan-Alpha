@@ -1,4 +1,6 @@
 #include "WorldView.h"
+#include "ChestPose.h"
+#include "StaticStates.h"
 #include "WaterLook.h"
 #include "creatures/Npcs.h"
 #include "DataStore.h"
@@ -47,70 +49,6 @@ const char *plantModelName(int32_t kind) {
         "liana.cub", "chandelier.cub", "cobwebs.cub", "cobwebs2.cub",
     };
     return kind >= 0 && size_t(kind) < std::size(names) ? names[kind] : nullptr;
-}
-
-// Static object kinds -> model (vegetation spec §1.2, structures spec §1.10, §2, §4, §6.2).
-// The stone and sandstone tables and stools (13, 14, 15, 17) are named from the style they go
-// with; the spec gives only their kinds.
-const char *staticModelName(int32_t kind) {
-    static const char *const SHELVES[] = {
-        "shelf1.cub", "shelf2.cub", "shelf3.cub", "castle-shelf1.cub", "castle-shelf2.cub", "castle-shelf3.cub",
-        "stone-shelf1.cub", "stone-shelf2.cub", "stone-shelf3.cub", "sandstone-shelf1.cub", "sandstone-shelf2.cub",
-        "sandstone-shelf3.cub",
-    };
-    static const char *const VASES[] = {
-        "flower-vase1.cub", "flower-vase2.cub", "flower-vase3.cub", "flower-vase4.cub", "flower-vase5.cub",
-        "flower-vase6.cub", "flower-vase7.cub", "flower-vase8.cub", "flower-vase9.cub",
-    };
-    if (kind >= 32 && kind <= 43)
-        return SHELVES[kind - 32];
-    if (kind >= 56 && kind <= 64)
-        return VASES[kind - 56];
-    switch (kind) {
-    case 0: return "goddess2.cub";
-    case 1: return "door.cub";
-    case 2: return "big-door.cub";
-    case 3: return "window.cub";
-    case 4: return "castle-window.cub";
-    case 7: return "spike-trap.cub";
-    case 10: return "chest-base02.cub";
-    case 12: return "table.cub";
-    case 13: return "stone-table.cub";
-    case 14: return "sandstone-table.cub";
-    case 15: return "stone-stool.cub";
-    case 16: return "stool.cub";
-    case 17: return "sandstone-stool.cub";
-    case 19: return "bed.cub";
-    case 21: return "market-stand1.cub";
-    case 22: return "market-stand2.cub";
-    case 23: return "market-stand3.cub";
-    case 24: return "barrel.cub";
-    case 25: return "crate.cub";
-    case 26: return "open-crate.cub";
-    case 27: return "sack.cub";
-    case 20: return "bedtable.cub";
-    case 47: return "flower-box01.cub";
-    case 48: return "flower-box02.cub";
-    case 49: return "flower-box03.cub";
-    case 52: return "fence01.cub";
-    case 53: return "fence02.cub";
-    case 54: return "fence03.cub";
-    case 55: return "fence04.cub";
-    case 71: return "furnace.cub";
-    case 72: return "anvil.cub";
-    case 73: return "spinningwheel.cub";
-    case 74: return "loom.cub";
-    case 75: return "sawbench.cub";
-    case 76: return "workbench.cub";
-    case 77: return "customization-bench.cub";
-    case 45: return "runestone.cub";
-    case 50: return "street-light02.cub";
-    case 51: return "street-light01.cub";
-    case 65: return "campfire.cub";
-    case 66: return "tent.cub";
-    case 69: return "wood-mat.cub";
-    default: return nullptr;
-    }
 }
 
 } // namespace
@@ -208,8 +146,10 @@ void WorldView::activateWorld(uint32_t seed, glm::dvec3 focus) {
 
     map = {};
     plants.clear();
+    exteriorChunks.clear();
     chunks.clear();
-    renderSlots.fill(nullptr);
+    renderSlots.fill({});
+    admittedSlots.clear();
     sectorSources = {};
     chunkLightUpdates = {};
     changedLightColumns.clear();
@@ -559,11 +499,12 @@ void WorldView::removeChunk(Key corner) {
     chunkLightUpdates.invalidate(at);
     if (it == chunks.end())
         return;
-    auto &physical = renderSlots[ChunkMeshCache::index(at)];
+    auto &physical = renderSlots[ChunkMeshCache::index(at)].resident;
     if (physical == &it->second)
         physical = nullptr;
     releaseGroups(it->second.active);
     releaseGroups(it->second.pending);
+    exteriorChunks.erase(corner);
     chunks.erase(it);
 }
 
@@ -601,17 +542,20 @@ void WorldView::placeChunk(DoneChunk &chunk) {
     const TerrainMeshBuffers incoming{meshes.solid.vertices.empty() ? 0 : renderer.addMesh(meshes.solid),
                                      meshes.water.vertices.empty() ? 0 : renderer.addMesh(meshes.water)};
     if (chunk.operation == DoneChunk::Operation::Publish) {
+        exteriorChunks.erase({corner.x, corner.y});
+        entry.bounds = terrain_models::SlotBox(corner.x, corner.y, meshes.slotLow, meshes.slotHigh);
         if (!meshCache.owns(coordinate)) {
             releaseGroups(std::exchange(entry.active, {})); // an exterior mesh can predate its native slot
             entry.activeDecorations.reset();
             entry.models.clear();
         }
         releaseGroups(entry.publish(incoming, std::move(chunk.decorations.sampled)));
-        renderSlots[ChunkMeshCache::index(coordinate)] = &entry;
+        renderSlots[ChunkMeshCache::index(coordinate)].resident = &entry;
         meshCache.publish(coordinate, meshes.vertexRecords());
         chunkLightUpdates.publish(coordinate, chunk.lightChange, meshes.preparedLighting);
     } else {
         // The wider streaming radius draws exterior geometry without owning a native fog slot.
+        exteriorChunks[{corner.x, corner.y}] = &entry;
         releaseGroups(entry.publish({}));
         releaseGroups(std::exchange(entry.active, incoming));
         entry.activeDecorations = incoming.populated() ? std::move(chunk.decorations.sampled) : nullptr;
@@ -765,15 +709,15 @@ void WorldView::update(std::optional<terrain_lights::FixedPosition> adjustedEye)
         dropZone(k);
 }
 
-std::pair<MeshId, float> WorldView::plantModel(int32_t kind) {
+WorldView::PlantModel WorldView::plantModel(int32_t kind) {
     if (const auto it = plantModels.find(kind); it != plantModels.end())
         return it->second;
-    std::pair<MeshId, float> entry{0, 1.f};
+    PlantModel entry;
     if (const char *name = plantModelName(kind))
         if (const auto bytes = content.read(name)) {
             CubModel model;
             if (model.load(bytes->data(), bytes->size()))
-                entry = {renderer.addMesh(model.mesh()), (float)model.sz};
+                entry = {renderer.addMesh(model.mesh()), model.sx, model.sz};
         }
     plantModels[kind] = entry;
     return entry;
@@ -787,7 +731,8 @@ std::pair<MeshId, glm::vec3> WorldView::staticModel(int32_t kind) {
         if (const auto bytes = content.read(name)) {
             CubModel model;
             if (model.load(bytes->data(), bytes->size()))
-                entry = {renderer.addMesh(model.mesh()), glm::vec3(model.sx, model.sy, model.sz)};
+                entry = {renderer.addMesh(kind == 10 || kind == 11 ? model.cornerMesh() : model.mesh()),
+                         glm::vec3(model.sx, model.sy, model.sz)};
         }
     staticModels[kind] = entry;
     return entry;
@@ -812,38 +757,19 @@ MeshId WorldView::airshipMesh() {
 
 std::vector<WorldView::PlantInstance> WorldView::plantsOf(const Zone &zone) {
     std::vector<PlantInstance> out;
-    // Static objects: the model fills the object's scale box, turned by quarter turns.
-    for (const StaticObject &o : zone.statics) {
-        const auto [mesh, voxels] = staticModel(o.kind);
-        if (!mesh || movingStatic(o.kind))
-            continue;
-        const glm::vec3 at((float)((double)o.x / 65536.0 - origin.x), (float)((double)o.y / 65536.0 - origin.y),
-                           (float)((double)o.z / 65536.0));
-        PlantInstance instance;
-        instance.mesh = mesh;
-        instance.placed = glm::translate(glm::mat4(1), at);
-        // Interaction §4.4: one uniform factor, scale x over the model's x size.
-        instance.yaw = glm::scale(glm::rotate(glm::mat4(1), glm::radians(90.f * (float)o.rotation), glm::vec3(0, 0, 1)),
-                                  glm::vec3(o.scale[0] / voxels.x));
-        instance.scale = 1;
-        instance.height = 1;
-        instance.phase = 0;
-        instance.sways = false;
-        out.push_back(instance);
-    }
     const auto addPlant = [&](const Plant &p, size_t phase) {
-        const auto [mesh, height] = plantModel(p.kind);
-        if (!mesh)
+        const auto model = plantModel(p.kind);
+        if (!model.mesh)
             return;
         // Centred on the block, turned, swayed, scaled, placed (open points 12 §2,
         // vegetation-wind.md §4). The phase only needs to stay the same for a plant.
         PlantInstance instance;
-        instance.mesh = mesh;
+        instance.mesh = model.mesh;
         instance.placed = glm::scale(glm::translate(glm::mat4(1), glm::vec3(p.x - origin.x + 0.5f, p.y - origin.y + 0.5f, p.z - (p.sink ? 0.1f : 0.f))),
                                      glm::vec3(p.scale));
         instance.yaw = glm::rotate(glm::mat4(1), glm::radians(p.rotation), glm::vec3(0, 0, 1));
         instance.scale = p.scale;
-        instance.height = height;
+        instance.height = float(model.height);
         instance.phase = (int)phase + 1;
         instance.sways = (p.flags & motion::SWAYS) != 0;
         out.push_back(instance);
@@ -866,21 +792,27 @@ void WorldView::prepareDecorationModels(ChunkEntry &entry) {
     if (!entry.activeDecorations)
         return;
     const bool bankWater = terrainGenerator().swimmableWater;
+    int visit = 0;
     for (const auto &record : *entry.activeDecorations) {
+        ++visit;
         const auto &s = record.sprite;
         if (bankWater && record.plantIndex >= 0 && s.kind == 22)
             continue; // the owner water mode supplies reeds independently on the bank
-        const auto [mesh, height] = plantModel(s.kind);
-        if (!mesh)
+        const auto model = plantModel(s.kind);
+        if (!model.mesh)
+            continue;
+        const auto bound = terrain_models::decorationBound({s.x, s.y, s.z}, model.width, model.height, s.size);
+        if (!bound)
             continue;
         PlantInstance instance;
-        instance.mesh = mesh;
+        instance.mesh = model.mesh;
+        instance.bound = *bound;
         const auto at = toRender(glm::dvec3(double(s.x), double(s.y), double(s.z)) / 65536.0);
         instance.placed = glm::scale(glm::translate(glm::mat4(1), at), glm::vec3(s.size));
         instance.yaw = glm::rotate(glm::mat4(1), glm::radians(s.angle), glm::vec3(0, 0, 1));
         instance.scale = s.size;
-        instance.height = height;
-        instance.phase = record.plantIndex >= 0 ? record.plantIndex + 1 : int(s.x ^ s.y);
+        instance.height = float(model.height);
+        instance.phase = visit;
         instance.sways = (s.flags & motion::SWAYS) != 0;
         instance.light = record.light;
         instance.emits = (s.flags & 1) != 0;
@@ -1101,37 +1033,140 @@ std::vector<DrawItem> WorldView::mapItems(int32_t zx0, int32_t zy0, int32_t zx1,
     return out;
 }
 
-std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene) {
+void WorldView::appendModel(std::vector<DrawItem> &immediate, const terrain_models::Distance &distance,
+                            std::span<DrawItem> parts) {
+    auto &draws = distance.deferred ? deferredDraws : immediate;
+    if (distance.deferred)
+        deferredModels.push_back({distance.squared, draws.size(), parts.size()});
+    for (auto &part : parts) {
+        part.viewAdmitted = true;
+        part.layer = distance.deferred ? DrawLayer::Deferred : DrawLayer::Opaque;
+        part.alpha = distance.opacity;
+        draws.push_back(std::move(part));
+    }
+}
+
+void WorldView::appendStatics(std::vector<DrawItem> &out, const terrain_models::ModelView &view,
+                              const terrain_lights::SectorRange &range, const StaticStates *states) {
+    for (const auto &[key, zone] : map.zones()) {
+        if (!range.contains(key.first, key.second))
+            continue;
+        const auto *areaStates = states ? states->zone(key.first, key.second) : nullptr;
+        for (size_t i = 0; i < zone->statics.size(); ++i) {
+            const auto &o = zone->statics[i];
+            const terrain_lights::FixedPosition base{o.x, o.y, o.z};
+            const auto bound = terrain_models::staticBound(base, {o.scale[0], o.scale[1], o.scale[2]});
+            if (!bound)
+                continue;
+            const auto distance = view.classify(*bound, base);
+            if (!distance)
+                continue;
+            const auto [mesh, voxels] = staticModel(o.kind);
+            if (!mesh)
+                continue;
+            const auto anchor = toRenderFixed(base);
+            const auto *state = areaStates && i < areaStates->size() ? &(*areaStates)[i] : nullptr;
+            if (o.kind == 10) {
+                const ChestPose pose(anchor, o.scale[0], o.rotation);
+                std::array<DrawItem, 2> parts{{{mesh, pose.base(voxels), true}}};
+                size_t count = 1;
+                if (const auto [lid, lidGrid] = staticModel(11); lid) {
+                    const float fraction = state ? openFraction(10, *state) : openFraction(10, o.state, o.timer);
+                    parts[count++] = {lid, pose.lid(lidGrid, fraction), true};
+                }
+                appendModel(out, *distance, std::span(parts).first(count));
+                continue;
+            }
+            const glm::vec3 size(o.scale[0], o.scale[1], o.scale[2]);
+            const glm::mat4 turn = glm::rotate(glm::mat4(1), glm::radians(90.f * float(o.rotation)), glm::vec3(0,0,1));
+            const glm::mat4 place = glm::translate(glm::mat4(1), anchor) * turn;
+            glm::mat4 fit = glm::scale(glm::mat4(1), glm::vec3(size.x / voxels.x));
+            // A standalone slot-11 record uses the ordinary centred placement for this corner mesh.
+            if (o.kind == 11)
+                fit = glm::translate(fit, {-voxels.x * .5f, -voxels.y * .5f, 0});
+            const float p = state ? openFraction(o.kind, *state) : 0.f;
+            glm::mat4 part(1);
+            switch (o.kind) {
+            case 1: case 2: case 3:
+                part = glm::translate(glm::mat4(1), glm::vec3(-size.x / 2,0,0)) *
+                       glm::rotate(glm::mat4(1), glm::radians(90.f * p), glm::vec3(0,0,1)) *
+                       glm::translate(glm::mat4(1), glm::vec3(size.x / 2,0,0));
+                break;
+            case 5: part = glm::translate(glm::mat4(1), glm::vec3(0,0,.8f * size.z * p)); break;
+            case 7: part = glm::translate(glm::mat4(1), glm::vec3(0,0,-size.z * p - 1)); break;
+            case 8: part = glm::translate(glm::mat4(1), glm::vec3(0,0,size.z * p)); break;
+            case 9: part = glm::rotate(glm::mat4(1), glm::radians(60.f * p - 30.f), glm::vec3(1,0,0)); break;
+            }
+            DrawItem draw{mesh, place * part * fit, true};
+            appendModel(out, *distance, std::span(&draw, 1));
+        }
+    }
+}
+
+std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const StaticStates *staticStates,
+                                       std::optional<terrain_lights::FixedPosition> cameraFixed) {
     std::vector<DrawItem> out;
     out.reserve(chunks.size() * 2 + 4096);
-    visitChunkRenderWindow(windowOrigin, [&](glm::ivec2 visited) {
-        auto *entry = renderSlots[ChunkMeshCache::index(visited)];
-        if (entry && entry->pending.populated() && !chunkLightUpdates.transferBlocked(visited)) {
-            releaseGroups(entry->renderVisit(false));
-            prepareDecorationModels(*entry);
-        }
-    });
     const float sunlight = alpha::sunlight(scene.timeOfDayMs);
     const glm::vec4 decorationTint = scene.underwater ? glm::vec4(waterlook::underwaterMaterial, sunlight)
                                                       : alpha::material(sunlight, false);
-    for (const auto &[corner, entry] : chunks) {
-        const glm::ivec2 chunk{corner.first / CHUNK, corner.second / CHUNK};
-        if (renderSlots[ChunkMeshCache::index(chunk)] == &entry) {
-            const int64_t dx = int64_t(chunk.x) - windowOrigin.x, dy = int64_t(chunk.y) - windowOrigin.y;
-            if (!meshCache.owns(chunk) || dx < 0 || dy < 0 || dx >= ChunkMeshCache::SIDE || dy >= ChunkMeshCache::SIDE)
-                continue;
+    if (!cameraFixed)
+        cameraFixed = terrain_lights::fromBlocks(worldPosition());
+    const terrain_lights::FixedPosition shift{-int64_t(origin.x) * 65536, -int64_t(origin.y) * 65536, 0};
+    const auto planes = camera(renderer.size()).lightAdmissionPlanes();
+    const float outer = alpha::RENDER_RADIUS * .2f;
+    const float sceneRange = scene.fogDistance + 22.4f;
+    std::optional<terrain_models::ModelView> modelView;
+    if (cameraFixed)
+        modelView.emplace(*cameraFixed, shift, planes, outer);
+    admittedSlots.clear();
+    deferredDraws.clear();
+    deferredModels.clear();
+    visitChunkRenderWindow(windowOrigin, [&](glm::ivec2 coordinate) {
+        auto &slot = renderSlots[ChunkMeshCache::index(coordinate)];
+        auto *entry = slot.resident;
+        if (!entry)
+            return;
+        // Pending groups transfer before the logical tag and box tests, even on a physical alias.
+        if (entry->pending.populated() && !chunkLightUpdates.transferBlocked(coordinate)) {
+            releaseGroups(entry->renderVisit(false));
+            prepareDecorationModels(*entry);
         }
-        const glm::mat4 place = glm::translate(glm::mat4(1), glm::vec3(corner.first - origin.x, corner.second - origin.y, 0));
-        if (entry.active.solid)
-            out.push_back({entry.active.solid, place, true, Shading::World});
-        if (entry.active.water)
-            out.push_back({entry.active.water, place, false, Shading::Water});
-        for (const auto &p : entry.models) {
+        if (cameraFixed && slot.admit(meshCache.owns(coordinate), *cameraFixed, shift, storedLightPlanes, sceneRange + 32.f))
+            admittedSlots.push_back(&slot);
+    });
+    terrain_models::orderSlots(admittedSlots);
+    const auto terrainDraw = [&](MeshId mesh, glm::ivec2 corner, bool water, bool admitted) {
+        if (!mesh)
+            return;
+        const auto place = glm::translate(glm::mat4(1), glm::vec3(corner - origin, 0));
+        out.push_back({mesh, place, !water, water ? Shading::Water : Shading::World});
+        out.back().viewAdmitted = admitted;
+    };
+    // Wider-radius engine geometry has no native slot in these passes.
+    for (const auto &[corner, entry] : exteriorChunks) {
+        const glm::ivec2 at(corner.first, corner.second);
+        terrainDraw(entry->active.solid, at, false, false);
+        terrainDraw(entry->active.water, at, true, false);
+    }
+    const auto cornerOf = [](const ChunkEntry &entry) {
+        return glm::ivec2(entry.bounds.low[0] / 65536, entry.bounds.low[1] / 65536);
+    };
+    // A slot's immediate models follow its own first terrain resource before the next slot.
+    for (const auto *slot : admittedSlots) {
+        const auto *entry = slot->resident;
+        terrainDraw(entry->active.solid, cornerOf(*entry), false, true);
+        if (entry->models.empty() || !terrain_models::withinDecorationRange(entry->bounds, *cameraFixed, outer + 32.f))
+            continue;
+        for (const auto &p : entry->models) {
+            const auto distance = modelView->classify(p.bound);
+            if (!distance)
+                continue;
             const glm::mat4 sway = p.sways ? motion::plantShear(clockMs, p.phase, p.height, p.scale) : glm::mat4(1);
             DrawItem draw{p.mesh, p.placed * sway * p.yaw, true};
             draw.material = terrain_lights::decorationMaterial(decorationTint, p.light, p.emits);
             draw.decorationMaterial = true;
-            out.push_back(draw);
+            appendModel(out, *distance, std::span(&draw, 1));
         }
     }
     for (const auto &[key, list] : plants)
@@ -1139,6 +1174,22 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene) {
             const glm::mat4 sway = p.sways ? motion::plantShear(clockMs, p.phase, p.height, p.scale) : glm::mat4(1);
             out.push_back({p.mesh, p.placed * sway * p.yaw, true});
         }
+    if (cameraFixed) {
+        const terrain_models::ModelView staticView(*cameraFixed, shift, planes, sceneRange * .3f);
+        // The original range uses the selected actor's whole columns. Free camera uses the eye.
+        const auto controlled = playerColumn ? terrain_lights::FixedPosition{
+            int64_t(playerColumn->x) * 65536, int64_t(playerColumn->y) * 65536, 0} : *cameraFixed;
+        appendStatics(out, staticView, terrain_lights::sectorRange(controlled, sceneRange), staticStates);
+    }
+    // Walk exactly the same membership in reverse for the second terrain resources, including ties.
+    for (auto it = admittedSlots.rbegin(); it != admittedSlots.rend(); ++it) {
+        const auto &entry = *(*it)->resident;
+        terrainDraw(entry.active.water, cornerOf(entry), true, true);
+    }
+    terrain_models::orderDeferred(deferredModels);
+    for (const auto &model : deferredModels)
+        for (size_t i = model.first; i < model.first + model.count; ++i)
+            out.push_back(std::move(deferredDraws[i]));
     // Clouds (clouds spec §3 step 7, rendering §11.4): centred (the mesh already is), turned,
     // scaled, placed; then AlphaVulkan's drift. Gated at the local player's column, gridded
     // round the camera's.
@@ -1172,7 +1223,7 @@ float WorldView::fogTarget(std::optional<terrain_lights::FixedPosition> referenc
         return alpha::RENDER_RADIUS - 22.4f;
     return alpha::fogTarget(*reference, windowOrigin, [&](int32_t i, int32_t j) {
         const glm::ivec2 at{i, j};
-        const auto *slot = renderSlots[ChunkMeshCache::index(at)];
+        const auto *slot = renderSlots[ChunkMeshCache::index(at)].resident;
         return slot && slot->active.populated() && meshCache.owns(at);
     });
 }
@@ -1255,7 +1306,7 @@ void WorldView::finishLighting(Scene &scene, const WorldItems &items, int32_t so
     const float reach = scene.fogDistance + 22.4f;
     const terrain_lights::ViewAdmission earlyView(*reference, shift, storedLightPlanes, reach);
     visitChunkRenderWindow(windowOrigin, [&](glm::ivec2 coordinate) {
-        const auto *entry = renderSlots[ChunkMeshCache::index(coordinate)];
+        const auto *entry = renderSlots[ChunkMeshCache::index(coordinate)].resident;
         if (entry && entry->activeDecorations)
             terrain_lights::appendDecorationLights(lightCandidates, *entry->activeDecorations,
                                                   earlyView, sourceClockMs, daylight);

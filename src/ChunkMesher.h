@@ -18,6 +18,7 @@ struct ChunkMeshes {
     ModelMesh solid; // positions relative to the chunk's corner (x, y) and z = 0
     ModelMesh water;
     bool preparedLighting = false;
+    int32_t slotLow = 0, slotHigh = 0; // upper accumulator, before the published corner's +1
     // Four fresh primary-stream records per terrain quad, independent of their Vulkan stride.
     int32_t vertexRecords() const;
 };

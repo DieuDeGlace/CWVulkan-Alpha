@@ -63,6 +63,7 @@ struct DrawItem {
     // depth-only and then in colour.
     uint32_t group = 0;
     bool decorationMaterial = false; // the frame tint and sun strength are already included
+    bool viewAdmitted = false; // the main scene already applied the terrain box or model sphere
 };
 
 // One corner of a blended effect triangle (weapon trails): world blocks and an RGBA colour
@@ -162,7 +163,8 @@ class Renderer {
                        Shading only = Shading::World, DrawLayer layer = DrawLayer::Opaque);
     // Draws one item inside the view planes with the given point-light row (0: the frame
     // list); false when it was skipped.
-    bool drawItem(VkCommandBuffer cmd, const DrawItem &item, const std::array<glm::vec4, 6> &planes, uint32_t lightRow);
+    bool drawItem(VkCommandBuffer cmd, const DrawItem &item, const std::array<glm::vec4, 6> &planes,
+                  uint32_t lightRow, bool shadowPass = false);
     // The terrain light row of a chunk mesh (solid or water), or 0.
     uint32_t lightRowOf(MeshId mesh) const { return mesh < meshLightRows.size() ? meshLightRows[mesh] : 0; }
     // §1.3 step 15: statics, items and opaque creatures with their motion-trail ghosts in

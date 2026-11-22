@@ -3078,7 +3078,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
         view.playerColumn = player ? std::optional<glm::ivec2>(glm::ivec2(int32_t(player->body().position[0] / 65536),
                                                                           int32_t(player->body().position[1] / 65536)))
                                    : std::nullopt;
-        items = view.items((now - start) * 1000, scene);
+        items = view.items((now - start) * 1000, scene, &statics, terrainEye);
         effects.clear();
         // Screens §5.2.2: with the map open, the zoom eases to its target, a middle drag pans
         // (turned with the camera) and a left drag turns and tilts the camera; closed, the pan
@@ -3378,51 +3378,6 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                               glm::scale(glm::mat4(1), glm::vec3(p.scale / 14.f)) *
                               glm::translate(glm::mat4(1), glm::vec3(0, 0, -size.z / 2));
             items.push_back({mesh, world, false});
-        }
-        // Interaction §4.4: statics with a moving part, posed by how far open they are.
-        if (player) {
-            const glm::dvec3 me = player->body().blocks();
-            for (const auto &[key, zone] : view.held().zones()) {
-                const auto *states = statics.zone(key.first, key.second);
-                for (size_t k = 0; states && k < zone->statics.size() && k < states->size(); k++) {
-                    const worldgen::StaticObject &o = zone->statics[k];
-                    if (!WorldView::movingStatic(o.kind))
-                        continue;
-                    const glm::dvec3 at = glm::dvec3((double)o.x, (double)o.y, (double)o.z) / 65536.0;
-                    if (glm::dot(at - me, at - me) > 200.0 * 200.0)
-                        continue;
-                    const auto [mesh, voxels] = view.staticModel(o.kind);
-                    if (!mesh)
-                        continue;
-                    const float p = openFraction(o.kind, (*states)[k]);
-                    const glm::vec3 size(o.scale[0], o.scale[1], o.scale[2]);
-                    // §4.4: one uniform factor, scale x over the model's x size.
-                    const glm::mat4 fit = glm::scale(glm::mat4(1), glm::vec3(size.x / voxels.x));
-                    const glm::mat4 turn = glm::rotate(glm::mat4(1), glm::radians(90.f * (float)o.rotation), glm::vec3(0, 0, 1));
-                    glm::mat4 part(1);
-                    switch (o.kind) {
-                    case 1: case 2: case 3: // about a hinge at one edge
-                        part = glm::translate(glm::mat4(1), glm::vec3(-size.x / 2, 0, 0)) *
-                               glm::rotate(glm::mat4(1), glm::radians(90.f * p), glm::vec3(0, 0, 1)) *
-                               glm::translate(glm::mat4(1), glm::vec3(size.x / 2, 0, 0));
-                        break;
-                    case 5: part = glm::translate(glm::mat4(1), glm::vec3(0, 0, 0.8f * size.z * p)); break;
-                    case 7: part = glm::translate(glm::mat4(1), glm::vec3(0, 0, -(size.z * p) - 1)); break;
-                    case 8: part = glm::translate(glm::mat4(1), glm::vec3(0, 0, size.z * p)); break;
-                    case 9: part = glm::rotate(glm::mat4(1), glm::radians(60.f * p - 30.f), glm::vec3(1, 0, 0)); break;
-                    default: break;
-                    }
-                    const glm::mat4 place = glm::translate(glm::mat4(1), view.toRender(at)) * turn;
-                    items.push_back({mesh, place * part * fit, true});
-                    if (o.kind == 10) // the chest's lid (kind 11's model), opened about its back edge
-                        if (const auto [lid, lidVoxels] = view.staticModel(11); lid) {
-                            const glm::mat4 hinge = glm::translate(glm::mat4(1), glm::vec3(0, size.y / 2, size.z)) *
-                                                    glm::rotate(glm::mat4(1), glm::radians(80.f * p), glm::vec3(1, 0, 0)) *
-                                                    glm::translate(glm::mat4(1), glm::vec3(0, -size.y / 2, -size.z));
-                            items.push_back({lid, place * hinge * glm::scale(glm::mat4(1), glm::vec3(size.x / lidVoxels.x)), true});
-                        }
-                }
-            }
         }
         // World objects §7: each airship at its current pose, turned by +yaw, its grid centred
         // on the position (the mesh is centred on x and y with its base at z = 0).

@@ -60,7 +60,7 @@ constexpr int FRAME_LIGHTS = 16;
 //   Ghost        a motion-trail ghost: in the objects pass, blended, depth writes off
 //   Effect       particles after the objects, depth writes off (§1.3 step 15)
 //   Translucent  a creature body queued until after the water (§1.3 step 18)
-enum class DrawLayer : uint8_t { Opaque, Ghost, Effect, Translucent };
+enum class DrawLayer : uint8_t { Opaque, Ghost, Effect, Translucent, Deferred };
 
 // Rulings §13: the point lights draws after the water see. No upload follows the water
 // loop, so they keep the last drawn water sub-mesh's chunk row, or the frame list (row 0)

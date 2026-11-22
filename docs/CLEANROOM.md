@@ -4743,3 +4743,21 @@ earlier recipient presentation record. The scroll contract has SHA-256
 The controller cursor maps engine input onto the same movement events.
 Original skin transforms and the initial drawing of an unplaced child
 remain open.
+
+## Terrain slots, scenery distance and chest assembly (2026-11-21)
+
+The clean team read each complete held source-author contract below before
+implementing from it. The indexed model table follows the held
+`alpha-interaction.md` section 4.2.
+
+- `alpha-terrain-box-range-and-static-fade.md`: 105 lines, SHA-256 `c41d587cc3ab65815416b7e938879e1eb55d08cd0fc0b80bff4ea282272fc085`.
+- `alpha-terrain-slot-bounds-and-static-model-admission.md`: 177 lines, SHA-256 `a443642e37f537ca2b489dd98a3c2b139f41a226438e5c03490ddbbde4f37b84`.
+- `alpha-terrain-slot-sort-key-and-pass-order.md`: 143 lines, SHA-256 `655a78c0d372fa05555fc0cbfba3b023509f6f6f9e740e82133ec942c024fcf8`.
+- `alpha-indexed-static-kind-10-base-and-lid-transforms.md`: 134 lines, SHA-256 `b165ce011922d4a4d09580a5f680b2768b9c1cb4e9f46fdf39a0b6bfc78d32dc`.
+
+The clean team requested the chest contract after an engine capture showed
+a detached lid. Its author did not see that capture and worked only from
+the original executable and content store.
+The implementation places both parts in original grid-corner coordinates.
+Per-band native draw identity, long equal-key ties, timed slot effects and
+original framebuffer comparison remain open.
