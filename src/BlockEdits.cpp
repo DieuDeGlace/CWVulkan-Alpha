@@ -131,6 +131,101 @@ std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int
     return out;
 }
 
+namespace {
+Block stagedBlock(const worldgen::WorldMap &world, const EditedZones &edits, int32_t x, int32_t y, int32_t z) {
+    if (uint32_t(x) >= 0x1000000u || uint32_t(y) >= 0x1000000u)
+        return worldgen::IMPLICIT_SOLID;
+    const worldgen::WorldMap::ZoneKey key{x / Zone::SIZE, y / Zone::SIZE};
+    if (const auto it = edits.find(key); it != edits.end())
+        return it->second->read(x, y, z);
+    const auto *zone = world.zone(key.first, key.second);
+    return zone ? zone->read(x, y, z) : worldgen::IMPLICIT_SOLID;
+}
+} // namespace
+
+void pruneUnsupportedDecorations(const worldgen::WorldMap &world, EditedZones &edits,
+                                 worldgen::WorldMap::ZoneKey first, worldgen::WorldMap::ZoneKey last,
+                                 std::set<std::pair<int32_t, int32_t>> *removedColumns) {
+    using Point = std::array<int64_t, 3>;
+    const auto unsupported = [&](Point raw) {
+        const int32_t x = worldgen::blockOfFixed(raw[0]), y = worldgen::blockOfFixed(raw[1]);
+        const int32_t z = worldgen::blockOfFixed(std::bit_cast<int64_t>(uint64_t(raw[2]) - 65536u));
+        if (stagedBlock(world, edits, x, y, z).type() != worldgen::AIR)
+            return false;
+        if (removedColumns)
+            removedColumns->emplace(x, y);
+        return true;
+    };
+    // Only resident keys can lose records, even when two far-apart edits give a wide rectangle.
+    for (const auto &[key, original] : world.zones()) {
+        if (key.first < first.first || key.first > last.first || key.second < first.second || key.second > last.second)
+            continue;
+        const auto prune = [&](auto member, auto remove) {
+            const auto staged = edits.find(key);
+            const auto &records = (staged == edits.end() ? *original : *staged->second).*member;
+            const auto firstRemoved = std::find_if(records.begin(), records.end(), remove);
+            if (firstRemoved == records.end())
+                return;
+            const size_t offset = size_t(firstRemoved - records.begin());
+            auto &copy = edits[key];
+            if (!copy)
+                copy = std::make_shared<Zone>(*original);
+            auto &current = copy.get()->*member;
+            auto out = current.begin() + offset;
+            for (auto entry = out + 1; entry != current.end(); ++entry)
+                if (!remove(*entry))
+                    *out++ = std::move(*entry);
+            current.erase(out, current.end());
+        };
+        prune(&Zone::plants, [&](const worldgen::Plant &p) {
+            return (p.flags & 2) && unsupported({int64_t(p.x) * 65536 + 32768, int64_t(p.y) * 65536 + 32768,
+                                                 int64_t(p.z) * 65536 - (p.sink ? 6553 : 0)});
+        });
+        prune(&Zone::sprites, [&](const worldgen::Sprite &s) { return (s.flags & 2) && unsupported({s.x, s.y, s.z}); });
+        // Both tree generators initialize their original decoration flag word to two.
+        prune(&Zone::leafSources, [&](const worldgen::LeafSource &leaf) { return unsupported({leaf.x, leaf.y, leaf.z}); });
+        // Source modules expose the song positions as a separate vector. Compact their generation
+        // samples with the positions and release the removed markers' encounter IDs.
+        const auto staged = edits.find(key);
+        const auto &posts = (staged == edits.end() ? *original : *staged->second).songPosts;
+        if (std::none_of(posts.begin(), posts.end(), unsupported))
+            continue;
+        auto &copy = edits[key];
+        if (!copy)
+            copy = std::make_shared<Zone>(*original);
+        std::set<Point> removed;
+        size_t kept = 0;
+        for (size_t i = 0; i < copy->songPosts.size(); ++i) {
+            const auto &post = copy->songPosts[i];
+            if (unsupported(post)) {
+                removed.insert(post);
+                continue;
+            }
+            copy->songPosts[kept++] = post;
+        }
+        copy->songPosts.resize(kept);
+        std::erase_if(copy->songGenerationLight, [&](const auto &entry) { return removed.contains(entry.position); });
+        std::erase_if(copy->songEncounters, [&](const auto &entry) { return removed.contains(entry.first); });
+    }
+}
+
+void pruneAfterLiveEdits(const worldgen::WorldMap &world, EditedZones &edits, std::span<const BlockEdit> records) {
+    if (records.empty())
+        return;
+    const auto keyOf = [](const BlockEdit &e) {
+        return worldgen::WorldMap::ZoneKey{std::max(e.x, 0) / Zone::SIZE, std::max(e.y, 0) / Zone::SIZE};
+    };
+    auto first = keyOf(records.front()), last = first;
+    for (const auto &record : records.subspan(1)) {
+        const auto key = keyOf(record);
+        first.first = std::min(first.first, key.first);
+        first.second = std::min(first.second, key.second);
+        last.first = std::max(last.first, key.first);
+        last.second = std::max(last.second, key.second);
+    }
+    pruneUnsupportedDecorations(world, edits, first, last);
+}
+
 BlueprintPlacement stageBlueprint(const worldgen::WorldMap &world, const CubModel &model,
                                   const std::array<int32_t, 3> &base, int8_t rotation, int32_t day,
                                   const GapFill &gapFill) {
@@ -145,13 +240,7 @@ BlueprintPlacement stageBlueprint(const worldgen::WorldMap &world, const CubMode
         return *copy;
     };
     const ReadBlock read = [&](int32_t x, int32_t y, int32_t z) {
-        if (uint32_t(x) >= worldWidth || uint32_t(y) >= worldWidth)
-            return worldgen::IMPLICIT_SOLID;
-        const Key key{x / Zone::SIZE, y / Zone::SIZE};
-        if (const auto found = placement.zones.find(key); found != placement.zones.end())
-            return found->second->read(x, y, z);
-        const auto *zone = world.zone(key.first, key.second);
-        return zone ? zone->read(x, y, z) : worldgen::IMPLICIT_SOLID;
+        return stagedBlock(world, placement.zones, x, y, z);
     };
     visitBlueprint(model, base, rotation, read, [&](const BlueprintBlock &cell) {
         const auto &b = cell.block;
@@ -168,50 +257,10 @@ BlueprintPlacement stageBlueprint(const worldgen::WorldMap &world, const CubMode
     });
 
     const auto zoneOf = [](int64_t block) { return int32_t(std::max(block, int64_t(0)) / Zone::SIZE); };
-    const auto block = [](int64_t raw) { return std::bit_cast<int32_t>(uint32_t(raw / 65536 - (raw < 0 ? 1 : 0))); };
-    const auto support = [&](int64_t x, int64_t y, int64_t z) {
-        const int64_t below = std::bit_cast<int64_t>(uint64_t(z) - 65536u);
-        return std::array{block(x), block(y), block(below)};
-    };
-    const int32_t lastX = std::min(lastZone, zoneOf(int64_t(base[0]) + model.sx));
-    const int32_t lastY = std::min(lastZone, zoneOf(int64_t(base[1]) + model.sy));
-    for (int32_t x = zoneOf(base[0]); x <= lastX; x++)
-        for (int32_t y = zoneOf(base[1]); y <= lastY; y++) {
-            const Key key{x, y};
-            const auto *zone = world.zone(x, y);
-            if (!zone)
-                continue;
-            const auto prune = [&](auto entries, const auto &supportCell) {
-                const auto &original = zone->*entries;
-                const auto discard = [&](const auto &entry) {
-                    if (!(entry.flags & 2))
-                        return false;
-                    const auto [sx, sy, sz] = supportCell(entry);
-                    if (read(sx, sy, sz).type() != worldgen::AIR)
-                        return false;
-                    placement.changedColumns.emplace(sx, sy);
-                    return true;
-                };
-                const auto first = std::find_if(original.begin(), original.end(), discard);
-                if (first == original.end())
-                    return;
-                auto &current = copyZone(key, *zone).*entries;
-                const auto start = current.begin() + (first - original.begin());
-                auto out = start;
-                for (auto entry = start + 1; entry != current.end(); ++entry)
-                    if (!discard(*entry))
-                        *out++ = std::move(*entry);
-                current.erase(out, current.end());
-            };
-            // The original zone keeps both terrain plants and prefab sprites in this list.
-            prune(&Zone::plants, [&](const worldgen::Plant &plant) {
-                return support(int64_t(plant.x) * 65536 + 32768, int64_t(plant.y) * 65536 + 32768,
-                               int64_t(plant.z) * 65536 - (plant.sink ? 6553 : 0));
-            });
-            prune(&Zone::sprites, [&](const worldgen::Sprite &sprite) {
-                return support(sprite.x, sprite.y, sprite.z);
-            });
-        }
+    const Key first{zoneOf(base[0]), zoneOf(base[1])};
+    const Key last{std::min(lastZone, zoneOf(int64_t(base[0]) + model.sx)),
+                   std::min(lastZone, zoneOf(int64_t(base[1]) + model.sy))};
+    pruneUnsupportedDecorations(world, placement.zones, first, last, &placement.changedColumns);
     return placement;
 }
 

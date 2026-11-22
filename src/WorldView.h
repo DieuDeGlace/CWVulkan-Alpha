@@ -144,7 +144,8 @@ class WorldView {
     void restoreDiscoveryCount(uint32_t count) { discoveredCount = count; }
     // Restore saved cells with the general writer. The other sources use
     // the removal rule and mark the published mesh cache at frame end.
-    void applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source);
+    void applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source,
+                    std::optional<glm::ivec2> savedArea = {});
     void relightAfterDestruction(const std::array<int64_t, 3> &centre, float radius);
     // Offline kind 7 consumes the actor's live placement fields and returns
     // only the colored history records, in stencil order.

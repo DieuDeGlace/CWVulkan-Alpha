@@ -3444,3 +3444,28 @@ of 113.79 ms and a worst frame of 333.68 ms. Peak working set reached
 open. The final Vulkan frame showed the returned forest and town.
 
 The integrated x64 build reproduced all 1,120 plant samples. Four focused tests passed in 15.75 seconds and all 60 tests passed in 175.90 seconds. The production controller check and five client flows passed, including connected play and save/reload. The package check verified 36 hashes across 37 files.
+
+## Unsupported decorations after block edits (2026-11-21)
+
+Two checks fail against the preceding implementation. One leaves tree
+markers floating after a blueprint. The other skips intermediate resident
+zones when both edit endpoints lie outside them. The revised checks cover
+water support, a sunk lily, an unflagged sprite, song samples and original
+encounter order. Readers holding the preceding snapshot keep its contents.
+
+A seed-123 world-view fixture placed a song marker and an unflagged sprite
+over air in the generated zone. A positive stored edit count
+with zero surviving edits reduced 1,415 records to 1,414. The retained
+snapshot still held 1,415, with the same resident object identity. A
+second run without the markers kept all 1,413 records. These checks use
+the engine's CPU world view and a test renderer. Matching original-client
+save playback still requires native observation.
+
+One SDK regression used an ordered plant and song marker. After removing
+the plant, appending a sprite reused the surviving song's ordinal, one.
+The zone now remembers the next encounter rank across removals. The
+replacement sprite receives rank two and follows the surviving song in
+the combined resident list. Reading absent terrain for a blueprint also
+preserves the existing implicit-solid fallback.
+
+The integrated x64 world view reproduced both counts across 37 mesh uploads. Five focused tests passed in 26.46 seconds and all 60 tests passed in 370.06 seconds. The production controller test and all five client flows passed. Packaging verified 36 hashes across 37 files.

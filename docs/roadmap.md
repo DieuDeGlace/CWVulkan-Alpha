@@ -23,6 +23,10 @@ Differences from the Steam engine that shape the plan:
 
 ## Done
 
+- [x] Remove unsupported terrain decorations throughout the client edit
+  rectangle, including held zones between unloaded endpoints. Restore a
+  saved area's support check when every serialized edit has expired.
+
 - [x] Sample decoration lighting before publishing each newly generated
   zone. Keep generated samples associated with the correct source-module
   song positions across reordering, removal and duplicate insertion.

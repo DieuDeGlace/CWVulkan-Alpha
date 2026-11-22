@@ -554,8 +554,8 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
                 statics.restore(zx, zy, saved->staticStates);
                 // Block edits §4.2: the edits of the last three days are written again.
                 const auto &kept = blockEdits.restore(zx, zy, saved->blockEdits, (int32_t)session->clock.day);
-                if (!kept.empty())
-                    view.applyEdits(kept, TerrainEditSource::Saved);
+                if (!saved->blockEdits.empty())
+                    view.applyEdits(kept, TerrainEditSource::Saved, glm::ivec2(zx, zy));
             }
         worldItems.takeChanged(); // (what came from the save is already saved)
         statics.takeChanged();

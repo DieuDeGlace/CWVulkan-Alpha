@@ -451,7 +451,8 @@ void WorldView::addZone(std::shared_ptr<Zone> zone) {
     });
 }
 
-void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source) {
+void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSource source,
+                           std::optional<glm::ivec2> savedArea) {
     // Each held zone the records touch is copied, changed and swapped in, so the mesh jobs
     // still reading the old one are not disturbed.
     const bool saved = source == TerrainEditSource::Saved;
@@ -463,7 +464,9 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSourc
                 changedLightColumns.emplace_back(e.x, e.y);
         }
     }
-    std::map<Key, std::shared_ptr<Zone>> replacements;
+    if (saved && savedArea && map.zone(savedArea->x, savedArea->y))
+        byZone.try_emplace(Key{savedArea->x, savedArea->y}); // every serialized row may already have expired
+    EditedZones replacements;
     for (const auto &[key, list] : byZone) {
         auto zone = std::make_shared<Zone>(*map.zone(key.first, key.second));
         const GapFill rock = [&](int32_t x, int32_t y, int32_t z) { return terrainGenerator().gapBlock(x, y, z, *zone); };
@@ -474,10 +477,22 @@ void WorldView::applyEdits(const std::vector<BlockEdit> &edits, TerrainEditSourc
                 applyLive(*zone, *e, rock);
             remeshColumn(editedChunks, e->x, e->y);
         }
-        dropFloating(*zone);
         replacements.emplace(key, std::move(zone));
     }
-    publishEditedZones(std::move(replacements), saved || source == TerrainEditSource::Live, saved);
+    if (saved) {
+        // A positive stored edit count belongs to one newly restored area.
+        for (const auto &[key, records] : byZone)
+            pruneUnsupportedDecorations(map, replacements, key, key);
+    } else {
+        // All received coordinates contribute bounds, including records for missing columns.
+        // Surviving active render copies change only through the ordinary mesh transfer.
+        pruneAfterLiveEdits(map, replacements, edits);
+    }
+    // A cleanup-only neighbor has no changed terrain to relight.
+    if (saved || source == TerrainEditSource::Live)
+        for (const auto &[key, list] : byZone)
+            terrainGenerator().relight(*replacements.at(key));
+    publishEditedZones(std::move(replacements), false, saved);
 }
 
 void WorldView::relightAfterDestruction(const std::array<int64_t, 3> &centre, float radius) {

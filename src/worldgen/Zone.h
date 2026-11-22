@@ -2,6 +2,7 @@
 #include "creatures/InventoryValue.h"
 // A generated zone: 256 x 256 block columns (docs/specs/alpha-worldgen-terrain.md §1), and the
 // things the generator places on it (plants, tree spots, ground items).
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -292,12 +293,22 @@ struct Zone {
     std::vector<std::pair<std::array<int64_t, 3>, uint32_t>> songEncounters;
     struct SongSample { std::array<int64_t, 3> position; float light; };
     std::vector<SongSample> songGenerationLight; // formation positions survive direct edits to the SDK vector
-    uint32_t nextDecoration() const { return uint32_t(plants.size() + sprites.size() + leafSources.size() + songPosts.size()); }
-    void addPlant(Plant record) { record.encounter = nextDecoration(); plants.push_back(record); }
-    void addSprite(Sprite record) { record.encounter = nextDecoration(); sprites.push_back(record); }
-    void addLeafSource(LeafSource record) { record.encounter = nextDecoration(); leafSources.push_back(record); }
+    // Removal from a typed collection must not reuse the rank of a surviving decoration.
+    uint32_t encounterFloor = 0;
+    uint32_t nextDecoration() const {
+        const size_t size = plants.size() + sprites.size() + leafSources.size() + songPosts.size();
+        return uint32_t(std::clamp<size_t>(size, encounterFloor, UINT32_MAX));
+    }
+    uint32_t claimDecorationEncounter() {
+        const uint32_t rank = nextDecoration();
+        encounterFloor = rank == UINT32_MAX ? rank : rank + 1;
+        return rank;
+    }
+    void addPlant(Plant record) { record.encounter = claimDecorationEncounter(); plants.push_back(record); }
+    void addSprite(Sprite record) { record.encounter = claimDecorationEncounter(); sprites.push_back(record); }
+    void addLeafSource(LeafSource record) { record.encounter = claimDecorationEncounter(); leafSources.push_back(record); }
     void addSongPost(std::array<int64_t, 3> position) {
-        songEncounters.emplace_back(position, nextDecoration());
+        songEncounters.emplace_back(position, claimDecorationEncounter());
         songPosts.push_back(position);
     }
     int32_t originX() const { return zx * SIZE; }

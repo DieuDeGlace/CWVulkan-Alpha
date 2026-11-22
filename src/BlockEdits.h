@@ -60,10 +60,17 @@ std::array<int32_t, 3> placementBase(const int64_t position[3], glm::vec3 aim);
 // `read` gives it. Blocks the world protects (flag 0x40) are left alone.
 std::vector<BlueprintBlock> placeBlueprint(const CubModel &model, std::array<int32_t, 3> base, int32_t quarterTurns,
                                         const ReadBlock &read);
+using EditedZones = std::map<worldgen::WorldMap::ZoneKey, std::shared_ptr<worldgen::Zone>>;
+// Scan the entire decoration list of every resident area in the inclusive client cleanup rectangle.
+void pruneUnsupportedDecorations(const worldgen::WorldMap &world, EditedZones &edits,
+                                 worldgen::WorldMap::ZoneKey first, worldgen::WorldMap::ZoneKey last,
+                                 std::set<std::pair<int32_t, int32_t>> *removedColumns = nullptr);
+void pruneAfterLiveEdits(const worldgen::WorldMap &world, EditedZones &edits, std::span<const BlockEdit> records);
+
 // Offline kind 7 stages live world changes while retaining an ordered stream
 // of colored records for the subsequent history update.
 struct BlueprintPlacement {
-    std::map<worldgen::WorldMap::ZoneKey, std::shared_ptr<worldgen::Zone>> zones;
+    EditedZones zones;
     std::set<std::pair<int32_t, int32_t>> changedColumns;
     std::vector<BlockEdit> records;
 };

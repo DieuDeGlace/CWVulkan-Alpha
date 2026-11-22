@@ -62,6 +62,11 @@ static void checkOfflineBlueprint() {
     east->plants.push_back({301, 41, 8, .1f, 0, 22, 4});
     east->place(302, 41, 6, {1, 2, 3, ROCK});
     east->plants.push_back({302, 41, 8, .1f, 0, 31, 2, true});
+    east->addLeafSource({303 * 65536ll, 42 * 65536ll, 8 * 65536ll, .5f, .6f, .7f});
+    east->addSongPost({304 * 65536ll, 42 * 65536ll, 8 * 65536ll});
+    east->addSongPost({305 * 65536ll, 42 * 65536ll, 8 * 65536ll});
+    east->place(305, 42, 7, {2, 2, 2, WATER});
+    east->songGenerationLight = {{east->songPosts[0], 47.f}, {east->songPosts[1], 127.f}};
     world.add(west);
     world.add(east);
     world.add(far);
@@ -98,11 +103,45 @@ static void checkOfflineBlueprint() {
         same(right->second->sprites.size() == 1 && right->second->sprites.front().flags == 0 &&
                   placed.changedColumns.contains({300, 40}) && east->sprites.size() == 2,
               1, "ground-resting sprite cleanup spans the admitted zone and preserves the earlier snapshot");
+        same(right->second->leafSources.empty() && right->second->songPosts.size() == 1 &&
+                 right->second->songPosts.front()[0] == 305 * 65536ll && east->leafSources.size() == 1 &&
+                 east->songPosts.size() == 2 && right->second->songGenerationLight.size() == 1 &&
+                 right->second->songGenerationLight.front().light == 127.f &&
+                 right->second->songEncounters.size() == 1 && placed.changedColumns.contains({303, 42}) &&
+                 placed.changedColumns.contains({304, 42}),
+             1, "flag-two tree markers join support pruning and water supports the surviving song post");
         const auto &plants = right->second->plants;
         same(plants.size() == 2 && plants.front().kind == 22 && plants.back().kind == 31 &&
                   placed.changedColumns.contains({301, 40}) && east->plants.size() == 3,
               1, "the same list cleanup removes ground plants and uses the lily's actual fixed support height");
     }
+
+    EditedZones pruned;
+    const std::array<BlockEdit, 2> distant{{{-300, 40, 8}, {900, 40, 8}}};
+    pruneAfterLiveEdits(world, pruned, distant);
+    same(pruned.contains({1, 0}) && pruned.contains({2, 0}) && pruned.at({2, 0})->sprites.empty() &&
+             !pruned.contains({0, 0}) && world.zone(2, 0)->sprites.size() == 1,
+         1, "two unheld edit endpoints still prune their intermediate held areas without cloning untouched ones");
+
+    // A source module can append a different decoration type after an edit removed the first record.
+    auto ordered = std::make_shared<Zone>();
+    ordered->addPlant({1, 1, 2});
+    ordered->place(2, 1, 1, {1, 2, 3, ROCK});
+    ordered->addSongPost({2 * 65536, 65536, 2 * 65536});
+    WorldMap editedMap;
+    editedMap.add(ordered);
+    EditedZones continued;
+    pruneUnsupportedDecorations(editedMap, continued, {0, 0}, {0, 0});
+    if (const auto found = continued.find({0, 0}); found != continued.end()) {
+        found->second->addSprite({14, 3 * 65536, 65536, 2 * 65536});
+        editedMap.replaceTerrain(found->second);
+        editedMap.refreshDecorations({0, 0});
+        const auto list = editedMap.decorations(0, 0);
+        same(list && list->size() == 2 && list->front().sprite.kind == 61 && list->back().sprite.kind == 14 &&
+                 list->front().sprite.encounter < list->back().sprite.encounter,
+             1, "SDK appends retain encounter order after removal across typed lists");
+    } else
+        same(0, 1, "edit removed the unsupported first record");
 
     WorldMap partial;
     partial.add(west);

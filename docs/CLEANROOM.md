@@ -4685,3 +4685,14 @@ generated more decorations. The engine now samples ordinary plants, sprites,
 leaf sources and song positions before it publishes a fresh zone. It also
 resamples the engine's restored terrain after applying saved block changes.
 The original's live restore timing remains open.
+
+## Decoration support after client terrain edits (2026-11-21)
+
+The clean team used the held resident-zone contract covering the client
+batch, its affected bounds, the support flag and positive saved-edit count.
+Its SHA-256 is `b6b0d66524c0d4bec6fd831e34f5c3051c0476639e3b98a384e222074f98a720`.
+The check uses the edited terrain and includes resident areas between the
+batch endpoints. The engine compacts its typed decoration collections and
+retains earlier snapshots for readers. Indexed statics and spawn records
+keep their identities. Original-client playback across a live removal and
+restore remains open.
