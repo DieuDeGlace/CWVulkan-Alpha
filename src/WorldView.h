@@ -120,6 +120,8 @@ class WorldView {
     std::vector<DrawItem> items(double clockMs, const Scene &scene = {}, const StaticStates *staticStates = nullptr,
                                 std::optional<terrain_lights::FixedPosition> cameraFixed = {},
                                 const sound::AmbienceFrame &ambience = {});
+    void buildItems(std::vector<DrawItem> &out, double clockMs, const Scene &scene, const StaticStates *staticStates,
+                    std::optional<terrain_lights::FixedPosition> cameraFixed, const sound::AmbienceFrame &ambience);
     // Screens §5.1.2, §5.2.4: the map tiles of the zones (zx0..zx1, zy0..zy1) in render-origin
     // blocks, each rising into place over its first 250 ms (`dtMs` advances that), with the
     // land-border markers. With `extras` (the world map) undiscovered tiles are dimmed and

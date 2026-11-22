@@ -3065,7 +3065,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             scene.currentFogAngle = player ? std::optional(player->cameraPitch()) : std::nullopt;
             scene.mapFog = interface.mapOpen;
         }
-        // An active group transferred by items() later in this frame first affects the next update.
+        // An active group transferred by the draw-list build later in this frame first affects the next update.
         const bool terrainWait = player && options.connect.empty() &&
                                  interface.terrainWaitVisible(worldMatches, fogDistance.value());
         scene.seconds = now;
@@ -3083,7 +3083,7 @@ int runWorld(GLFWwindow *window, Renderer &renderer, const Content &content, con
             std::bit_cast<int32_t>(uint32_t(int64_t(scene.timeOfDayMs))),
             std::bit_cast<int32_t>(worldElapsedMs), frameElapsedMs, worldDraw,
             [&](const sound::Request &call) { playRelative(call.id, call.position, reference, call.volume, call.pitch); }};
-        items = view.items((now - start) * 1000, scene, &statics, reference, ambience);
+        view.buildItems(items, (now - start) * 1000, scene, &statics, reference, ambience);
         effects.clear();
         // Screens §5.2.2: with the map open, the zoom eases to its target, a middle drag pans
         // (turned with the camera) and a left drag turns and tilts the camera; closed, the pan

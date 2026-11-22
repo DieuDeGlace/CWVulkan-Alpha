@@ -1107,6 +1107,14 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const
                                        std::optional<terrain_lights::FixedPosition> cameraFixed,
                                        const sound::AmbienceFrame &ambience) {
     std::vector<DrawItem> out;
+    buildItems(out, clockMs, scene, staticStates, cameraFixed, ambience);
+    return out;
+}
+
+void WorldView::buildItems(std::vector<DrawItem> &out, double clockMs, const Scene &scene,
+                           const StaticStates *staticStates, std::optional<terrain_lights::FixedPosition> cameraFixed,
+                           const sound::AmbienceFrame &ambience) {
+    out.clear();
     out.reserve(chunks.size() * 2 + 4096);
     const float sunlight = alpha::sunlight(scene.timeOfDayMs);
     const glm::vec4 decorationTint = scene.underwater ? glm::vec4(waterlook::underwaterMaterial, sunlight)
@@ -1223,7 +1231,6 @@ std::vector<DrawItem> WorldView::items(double clockMs, const Scene &scene, const
             out.push_back({cloudMesh, m, true, Shading::Cloud});
         }
     }
-    return out;
 }
 
 float WorldView::fogTarget(std::optional<terrain_lights::FixedPosition> reference) const {

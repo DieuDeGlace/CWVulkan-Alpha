@@ -4796,3 +4796,11 @@ was also read. Its additional padding, identity alias and wrap details await
 independent re-certification. The newer record supplements it. The owner’s
 core quest-ally rule still applies in the engine. Original gameplay timing,
 full visibility and later target actions remain separate acceptance work.
+
+## Reusing the world draw list (2026-11-22)
+
+The client clears and refills its existing draw vector at the same point
+in the frame. The by-value world-view entry remains available to callers.
+Both paths use the same gather and sort. This is an engine storage change.
+The published terrain slot admission, point lighting and ambient draw-order
+contracts continue to govern the observable output.

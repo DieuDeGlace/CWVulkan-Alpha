@@ -360,6 +360,10 @@ Differences from the Steam engine that shape the plan:
   the exact ID; negative replies retain the prior ID for sending and remote
   classification. Full actor replacement, aliases, saved-state restoration and
   exceptional transport behavior remain open.
+- [x] Reuse the client world draw list between frames. Two seed-123 travel
+  runs returned twice over 6,144 blocks each. In a separate 96-frame fixture,
+  warm frames avoided one draw-list allocation while preserving every draw,
+  ambient call and chunk light selection. Frame-rate impact remains unmeasured.
 - [x] The NPC combat update carries the full signed decision step to its
   countdowns. Production regressions cover the three different target tie
   rules and the order of the two random draws on an inventory use.

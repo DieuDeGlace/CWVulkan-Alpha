@@ -3646,3 +3646,25 @@ A decision step of 16,777,217 milliseconds exposed an integer-to-float
 round trip in the ordinary NPC update. Both countdowns now retain the
 last millisecond and finish at 2. The prior client finished at 3. This
 constructed boundary tests integer precision. Native play remains open.
+
+## World draw-list allocation and streaming (2026-11-22)
+
+A 96-frame comparison at two seed-123 locations restored the resident
+world state between builders. All 17,355 ordered world draw records
+matched, including 6,305 decoration light owners. The 5,593 random draws,
+83 sound requests and 46,464 per-chunk light selection rows also matched. In
+94 warm frames the client retained capacity for 5,064 draw items. This
+removed one 567,207-byte heap request per frame in the measured x64 build,
+including allocator overhead. Cold-start allocations were excluded.
+
+Two instrumented client runs traveled 6,144 blocks each. All five stops
+per run reached 90 consecutive ready presentations with all nine zones
+resident. The old builder ran first on 7,706 frames (1,708,554 world
+draw records). The new builder ran first on 7,318 frames (1,467,576
+world draw records). On each frame both produced identical world draws,
+slot light candidates and ambient calls. The second builder saw the
+first builder's committed terrain transfers. The separate restored-state
+test covered those transitions from the same initial state. The travel
+observer used fixed 16 ms updates and exercised both builders each frame.
+These measurements establish a reduction in allocation traffic. Frame-rate
+and peak-memory impact remain unmeasured.
