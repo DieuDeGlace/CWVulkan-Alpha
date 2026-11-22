@@ -3631,3 +3631,18 @@ instances of one model. Their center pixels were (168, 0, 0) and
 when their slots had no sources. Both became (0, 213, 0) in the deferred
 pass with a green frame light and no water draw. These are engine captures
 with synthetic geometry. An original-client pixel comparison remains open.
+
+## NPC target selection and decision time (2026-11-22)
+
+The production NPC update chose the last signed key on equal remembered
+scores, the first resolvable key on equal positive linked scores, and the
+first accepted key on equal fresh distances. All three distant-target cases
+consumed zero random draws. Reversing each comparison failed its matching
+regression. On inventory use the first two seeded draws were 4,068 and 213.
+Their X and Y components matched bit for bit, Z was positive zero, and the
+initial 20,000 countdown was preserved. Swapping those draws failed the check.
+
+A decision step of 16,777,217 milliseconds exposed an integer-to-float
+round trip in the ordinary NPC update. Both countdowns now retain the
+last millisecond and finish at 2. The prior client finished at 3. This
+constructed boundary tests integer precision. Native play remains open.

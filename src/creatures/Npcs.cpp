@@ -1040,12 +1040,12 @@ void Npcs::think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &player
         return;
     const float dtMs = (float)milliseconds;
     if (npc.fighter.controller == 5) { // pets §10: Combat, then Companion
-        if (!combat(npc, dtMs, players, block, frame, map))
+        if (!combat(npc, milliseconds, players, block, frame, map))
             companion(npc, npc.fighter.ownerId, players, milliseconds, block, map);
         return;
     }
     if (npc.behaviour == 7) { // created root: retry Combat, Companion, Wander in that order
-        if (!combat(npc, dtMs, players, block, frame, map) && !companion(npc, npc.follows, players, milliseconds, block, map)) {
+        if (!combat(npc, milliseconds, players, block, frame, map) && !companion(npc, npc.follows, players, milliseconds, block, map)) {
             npc.fighter.mode = npc.body.mode;
             created::wander(npc.fighter, npc.body, npc.fighter.behaviorReference, npc.createdWalkMs,
                             milliseconds, [&] { return draw(); });
@@ -1062,32 +1062,32 @@ void Npcs::think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &player
     }
     // Wildlife §4.9: the cell monster, the group leader and its members.
     if (npc.behaviour == 1) {
-        if (!combat(npc, dtMs, players, block, frame, map))
+        if (!combat(npc, milliseconds, players, block, frame, map))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 5) { // a location's ring creature: Combat, WalkPath, RandomInteraction
-        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block, map) && !randomInteraction(npc, dtMs, block))
+        if (!combat(npc, milliseconds, players, block, frame, map) && !walkPath(npc, dtMs, block, map) && !randomInteraction(npc, dtMs, block))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == 6) { // a location's group leader: Combat, WalkPath, RandomWalk
-        if (!combat(npc, dtMs, players, block, frame, map) && !walkPath(npc, dtMs, block, map))
+        if (!combat(npc, milliseconds, players, block, frame, map) && !walkPath(npc, dtMs, block, map))
             randomWalk(npc, dtMs);
         return;
     }
     if (npc.behaviour == worldgen::MISSION_BEHAVIOUR) { // trails spec §3.6: Combat, WalkPath (r = 2)
-        if (!combat(npc, dtMs, players, block, frame, map))
+        if (!combat(npc, milliseconds, players, block, frame, map))
             walkPath(npc, dtMs, block, map);
         return;
     }
     if (npc.behaviour == 4) { // a shopkeeper: Combat, LookAtPlayer, WalkPath to its counter
-        if (!combat(npc, dtMs, players, block, frame, map) && !lookAtPlayer(npc, players))
+        if (!combat(npc, milliseconds, players, block, frame, map) && !lookAtPlayer(npc, players))
             walkPath(npc, dtMs, block, map);
         return;
     }
     if (npc.behaviour == 2 || npc.behaviour == 3) {
-        if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players))
+        if (combat(npc, milliseconds, players, block, frame, map) || lookAtPlayer(npc, players))
             return;
         if (npc.behaviour == 3 && companion(npc, npc.follows, players, milliseconds, block, map))
             return;
@@ -1095,7 +1095,7 @@ void Npcs::think(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &player
             randomWalk(npc, dtMs);
         return;
     }
-    if (combat(npc, dtMs, players, block, frame, map) || lookAtPlayer(npc, players) || spawnLocation(npc, block))
+    if (combat(npc, milliseconds, players, block, frame, map) || lookAtPlayer(npc, players) || spawnLocation(npc, block))
         return;
     if (npc.fighter.characterClass == 0x88 && randomInteraction(npc, dtMs, block)) // trails spec §3.6
         return;
@@ -1234,7 +1234,7 @@ std::array<int64_t, 3> attackOrigin(const Body &body) { return offsetPoint(body,
 void setFollowPoint(Body &body) { std::copy(body.position, body.position + 3, body.follow); }
 
 // §13.2
-bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
+bool Npcs::combat(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
                   const worldgen::WorldMap &map) {
     Combatant &c = npc.fighter;
     selection::Services services;
@@ -1276,7 +1276,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
                !peacefulAnimal(target.fighter->type, target.fighter->appearanceFlags);
     };
     selection::TargetSelection selector{{&c, &npc.body},
-        {npc.specialMs, npc.chaseMs, npc.cooldownMs, npc.targetRange}, int32_t(dtMs), services};
+        {npc.specialMs, npc.chaseMs, npc.cooldownMs, npc.targetRange}, milliseconds, services};
     selector.begin();
     if (selector.scanning())
         for (const auto &[key, entry] : actors)
@@ -1337,7 +1337,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
     if (separationSquared > reachSquared || !seen) {
         // Chase, for up to 20 s. Giving up changes neither the action nor the intent, so the
         // walk toward the target goes on until the next behaviour sets another (§8.3).
-        npc.chaseMs = std::bit_cast<int32_t>(uint32_t(npc.chaseMs) + uint32_t(int32_t(dtMs)));
+        npc.chaseMs = std::bit_cast<int32_t>(uint32_t(npc.chaseMs) + uint32_t(milliseconds));
         if (npc.chaseMs > 20000) {
             npc.target = 0;
             npc.threat = 0;
@@ -1573,7 +1573,7 @@ bool Npcs::combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const 
         // latches the target's follow point; after that the aim is the held point.
         if (c.action >= 0x1E && c.action <= 0x21) {
             const int32_t B = phases(c, c.action).windUp;
-            const int32_t past = std::bit_cast<int32_t>(uint32_t(int32_t(c.actionMs)) - uint32_t(int32_t(dtMs)));
+            const int32_t past = std::bit_cast<int32_t>(uint32_t(c.actionMs) - uint32_t(milliseconds));
             if (past > B)
                 npc.body.look = separationOf(npc.castPoint, npc.body.position);
             else

@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 92 and the rulings. The 321 tracked contracts
-comprise 286 A, 30 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 93 and the rulings. The 322 tracked contracts
+comprise 287 A, 30 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -172,6 +172,8 @@ Batch 89 records the shared item-list layout, pointer movement and refresh order
 Batch 90 records terrain-slot bounds, box range and fade, slot visit order and the chest base and lid placement.
 Batch 91 records ambient bird, owl and cricket decisions during the pre-sort terrain-slot walk.
 Batch 92 records which point lights reach immediate terrain decorations.
+Batch 93 adds the independent review of target selection, ties and initial combat timing.
+The historical target-selection record awaits review of its additional details.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -228,6 +230,7 @@ Batch 92 records which point lights reach immediate terrain decorations.
 | `alpha-combat-helper-tables.md` | A | 348 | 0 |
 | `alpha-combat-stat-queries.md` | A | 294 | 0 |
 | `alpha-combat-terrain-lighting.md` | A | 183 | 0 |
+| `alpha-combat-target-ties-and-timing.md` | A | 181 | 0 |
 | `alpha-common-action-processing-state.md` | A | 141 | 0 |
 | `alpha-common-hit-input-construction.md` | A | 226 | 1 |
 | `alpha-companion-direct-route-geometry.md` | A | 109 | 1 |

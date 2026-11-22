@@ -360,6 +360,9 @@ Differences from the Steam engine that shape the plan:
   the exact ID; negative replies retain the prior ID for sending and remote
   classification. Full actor replacement, aliases, saved-state restoration and
   exceptional transport behavior remain open.
+- [x] The NPC combat update carries the full signed decision step to its
+  countdowns. Production regressions cover the three different target tie
+  rules and the order of the two random draws on an inventory use.
 - [x] Bounded target-selection prefix: entry/inventory precedence, preliminary
   and linked lookups, live signed candidate order, fixed-coordinate binary32
   scoring, visibility/classifier gates, fallback relationship publication and

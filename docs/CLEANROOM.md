@@ -4784,3 +4784,15 @@ slot's existing light row through either of its terrain mesh handles. This
 also covers a populated slot whose only drawable terrain resource is water.
 The held record locates a frame-level upload before the subsequent zone
 pass. The later water and translucent passes have their own state rules.
+
+## NPC target choice and integer decision timing (2026-11-22)
+
+The clean team read the complete 180-line independent source-author review.
+`alpha-combat-target-ties-and-timing.md` has SHA-256
+`9ca13076813b7befcac4e99b9a841954e45219141925de45dac4e09a3b33079b`. It covers the three tie rules, signed decision
+time, the initial 20,000 countdown and the two ordered inventory-use draws.
+The complete 77-line historical `alpha-behavior-target-selection.md` record
+was also read. Its additional padding, identity alias and wrap details await
+independent re-certification. The newer record supplements it. The owner’s
+core quest-ally rule still applies in the engine. Original gameplay timing,
+full visibility and later target actions remain separate acceptance work.

@@ -524,6 +524,45 @@ Npc npc(uint64_t id, double x, double y = 10.5) {
     n.thinkMs = 32;
     return n;
 }
+
+void productionTies(const worldgen::WorldMap &map, const BlockType &floor) {
+    enum class Choice { Remembered, Linked, Fresh };
+    for (const auto choice : {Choice::Remembered, Choice::Linked, Choice::Fresh}) {
+        worldgen::Random random{1234};
+        Npcs world{random};
+        auto subject = npc(7, 10.5);
+        Entity first{uint64_t(-3), 0, 5.5}, last{3, 0, 15.5}, owner{50, 0, 40.5};
+        if (choice == Choice::Remembered) {
+            subject.fighter.relations.threats = {{last.fighter.id, 0.f}, {first.fighter.id, 0.f}};
+        } else if (choice == Choice::Linked) {
+            subject.fighter.controller = 5;
+            subject.fighter.ownerId = owner.fighter.id;
+            owner.fighter.linkedId = subject.fighter.id;
+            subject.fighter.relations.threats[last.fighter.id] = 10.f;
+            owner.fighter.relations.counts = {{last.fighter.id, 1.f}, {first.fighter.id, 1.f}};
+        } else {
+            first.fighter.health = std::numeric_limits<float>::quiet_NaN();
+        }
+        world.npcs().push_back(std::move(subject));
+        NpcFrame frame;
+        world.stepInto(0, map, {{last.fighter, last.body, 0, 0, false}, {owner.fighter, owner.body, 0, 0, false},
+                                {first.fighter, first.body, 0, 0, false}}, 1000, 0, floor, frame);
+        const auto &actor = world.all().front();
+        if (choice == Choice::Remembered)
+            check(actor.target == last.fighter.id && frame.relationships.empty(),
+                  "the subject's own equal zero scores select the last signed key without acquisition");
+        else if (choice == Choice::Linked)
+            check(actor.target == first.fighter.id && frame.relationships.empty(),
+                  "the linked owner's equal positive scores select the first signed key over the subject's choice");
+        else
+            check(actor.target == first.fighter.id && frame.relationships.size() == 1 &&
+                  frame.relationships.front().source == first.fighter.id,
+                  "fresh equal distances select and publish the first signed key even with unordered candidate health");
+        check(random.count() == 0 && actor.specialMs == 20000 - 32,
+              "the far target consumes no random draw and the first selection reduces the initial countdown");
+    }
+}
+
 void production() {
     {
         worldgen::WorldMap origin;
@@ -548,6 +587,18 @@ void production() {
     worldgen::WorldMap map;
     map.add(std::make_shared<worldgen::Zone>(0, 0));
     const BlockType floor = [](int32_t, int32_t, int32_t z) { return uint8_t(z <= 0 ? 1 : 0); };
+    productionTies(map, floor);
+    {
+        Npcs world;
+        auto subject = npc(7, 10.5);
+        subject.thinkMs = 1 << 24;
+        subject.specialMs = subject.cooldownMs = subject.thinkMs + 3;
+        world.npcs().push_back(subject);
+        world.step(1, map, {}, 1000, 0, floor);
+        const Npc &actor = world.all().front();
+        check(actor.specialMs == 2 && actor.cooldownMs == 2 && actor.thinkMs == 0,
+              "the integer decision accumulator reaches both selection countdowns without losing the last millisecond");
+    }
     {
         Npcs world;
         auto near = npc(uint64_t(-10), 11.5), negative = npc(uint64_t(-9), 12.5), boundary = npc(uint64_t(-8), 18.5);
@@ -585,7 +636,8 @@ void production() {
               "required quest allies retain their explicit production admission extension");
     }
     {
-        Npcs world;
+        worldgen::Random random{1234};
+        Npcs world{random};
         auto drinker = npc(7, 10.5);
         drinker.fighter.health = 10;
         drinker.fighter.actionMs = 101;
@@ -596,6 +648,10 @@ void production() {
         world.npcs().push_back(drinker);
         world.step(0, map, {}, 1000, 0, floor);
         const Npc &result = world.all()[0];
+        check(random.count() == 2 && std::bit_cast<uint32_t>(result.body.intent.x) == 0xbfc06f81u &&
+              std::bit_cast<uint32_t>(result.body.intent.y) == 0xbffcabf9u &&
+              std::bit_cast<uint32_t>(result.body.intent.z) == 0 && result.specialMs == 20000,
+              "the item-use world step assigns the first two seeded draws (4068, 213) to X then Y and preserves the countdown");
         auto expected = source;
         for (const size_t gap : {2, 3, 15, 18, 19})
             expected[gap] = 0x5a;

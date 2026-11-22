@@ -412,7 +412,7 @@ class Npcs {
     // with key `followed`. Pets (owner), created actors and wildlife followers all run it.
     bool companion(Npc &npc, uint64_t followed, std::span<PlayerView> players, int32_t step, const BlockType &block,
                    const worldgen::WorldMap &map);
-    bool combat(Npc &npc, float dtMs, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
+    bool combat(Npc &npc, int32_t milliseconds, std::vector<PlayerView> &players, const BlockType &block, NpcFrame &frame,
                 const worldgen::WorldMap &map);
     // Held alpha-combat-approach-path.md §6 (0x209480): the direct-approach walk of `npc`
     // toward `to` with reach `reach`, over resident columns and spatial records.
