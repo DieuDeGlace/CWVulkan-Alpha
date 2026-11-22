@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 98 and the rulings. The 331 tracked contracts
-comprise 298 A, 28 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 99 and the rulings. The 332 tracked contracts
+comprise 299 A, 28 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -189,6 +189,7 @@ an item list to be written. Batch 97 records seven generated item placements,
 their origin and scale, and their order before the saved-zone overlay.
 
 Batch 98 establishes the generated item count and the lifetime of its type-9 zone records.
+Batch 99 records every native light-byte writer and its passive observation points.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -339,6 +340,7 @@ Batch 98 establishes the generated item count and the lifetime of its type-9 zon
 | `alpha-native-initial-direct3d9-device.md` | A | 66 | 0 |
 | `alpha-native-startup-window-input-boundary.md` | A | 132 | 1 |
 | `alpha-native-light-rectangle-propagation.md` | A | 157 | 0 |
+| `alpha-native-light-write-observation-points.md` | A | 201 | 0 |
 | `alpha-native-mesh-cache-light-padding.md` | A | 158 | 0 |
 | `alpha-native-terrain-environment-palette.md` | A | 252 | 0 |
 | `alpha-native-terrain-rgb-and-composition.md` | A | 207 | 0 |

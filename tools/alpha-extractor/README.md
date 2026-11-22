@@ -2,7 +2,8 @@
 
 A small 32-bit mod for the original Cube World Alpha that records ground truth from the
 running game, so AlphaVulkan's world generator (and later its creatures) can be checked
-block for block against Alpha itself. It only reads the game's memory and patches nothing.
+block for block against Alpha itself. It only reads the game's memory and patches nothing,
+except in the optional light-write trace below.
 One test helper writes: `AlphaExtract	eleport.now` holding `x y z` (blocks) moves the local
 player, to reach a dungeon or a far zone in a copy of the game.
 Where everything lives in Alpha's memory is written down in
@@ -34,6 +35,41 @@ It needs the Visual Studio 2022 C++ tools (the 32-bit compiler); the DLL lands i
    * with `AlphaExtract\track.now` instead: `track.avct`, every creature ten times a second for
      20 s (compare with `CreatureCompare seed named --simulate x y z`);
    * `capture.txt` and `extractor.log`: what was recorded, and why a dump was refused.
+
+## Light-write trace
+
+To record the order in which the original client writes terrain light, create
+`AlphaExtract\lighttrace.txt` **before** starting the game. Each line is one probe cell,
+`X Y Z` in whole world cells (up to eight). The trace installs only when the DLL loads
+before the game's threads start, and only on the supported `Cube.exe` (SHA-256 `84a7a132…30bf`).
+It adds passive observation points to the game's code, at the places listed in
+`docs/specs/alpha-native-light-write-observation-points.md`.
+
+* Every dump (F9 or `dump.now`) also writes `lighttrace.avlt`, with the dump's start and end
+  marked in the same order as the light events. `lighttrace.save` writes it without a dump.
+* `lighttrace.probes` (same format as `lighttrace.txt`) replaces the probe list from then
+  on. Up to 16 lists are kept, and each event records which list its probe bytes belong to.
+* `python tools\alpha-extractor\ReadLightTrace.py AlphaExtract\lighttrace.avlt` summarizes it;
+  `--events` lists every event and `--probe K` lists the events at which probe K changed.
+
+Each event has a global sequence number, thread, timestamp, kind, eight values and the four
+stored bytes of each probe (when stored at that moment). The values by kind:
+
+| Kind | Values |
+| --- | --- |
+| light-enter | caller, low X, low Y, high X, high Y, margin, explicit zone |
+| light-precommit, light-exit | caller, unknown, low Y, high X, high Y, margin, explicit zone (low X comes from the same thread's light-enter) |
+| admit-yes, admit-no | chunk X, chunk Y, resident 3×3 zones (bit 3(dx+1)+(dy+1)), containing zone X, Y, earlier identical denials skipped |
+| build-locked | chunk X, chunk Y, cache slot, the slot's dirty byte at that moment |
+| relight-chosen | chunk X, chunk Y, dirty byte used, chunk origin X, origin Y |
+| build-light-done | chunk X, chunk Y |
+| step-test | route (0 bomb, 1 building, 2 variable radius), world +0xB8, model (building) |
+| cell-write, clear | X, Y, Z, new record (cell-write), explicit zone, caller |
+| cell-write-exit, clear-stored | probe bytes after the write |
+
+Zone presence at admission is re-read without a lock, so it can differ from what the game saw
+(see the contract's safety limits). Writes into an unpublished zone during generation are not
+recorded. The buffer holds 262,144 events; later events are counted as dropped.
 
 ## Compare
 

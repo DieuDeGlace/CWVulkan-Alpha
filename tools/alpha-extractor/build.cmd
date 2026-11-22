@@ -8,4 +8,4 @@ call "%VSDIR%\VC\Auxiliary\Build\vcvars32.bat" >nul || exit /b 1
 cd /d "%~dp0"
 set "OUT=..\..\build\alpha-extractor"
 if not exist "%OUT%" mkdir "%OUT%"
-cl /nologo /std:c++17 /O2 /MT /EHa /W4 /DUNICODE /D_UNICODE /LD AlphaExtractor.cpp /Fo"%OUT%\\" /Fe"%OUT%\AlphaExtractor.dll" /link user32.lib || exit /b 1
+cl /nologo /std:c++17 /O2 /MT /EHa /W4 /DUNICODE /D_UNICODE /LD AlphaExtractor.cpp LightTrace.cpp /Fo"%OUT%\\" /Fe"%OUT%\AlphaExtractor.dll" /link user32.lib || exit /b 1

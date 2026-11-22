@@ -562,6 +562,11 @@ Differences from the Steam engine that shape the plan:
     actual GPU layouts have bounded checks. Creating/saving/connecting still
     uses the existing screen action. Physical and complete workflow acceptance,
     action rebinding, pet-recall mapping and rumble remain open.
+- [x] Light-write trace in the Alpha extractor: with `lighttrace.txt` present at
+  load it records, in one global order, each light request with its caller and
+  rectangle, mesh admission, the builder's relight decision and the edit writers,
+  plus the stored bytes of up to eight probe cells at every event. Next: the
+  owner-operated seed-123 trace of the HOME and southern seam probes.
 - [x] Alpha extractor mod (32-bit, `tools/alpha-extractor`, spec `alpha-extractor.md`): on F9 or a
   trigger file it records, under Alpha's world lock, the loaded zones round the player block for
   block, their regions' location records and zone tables, and every creature record.

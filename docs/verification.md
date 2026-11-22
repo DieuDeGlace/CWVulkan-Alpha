@@ -3844,3 +3844,21 @@ bytes, mixed origins and negative zone coordinates. Changing the threshold
 to strictly greater than eight failed two checks. Excluding odd-origin
 ground records failed two checks. Omitting material failed five. A live
 observation of the original resident records remains open.
+
+## Native light-write trace (2026-11-22)
+
+The extractor's trace mode ran in four isolated copies of the supported
+original client, each started on its title world with the recorder loaded
+before any game code. Each copy kept responding and wrote its zone dump.
+In the final runs every admitted mesh build produced one lock and one
+completion event, each relight decision one mesh light request, and each
+generated zone one new-zone request: 218 and 24 in one run, 234 and 26 in
+another, with no dropped or incomplete events. An early run filled its
+buffer with repeated denials of waiting chunks; denials are now recorded
+only when a chunk's resident neighbourhood changes, with a repeat count.
+
+The probe readout was checked against the extractor's own dump. A stored
+solid probe matched and seven unstored probes were absent. After replacing
+the probe list mid-run, six stored air cells near zone edges matched the
+second dump exactly. The title world's seed changes each launch, so the
+seed-123 seam trace needs the owner's world and remains open.

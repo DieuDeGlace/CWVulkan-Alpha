@@ -4909,3 +4909,16 @@ Each group in category 1 or 11 with at least eight members contributes
 one resident record. Its center and item key survive a saved-item overlay.
 The original ordinary zone writer omits this collection. A downstream
 gameplay, map or UI reader remains unverified.
+
+## Native light-write observation points (2026-11-22)
+
+A fresh source author, given only the original image, the reconstruction
+as leads and eight held lighting and recorder contracts, delivered the
+200-line held record `alpha-native-light-write-observation-points.md`. The clean team read it in full and
+verified SHA-256 `150a0699b0fb88ab90045d34f677a034ba34a16d3e72fd451d42b48fe24a284a`.
+It finds a fifth caller of the rectangle light routine, a world-step
+building-placement branch that holds both world sections. It settles the
+byte layout of air and water light that the extractor record left open.
+The developer recorder's trace uses only its points, frame offsets and
+instruction lengths. How often the world-step relights run, and how the
+writers actually interleave, remain open.

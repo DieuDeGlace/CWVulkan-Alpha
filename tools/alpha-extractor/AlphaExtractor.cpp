@@ -10,7 +10,11 @@
 // It only reads the game's memory; nothing in the game is patched. One test helper writes:
 // AlphaExtract\teleport.now ("x y z" in blocks) moves the local player, for reaching a place in a copy
 // of the game.
+//
+// With AlphaExtract\lighttrace.txt present at load, the extractor also installs the light-write
+// trace (LightTrace.cpp). That mode does patch the game: it adds passive observation points.
 #define _CRT_SECURE_NO_WARNINGS
+#include "LightTrace.h"
 #include <windows.h>
 #include <cstdarg>
 #include <cstdint>
@@ -273,12 +277,14 @@ bool read(uintptr_t game, Capture &c, const char *&why) {
 bool capture(uintptr_t game, Capture &c, const char *&why) {
     auto *lock = (CRITICAL_SECTION *)(game + WORLD + WORLD_LOCK);
     EnterCriticalSection(lock);
+    light_trace::mark(light_trace::CaptureBegin);
     bool ok = false;
     __try {
         ok = read(game, c, why);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         why = "a pointer could not be read";
     }
+    light_trace::mark(light_trace::CaptureEnd);
     LeaveCriticalSection(lock);
     return ok;
 }
@@ -344,6 +350,11 @@ void writeCapture(const Capture &c) {
         c.creatureCount, c.player[0] / 65536.0, c.player[1] / 65536.0, c.player[2] / 65536.0);
 }
 
+void saveTrace() {
+    if (light_trace::installed())
+        log(light_trace::save(folder + L"lighttrace.avlt") ? "saved light trace" : "could not save light trace");
+}
+
 void dump(uintptr_t game) {
     Capture c;
     const char *why = "";
@@ -351,6 +362,7 @@ void dump(uintptr_t game) {
         writeCapture(c);
     else
         log("no dump: %s", why);
+    saveTrace(); // includes this dump's capture markers
 }
 
 // The game object once it is up (§1.1), or 0.
@@ -397,10 +409,13 @@ void teleport(uintptr_t game, const std::wstring &path) {
     }
 }
 
+const char *traceStatus = "off";
+
 DWORD WINAPI watch(void *) {
-    log("extractor loaded at base %p", (void *)base);
+    log("extractor loaded at base %p; light trace: %s", (void *)base, traceStatus);
     const std::wstring trigger = folder + L"dump.now", tracking = folder + L"track.now";
-    const std::wstring moving = folder + L"teleport.now";
+    const std::wstring moving = folder + L"teleport.now", saving = folder + L"lighttrace.save";
+    const std::wstring probing = folder + L"lighttrace.probes";
     bool held = false;
     for (;;) {
         Sleep(100);
@@ -418,6 +433,14 @@ DWORD WINAPI watch(void *) {
         if (GetFileAttributesW(moving.c_str()) != INVALID_FILE_ATTRIBUTES)
             if (const uintptr_t g = game())
                 teleport(g, moving);
+        if (GetFileAttributesW(probing.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            log(light_trace::replaceProbes(probing) ? "new light probes" : "light probes not replaced");
+            DeleteFileW(probing.c_str());
+        }
+        if (GetFileAttributesW(saving.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            DeleteFileW(saving.c_str());
+            saveTrace();
+        }
         if (GetFileAttributesW(tracking.c_str()) != INVALID_FILE_ATTRIBUTES) {
             DeleteFileW(tracking.c_str());
             if (const uintptr_t g = game())
@@ -436,6 +459,11 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID) {
         folder = path;
         folder = folder.substr(0, folder.find_last_of(L"\\/") + 1) + L"AlphaExtract\\";
         CreateDirectoryW(folder.c_str(), nullptr);
+        // The light trace patches code, so it installs here, before the game's threads run.
+        if (GetFileAttributesW((folder + L"lighttrace.txt").c_str()) != INVALID_FILE_ATTRIBUTES) {
+            const char *why = "";
+            traceStatus = light_trace::install(base, folder, why) ? "recording" : why;
+        }
         // Only the thread starts here: DllMain runs under the loader lock (§5.3).
         if (HANDLE t = CreateThread(nullptr, 0, watch, nullptr, 0, nullptr))
             CloseHandle(t);
