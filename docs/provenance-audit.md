@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 104 and the rulings. The 333 tracked contracts
-comprise 320 A, 8 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 105 and the rulings. The 333 tracked contracts
+comprise 324 A, 4 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -195,6 +195,7 @@ Batch 101 re-certifies five held class B contracts against the original images.
 Batch 102 re-certifies five more, including the server hit-record routing.
 Batch 103 re-certifies the client hit transmission, admission, mutation and fatal contracts.
 Batch 104 re-certifies the scalar, sort-boundary, projectile and protection contracts.
+Batch 105 re-certifies the hit production, water contact, relationship delivery and zone spawn contracts.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -311,7 +312,7 @@ Batch 104 re-certifies the scalar, sort-boundary, projectile and protection cont
 | `alpha-generated-item-origin-sites.md` | A | 33 | 0 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
 | `alpha-generic-hit-presentation-draws.md` | A | 75 | 0 |
-| `alpha-generic-hit-record-production.md` | B | 116 | 3 |
+| `alpha-generic-hit-record-production.md` | A | 130 | 0 |
 | `alpha-generic-hit-source-auxiliary.md` | B | 119 | 2 |
 | `alpha-generic-hit-vector-adjustment.md` | A | 76 | 0 |
 | `alpha-hazards-blast-ticks.md` | A | 397 | 2 |
@@ -501,7 +502,7 @@ Batch 104 re-certifies the scalar, sort-boundary, projectile and protection cont
 | `alpha-visibility-ray-geometry.md` | A | 85 | 0 |
 | `alpha-voxel-fallback-record-initialization.md` | A | 87 | 1 |
 | `alpha-water-material-contract.md` | A | 102 | 0 |
-| `alpha-water-projectile-contact-event.md` | B | 113 | 3 |
+| `alpha-water-projectile-contact-event.md` | A | 128 | 0 |
 | `alpha-weapon-attachment-poses.md` | A | 157 | 0 |
 | `alpha-world-actor-creation.md` | A | 232 | 0 |
 | `alpha-world-call-phase-boundary.md` | A | 443 | 0 |
@@ -512,7 +513,7 @@ Batch 104 re-certifies the scalar, sort-boundary, projectile and protection cont
 | `alpha-world-items.md` | A | 547 | 0 |
 | `alpha-world-objects.md` | A | 249 | 0 |
 | `alpha-world-random-stream-boundaries.md` | A | 123 | 1 |
-| `alpha-world-relationship-record-delivery.md` | B | 115 | 2 |
+| `alpha-world-relationship-record-delivery.md` | A | 134 | 0 |
 | `alpha-worldgen-caves.md` | A | 491 | 0 |
 | `alpha-worldgen-clouds.md` | A | 91 | 0 |
 | `alpha-worldgen-locations.md` | A | 508 | 0 |
@@ -527,7 +528,7 @@ Batch 104 re-certifies the scalar, sort-boundary, projectile and protection cont
 | `alpha-zone-final-static-bucket-index.md` | A | 39 | 0 |
 | `alpha-zone-generator-observation-boundaries.md` | A | 39 | 0 |
 | `alpha-zone-item-modification-sources.md` | A | 32 | 0 |
-| `alpha-zone-spawn-lifecycle.md` | B | 111 | 1 |
+| `alpha-zone-spawn-lifecycle.md` | A | 130 | 0 |
 | `shadows.md` | E | 194 | 3 |
 | `sky-and-clouds.md` | E | 481 | 6 |
 | `vegetation-wind.md` | E | 294 | 1 |

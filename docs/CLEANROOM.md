@@ -5081,3 +5081,35 @@ projectile resource gain already applies only in mode zero or for the
 controlled creature; and the summoned-creature branch already skips above
 two owned creatures, draws its kind before the copy choice and replaces
 flag 0x0200 with 0x0800.
+
+## Class B re-certification, eighth batch (2026-11-22)
+
+Fresh source-only authors, one per document with private scratch folders
+outside the repository, re-certified the last four class B contracts that
+do not depend on the periodic historical readbacks. The clean team read
+each document whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [generic-hit record production](specs/alpha-generic-hit-record-production.md) | 129 | `e8f2c304226f4ff74dc7e54bbd3b1a0657d35941cc0b8227622e8f21b35c4956` |
+| [water projectile contact event](specs/alpha-water-projectile-contact-event.md) | 127 | `eea73e2407ecb1ebb537c303c579435d20b2aa5622899460c03d02bfe7265777` |
+| [world relationship record delivery](specs/alpha-world-relationship-record-delivery.md) | 133 | `6dff7417510f066a8e2c1623693db524f9c18d5c00d68181e31fc63186be4307` |
+| [zone spawn lifecycle](specs/alpha-zone-spawn-lifecycle.md) | 129 | `3585f0104bb461c21cde00656a52eff1343a90da357ba9d7d0d8cdb317b8a01d` |
+
+No behavioral statement was found wrong. The corrections make exact: the
+raw 24-byte position copy in the water contact event and the converted
+projectile skipping the local removal append; the reuse of the combo
+factor, the 0.25 item gate and the 5000 caps in generic hit production;
+the server's kind-2 send, the dropped kind-4 payload after a kind-0 send
+failure, and the zero-entry precondition of the later relationship
+records; and the count-checked restoration of saved spawn timers, the
+float activation radius and the stored list position used by the death
+timer write. Interpretive labels moved to unresolved sections.
+
+Engine reconciliation: no engine behavior changed. The water spell's
+conversion to a burst and the removal of other projectiles, the absorb and
+armor factor, item-effect gate and slow/haste caps, the batch-end, clock
+and world-update send order, and the relationship consumer's lookups,
+equality skip and direct assignment already matched. Not modelled: the
+saved zone row's respawn timer and death-day pairs (the engine keeps
+respawn state in memory only), and the open points each contract lists.
