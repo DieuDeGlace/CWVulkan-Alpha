@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 100 and the rulings. The 333 tracked contracts
-comprise 300 A, 28 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 101 and the rulings. The 333 tracked contracts
+comprise 305 A, 23 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -191,13 +191,14 @@ their origin and scale, and their order before the saved-zone overlay.
 Batch 98 establishes the generated item count and the lifetime of its type-9 zone records.
 Batch 99 records every native light-byte writer and its passive observation points.
 Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
+Batch 101 re-certifies five held class B contracts against the original images.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
 | `alpha-active-decoration-distance-models.md` | A | 71 | 0 |
 | `alpha-active-decoration-light-rendering.md` | A | 47 | 0 |
 | `alpha-actor-creation-configuration.md` | A | 130 | 0 |
-| `alpha-actor-identity-publication.md` | B | 60 | 2 |
+| `alpha-actor-identity-publication.md` | A | 72 | 0 |
 | `alpha-actor-inventory-consumers.md` | A | 70 | 1 |
 | `alpha-airship-pilot-behaviour.md` | A | 236 | 0 |
 | `alpha-airship-steering.md` | A | 240 | 0 |
@@ -236,7 +237,7 @@ Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 | `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
 | `alpha-client-terrain-mesh-dispatch.md` | A | 51 | 0 |
 | `alpha-client-world-change-lifecycle.md` | A | 173 | 0 |
-| `alpha-client-world-clock-input.md` | B | 52 | 2 |
+| `alpha-client-world-clock-input.md` | A | 71 | 0 |
 | `alpha-column-initial-color-observation-boundaries.md` | A | 58 | 0 |
 | `alpha-column-scalar-cache-publication.md` | B | 105 | 0 |
 | `alpha-column-value-production.md` | A | 413 | 0 |
@@ -270,7 +271,7 @@ Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 | `alpha-created-candidate-appearances.md` | A | 95 | 1 |
 | `alpha-created-companion-navigation.md` | A | 152 | 2 |
 | `alpha-creature-light-attachment-producers.md` | A | 91 | 1 |
-| `alpha-creature-map-key-order.md` | B | 70 | 1 |
+| `alpha-creature-map-key-order.md` | A | 85 | 0 |
 | `alpha-creature-receipt-order.md` | A | 146 | 0 |
 | `alpha-creature-update-phases.md` | A | 172 | 0 |
 | `alpha-creature-yaw-light-gates.md` | A | 125 | 1 |
@@ -306,7 +307,7 @@ Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 | `alpha-generated-item-count-lifetime.md` | A | 32 | 0 |
 | `alpha-generated-item-origin-sites.md` | A | 33 | 0 |
 | `alpha-generation-worker-floating-point-controls.md` | A | 133 | 0 |
-| `alpha-generic-hit-presentation-draws.md` | B | 65 | 1 |
+| `alpha-generic-hit-presentation-draws.md` | A | 75 | 0 |
 | `alpha-generic-hit-record-production.md` | B | 116 | 3 |
 | `alpha-generic-hit-source-auxiliary.md` | B | 119 | 2 |
 | `alpha-generic-hit-vector-adjustment.md` | A | 76 | 0 |
@@ -392,7 +393,7 @@ Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 | `alpha-pose-selectors-19-24.md` | A | 354 | 0 |
 | `alpha-pose-selectors-25-30.md` | A | 289 | 1 |
 | `alpha-pose-selectors-31-49.md` | A | 536 | 0 |
-| `alpha-power-helper-call-boundary.md` | B | 69 | 3 |
+| `alpha-power-helper-call-boundary.md` | A | 79 | 0 |
 | `alpha-primary-terrain-fog-upload-state.md` | A | 82 | 0 |
 | `alpha-projectile-critical-source-identity.md` | A | 29 | 0 |
 | `alpha-projectile-world-ownership.md` | B | 105 | 3 |

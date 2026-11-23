@@ -64,7 +64,7 @@ bool Client::connect(const std::string &host, uint16_t port, std::string *error)
         std::lock_guard guard(lock);
         requestedWorld = onlineWorld(seed);
     }
-    // The normal server supplies1..10; the native adoption boundary also admits
+    // The normal server supplies 1..10; the native adoption boundary also admits
     // zero and preserves the prior actor identity for a signed-negative reply.
     if (std::bit_cast<int64_t>(id) >= 0)
         ownId = id;

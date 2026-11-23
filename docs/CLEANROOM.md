@@ -4934,3 +4934,41 @@ window ends at 86,400,000 ms, keyed by the signed controller and type.
 Each group with controller 1, 5 or 6 and at least five entries appends
 one record carrying only the type, at the zone center. The overlay does
 not restore or recount them. A downstream reader remains unverified.
+
+## Class B re-certification, fourth batch (2026-11-22)
+
+Fresh source-only authors, one per document, re-certified five more
+held-but-unpinned contracts against the original images and appended dated
+re-certification sections. The clean team read each document whole and
+verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [client world-clock input](specs/alpha-client-world-clock-input.md) | 70 | `b54c0eb7082fb981df536011d1161a0b7736944b810933665c4e317047a58f2d` |
+| [actor identity publication](specs/alpha-actor-identity-publication.md) | 71 | `d86049d281b3f9e6505032702903650ca0f1b8fce2b3521b80970cfaf5d47f25` |
+| [generic-hit presentation draws](specs/alpha-generic-hit-presentation-draws.md) | 74 | `83ade76c53572d4f54a883c6561f13c4821744975a1b1117a30be8ce569e4845` |
+| [power-helper call boundary](specs/alpha-power-helper-call-boundary.md) | 78 | `f70e64dd4d1bcb351a7f80b2d6a28235a870f91d501890343667270d4690cae2` |
+| [creature-map key order](specs/alpha-creature-map-key-order.md) | 84 | `30fb13f072bd1729e99f3221ac879ffdfa1a2c25a8fbb64cb95e3f9fe4de05b2` |
+
+The authors found no wrong behavioral statement. They corrected incomplete
+ones: a world-selection record updates the requested world only when it
+differs, and the handshake applies its state only for a non-negative
+identity. The batch-end scan keeps only keys seen in the batch's actor
+records. Connection adoption copies the previous controlled actor's state,
+not the received body. The second in-pass creation site skips creation when
+more than two creatures already name the acting creature. Interpretive names (rank,
+role, duration, destruction) moved to unresolved sections.
+
+Engine reconciliation: every corrected statement already matched the
+existing behavior and its tests, so no engine behavior changed. The client
+keeps its own character on joining, the batch-end scan clears its key set
+after the guarded prune, the world-selection handler replaces the request
+only on a change, the client stored-clock gate looks one elapsed piece ahead,
+and actor creation is skipped above two owned creatures, keyed one below the
+least present key. Not modelled: the per-rollover world routine 0x1F0C80, stack
+residue on a short clock read, and the open points each contract lists.
+
+One author reported that a sibling author's disassembly script in the
+shared scratch folder ran once by accident and printed original-image
+disassembly. Both were source-side; no implementation material was exposed,
+and the clean team did not open those scratch files.

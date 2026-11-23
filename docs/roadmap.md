@@ -139,7 +139,7 @@ Differences from the Steam engine that shape the plan:
   health and the client receiver locks; a third pinned the spatial scalars,
   created actor behavior and companion navigation. The fourth batch verified
   the order of fatal-credit writes and level checks. The recipe grant record
-  was then re-certified and pinned. 28 class B contracts remain.
+  was then re-certified and pinned. 23 class B contracts remain.
 
 - [x] Rock cover roughness order: terrain roughness adds t²·0.05 with the square
   first, as held. A private dedicated-server observation of the seed-41 test
