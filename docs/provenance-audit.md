@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 103 and the rulings. The 333 tracked contracts
-comprise 315 A, 13 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 104 and the rulings. The 333 tracked contracts
+comprise 320 A, 8 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -194,6 +194,7 @@ Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 Batch 101 re-certifies five held class B contracts against the original images.
 Batch 102 re-certifies five more, including the server hit-record routing.
 Batch 103 re-certifies the client hit transmission, admission, mutation and fatal contracts.
+Batch 104 re-certifies the scalar, sort-boundary, projectile and protection contracts.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -226,7 +227,7 @@ Batch 103 re-certifies the client hit transmission, admission, mutation and fata
 | `alpha-client-buff-action-boundaries.md` | A | 183 | 3 |
 | `alpha-client-buff-event-transmission.md` | A | 91 | 3 |
 | `alpha-client-connected-spawn-recovery.md` | A | 90 | 0 |
-| `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
+| `alpha-client-coordinate-scalar-producers.md` | A | 122 | 0 |
 | `alpha-client-elapsed-adjustment-and-world-readiness.md` | A | 219 | 0 |
 | `alpha-client-frame-world-step-order.md` | A | 84 | 1 |
 | `alpha-client-hit-event-transmission.md` | A | 97 | 0 |
@@ -241,7 +242,7 @@ Batch 103 re-certifies the client hit transmission, admission, mutation and fata
 | `alpha-client-world-change-lifecycle.md` | A | 173 | 0 |
 | `alpha-client-world-clock-input.md` | A | 71 | 0 |
 | `alpha-column-initial-color-observation-boundaries.md` | A | 58 | 0 |
-| `alpha-column-scalar-cache-publication.md` | B | 105 | 0 |
+| `alpha-column-scalar-cache-publication.md` | A | 122 | 0 |
 | `alpha-column-value-production.md` | A | 413 | 0 |
 | `alpha-combat-aim-triplet.md` | A | 266 | 0 |
 | `alpha-combat-approach-path.md` | A | 322 | 0 |
@@ -398,10 +399,10 @@ Batch 103 re-certifies the client hit transmission, admission, mutation and fata
 | `alpha-power-helper-call-boundary.md` | A | 79 | 0 |
 | `alpha-primary-terrain-fog-upload-state.md` | A | 82 | 0 |
 | `alpha-projectile-critical-source-identity.md` | A | 29 | 0 |
-| `alpha-projectile-world-ownership.md` | B | 105 | 3 |
+| `alpha-projectile-world-ownership.md` | A | 126 | 0 |
 | `alpha-projectiles.md` | A | 565 | 0 |
 | `alpha-projection-input-production.md` | A | 97 | 2 |
-| `alpha-protection-state-producers.md` | B | 107 | 1 |
+| `alpha-protection-state-producers.md` | A | 121 | 0 |
 | `alpha-ranged-action-scheduling.md` | A | 184 | 2 |
 | `alpha-ranged-audio-boundaries.md` | A | 180 | 1 |
 | `alpha-ray-launch-fields-reconciliation.md` | A | 66 | 0 |
@@ -474,7 +475,7 @@ Batch 103 re-certifies the client hit transmission, admission, mutation and fata
 | `alpha-template-stamping-markers.md` | A | 504 | 0 |
 | `alpha-target-selection-historical-readback.md` | A | 18 | 0 |
 | `alpha-terrain-box-range-and-static-fade.md` | A | 106 | 0 |
-| `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
+| `alpha-terrain-candidate-sort-abi.md` | A | 123 | 0 |
 | `alpha-terrain-candidate-sort-order.md` | A | 94 | 0 |
 | `alpha-terrain-chunk-point-lights.md` | A | 102 | 0 |
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |

@@ -5048,3 +5048,36 @@ already matched: the shared incoming path, the two-call health limit,
 the absorb events, the 89 kind entry and its flag mask, the loot draw
 order, the linked credit stage, the send order 10, 6, 7, 8, 9 and the
 descriptor-tail adapter, which removes no live creature.
+
+## Class B re-certification, seventh batch (2026-11-22)
+
+Fresh source-only authors, one per document with private scratch folders
+outside the repository, re-certified five more held-but-unpinned
+contracts against the original images. The clean team read each document
+whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [client coordinate scalar producers](specs/alpha-client-coordinate-scalar-producers.md) | 121 | `dd24d1372196f24ff5e4aa0c821732e5395dc9bce2596def266356da30a985ec` |
+| [column scalar cache publication](specs/alpha-column-scalar-cache-publication.md) | 121 | `1a7d7a9321f5fef538c045d112e58ab1efabc6010fc24f41a04d48f77a7bb045` |
+| [terrain candidate sort ABI](specs/alpha-terrain-candidate-sort-abi.md) | 122 | `8c273c024845d98921cb1adad1f6003b46519676abf471c7dbb85455844262ca` |
+| [projectile world ownership](specs/alpha-projectile-world-ownership.md) | 125 | `8d8c3d3d46d429ec14bca12c31a6ea9ed19dd7e05020bfcfabd4737524f6da09` |
+| [protection-state producers](specs/alpha-protection-state-producers.md) | 120 | `fdacedbbebccb868fa8fc4f564c0c04d0d3c326bb7e687fba697311b194b8f69` |
+
+No behavioral statement was found wrong. The corrections restate exact
+arithmetic or order (the distance subtraction direction, the lattice
+neighbor index formed in binary64, the subtract-then-add tag-3 order, the
+cache publication into the parent region read before allocation, the
+reversed lock order of single-zone eviction, the conditional reset of the
+mode byte and the world-gated resource gain of a projectile hit), name
+the protected sort helpers and the sort's sole caller, and move
+interpretive labels (client pointer, primary input, critical result,
+owner-buff chance, color or block selection) to unresolved sections.
+
+Engine reconciliation: no engine behavior changed. The climate producers
+already use the exact restated arithmetic; the candidate order already
+follows the ascending strict-less sort with the 32-record threshold; the
+projectile resource gain already applies only in mode zero or for the
+controlled creature; and the summoned-creature branch already skips above
+two owned creatures, draws its kind before the copy choice and replaces
+flag 0x0200 with 0x0800.
