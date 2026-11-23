@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 102 and the rulings. The 333 tracked contracts
-comprise 310 A, 18 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 103 and the rulings. The 333 tracked contracts
+comprise 315 A, 13 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -193,6 +193,7 @@ Batch 99 records every native light-byte writer and its passive observation poin
 Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 Batch 101 re-certifies five held class B contracts against the original images.
 Batch 102 re-certifies five more, including the server hit-record routing.
+Batch 103 re-certifies the client hit transmission, admission, mutation and fatal contracts.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -228,8 +229,8 @@ Batch 102 re-certifies five more, including the server hit-record routing.
 | `alpha-client-coordinate-scalar-producers.md` | B | 112 | 2 |
 | `alpha-client-elapsed-adjustment-and-world-readiness.md` | A | 219 | 0 |
 | `alpha-client-frame-world-step-order.md` | A | 84 | 1 |
-| `alpha-client-hit-event-transmission.md` | B | 90 | 2 |
-| `alpha-client-incoming-hit-mutations.md` | B | 102 | 2 |
+| `alpha-client-hit-event-transmission.md` | A | 97 | 0 |
+| `alpha-client-incoming-hit-mutations.md` | A | 115 | 0 |
 | `alpha-client-menu-startup-prerequisites.md` | A | 52 | 0 |
 | `alpha-client-offline-projectile-lifecycle.md` | A | 164 | 0 |
 | `alpha-client-primary-start-boundary.md` | A | 221 | 3 |
@@ -289,7 +290,7 @@ Batch 102 re-certifies five more, including the server hit-record routing.
 | `alpha-fatal-branch-order.md` | A | 202 | 0 |
 | `alpha-fatal-context-field-producers.md` | A | 84 | 0 |
 | `alpha-fatal-credit-level-consumer.md` | A | 103 | 0 |
-| `alpha-fatal-descriptor-tail-lifecycle.md` | B | 103 | 1 |
+| `alpha-fatal-descriptor-tail-lifecycle.md` | A | 127 | 0 |
 | `alpha-fatal-disposal-callers.md` | A | 301 | 0 |
 | `alpha-fatal-loot-branches-generator-recount.md` | A | 79 | 0 |
 | `alpha-fatal-loot-branches.md` | A | 278 | 1 |
@@ -504,8 +505,8 @@ Batch 102 re-certifies five more, including the server hit-record routing.
 | `alpha-world-actor-creation.md` | A | 232 | 0 |
 | `alpha-world-call-phase-boundary.md` | A | 443 | 0 |
 | `alpha-world-creature-health-admission.md` | A | 84 | 0 |
-| `alpha-world-hit-fatal-effects.md` | B | 91 | 1 |
-| `alpha-world-hit-target-admission.md` | B | 101 | 2 |
+| `alpha-world-hit-fatal-effects.md` | A | 126 | 0 |
+| `alpha-world-hit-target-admission.md` | A | 132 | 0 |
 | `alpha-world-item-list-population.md` | A | 163 | 0 |
 | `alpha-world-items.md` | A | 547 | 0 |
 | `alpha-world-objects.md` | A | 249 | 0 |

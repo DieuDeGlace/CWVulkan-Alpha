@@ -3911,3 +3911,12 @@ The terrain light checks pin the held sort contract's closed cases on the
 production ordering routine: 32 records with one smaller key keep stable
 order, 33 to 41 records with the smaller key at the middle exchange only
 the first and middle records, and 60 equal keys keep their order.
+
+## NaN-health world-hit fatality (2026-11-22)
+
+A fatal-context check places a creature with NaN health in the world and
+applies a zero-amount hit. The entry test rejects only health at or below
+zero, so the hit is admitted, and the final comparison treats every value
+that is not ordered positive as fatal: the check sees one fatal
+presentation and zero health. With the earlier at-or-below-zero final
+comparison the same check failed.

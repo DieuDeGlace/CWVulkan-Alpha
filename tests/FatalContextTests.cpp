@@ -312,6 +312,26 @@ int main() {
               "dead-target rejection and the later corpse adapter do not replay the synchronous death presentation");
     }
     {
+        // World-hit target admission: NaN health passes the entry test (only <= 0 is
+        // rejected) and fails the final strictly-positive test, so it is fatal.
+        Npcs world;
+        Npc target;
+        target.fighter.id = 73;
+        target.fighter.controller = 1;
+        target.fighter.health = std::numeric_limits<float>::quiet_NaN();
+        world.npcs().push_back(target);
+        HitRecord hit;
+        hit.attacker = 999;
+        hit.target = 73;
+        hit.amount = 0;
+        NpcFrame frame;
+        world.applyWorldHit(hit, {}, frame);
+        const auto fatal = std::count_if(frame.sounds.begin(), frame.sounds.end(),
+            [](const SoundEvent &sound) { return sound.sound == 27; });
+        check(fatal == 1 && world.all()[0].fighter.health == 0,
+              "a NaN-health target is admitted and then takes the fatal path");
+    }
+    {
         worldgen::WorldMap map;
         map.add(std::make_shared<worldgen::Zone>(0, 0));
         Combatant owner;

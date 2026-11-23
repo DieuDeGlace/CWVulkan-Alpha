@@ -1863,8 +1863,9 @@ void Npcs::applyWorldHit(const HitRecord &hit, std::span<PlayerView> players, Np
             }
         }
     // Prepare once, update the region, then visit current recipients in signed
-    // key order. Later corpse processing must not repeat these effects.
-    if (target->health <= 0) {
+    // key order. Later corpse processing must not repeat these effects. Only an ordered
+    // positive health returns normally: zero, negative and NaN health are all fatal.
+    if (!(target->health > 0)) {
         target->health = 0;
         glm::vec3 position;
         for (int axis = 0; axis < 3; axis++)

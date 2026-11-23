@@ -5013,3 +5013,38 @@ swimmer obstruction and the wet-ground film face above height zero.
 
 Engine choice: the zeroed IDs, amount and padding of a short packet-7
 record, where the original keeps whatever its temporary held.
+
+## Class B re-certification, sixth batch (2026-11-22)
+
+Fresh source-only authors, one per document with private scratch folders
+outside the repository, re-certified five held-but-unpinned hit and fatal
+contracts against the original client image. The clean team read each
+document whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [client hit-event transmission](specs/alpha-client-hit-event-transmission.md) | 96 | `ce733289922e6de9b321ae226018502d9b22ea33bf0c29fe278ba876f4773d4a` |
+| [world-hit fatal effects](specs/alpha-world-hit-fatal-effects.md) | 125 | `9d44ae863f2ce59de0d7273d977121b5131246f3b0af9780746a237a0ad46240` |
+| [world-hit target admission](specs/alpha-world-hit-target-admission.md) | 131 | `f51b2f7545d752023bf52ce8d7b2be985f8136fadc6f83a0f0d68c9ac72ff567` |
+| [client incoming-hit mutations](specs/alpha-client-incoming-hit-mutations.md) | 114 | `6c677f8190aedbc5685e92fdd56281b903ec7ef4a254b9c1fcaa162185c1e379` |
+| [fatal descriptor-tail lifecycle](specs/alpha-fatal-descriptor-tail-lifecycle.md) | 126 | `99758118a19c40d86ca1f22cfb84c87433318f5b70389e739f6f393b92c78c49` |
+
+Corrections: every incoming category other than 1 and 5 takes the shared
+health path; the level field is read and reduced by one in a temporary;
+the relationship kind list holds 89 rather than 59; the world-hit routine
+has eight direct callers; a NaN target health is admitted at entry and
+takes the fatal path at the final comparison; the linked credit runs for
+any recipient when the world mode is zero; bonus-drop placement draws
+precede item generation; and the material-drop stage repeats with a
+zero item ending it. An activation proximity gate, the producer's list
+binding and several role names moved to unresolved sections.
+
+Engine change: the world-hit fatal comparison now admits only ordered
+positive health as surviving, so a NaN-health target is fatal, as the
+entry test already admitted it. A fatal-context check applies a zero
+amount to a NaN-health creature and expects one fatal presentation and
+zero health; the previous comparison failed it. Every other correction
+already matched: the shared incoming path, the two-call health limit,
+the absorb events, the 89 kind entry and its flag mask, the loot draw
+order, the linked credit stage, the send order 10, 6, 7, 8, 9 and the
+descriptor-tail adapter, which removes no live creature.
