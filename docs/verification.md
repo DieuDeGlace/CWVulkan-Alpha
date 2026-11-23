@@ -3898,3 +3898,16 @@ it unvisited, while a single 400 ms step visits once at 399 ms. With
 periodic calls disabled, the server check failed without retrying (its
 longest step was 47 ms) and the resident unit checks failed, including the
 new 400 ms step check.
+## Partial packet-7 receipt and candidate-sort cases (2026-11-22)
+
+The real-server two-peer check now joins a raw third peer, sends a packet-7
+header with only the first 20 body bytes (source, target and amount) and
+closes the socket. The target peer receives exactly one relayed hit with
+that source and amount and with all remaining 52 bytes zero. The previous
+receive path queued after any read result. A socket error, which now stops
+the worker without queuing, was not produced in this check.
+
+The terrain light checks pin the held sort contract's closed cases on the
+production ordering routine: 32 records with one smaller key keep stable
+order, 33 to 41 records with the smaller key at the middle exchange only
+the first and middle records, and 60 equal keys keep their order.

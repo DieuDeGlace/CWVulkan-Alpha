@@ -526,10 +526,17 @@ void Server::receiveLoop(Connection &c) {
             break;
         }
         case HIT: {
-            std::array<uint8_t, 72> record;
-            ok = readArray(record);
-            std::lock_guard guard(lock);
-            hits.push_back(record);
+            // Server hit-record routing: the initializer clears +0x14, +0x18..+0x40 and
+            // +0x44..+0x46; the engine also zeroes the natively unspecified IDs, amount and
+            // padding. End of stream mid-body still queues the partial record; an error
+            // stops the worker without queuing it.
+            std::array<uint8_t, 72> record{};
+            const Socket::ReadEnd end = c.socket.readUpTo(record.data(), record.size());
+            ok = end == Socket::ReadEnd::complete;
+            if (end != Socket::ReadEnd::failed) {
+                std::lock_guard guard(lock);
+                hits.push_back(record);
+            }
             break;
         }
         case EVENT40: {

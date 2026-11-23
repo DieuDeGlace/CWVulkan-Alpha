@@ -23,8 +23,8 @@ Classes:
   covered by a re-certified contract (`alpha-open-points-12.md` by `alpha-worldgen-vegetation.md`);
   kept as history, not handed to authors.
 
-Snapshot 2026-11-22 after batch 101 and the rulings. The 333 tracked contracts
-comprise 305 A, 23 B, 0 C and 5 reclassified (E/G/S).
+Snapshot 2026-11-22 after batch 102 and the rulings. The 333 tracked contracts
+comprise 310 A, 18 B, 0 C and 5 reclassified (E/G/S).
 
 ## Remediation
 
@@ -192,6 +192,7 @@ Batch 98 establishes the generated item count and the lifetime of its type-9 zon
 Batch 99 records every native light-byte writer and its passive observation points.
 Batch 100 establishes the generated type-10 spawn-group record and its lifetime.
 Batch 101 re-certifies five held class B contracts against the original images.
+Batch 102 re-certifies five more, including the server hit-record routing.
 
 | Spec | Class | Lines | Implementation words |
 | --- | --- | ---: | ---: |
@@ -234,7 +235,7 @@ Batch 101 re-certifies five held class B contracts against the original images.
 | `alpha-client-primary-start-boundary.md` | A | 221 | 3 |
 | `alpha-client-projectile-hit-call-boundary.md` | A | 118 | 0 |
 | `alpha-client-receiver-publication-locks.md` | A | 162 | 2 |
-| `alpha-client-startup-window-boundary.md` | B | 81 | 0 |
+| `alpha-client-startup-window-boundary.md` | A | 95 | 0 |
 | `alpha-client-terrain-mesh-dispatch.md` | A | 51 | 0 |
 | `alpha-client-world-change-lifecycle.md` | A | 173 | 0 |
 | `alpha-client-world-clock-input.md` | A | 71 | 0 |
@@ -407,7 +408,7 @@ Batch 101 re-certifies five held class B contracts against the original images.
 | `alpha-recipe-grant-entry-boundary.md` | A | 224 | 0 |
 | `alpha-relationship-kind-89-admission.md` | A | 55 | 0 |
 | `alpha-remote-creature-interpolation.md` | A | 223 | 0 |
-| `alpha-renderer-fixed-point-reference-origins.md` | B | 77 | 1 |
+| `alpha-renderer-fixed-point-reference-origins.md` | A | 98 | 0 |
 | `alpha-resident-zone-light-lifetimes.md` | A | 32 | 0 |
 | `alpha-rendering.md` | A | 1108 | 3 |
 | `alpha-riding-actor-step.md` | A | 203 | 1 |
@@ -446,7 +447,7 @@ Batch 101 re-certifies five held class B contracts against the original images.
 | `alpha-selector17-periodic-record-production.md` | B | 100 | 0 |
 | `alpha-section9-result-presentation.md` | A | 42 | 0 |
 | `alpha-server-buff-update-admission.md` | A | 144 | 3 |
-| `alpha-server-hit-record-routing.md` | B | 77 | 1 |
+| `alpha-server-hit-record-routing.md` | A | 92 | 0 |
 | `alpha-server-mode-association-origins.md` | A | 84 | 1 |
 | `alpha-server-periodic-hit-delivery.md` | A | 41 | 0 |
 | `alpha-server-simulation.md` | A | 732 | 0 |
@@ -473,7 +474,7 @@ Batch 101 re-certifies five held class B contracts against the original images.
 | `alpha-target-selection-historical-readback.md` | A | 18 | 0 |
 | `alpha-terrain-box-range-and-static-fade.md` | A | 106 | 0 |
 | `alpha-terrain-candidate-sort-abi.md` | B | 105 | 1 |
-| `alpha-terrain-candidate-sort-order.md` | B | 86 | 1 |
+| `alpha-terrain-candidate-sort-order.md` | A | 94 | 0 |
 | `alpha-terrain-chunk-point-lights.md` | A | 102 | 0 |
 | `alpha-terrain-color-pipeline-public.md` | A | 112 | 2 |
 | `alpha-terrain-light-source-lifecycle.md` | A | 123 | 1 |
@@ -497,7 +498,7 @@ Batch 101 re-certifies five held class B contracts against the original images.
 | `alpha-vendor-widget-transactions.md` | A | 82 | 3 |
 | `alpha-visibility-ray-geometry.md` | A | 85 | 0 |
 | `alpha-voxel-fallback-record-initialization.md` | A | 87 | 1 |
-| `alpha-water-material-contract.md` | B | 88 | 1 |
+| `alpha-water-material-contract.md` | A | 102 | 0 |
 | `alpha-water-projectile-contact-event.md` | B | 113 | 3 |
 | `alpha-weapon-attachment-poses.md` | A | 157 | 0 |
 | `alpha-world-actor-creation.md` | A | 232 | 0 |

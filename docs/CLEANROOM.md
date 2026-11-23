@@ -4972,3 +4972,44 @@ One author reported that a sibling author's disassembly script in the
 shared scratch folder ran once by accident and printed original-image
 disassembly. Both were source-side; no implementation material was exposed,
 and the clean team did not open those scratch files.
+
+## Class B re-certification, fifth batch (2026-11-22)
+
+Fresh source-only authors, one per document and each with a private scratch
+folder outside the repository, re-certified five more held-but-unpinned
+contracts against the original images. The clean team read each document
+whole and verified its SHA-256:
+
+| Contract | Lines | SHA-256 |
+| --- | ---: | --- |
+| [renderer fixed-point reference origins](specs/alpha-renderer-fixed-point-reference-origins.md) | 97 | `259111ef98632cc48bbd98d0dcebf57ae5b360290457cdcb86ad4beba150f364` |
+| [server hit-record routing](specs/alpha-server-hit-record-routing.md) | 91 | `8485e796c58d8026acdc84b38b02971db3c52c5e2093c39b6c7d2654029d261b` |
+| [client startup window boundary](specs/alpha-client-startup-window-boundary.md) | 94 | `1fedb5d76dbec67ac14e0940e423e92cdd4ceda8315a39aa48792c9486fabcc7` |
+| [terrain candidate sort order](specs/alpha-terrain-candidate-sort-order.md) | 93 | `1ae16af4fc95dbdfa650eea5e19cd1f5325adf63c943833442da535696347e6a` |
+| [water material contract](specs/alpha-water-material-contract.md) | 101 | `279747d01baf4780681ec868cf609b777edfcaaa261fea689418936194fc0d12` |
+
+Corrections: the server's packet-7 receive appends a hit for any
+nonpositive receive result other than -1, so a body ended by end of stream
+still queues, and the whole queue drain and the world update with
+distribution run under the world lock. The startup instance value is the
+relocated load base. Interpretive identities (a time-dependent coefficient,
+object positions, a vegetation use of the bank list, footstep pitch) moved
+to unresolved sections, and the water footstep, contact and river details
+were made exact.
+
+Engine change: the dedicated server's packet-7 receive now starts from a
+zeroed record, queues it after a complete read or an end of stream and drops
+it on a socket error (previously it queued after any read, including an
+error, from an uninitialized buffer). A real-server check sends a 20-byte
+packet-7 prefix and closes; the peer receives the relayed hit with the
+prefix intact and every unsent byte zero. The socket-error branch has no
+real-socket check. The terrain candidate sort now has checks for the
+contract's closed cases: stable order at 32 records, the first/middle
+exchange for 33 to 41 records and an unchanged all-equal input of 60. The
+other corrections already matched existing behavior: the clock packet
+precedes the world update, hits are its second section, the wet and dry
+footsteps, the contact and ground scans, the rider refill below one, the
+swimmer obstruction and the wet-ground film face above height zero.
+
+Engine choice: the zeroed IDs, amount and padding of a short packet-7
+record, where the original keeps whatever its temporary held.

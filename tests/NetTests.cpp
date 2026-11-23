@@ -1721,6 +1721,39 @@ int main() {
               generated[0].record().knockBack == glm::vec3(0),
               "one server-generated periodic hit queues its producer and application copies for each peer");
     }
+    {
+        // Server hit-record routing: a packet-7 body ended by end of stream still reaches
+        // the append, with the unsent bytes zero.
+        b.takeHits();
+        Socket raw;
+        bool joined = raw.connect("127.0.0.1", port, &error) && raw.sendU32(HELLO) && raw.sendU32(VERSION);
+        uint32_t reply = 0, kind = 0, seed = 0, seedKind = 0;
+        uint64_t rawId = 0;
+        std::vector<uint8_t> state(CreatureRecord::SIZE);
+        joined = joined && raw.readU32(reply) && reply == ACCEPTED && raw.readU32(kind) && kind == CREATURE &&
+                 raw.readExact(&rawId, 8) && raw.readExact(state.data(), state.size()) && raw.readU32(seedKind) &&
+                 seedKind == SEED && raw.readU32(seed);
+        check(joined, "a raw peer joins the actual server");
+        const uint64_t source = 0x0102030405060708ULL, target = b.id();
+        const float amount = 7;
+        ByteWriter partial;
+        partial.u32(HIT);
+        partial.write(reinterpret_cast<const uint8_t *>(&source), 8);
+        partial.write(reinterpret_cast<const uint8_t *>(&target), 8);
+        partial.write(reinterpret_cast<const uint8_t *>(&amount), 4);
+        check(joined && raw.send(partial.data()), "the raw peer sends a 20-byte packet-7 prefix");
+        raw.close();
+        std::vector<Hit> relayed;
+        check(waitFor([&] {
+            for (const auto &hit : b.takeHits())
+                if (hit.target() == target && hit.record().amount == amount)
+                    relayed.push_back(hit);
+            return !relayed.empty();
+        }), "a packet-7 body ended by end of stream is still queued and relayed");
+        check(relayed.size() == 1 && relayed[0].attacker() == source &&
+                  std::all_of(relayed[0].bytes.begin() + 20, relayed[0].bytes.end(), [](uint8_t v) { return v == 0; }),
+              "the partial record keeps its received prefix and zero unsent bytes");
+    }
     ra.setPosition(0, ra.position(0) + (5 << 16));
     a.setOwn(ra);
     check(waitFor([&] { auto o = b.others(); return o.count(1) && o[1].position(0) == ra.position(0); }), "b sees Alice move");

@@ -28,6 +28,52 @@ static Candidate light(int64_t x, int64_t y, float radius, glm::vec3 colour = {1
     return result;
 }
 
+// Held candidate-sort contract, closed cases. Each record carries its input
+// position in its X coordinate; the key is the priority.
+static void candidateSortClosedCases() {
+    const auto make = [](int count, int smaller) {
+        std::vector<Candidate> list(static_cast<size_t>(count));
+        for (int i = 0; i < count; ++i) {
+            list[size_t(i)].position = point(i, 0);
+            list[size_t(i)].priority = i == smaller ? 0.f : 1.f;
+        }
+        return list;
+    };
+    const auto labels = [](const std::vector<Candidate> &list) {
+        std::vector<int> out;
+        for (const auto &c : list)
+            out.push_back(int(c.position[0] / 65536));
+        return out;
+    };
+    // 32 records: stable insertion; record 16 first, then 0..15 and 17..31.
+    auto small = make(32, 16);
+    order(small);
+    std::vector<int> want{16};
+    for (int i = 0; i < 32; ++i)
+        if (i != 16)
+            want.push_back(i);
+    check(labels(small) == want, "32 candidates sort stably by key");
+    // 33 through 41 records with the sole smaller key at the middle: only the
+    // first and middle records exchange.
+    bool exchanged = true;
+    for (int count = 33; count <= 41; ++count) {
+        auto list = make(count, count / 2);
+        order(list);
+        std::vector<int> expect;
+        for (int i = 0; i < count; ++i)
+            expect.push_back(i == 0 ? count / 2 : i == count / 2 ? 0 : i);
+        exchanged = exchanged && labels(list) == expect;
+    }
+    check(exchanged, "33-41 candidates with a middle smaller key exchange only the first and middle records");
+    // All-equal keys keep their order at any size.
+    auto equal = make(60, -1);
+    order(equal);
+    std::vector<int> identity(60);
+    for (int i = 0; i < 60; ++i)
+        identity[size_t(i)] = i;
+    check(labels(equal) == identity, "all-equal candidate keys keep their order above 41 records");
+}
+
 static void indexedChest() {
     CubModel model;
     model.sx = 3;
@@ -849,6 +895,7 @@ static void fogMeshElevations() {
 }
 
 int main() {
+    candidateSortClosedCases();
     indexedChest();
     fogMeshTransfers();
     fogMeshElevations();
